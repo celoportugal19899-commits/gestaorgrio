@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestão Grupo RG Rio</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+<style>
+  :root {
+    --bg:#0a0a0f; --surface:#111118; --surface2:#18181f; --surface3:#20202a;
+    --border:#2a2a38; --border2:#333345; --text:#e8e8f0; --text2:#9090a8; --text3:#5a5a72;
+    --accent:#6c6cff; --accent2:#4a4aee;
+    --green:#22c55e; --green-bg:rgba(34,197,94,0.12);
+    --yellow:#f59e0b; --yellow-bg:rgba(245,158,11,0.12);
+    --red:#ef4444; --red-bg:rgba(239,68,68,0.12);
+    --radius:10px; --shadow:0 4px 24px rgba(0,0,0,0.4);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  ::-webkit-scrollbar{width:5px;}
+  ::-webkit-scrollbar-track{background:var(--surface);}
+  ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+  .page{display:none;}
+  .page.active{display:flex;}
+
+  /* LOADING */
+  #page-loading{min-height:100vh;align-items:center;justify-content:center;flex-direction:column;gap:16px;}
+  .spinner{width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .loading-txt{color:var(--text2);font-size:14px;font-family:'IBM Plex Mono',monospace;}
+
+  /* LOGIN */
+  #page-login{min-height:100vh;align-items:center;justify-content:center;flex-direction:column;
+    background:radial-gradient(ellipse 80% 60% at 50% -10%,rgba(108,108,255,0.18) 0%,transparent 70%);}
+  .login-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:48px 40px 40px;width:380px;box-shadow:var(--shadow),0 0 80px rgba(108,108,255,0.07);}
+  .login-logo{font-size:22px;font-weight:800;letter-spacing:-1px;margin-bottom:2px;background:linear-gradient(135deg,#fff 0%,#a0a0ff 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+  .login-sub{color:var(--text3);font-size:12px;margin-bottom:32px;font-family:'IBM Plex Mono',monospace;}
+  .form-group{margin-bottom:16px;}
+  .form-label{font-size:11px;color:var(--text2);margin-bottom:6px;display:block;letter-spacing:.5px;text-transform:uppercase;font-weight:600;}
+  .form-input{width:100%;padding:11px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:'Syne',sans-serif;font-size:14px;outline:none;transition:border .2s;}
+  .form-input:focus{border-color:var(--accent);}
+  .form-select{width:100%;padding:11px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:'Syne',sans-serif;font-size:14px;outline:none;transition:border .2s;appearance:none;cursor:pointer;}
+  .form-select:focus{border-color:var(--accent);}
+  .form-textarea{width:100%;padding:11px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:'Syne',sans-serif;font-size:14px;outline:none;resize:vertical;min-height:80px;}
+  .form-textarea:focus{border-color:var(--accent);}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:11px 22px;border-radius:var(--radius);font-family:'Syne',sans-serif;font-size:14px;font-weight:600;cursor:pointer;border:none;transition:all .2s;letter-spacing:.3px;}
+  .btn-primary{background:var(--accent);color:#fff;}
+  .btn-primary:hover{background:var(--accent2);transform:translateY(-1px);box-shadow:0 4px 20px rgba(108,108,255,0.3);}
+  .btn-secondary{background:var(--surface3);color:var(--text2);border:1px solid var(--border);}
+  .btn-secondary:hover{border-color:var(--accent);color:var(--text);}
+  .btn-danger{background:rgba(239,68,68,0.15);color:var(--red);border:1px solid rgba(239,68,68,0.3);}
+  .btn-danger:hover{background:rgba(239,68,68,0.25);}
+  .btn-block{width:100%;}
+  .btn-sm{padding:7px 14px;font-size:12px;}
+  .login-error{color:var(--red);font-size:13px;margin-top:10px;text-align:center;display:none;}
+
+  /* APP SHELL */
+  #page-app{min-height:100vh;flex-direction:row;}
+  .sidebar{width:220px;min-height:100vh;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:24px 0;position:fixed;top:0;left:0;height:100vh;z-index:100;}
+  .sidebar-logo{font-size:18px;font-weight:800;letter-spacing:-0.5px;padding:0 20px 20px;border-bottom:1px solid var(--border);margin-bottom:14px;background:linear-gradient(135deg,#fff 0%,#a0a0ff 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;line-height:1.3;}
+  .sidebar-section{padding:0 12px;margin-bottom:4px;}
+  .sidebar-section-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1.2px;font-weight:700;padding:6px 8px;}
+  .sidebar-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;font-size:13.5px;font-weight:500;cursor:pointer;color:var(--text2);transition:all .15s;margin-bottom:2px;}
+  .sidebar-item:hover{background:var(--surface3);color:var(--text);}
+  .sidebar-item.active{background:rgba(108,108,255,0.15);color:var(--accent);}
+  .sidebar-item .icon{font-size:16px;width:20px;text-align:center;}
+  .sidebar-footer{margin-top:auto;padding:16px 20px;border-top:1px solid var(--border);}
+  .user-chip{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+  .avatar{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;}
+  .avatar-admin{background:rgba(108,108,255,0.2);color:var(--accent);}
+  .avatar-collab{background:rgba(34,197,94,0.2);color:var(--green);}
+  .user-info .name{font-size:13px;font-weight:600;}
+  .user-info .role{font-size:11px;color:var(--text3);font-family:'IBM Plex Mono',monospace;}
+  .main{margin-left:220px;flex:1;padding:32px 36px;min-height:100vh;}
+  .view{display:none;}
+  .view.active{display:block;}
+
+  /* HEADER */
+  .page-header{margin-bottom:28px;}
+  .page-header h1{font-size:26px;font-weight:800;letter-spacing:-0.5px;}
+  .page-header p{color:var(--text2);font-size:14px;margin-top:4px;}
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;}
+  .topbar-actions{display:flex;gap:10px;}
+
+  /* CARDS */
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;}
+  .card-title{font-size:13px;color:var(--text2);text-transform:uppercase;letter-spacing:.8px;font-weight:700;margin-bottom:12px;}
+
+  /* GRIDS */
+  .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
+  .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+
+  /* STAT CARDS */
+  .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;}
+  .stat-card .label{font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;font-weight:600;margin-bottom:8px;}
+  .stat-card .value{font-size:32px;font-weight:800;letter-spacing:-1px;font-family:'IBM Plex Mono',monospace;}
+  .stat-card .sub{font-size:12px;color:var(--text3);margin-top:4px;}
+
+  /* SEMÁFORO */
+  .semaforo{display:inline-flex;align-items:center;gap:7px;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;letter-spacing:.3px;}
+  .sem-green{background:var(--green-bg);color:var(--green);border:1px solid rgba(34,197,94,0.25);}
+  .sem-yellow{background:var(--yellow-bg);color:var(--yellow);border:1px solid rgba(245,158,11,0.25);}
+  .sem-red{background:var(--red-bg);color:var(--red);border:1px solid rgba(239,68,68,0.25);}
+  .sem-dot{width:8px;height:8px;border-radius:50%;}
+  .sem-green .sem-dot{background:var(--green);box-shadow:0 0 6px var(--green);}
+  .sem-yellow .sem-dot{background:var(--yellow);box-shadow:0 0 6px var(--yellow);}
+  .sem-red .sem-dot{background:var(--red);box-shadow:0 0 6px var(--red);animation:pulse-red 1.5s infinite;}
+  @keyframes pulse-red{0%,100%{opacity:1}50%{opacity:.5}}
+
+  /* PROGRESS */
+  .progress-wrap{width:100%;height:6px;background:var(--surface3);border-radius:3px;overflow:hidden;margin-top:6px;}
+  .progress-bar{height:100%;border-radius:3px;transition:width .5s ease;}
+  .pb-green{background:var(--green);}
+  .pb-yellow{background:var(--yellow);}
+  .pb-red{background:var(--red);}
+  .pb-accent{background:var(--accent);}
+
+  /* TASK CARD */
+  .task-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:12px;transition:border-color .2s;}
+  .task-card:hover{border-color:var(--border2);}
+  .task-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px;}
+  .task-title{font-size:15px;font-weight:700;flex:1;margin-right:12px;}
+  .task-meta{font-size:12px;color:var(--text3);font-family:'IBM Plex Mono',monospace;margin-bottom:10px;display:flex;gap:16px;flex-wrap:wrap;align-items:center;}
+  .task-progress-row{display:flex;align-items:center;gap:12px;margin-top:10px;}
+  .task-progress-label{font-size:12px;color:var(--text2);white-space:nowrap;font-family:'IBM Plex Mono',monospace;min-width:36px;}
+  .task-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;}
+
+  /* UPDATES */
+  .updates-list{margin-top:12px;border-top:1px solid var(--border);padding-top:12px;display:none;}
+  .update-item{padding:10px 12px;background:var(--surface2);border-radius:8px;margin-bottom:8px;}
+  .update-item .upd-header{font-size:11px;color:var(--text3);font-family:'IBM Plex Mono',monospace;margin-bottom:4px;display:flex;justify-content:space-between;}
+  .update-item .upd-text{font-size:13px;}
+
+  /* MODAL */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(4px);z-index:999;display:none;align-items:center;justify-content:center;}
+  .modal-overlay.open{display:flex;}
+  .modal{background:var(--surface);border:1px solid var(--border2);border-radius:16px;padding:32px;width:480px;max-width:95vw;box-shadow:var(--shadow);animation:modal-in .2s ease;max-height:90vh;overflow-y:auto;}
+  @keyframes modal-in{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+  .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;}
+  .modal-title{font-size:18px;font-weight:800;}
+  .close-btn{background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer;padding:4px;}
+  .close-btn:hover{color:var(--text);}
+  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  input[type=range]{-webkit-appearance:none;width:100%;height:4px;background:var(--surface3);border-radius:2px;outline:none;cursor:pointer;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--accent);cursor:pointer;}
+  .prog-display{font-size:32px;font-weight:800;font-family:'IBM Plex Mono',monospace;color:var(--accent);text-align:center;margin:12px 0;}
+
+  /* TABLE */
+  .data-table{width:100%;border-collapse:collapse;}
+  .data-table th{text-align:left;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;padding:10px 14px;border-bottom:1px solid var(--border);font-weight:700;}
+  .data-table td{padding:13px 14px;border-bottom:1px solid var(--border);font-size:14px;}
+  .data-table tr:last-child td{border-bottom:none;}
+  .data-table tr:hover td{background:var(--surface2);}
+
+  /* COLLAB MACRO */
+  .collab-macro{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:14px;}
+  .collab-macro-header{display:flex;align-items:center;gap:12px;margin-bottom:14px;}
+  .collab-macro-info{flex:1;}
+  .collab-macro-info .cn{font-size:15px;font-weight:700;}
+  .collab-macro-info .ce{font-size:12px;color:var(--text3);font-family:'IBM Plex Mono',monospace;}
+  .collab-tasks-row{display:flex;flex-wrap:wrap;gap:8px;}
+  .mini-task{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;min-width:160px;flex:1;}
+  .mini-task .mt-title{font-weight:600;margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .mini-task .mt-prog{font-size:11px;color:var(--text3);font-family:'IBM Plex Mono',monospace;}
+
+  /* SEM GERAL */
+  .sem-geral-bar{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:20px;display:flex;gap:16px;align-items:center;flex-wrap:wrap;}
+
+  /* EMPTY */
+  .empty{text-align:center;padding:48px 24px;color:var(--text3);}
+  .empty .icon{font-size:40px;margin-bottom:12px;}
+  .empty p{font-size:14px;}
+
+  /* TOAST */
+  #toast{position:fixed;bottom:24px;right:24px;background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:12px 18px;font-size:14px;box-shadow:var(--shadow);z-index:9999;opacity:0;transform:translateY(10px);transition:all .3s;pointer-events:none;}
+  #toast.show{opacity:1;transform:translateY(0);}
+  #toast.toast-ok{border-color:rgba(34,197,94,0.4);color:var(--green);}
+  #toast.toast-err{border-color:rgba(239,68,68,0.4);color:var(--red);}
+
+  /* ONLINE BADGE */
+  .online-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--green);font-family:'IBM Plex Mono',monospace;}
+  .online-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse-green 2s infinite;}
+  @keyframes pulse-green{0%,100%{opacity:1}50%{opacity:.4}}
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="page-loading" class="page active">
+  <div class="spinner"></div>
+  <div class="loading-txt">Conectando ao servidor...</div>
+</div>
+
+<!-- LOGIN -->
+<div id="page-login" class="page">
+  <div class="login-card">
+    <div class="login-logo">Gestão<br>Grupo RG Rio</div>
+    <div class="login-sub">// sistema de colaboradores</div>
+    <div class="form-group">
+      <label class="form-label">E-mail</label>
+      <input class="form-input" type="email" id="login-email" placeholder="seu@email.com" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Senha</label>
+      <input class="form-input" type="password" id="login-pass" placeholder="••••••••">
+    </div>
+    <div id="login-error" class="login-error">E-mail ou senha incorretos.</div>
+    <button class="btn btn-primary btn-block" style="margin-top:8px" onclick="doLogin()">Entrar →</button>
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);text-align:center;font-size:11px;color:var(--text3);font-family:'IBM Plex Mono',monospace;">
+      admin@gestaorgrio.com / admin123
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="page-app" class="page" style="flex-direction:row">
+  <div class="sidebar">
+    <div class="sidebar-logo">Gestão<br>Grupo RG Rio</div>
+    <div id="nav-admin" style="display:none">
+      <div class="sidebar-section">
+        <div class="sidebar-section-label">Gestão</div>
+        <div class="sidebar-item active" id="nav-dash" onclick="showView('adm-dashboard',this)"><span class="icon">⬡</span> Dashboard</div>
+        <div class="sidebar-item" id="nav-tasks" onclick="showView('adm-tasks',this)"><span class="icon">◈</span> Demandas</div>
+        <div class="sidebar-item" id="nav-team" onclick="showView('adm-team',this)"><span class="icon">◉</span> Time</div>
+      </div>
+    </div>
+    <div id="nav-collab" style="display:none">
+      <div class="sidebar-section">
+        <div class="sidebar-section-label">Meu Painel</div>
+        <div class="sidebar-item active" onclick="showView('col-tasks',this)"><span class="icon">◈</span> Minhas Tarefas</div>
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      <div style="margin-bottom:10px">
+        <span class="online-badge"><span class="online-dot"></span>Firebase Online</span>
+      </div>
+      <div class="user-chip">
+        <div class="avatar" id="sb-avatar">A</div>
+        <div class="user-info">
+          <div class="name" id="sb-name">—</div>
+          <div class="role" id="sb-role">—</div>
+        </div>
+      </div>
+      <button class="btn btn-secondary btn-block btn-sm" onclick="doLogout()">Sair</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <!-- ADM DASHBOARD -->
+    <div id="view-adm-dashboard" class="view active">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Dashboard</h1><p>Visão macro do time em tempo real</p></div>
+      </div>
+      <div class="grid-4" id="stats-row" style="margin-bottom:20px"></div>
+      <div id="sem-geral-wrap" style="margin-bottom:20px"></div>
+      <div id="macro-team"></div>
+    </div>
+
+    <!-- ADM DEMANDAS -->
+    <div id="view-adm-tasks" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Demandas</h1><p>Gerencie todas as tarefas do time</p></div>
+        <div class="topbar-actions">
+          <button class="btn btn-primary" onclick="openCreateTask()">+ Nova Demanda</button>
+        </div>
+      </div>
+      <div id="all-tasks-list"></div>
+    </div>
+
+    <!-- ADM TIME -->
+    <div id="view-adm-team" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Time</h1><p>Colaboradores cadastrados</p></div>
+        <div class="topbar-actions">
+          <button class="btn btn-primary" onclick="openCreateCollab()">+ Novo Colaborador</button>
+        </div>
+      </div>
+      <div class="card">
+        <table class="data-table">
+          <thead><tr><th>Colaborador</th><th>E-mail</th><th>Cargo</th><th>Tarefas Ativas</th><th>Progresso Médio</th><th>Status</th><th></th></tr></thead>
+          <tbody id="team-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- COLABORADOR -->
+    <div id="view-col-tasks" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Minhas Tarefas</h1><p>Acompanhe e atualize suas demandas</p></div>
+      </div>
+      <div class="grid-3" id="col-task-stats" style="margin-bottom:24px"></div>
+      <div id="col-tasks-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: NOVO COLABORADOR -->
+<div class="modal-overlay" id="modal-collab">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Novo Colaborador</div><button class="close-btn" onclick="closeModal('modal-collab')">✕</button></div>
+    <div class="form-group"><label class="form-label">Nome Completo</label><input class="form-input" id="nc-name" placeholder="Ex: João Silva"></div>
+    <div class="form-group"><label class="form-label">E-mail</label><input class="form-input" id="nc-email" type="email" placeholder="joao@empresa.com"></div>
+    <div class="form-group"><label class="form-label">Senha de Acesso</label><input class="form-input" id="nc-pass" type="password" placeholder="Mínimo 4 caracteres"></div>
+    <div class="form-group"><label class="form-label">Cargo / Função</label><input class="form-input" id="nc-role" placeholder="Ex: Designer, Analista..."></div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-collab')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="saveCollab()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: NOVA TAREFA -->
+<div class="modal-overlay" id="modal-task">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title" id="modal-task-title">Nova Demanda</div><button class="close-btn" onclick="closeModal('modal-task')">✕</button></div>
+    <div class="form-group"><label class="form-label">Título da Demanda</label><input class="form-input" id="nt-title" placeholder="Ex: Criar landing page Q3"></div>
+    <div class="form-group"><label class="form-label">Descrição</label><textarea class="form-textarea" id="nt-desc" placeholder="Descreva a demanda, entregáveis esperados..."></textarea></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Atribuir a</label><select class="form-select" id="nt-assign"></select></div>
+      <div class="form-group"><label class="form-label">Prazo</label><input class="form-input" id="nt-deadline" type="date"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Prioridade</label>
+      <select class="form-select" id="nt-priority"><option value="normal">Normal</option><option value="alta">Alta</option><option value="urgente">Urgente</option></select>
+    </div>
+    <input type="hidden" id="nt-edit-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-task')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="saveTask()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ATUALIZAR PROGRESSO -->
+<div class="modal-overlay" id="modal-update">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header"><div class="modal-title">Atualizar Progresso</div><button class="close-btn" onclick="closeModal('modal-update')">✕</button></div>
+    <div id="upd-task-title" style="color:var(--text2);font-size:14px;margin-bottom:16px"></div>
+    <div class="form-group">
+      <label class="form-label">Progresso Atual</label>
+      <input type="range" id="upd-progress" min="0" max="100" step="5" value="0" oninput="document.getElementById('upd-prog-display').textContent=this.value+'%'">
+      <div class="prog-display" id="upd-prog-display">0%</div>
+    </div>
+    <div class="form-group"><label class="form-label">Comentário / Atualização</label><textarea class="form-textarea" id="upd-comment" placeholder="Descreva o que foi feito, bloqueios, próximos passos..."></textarea></div>
+    <div class="form-group"><label class="form-label">Status</label>
+      <select class="form-select" id="upd-status">
+        <option value="em_andamento">Em Andamento</option>
+        <option value="concluida">Concluída ✓</option>
+        <option value="bloqueada">Bloqueada ⚠</option>
+        <option value="pausada">Pausada ⏸</option>
+      </select>
+    </div>
+    <input type="hidden" id="upd-task-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-update')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="saveUpdate()">Salvar Atualização</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ══════════════════════════════════════
+// FIREBASE CONFIG
+// ══════════════════════════════════════
+const firebaseConfig = {
+  apiKey: "AIzaSyC3F8aY20GsNGSUOtISVhZiyTL08MSarnE",
+  authDomain: "gestao-rg-rio.firebaseapp.com",
+  projectId: "gestao-rg-rio",
+  storageBucket: "gestao-rg-rio.firebasestorage.app",
+  messagingSenderId: "300600775394",
+  appId: "1:300600775394:web:70c0dc9267ff3943e404bb"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// ══════════════════════════════════════
+// STATE
+// ══════════════════════════════════════
+let currentUser = null;
+let editingTaskId = null;
+let allUsers = [];
+let allTasks = [];
+let unsubUsers = null;
+let unsubTasks = null;
+
+// ══════════════════════════════════════
+// INIT — criar admin se não existir
+// ══════════════════════════════════════
+async function initSystem() {
+  try {
+    const snap = await db.collection('users').where('role','==','admin').get();
+    if (snap.empty) {
+      await db.collection('users').doc('admin').set({
+        id: 'admin',
+        name: 'Administrador',
+        email: 'admin@gestaorgrio.com',
+        password: 'admin123',
+        role: 'admin',
+        cargo: 'Administrador',
+        createdAt: new Date().toISOString()
+      });
+    }
+    showPage('login');
+  } catch(e) {
+    console.error(e);
+    document.querySelector('.loading-txt').textContent = 'Erro ao conectar. Verifique sua internet.';
+  }
+}
+
+// ══════════════════════════════════════
+// PAGE ROUTER
+// ══════════════════════════════════════
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  const el = document.getElementById('page-' + name);
+  if (el) el.classList.add('active');
+}
+
+// ══════════════════════════════════════
+// AUTH
+// ══════════════════════════════════════
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const pass = document.getElementById('login-pass').value;
+  document.getElementById('login-error').style.display = 'none';
+  try {
+    const snap = await db.collection('users').where('email','==',email).where('password','==',pass).get();
+    if (snap.empty) {
+      document.getElementById('login-error').style.display = 'block';
+      return;
+    }
+    currentUser = { id: snap.docs[0].id, ...snap.docs[0].data() };
+    startApp();
+  } catch(e) {
+    toast('Erro ao conectar. Tente novamente.', 'err');
+  }
+}
+document.getElementById('login-pass').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+
+function doLogout() {
+  if (unsubUsers) unsubUsers();
+  if (unsubTasks) unsubTasks();
+  currentUser = null; allUsers = []; allTasks = [];
+  showPage('login');
+  document.getElementById('login-email').value = '';
+  document.getElementById('login-pass').value = '';
+}
+
+function startApp() {
+  showPage('app');
+  const av = document.getElementById('sb-avatar');
+  document.getElementById('sb-name').textContent = currentUser.name;
+  document.getElementById('sb-role').textContent = currentUser.role === 'admin' ? 'Administrador' : (currentUser.cargo || 'Colaborador');
+  av.textContent = currentUser.name[0].toUpperCase();
+  av.className = 'avatar ' + (currentUser.role === 'admin' ? 'avatar-admin' : 'avatar-collab');
+  document.getElementById('nav-admin').style.display = currentUser.role === 'admin' ? 'block' : 'none';
+  document.getElementById('nav-collab').style.display = currentUser.role !== 'admin' ? 'block' : 'none';
+
+  // realtime listeners
+  unsubUsers = db.collection('users').onSnapshot(snap => {
+    allUsers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    refreshCurrentView();
+  });
+  unsubTasks = db.collection('tasks').orderBy('createdAt','desc').onSnapshot(snap => {
+    allTasks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    refreshCurrentView();
+  });
+
+  if (currentUser.role === 'admin') showView('adm-dashboard');
+  else showView('col-tasks');
+}
+
+function refreshCurrentView() {
+  const active = document.querySelector('.view.active');
+  if (!active) return;
+  const id = active.id.replace('view-','');
+  if (id === 'adm-dashboard') renderDashboard();
+  if (id === 'adm-tasks') renderAllTasks();
+  if (id === 'adm-team') renderTeam();
+  if (id === 'col-tasks') renderCollabTasks();
+}
+
+// ══════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════
+function showView(name, el) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+  if (el) el.classList.add('active');
+  if (name === 'adm-dashboard') renderDashboard();
+  if (name === 'adm-tasks') renderAllTasks();
+  if (name === 'adm-team') renderTeam();
+  if (name === 'col-tasks') renderCollabTasks();
+}
+
+// ══════════════════════════════════════
+// SEMÁFORO
+// ══════════════════════════════════════
+function getSem(task) {
+  if (task.status === 'concluida') return 'green';
+  if (task.status === 'bloqueada') return 'red';
+  const now = new Date(); now.setHours(0,0,0,0);
+  const dl = new Date(task.deadline + 'T00:00:00');
+  const diff = Math.ceil((dl - now) / 864e5);
+  const p = task.progress || 0;
+  if (diff < 0) return 'red';
+  if (diff <= 1) return p >= 80 ? 'yellow' : 'red';
+  if (diff <= 3) return p >= 50 ? 'yellow' : 'red';
+  if (diff <= 7) return p >= 20 ? 'yellow' : 'red';
+  return 'green';
+}
+function semHtml(c, lbl) {
+  return `<span class="semaforo sem-${c}"><span class="sem-dot"></span>${lbl}</span>`;
+}
+function semLbl(c) { return {green:'No Prazo', yellow:'Atenção', red:'Em Risco'}[c]; }
+function pbCls(c) { return {green:'pb-green', yellow:'pb-yellow', red:'pb-red'}[c]; }
+function stLbl(s) { return {em_andamento:'Em Andamento', concluida:'Concluída', bloqueada:'Bloqueada', pausada:'Pausada'}[s]||s; }
+function stIco(s) { return {em_andamento:'▶', concluida:'✓', bloqueada:'⚠', pausada:'⏸'}[s]||'•'; }
+function fmtD(s) { if(!s) return '—'; const[y,m,d]=s.split('-'); return `${d}/${m}/${y}`; }
+function fmtDT(iso) { if(!iso) return '—'; const dt=new Date(iso); return dt.toLocaleDateString('pt-BR')+' '+dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }
+
+// ══════════════════════════════════════
+// MODAIS
+// ══════════════════════════════════════
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+function openCreateCollab() {
+  ['nc-name','nc-email','nc-pass','nc-role'].forEach(i => document.getElementById(i).value = '');
+  document.getElementById('modal-collab').classList.add('open');
+}
+
+async function saveCollab() {
+  const name = document.getElementById('nc-name').value.trim();
+  const email = document.getElementById('nc-email').value.trim();
+  const pass = document.getElementById('nc-pass').value;
+  const cargo = document.getElementById('nc-role').value.trim();
+  if (!name || !email || !pass) { toast('Preencha todos os campos', 'err'); return; }
+  if (allUsers.find(u => u.email === email)) { toast('E-mail já cadastrado', 'err'); return; }
+  try {
+    const ref = db.collection('users').doc();
+    await ref.set({ id: ref.id, name, email, password: pass, role: 'collaborator', cargo, createdAt: new Date().toISOString() });
+    closeModal('modal-collab');
+    toast('Colaborador cadastrado!', 'ok');
+  } catch(e) { toast('Erro ao salvar', 'err'); }
+}
+
+function openCreateTask(taskId = null) {
+  editingTaskId = taskId;
+  const collabs = allUsers.filter(u => u.role !== 'admin');
+  const sel = document.getElementById('nt-assign');
+  sel.innerHTML = collabs.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  if (!collabs.length) { toast('Cadastre ao menos um colaborador primeiro', 'err'); return; }
+  const def = new Date(); def.setDate(def.getDate()+7);
+  document.getElementById('nt-deadline').value = def.toISOString().split('T')[0];
+  if (taskId) {
+    const t = allTasks.find(t => t.id === taskId);
+    document.getElementById('modal-task-title').textContent = 'Editar Demanda';
+    document.getElementById('nt-title').value = t.title;
+    document.getElementById('nt-desc').value = t.description || '';
+    document.getElementById('nt-assign').value = t.assignedTo;
+    document.getElementById('nt-deadline').value = t.deadline;
+    document.getElementById('nt-priority').value = t.priority || 'normal';
+    document.getElementById('nt-edit-id').value = taskId;
+  } else {
+    document.getElementById('modal-task-title').textContent = 'Nova Demanda';
+    ['nt-title','nt-desc','nt-edit-id'].forEach(i => document.getElementById(i).value = '');
+    document.getElementById('nt-priority').value = 'normal';
+  }
+  document.getElementById('modal-task').classList.add('open');
+}
+
+async function saveTask() {
+  const title = document.getElementById('nt-title').value.trim();
+  const desc = document.getElementById('nt-desc').value.trim();
+  const assignedTo = document.getElementById('nt-assign').value;
+  const deadline = document.getElementById('nt-deadline').value;
+  const priority = document.getElementById('nt-priority').value;
+  const tid = document.getElementById('nt-edit-id').value;
+  if (!title || !deadline) { toast('Preencha título e prazo', 'err'); return; }
+  try {
+    if (tid) {
+      await db.collection('tasks').doc(tid).update({ title, description: desc, assignedTo, deadline, priority });
+      toast('Demanda atualizada!', 'ok');
+    } else {
+      const ref = db.collection('tasks').doc();
+      await ref.set({ id: ref.id, title, description: desc, assignedTo, deadline, priority, progress: 0, status: 'em_andamento', updates: [], createdAt: new Date().toISOString() });
+      toast('Demanda criada!', 'ok');
+    }
+    closeModal('modal-task');
+    editingTaskId = null;
+  } catch(e) { toast('Erro ao salvar demanda', 'err'); }
+}
+
+function openUpdateModal(taskId) {
+  const t = allTasks.find(t => t.id === taskId);
+  document.getElementById('upd-task-title').textContent = t.title;
+  document.getElementById('upd-task-id').value = taskId;
+  document.getElementById('upd-progress').value = t.progress || 0;
+  document.getElementById('upd-prog-display').textContent = (t.progress||0) + '%';
+  document.getElementById('upd-comment').value = '';
+  document.getElementById('upd-status').value = t.status || 'em_andamento';
+  document.getElementById('modal-update').classList.add('open');
+}
+
+async function saveUpdate() {
+  const taskId = document.getElementById('upd-task-id').value;
+  const progress = parseInt(document.getElementById('upd-progress').value);
+  const comment = document.getElementById('upd-comment').value.trim();
+  const status = document.getElementById('upd-status').value;
+  const t = allTasks.find(t => t.id === taskId);
+  const updates = [...(t.updates || [])];
+  if (comment) updates.push({ text: comment, timestamp: new Date().toISOString(), userId: currentUser.id, userName: currentUser.name });
+  try {
+    await db.collection('tasks').doc(taskId).update({ progress, status, updates });
+    closeModal('modal-update');
+    toast('Progresso atualizado!', 'ok');
+  } catch(e) { toast('Erro ao salvar', 'err'); }
+}
+
+async function deleteTask(taskId) {
+  if (!confirm('Excluir esta demanda permanentemente?')) return;
+  try {
+    await db.collection('tasks').doc(taskId).delete();
+    toast('Demanda excluída', 'ok');
+  } catch(e) { toast('Erro ao excluir', 'err'); }
+}
+
+async function deleteCollab(userId) {
+  if (!confirm('Excluir este colaborador?')) return;
+  try {
+    await db.collection('users').doc(userId).delete();
+    toast('Colaborador removido', 'ok');
+  } catch(e) { toast('Erro ao excluir', 'err'); }
+}
+
+// ══════════════════════════════════════
+// RENDERS
+// ══════════════════════════════════════
+function renderDashboard() {
+  const collabs = allUsers.filter(u => u.role !== 'admin');
+  const done = allTasks.filter(t=>t.status==='concluida').length;
+  const active = allTasks.filter(t=>t.status==='em_andamento').length;
+  const atRisk = allTasks.filter(t=>getSem(t)==='red'&&t.status!=='concluida').length;
+  document.getElementById('stats-row').innerHTML = `
+    <div class="stat-card"><div class="label">Colaboradores</div><div class="value" style="color:var(--accent)">${collabs.length}</div><div class="sub">no time</div></div>
+    <div class="stat-card"><div class="label">Ativas</div><div class="value" style="color:#3b82f6">${active}</div><div class="sub">em andamento</div></div>
+    <div class="stat-card"><div class="label">Concluídas</div><div class="value" style="color:var(--green)">${done}</div><div class="sub">entregues</div></div>
+    <div class="stat-card"><div class="label">Em Risco</div><div class="value" style="color:${atRisk>0?'var(--red)':'var(--green)'}">${atRisk}</div><div class="sub">atenção imediata</div></div>`;
+  const gc = allTasks.filter(t=>getSem(t)==='green').length;
+  const yc = allTasks.filter(t=>getSem(t)==='yellow').length;
+  const rc = allTasks.filter(t=>getSem(t)==='red').length;
+  document.getElementById('sem-geral-wrap').innerHTML = `
+    <div class="sem-geral-bar">
+      <span style="font-size:12px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.8px;margin-right:4px">Semáforo Geral</span>
+      ${semHtml('green',`${gc} no prazo`)} ${semHtml('yellow',`${yc} atenção`)} ${semHtml('red',`${rc} em risco`)}
+      <span style="margin-left:auto;color:var(--text3);font-family:'IBM Plex Mono',monospace;font-size:12px">${allTasks.length} demandas</span>
+    </div>`;
+  if (!collabs.length) { document.getElementById('macro-team').innerHTML=`<div class="empty"><div class="icon">◉</div><p>Nenhum colaborador cadastrado ainda.<br>Vá em <strong>Time</strong> e adicione sua equipe.</p></div>`; return; }
+  let html = '';
+  collabs.forEach(c => {
+    const ct = allTasks.filter(t=>t.assignedTo===c.id);
+    const activeTasks = ct.filter(t=>t.status!=='concluida');
+    const avg = ct.length ? Math.round(ct.reduce((a,t)=>a+(t.progress||0),0)/ct.length) : 0;
+    const worst = ct.reduce((w,t)=>{const s=getSem(t);return({red:2,yellow:1,green:0}[s]||0)>({red:2,yellow:1,green:0}[w]||0)?s:w;},'green');
+    const wColor = {green:'var(--green)',yellow:'var(--yellow)',red:'var(--red)'}[worst];
+    const miniTasks = activeTasks.length ? activeTasks.map(t=>{
+      const sc=getSem(t);
+      return `<div class="mini-task"><div class="mt-title">${t.title}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">${semHtml(sc,semLbl(sc))}<span class="mt-prog">${t.progress||0}%</span></div>
+        <div class="progress-wrap"><div class="progress-bar ${pbCls(sc)}" style="width:${t.progress||0}%"></div></div>
+        <div class="mt-prog" style="margin-top:5px">Prazo: ${fmtD(t.deadline)}</div></div>`;
+    }).join('') : `<div style="color:var(--text3);font-size:13px;padding:8px">Sem tarefas ativas</div>`;
+    html += `<div class="collab-macro">
+      <div class="collab-macro-header">
+        <div class="avatar" style="background:rgba(${worst==='red'?'239,68,68':worst==='yellow'?'245,158,11':'34,197,94'},0.15);color:${wColor}">${c.name[0]}</div>
+        <div class="collab-macro-info"><div class="cn">${c.name}</div><div class="ce">${c.cargo||c.email}</div></div>
+        <div style="display:flex;align-items:center;gap:14px">
+          <div style="text-align:right"><div style="font-size:22px;font-weight:800;font-family:'IBM Plex Mono',monospace;color:${wColor}">${avg}%</div><div style="font-size:11px;color:var(--text3)">média</div></div>
+          ${semHtml(worst,semLbl(worst))}
+        </div>
+      </div>
+      <div class="collab-tasks-row">${miniTasks}</div>
+    </div>`;
+  });
+  document.getElementById('macro-team').innerHTML = html;
+}
+
+function renderAllTasks() {
+  const el = document.getElementById('all-tasks-list');
+  if (!allTasks.length) { el.innerHTML=`<div class="empty"><div class="icon">◈</div><p>Nenhuma demanda criada ainda.</p></div>`; return; }
+  el.innerHTML = allTasks.map(t => {
+    const assignee = allUsers.find(u=>u.id===t.assignedTo);
+    const sc = getSem(t);
+    const uc = (t.updates||[]).length;
+    return `<div class="task-card">
+      <div class="task-header"><div class="task-title">${t.title}</div>${semHtml(sc,semLbl(sc))}</div>
+      ${t.description?`<div style="font-size:13px;color:var(--text2);margin-bottom:10px">${t.description}</div>`:''}
+      <div class="task-meta">
+        <span>👤 ${assignee?assignee.name:'N/D'}</span>
+        <span>📅 ${fmtD(t.deadline)}</span>
+        <span style="color:${t.priority==='urgente'?'var(--red)':t.priority==='alta'?'var(--yellow)':'var(--text3)'}">⚑ ${t.priority||'normal'}</span>
+        <span>${stIco(t.status)} ${stLbl(t.status)}</span>
+      </div>
+      <div class="task-progress-row"><div class="task-progress-label">${t.progress||0}%</div><div class="progress-wrap" style="flex:1"><div class="progress-bar ${pbCls(sc)}" style="width:${t.progress||0}%"></div></div></div>
+      <div class="task-actions">
+        <button class="btn btn-sm btn-secondary" onclick="openCreateTask('${t.id}')">✎ Editar</button>
+        ${uc?`<button class="btn btn-sm btn-secondary" onclick="toggleUpd('${t.id}')">💬 ${uc} atualiz.</button>`:''}
+        <button class="btn btn-sm btn-danger" style="margin-left:auto" onclick="deleteTask('${t.id}')">✕ Excluir</button>
+      </div>
+      <div class="updates-list" id="upd-${t.id}">
+        ${(t.updates||[]).slice().reverse().map(u=>`<div class="update-item"><div class="upd-header"><span>${u.userName||'—'}</span><span>${fmtDT(u.timestamp)}</span></div><div class="upd-text">${u.text}</div></div>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderTeam() {
+  const collabs = allUsers.filter(u=>u.role!=='admin');
+  const tbody = document.getElementById('team-tbody');
+  if (!collabs.length) { tbody.innerHTML=`<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:32px">Nenhum colaborador cadastrado</td></tr>`; return; }
+  tbody.innerHTML = collabs.map(c => {
+    const ct = allTasks.filter(t=>t.assignedTo===c.id);
+    const active = ct.filter(t=>t.status!=='concluida').length;
+    const avg = ct.length?Math.round(ct.reduce((a,t)=>a+(t.progress||0),0)/ct.length):0;
+    const worst = ct.reduce((w,t)=>{const s=getSem(t);return({red:2,yellow:1,green:0}[s]||0)>({red:2,yellow:1,green:0}[w]||0)?s:w;},'green');
+    return `<tr>
+      <td><div style="display:flex;align-items:center;gap:8px"><div class="avatar avatar-collab" style="font-size:12px">${c.name[0]}</div>${c.name}</div></td>
+      <td class="mono" style="font-size:12px;color:var(--text2)">${c.email}</td>
+      <td style="color:var(--text2);font-size:13px">${c.cargo||'—'}</td>
+      <td class="mono" style="font-size:13px">${active}</td>
+      <td><div style="display:flex;align-items:center;gap:8px"><span class="mono" style="font-size:13px;min-width:32px">${avg}%</span><div class="progress-wrap" style="width:80px"><div class="progress-bar pb-accent" style="width:${avg}%"></div></div></div></td>
+      <td>${semHtml(worst,semLbl(worst))}</td>
+      <td><button class="btn btn-sm btn-danger" onclick="deleteCollab('${c.id}')">✕</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderCollabTasks() {
+  const tasks = allTasks.filter(t=>t.assignedTo===currentUser.id);
+  const done = tasks.filter(t=>t.status==='concluida').length;
+  const atRisk = tasks.filter(t=>getSem(t)==='red'&&t.status!=='concluida').length;
+  document.getElementById('col-task-stats').innerHTML = `
+    <div class="stat-card"><div class="label">Total</div><div class="value" style="color:var(--accent)">${tasks.length}</div><div class="sub">demandas</div></div>
+    <div class="stat-card"><div class="label">Concluídas</div><div class="value" style="color:var(--green)">${done}</div><div class="sub">entregues</div></div>
+    <div class="stat-card"><div class="label">Em Risco</div><div class="value" style="color:${atRisk>0?'var(--red)':'var(--green)'}">${atRisk}</div><div class="sub">${atRisk>0?'verifique urgente':'tudo ok'}</div></div>`;
+  const el = document.getElementById('col-tasks-list');
+  if (!tasks.length) { el.innerHTML=`<div class="empty"><div class="icon">◈</div><p>Nenhuma tarefa atribuída ainda.</p></div>`; return; }
+  tasks.sort((a,b)=>({red:0,yellow:1,green:2}[getSem(a)]-{red:0,yellow:1,green:2}[getSem(b)])||new Date(a.deadline)-new Date(b.deadline));
+  el.innerHTML = tasks.map(t => {
+    const sc = getSem(t);
+    const uc = (t.updates||[]).length;
+    const canUpd = t.status !== 'concluida';
+    return `<div class="task-card">
+      <div class="task-header"><div class="task-title">${t.title}</div>${semHtml(sc,semLbl(sc))}</div>
+      ${t.description?`<div style="font-size:13px;color:var(--text2);margin-bottom:10px">${t.description}</div>`:''}
+      <div class="task-meta">
+        <span>📅 Prazo: <strong style="color:var(--text)">${fmtD(t.deadline)}</strong></span>
+        <span style="color:${t.priority==='urgente'?'var(--red)':t.priority==='alta'?'var(--yellow)':'var(--text3)'}">⚑ ${t.priority||'normal'}</span>
+        <span>${stIco(t.status)} ${stLbl(t.status)}</span>
+      </div>
+      <div class="task-progress-row"><div class="task-progress-label">${t.progress||0}%</div><div class="progress-wrap" style="flex:1"><div class="progress-bar ${pbCls(sc)}" style="width:${t.progress||0}%"></div></div></div>
+      <div class="task-actions">
+        ${canUpd?`<button class="btn btn-primary btn-sm" onclick="openUpdateModal('${t.id}')">↑ Atualizar Progresso</button>`:`${semHtml('green','Concluída')}`}
+        ${uc?`<button class="btn btn-sm btn-secondary" onclick="toggleUpd('${t.id}')">💬 ${uc} atualiz.</button>`:''}
+      </div>
+      <div class="updates-list" id="upd-${t.id}">
+        ${(t.updates||[]).slice().reverse().map(u=>`<div class="update-item"><div class="upd-header"><span>${u.userName||'—'}</span><span>${fmtDT(u.timestamp)}</span></div><div class="upd-text">${u.text}</div></div>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════
+function toggleUpd(id) { const el=document.getElementById('upd-'+id); el.style.display=el.style.display==='block'?'none':'block'; }
+
+function toast(msg, type='ok') {
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.className='show toast-'+type;
+  clearTimeout(el._t); el._t=setTimeout(()=>el.className='',2800);
+}
+
+document.querySelectorAll('.modal-overlay').forEach(o=>{
+  o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open');});
+});
+
+// ══════════════════════════════════════
+// START
+// ══════════════════════════════════════
+initSystem();
+</script>
+</body>
+</html>
