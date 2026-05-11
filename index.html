@@ -703,6 +703,7 @@ let unsubTasks = null;
 
 const SENHA_PADRAO = 'rg@2026';
 const COLABORADORES_INICIAIS = [
+  {name:'Colaborador Teste', email:'teste@gruporgbrasil.com', cargo:'Jovem Aprendiz', local:'Sede', expediente:'6hrs'},
   {name:'Maria Eduarda Ferreira Fraga', email:'mariaeduarda.fraga@gruporgbrasil.com', cargo:'Jovem Aprendiz', local:'Areal', expediente:'6hrs'},
   {name:'Jasmin Teixeira Carvalho', email:'jasmin.carvalho@gruporgbrasil.com', cargo:'Jovem Aprendiz', local:'Bom Jardim', expediente:'6hrs'},
   {name:'Marllem Ventania Perdigão', email:'marllem.perdigao@gruporgbrasil.com', cargo:'Jovem Aprendiz', local:'Bom Jardim', expediente:'6hrs'},
@@ -742,10 +743,10 @@ async function initSystem() {
     const colSnap = await db.collection('users').where('role','==','collaborator').get();
     if (colSnap.empty) {
       const batch = db.batch();
-      COLABORADORES_INICIAIS.forEach(c => {
+      COLABORADORES_INICIAIS.forEach((c, i) => {
         const ref = db.collection('users').doc();
         batch.set(ref, { id:ref.id, ...c, password: SENHA_PADRAO, role:'collaborator',
-          mustChangePassword: true, createdAt: new Date().toISOString() });
+          mustChangePassword: i === 0 ? false : true, createdAt: new Date().toISOString() });
       });
       await batch.commit();
     }
