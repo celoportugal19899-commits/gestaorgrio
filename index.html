@@ -257,6 +257,94 @@
   .online-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--green);font-family:'IBM Plex Mono',monospace;}
   .online-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse-green 2s infinite;}
   @keyframes pulse-green{0%,100%{opacity:1}50%{opacity:.4}}
+
+  /* ═══ PONTO ELETRÔNICO ═══ */
+  .ponto-wrap{max-width:560px;margin:0 auto;}
+  .ponto-clock-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px 28px 22px;margin-bottom:16px;text-align:center;position:relative;overflow:hidden;}
+  .ponto-clock-card::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 40% at 50% 0%,rgba(201,162,39,0.08) 0%,transparent 70%);}
+  .ponto-date{font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:8px;position:relative;}
+  .ponto-time-big{font-size:52px;font-weight:800;font-family:'IBM Plex Mono',monospace;color:var(--text);letter-spacing:-2px;line-height:1;position:relative;margin-bottom:4px;}
+  .ponto-time-big span{color:#c9a227;}
+  .ponto-day-full{font-size:13px;color:var(--text2);position:relative;}
+
+  .ponto-status-card{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 18px;margin-bottom:20px;}
+  .pst-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+  .pst-dot.working{background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse-green 2s infinite;}
+  .pst-dot.lunch{background:var(--yellow);box-shadow:0 0 8px var(--yellow);}
+  .pst-dot.idle{background:var(--text3);}
+  .pst-dot.done{background:var(--accent);box-shadow:0 0 8px var(--accent);}
+  .pst-label{font-size:14px;font-weight:700;}
+  .pst-since{font-size:12px;color:var(--text3);font-family:'IBM Plex Mono',monospace;margin-left:auto;}
+
+  .ponto-btns{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;}
+  .ponto-btn{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px 16px;cursor:pointer;text-align:center;transition:all .2s;position:relative;overflow:hidden;}
+  .ponto-btn:hover:not(.pb-done):not(.pb-locked){border-color:var(--border2);transform:translateY(-1px);}
+  .ponto-btn.pb-active{border-color:#c9a227;background:rgba(201,162,39,0.07);}
+  .ponto-btn.pb-active:hover{box-shadow:0 4px 20px rgba(201,162,39,0.2);}
+  .ponto-btn.pb-done{opacity:.5;cursor:not-allowed;}
+  .ponto-btn.pb-locked{opacity:.3;cursor:not-allowed;}
+  .pb-check{position:absolute;top:10px;right:10px;width:18px;height:18px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;}
+  .pb-ico{font-size:26px;margin-bottom:8px;display:block;}
+  .pb-lbl{font-size:13px;font-weight:700;color:var(--text);}
+  .pb-time{font-size:12px;color:var(--text3);font-family:'IBM Plex Mono',monospace;margin-top:4px;}
+
+  .ponto-summary{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:16px;}
+  .ps-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);}
+  .ps-title{font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;font-weight:700;}
+  .ps-row{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid var(--border);font-size:13px;}
+  .ps-row:last-child{border-bottom:none;}
+  .ps-lbl{color:var(--text2);display:flex;align-items:center;gap:8px;}
+  .ps-val{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;}
+  .ps-badge{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;}
+  .psb-ok{background:var(--green-bg);color:var(--green);border:1px solid rgba(34,197,94,0.25);}
+  .psb-pend{background:var(--yellow-bg);color:var(--yellow);border:1px solid rgba(245,158,11,0.25);}
+  .psb-wait{background:var(--surface2);color:var(--text3);border:1px solid var(--border);}
+
+  .blocked-card{display:flex;align-items:flex-start;gap:14px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:12px;padding:16px 18px;margin-bottom:20px;}
+  .blocked-icon{font-size:24px;flex-shrink:0;margin-top:2px;}
+  .blocked-title{font-size:14px;font-weight:700;color:var(--red);margin-bottom:4px;}
+  .blocked-desc{font-size:13px;color:var(--text2);line-height:1.5;}
+
+  /* ADM PONTO */
+  .ponto-adm-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;}
+  .pas-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;}
+  .pas-lbl{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;font-weight:700;margin-bottom:8px;}
+  .pas-val{font-size:28px;font-weight:800;font-family:'IBM Plex Mono',monospace;letter-spacing:-1px;}
+  .pas-sub{font-size:12px;color:var(--text3);margin-top:3px;}
+
+  .ponto-team-table{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:16px;}
+  .ptt-header{display:grid;grid-template-columns:1.8fr 1fr 1fr 1fr 1fr 100px;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);}
+  .ptt-header span{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-weight:700;}
+  .ptt-row{display:grid;grid-template-columns:1.8fr 1fr 1fr 1fr 1fr 100px;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border);align-items:center;font-size:13px;transition:background .15s;}
+  .ptt-row:last-child{border-bottom:none;}
+  .ptt-row:hover{background:var(--surface2);}
+  .ptt-name{display:flex;align-items:center;gap:10px;}
+  .ptt-av{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;}
+  .av-work{background:rgba(34,197,94,0.15);color:var(--green);}
+  .av-lunch{background:rgba(245,158,11,0.15);color:var(--yellow);}
+  .av-done{background:rgba(108,108,255,0.15);color:var(--accent);}
+  .av-absent{background:var(--surface2);color:var(--text3);}
+  .ptt-mono{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text2);}
+  .ptt-mono.empty{color:var(--text3);}
+
+  /* DEVICE AUTH */
+  .device-req-card{background:rgba(201,162,39,0.06);border:1px solid rgba(201,162,39,0.2);border-radius:12px;padding:16px 18px;margin-bottom:12px;display:flex;align-items:center;gap:14px;}
+  .dr-info{flex:1;}
+  .dr-title{font-size:13px;font-weight:700;margin-bottom:3px;}
+  .dr-sub{font-size:12px;color:var(--text2);font-family:'IBM Plex Mono',monospace;}
+  .dr-actions{display:flex;gap:8px;}
+
+  /* EXPORT BAR */
+  .export-bar{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;}
+  .eb-left{font-size:13px;color:var(--text2);}
+  .eb-left strong{color:var(--text);display:block;font-size:14px;margin-bottom:2px;}
+  .eb-btns{display:flex;gap:8px;}
+  .eb-btn{display:flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--radius);font-size:13px;font-weight:600;cursor:pointer;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);transition:all .2s;font-family:'Syne',sans-serif;}
+  .eb-btn:hover{color:var(--text);border-color:var(--border2);}
+  .eb-btn.green{border-color:rgba(34,197,94,0.3);color:var(--green);background:var(--green-bg);}
+  .eb-btn.green:hover{background:rgba(34,197,94,0.2);}
+  .eb-btn.red{border-color:rgba(239,68,68,0.3);color:var(--red);background:var(--red-bg);}
+  .eb-btn.red:hover{background:rgba(239,68,68,0.2);}
 </style>
 </head>
 <body>
@@ -320,12 +408,14 @@
         <div class="sidebar-item active" id="nav-dash" onclick="showView('adm-dashboard',this)"><span class="icon">⬡</span> Dashboard</div>
         <div class="sidebar-item" id="nav-tasks" onclick="showView('adm-tasks',this)"><span class="icon">◈</span> Demandas</div>
         <div class="sidebar-item" id="nav-team" onclick="showView('adm-team',this)"><span class="icon">◉</span> Time</div>
+        <div class="sidebar-item" id="nav-ponto-adm" onclick="showView('adm-ponto',this)"><span class="icon">⏱</span> Ponto Eletrônico</div>
       </div>
     </div>
     <div id="nav-collab" style="display:none">
       <div class="sidebar-section">
         <div class="sidebar-section-label">Meu Painel</div>
         <div class="sidebar-item active" onclick="showView('col-tasks',this)"><span class="icon">◈</span> Minhas Tarefas</div>
+        <div class="sidebar-item" onclick="showView('col-ponto',this)"><span class="icon">⏱</span> Meu Ponto</div>
       </div>
     </div>
     <div class="sidebar-footer">
@@ -389,9 +479,99 @@
       <div class="grid-3" id="col-task-stats" style="margin-bottom:24px"></div>
       <div id="col-tasks-list"></div>
     </div>
+
+    <!-- PONTO COLABORADOR -->
+    <div id="view-col-ponto" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Meu Ponto</h1><p>Registre sua jornada de trabalho</p></div>
+      </div>
+      <div class="ponto-wrap">
+        <div id="ponto-blocked-card" class="blocked-card" style="display:none">
+          <div class="blocked-icon">🔒</div>
+          <div>
+            <div class="blocked-title">Dispositivo não autorizado</div>
+            <div class="blocked-desc">O registro de ponto só pode ser feito no computador autorizado da sua loja.<br>Solicite ao administrador a autorização deste dispositivo.</div>
+          </div>
+        </div>
+        <div id="ponto-auth-request" style="display:none" class="device-req-card">
+          <div style="font-size:22px">💻</div>
+          <div class="dr-info">
+            <div class="dr-title">Solicitar autorização deste dispositivo</div>
+            <div class="dr-sub" id="device-id-display">ID: carregando...</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="solicitarAutorizacao()">Solicitar</button>
+        </div>
+        <div id="ponto-main" style="display:none">
+          <div class="ponto-clock-card">
+            <div class="ponto-date" id="ponto-date-lbl">—</div>
+            <div class="ponto-time-big" id="ponto-clock">00<span>:</span>00<span>:</span>00</div>
+            <div class="ponto-day-full" id="ponto-day-full">—</div>
+          </div>
+          <div class="ponto-status-card">
+            <div class="pst-dot idle" id="pst-dot"></div>
+            <div class="pst-label" id="pst-label">Aguardando entrada</div>
+            <div class="pst-since" id="pst-since"></div>
+          </div>
+          <div class="ponto-btns">
+            <div class="ponto-btn pb-active" id="pbtn-entrada" onclick="registrarPonto('entrada')">
+              <span class="pb-ico">🟢</span>
+              <div class="pb-lbl">Entrada</div>
+              <div class="pb-time" id="pt-entrada">—</div>
+            </div>
+            <div class="ponto-btn pb-locked" id="pbtn-saida-almoco" onclick="registrarPonto('saida_almoco')">
+              <span class="pb-ico">🍽️</span>
+              <div class="pb-lbl">Saída Almoço</div>
+              <div class="pb-time" id="pt-saida-almoco">—</div>
+            </div>
+            <div class="ponto-btn pb-locked" id="pbtn-retorno-almoco" onclick="registrarPonto('retorno_almoco')">
+              <span class="pb-ico">↩️</span>
+              <div class="pb-lbl">Retorno Almoço</div>
+              <div class="pb-time" id="pt-retorno-almoco">—</div>
+            </div>
+            <div class="ponto-btn pb-locked" id="pbtn-saida" onclick="registrarPonto('saida')">
+              <span class="pb-ico">🔴</span>
+              <div class="pb-lbl">Saída</div>
+              <div class="pb-time" id="pt-saida">—</div>
+            </div>
+          </div>
+          <div class="ponto-summary">
+            <div class="ps-header">
+              <span class="ps-title">Resumo do dia</span>
+              <button class="btn btn-sm btn-secondary" onclick="exportarMeuPonto()">↓ Exportar mês</button>
+            </div>
+            <div class="ps-row"><span class="ps-lbl">🟢 Entrada</span><span class="ps-val" id="psr-entrada">—</span><span class="ps-badge psb-wait" id="psb-entrada">aguardando</span></div>
+            <div class="ps-row"><span class="ps-lbl">🍽️ Saída almoço</span><span class="ps-val" id="psr-saida-almoco">—</span><span class="ps-badge psb-wait" id="psb-saida-almoco">aguardando</span></div>
+            <div class="ps-row"><span class="ps-lbl">↩️ Retorno almoço</span><span class="ps-val" id="psr-retorno-almoco">—</span><span class="ps-badge psb-wait" id="psb-retorno-almoco">aguardando</span></div>
+            <div class="ps-row"><span class="ps-lbl">🔴 Saída</span><span class="ps-val" id="psr-saida">—</span><span class="ps-badge psb-wait" id="psb-saida">aguardando</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PONTO ADM -->
+    <div id="view-adm-ponto" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Ponto Eletrônico</h1><p>Jornada do time em tempo real</p></div>
+        <div class="topbar-actions">
+          <select class="form-select" id="ponto-mes-filtro" style="width:160px" onchange="renderAdmPonto()"></select>
+        </div>
+      </div>
+      <div class="ponto-adm-stats" id="ponto-adm-stats"></div>
+      <div id="device-requests-wrap"></div>
+      <div class="ponto-team-table">
+        <div class="ptt-header"><span>Colaborador</span><span>Entrada</span><span>S. Almoço</span><span>Retorno</span><span>Saída</span><span>Status</span></div>
+        <div id="ponto-team-rows"></div>
+      </div>
+      <div style="margin-top:16px" class="export-bar">
+        <div class="eb-left"><strong>Exportar relatório de ponto</strong>Todos os colaboradores — mês selecionado</div>
+        <div class="eb-btns">
+          <button class="eb-btn green" onclick="exportarPontoExcel()">📊 Excel</button>
+          <button class="eb-btn red" onclick="exportarPontoPDF()">📄 PDF</button>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
-
 <!-- MODAL: NOVO COLABORADOR -->
 <div class="modal-overlay" id="modal-collab">
   <div class="modal">
@@ -568,6 +748,7 @@ function startApp() {
 
   if (currentUser.role === 'admin') showView('adm-dashboard');
   else showView('col-tasks');
+  initPonto();
 }
 
 function refreshCurrentView() {
@@ -592,6 +773,8 @@ function showView(name, el) {
   if (name === 'adm-tasks') renderAllTasks();
   if (name === 'adm-team') renderTeam();
   if (name === 'col-tasks') renderCollabTasks();
+  if (name === 'adm-ponto') renderAdmPonto();
+  if (name === 'col-ponto') renderColPonto();
 }
 
 // ══════════════════════════════════════
@@ -885,6 +1068,278 @@ function toast(msg, type='ok') {
 document.querySelectorAll('.modal-overlay').forEach(o=>{
   o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open');});
 });
+
+// ══════════════════════════════════════
+// PONTO ELETRÔNICO
+// ══════════════════════════════════════
+let pontoClockInterval = null;
+let allPontos = [];
+let unsubPontos = null;
+
+function getDeviceId() {
+  let did = localStorage.getItem('rg_device_id');
+  if (!did) { did = 'DEV-' + Math.random().toString(36).substr(2,9).toUpperCase(); localStorage.setItem('rg_device_id', did); }
+  return did;
+}
+
+function isMobile() {
+  return /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+
+function todayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function fmtHHMM(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+}
+
+function nomeMes(num) {
+  return ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][num];
+}
+
+async function initPonto() {
+  if (unsubPontos) unsubPontos();
+  unsubPontos = db.collection('pontos').onSnapshot(snap => {
+    allPontos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const active = document.querySelector('.view.active');
+    if (active && active.id === 'view-adm-ponto') renderAdmPonto();
+    if (active && active.id === 'view-col-ponto') renderColPonto();
+  });
+}
+
+async function renderColPonto() {
+  const did = getDeviceId();
+  document.getElementById('device-id-display') && (document.getElementById('device-id-display').textContent = 'ID: ' + did);
+
+  if (isMobile()) {
+    document.getElementById('ponto-blocked-card').style.display = 'flex';
+    document.getElementById('ponto-auth-request').style.display = 'none';
+    document.getElementById('ponto-main').style.display = 'none';
+    return;
+  }
+
+  const devSnap = await db.collection('devices').doc(did).get();
+  if (!devSnap.exists) {
+    document.getElementById('ponto-blocked-card').style.display = 'none';
+    document.getElementById('ponto-auth-request').style.display = 'flex';
+    document.getElementById('ponto-main').style.display = 'none';
+    return;
+  }
+  const dev = devSnap.data();
+  if (!dev.authorized) {
+    document.getElementById('ponto-blocked-card').style.display = 'none';
+    document.getElementById('ponto-auth-request').style.display = 'flex';
+    document.getElementById('ponto-auth-request').querySelector('.dr-title').textContent = 'Autorização pendente — aguarde o administrador';
+    document.getElementById('ponto-main').style.display = 'none';
+    return;
+  }
+
+  document.getElementById('ponto-blocked-card').style.display = 'none';
+  document.getElementById('ponto-auth-request').style.display = 'none';
+  document.getElementById('ponto-main').style.display = 'block';
+  startPontoClock();
+
+  const today = todayKey();
+  const reg = allPontos.find(p => p.userId === currentUser.id && p.data === today);
+
+  const campos = ['entrada','saida_almoco','retorno_almoco','saida'];
+  campos.forEach(c => {
+    const val = reg ? (reg[c] || null) : null;
+    const displayId = 'pt-' + c.replace(/_/g, '-');
+    const btnId = 'pbtn-' + c.replace(/_/g, '-');
+    const sumId = 'psr-' + c.replace(/_/g, '-');
+    const badgeId = 'psb-' + c.replace(/_/g, '-');
+    const el = document.getElementById(displayId);
+    const btn = document.getElementById(btnId);
+    const sum = document.getElementById(sumId);
+    const badge = document.getElementById(badgeId);
+    if (el) el.textContent = val ? fmtHHMM(val) : '—';
+    if (sum) sum.textContent = val ? fmtHHMM(val) : '—';
+    if (badge) { badge.textContent = val ? 'registrado' : 'aguardando'; badge.className = 'ps-badge ' + (val ? 'psb-ok' : 'psb-wait'); }
+    if (btn) { btn.classList.remove('pb-active','pb-done','pb-locked'); btn.classList.add(val ? 'pb-done' : 'pb-locked'); if(val){const ck=document.createElement('div');ck.className='pb-check';ck.textContent='✓';if(!btn.querySelector('.pb-check'))btn.prepend(ck);} }
+  });
+
+  // Ativar próximo botão
+  if (!reg || !reg.entrada) { document.getElementById('pbtn-entrada')?.classList.replace('pb-locked','pb-active'); }
+  else if (!reg.saida_almoco) { document.getElementById('pbtn-saida-almoco')?.classList.replace('pb-locked','pb-active'); }
+  else if (!reg.retorno_almoco) { document.getElementById('pbtn-retorno-almoco')?.classList.replace('pb-locked','pb-active'); }
+  else if (!reg.saida) { document.getElementById('pbtn-saida')?.classList.replace('pb-locked','pb-active'); }
+
+  // Status
+  const dot = document.getElementById('pst-dot');
+  const lbl = document.getElementById('pst-label');
+  const since = document.getElementById('pst-since');
+  if (!reg || !reg.entrada) { dot.className='pst-dot idle'; lbl.textContent='Aguardando entrada'; since.textContent=''; }
+  else if (reg.saida) { dot.className='pst-dot done'; lbl.textContent='Jornada encerrada'; since.textContent='Saída: '+fmtHHMM(reg.saida); }
+  else if (reg.saida_almoco && !reg.retorno_almoco) { dot.className='pst-dot lunch'; lbl.textContent='Em almoço'; since.textContent='Saiu: '+fmtHHMM(reg.saida_almoco); }
+  else { dot.className='pst-dot working'; lbl.textContent='Trabalhando'; since.textContent='Desde: '+fmtHHMM(reg.entrada); }
+}
+
+function startPontoClock() {
+  if (pontoClockInterval) clearInterval(pontoClockInterval);
+  const dias = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
+  const meses = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  function tick() {
+    const now = new Date();
+    const h = String(now.getHours()).padStart(2,'0');
+    const m = String(now.getMinutes()).padStart(2,'0');
+    const s = String(now.getSeconds()).padStart(2,'0');
+    const cl = document.getElementById('ponto-clock');
+    if (cl) cl.innerHTML = `${h}<span>:</span>${m}<span>:</span>${s}`;
+    const dl = document.getElementById('ponto-date-lbl');
+    if (dl) dl.textContent = `${now.getDate()} de ${nomeMes(now.getMonth())} de ${now.getFullYear()}`;
+    const df = document.getElementById('ponto-day-full');
+    if (df) df.textContent = dias[now.getDay()];
+  }
+  tick();
+  pontoClockInterval = setInterval(tick, 1000);
+}
+
+async function registrarPonto(tipo) {
+  const btn = document.getElementById('pbtn-' + tipo.replace(/_/g,'-'));
+  if (!btn || btn.classList.contains('pb-locked') || btn.classList.contains('pb-done')) return;
+  const today = todayKey();
+  const existing = allPontos.find(p => p.userId === currentUser.id && p.data === today);
+  try {
+    const now = new Date().toISOString();
+    if (existing) {
+      await db.collection('pontos').doc(existing.id).update({ [tipo]: now, updatedAt: now });
+    } else {
+      const ref = db.collection('pontos').doc();
+      await ref.set({ id: ref.id, userId: currentUser.id, userName: currentUser.name, cargo: currentUser.cargo||'', local: currentUser.local||'', data: today, [tipo]: now, createdAt: now, updatedAt: now });
+    }
+    toast('Ponto registrado! ' + fmtHHMM(now), 'ok');
+  } catch(e) { toast('Erro ao registrar ponto', 'err'); }
+}
+
+async function solicitarAutorizacao() {
+  const did = getDeviceId();
+  try {
+    await db.collection('devices').doc(did).set({ id: did, userId: currentUser.id, userName: currentUser.name, authorized: false, requestedAt: new Date().toISOString() });
+    document.getElementById('ponto-auth-request').querySelector('.dr-title').textContent = '✅ Solicitação enviada! Aguarde o administrador autorizar.';
+    toast('Solicitação enviada ao administrador!', 'ok');
+  } catch(e) { toast('Erro ao solicitar', 'err'); }
+}
+
+async function renderAdmPonto() {
+  const collabs = allUsers.filter(u => u.role !== 'admin');
+  const today = todayKey();
+
+  // Mês filtro
+  const sel = document.getElementById('ponto-mes-filtro');
+  if (sel && !sel.options.length) {
+    const now = new Date();
+    for (let i = 0; i < 6; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const val = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      const opt = document.createElement('option');
+      opt.value = val; opt.textContent = `${nomeMes(d.getMonth())} ${d.getFullYear()}`;
+      sel.appendChild(opt);
+    }
+  }
+  const mesFiltro = sel ? sel.value : today.substr(0,7);
+
+  // Stats de hoje
+  const todayPontos = allPontos.filter(p => p.data === today);
+  const presentes = todayPontos.filter(p => p.entrada && !p.saida).length;
+  const almoco = todayPontos.filter(p => p.saida_almoco && !p.retorno_almoco).length;
+  const encerrados = todayPontos.filter(p => p.saida).length;
+  const ausentes = collabs.length - todayPontos.filter(p => p.entrada).length;
+
+  document.getElementById('ponto-adm-stats').innerHTML = `
+    <div class="pas-card"><div class="pas-lbl">Presentes</div><div class="pas-val" style="color:var(--green)">${presentes}</div><div class="pas-sub">hoje</div></div>
+    <div class="pas-card"><div class="pas-lbl">Em Almoço</div><div class="pas-val" style="color:var(--yellow)">${almoco}</div><div class="pas-sub">saíram</div></div>
+    <div class="pas-card"><div class="pas-lbl">Encerraram</div><div class="pas-val" style="color:var(--accent)">${encerrados}</div><div class="pas-sub">hoje</div></div>
+    <div class="pas-card"><div class="pas-lbl">Ausentes</div><div class="pas-val" style="color:${ausentes>0?'var(--red)':'var(--green)'}">${ausentes}</div><div class="pas-sub">não registraram</div></div>`;
+
+  // Solicitações de dispositivo
+  const devSnap = await db.collection('devices').where('authorized','==',false).get();
+  const pendDevs = devSnap.docs.map(d => d.data());
+  const drWrap = document.getElementById('device-requests-wrap');
+  if (pendDevs.length) {
+    drWrap.innerHTML = `<div style="margin-bottom:14px"><div style="font-size:12px;color:var(--yellow);text-transform:uppercase;letter-spacing:.8px;font-weight:700;margin-bottom:10px">⚠ ${pendDevs.length} dispositivo(s) aguardando autorização</div>${pendDevs.map(d=>`<div class="device-req-card"><div style="font-size:22px">💻</div><div class="dr-info"><div class="dr-title">${d.userName||'Colaborador'}</div><div class="dr-sub">ID: ${d.id}</div></div><div class="dr-actions"><button class="btn btn-sm btn-success" onclick="autorizarDevice('${d.id}')">✓ Autorizar</button><button class="btn btn-sm btn-danger" onclick="negarDevice('${d.id}')">✕ Negar</button></div></div>`).join('')}</div>`;
+  } else { drWrap.innerHTML = ''; }
+
+  // Tabela do dia
+  const rows = collabs.map(c => {
+    const reg = todayPontos.find(p => p.userId === c.id);
+    let statusHtml, avClass;
+    if (!reg || !reg.entrada) { statusHtml = `<span class="semaforo sem-red"><span class="sem-dot"></span>Ausente</span>`; avClass = 'av-absent'; }
+    else if (reg.saida) { statusHtml = `<span class="semaforo" style="background:rgba(108,108,255,0.12);color:var(--accent);border:1px solid rgba(108,108,255,0.25)"><span class="sem-dot" style="background:var(--accent)"></span>Encerrado</span>`; avClass = 'av-done'; }
+    else if (reg.saida_almoco && !reg.retorno_almoco) { statusHtml = `<span class="semaforo sem-yellow"><span class="sem-dot"></span>Almoço</span>`; avClass = 'av-lunch'; }
+    else { statusHtml = `<span class="semaforo sem-green"><span class="sem-dot"></span>No Posto</span>`; avClass = 'av-work'; }
+    return `<div class="ptt-row">
+      <div class="ptt-name"><div class="ptt-av ${avClass}">${c.name[0]}</div><div><div style="font-size:13px;font-weight:600">${c.name}</div><div style="font-size:11px;color:var(--text3)">${c.cargo||''}</div></div></div>
+      <div class="ptt-mono ${reg?.entrada?'':'empty'}">${reg?.entrada?fmtHHMM(reg.entrada):'—'}</div>
+      <div class="ptt-mono ${reg?.saida_almoco?'':'empty'}">${reg?.saida_almoco?fmtHHMM(reg.saida_almoco):'—'}</div>
+      <div class="ptt-mono ${reg?.retorno_almoco?'':'empty'}">${reg?.retorno_almoco?fmtHHMM(reg.retorno_almoco):'—'}</div>
+      <div class="ptt-mono ${reg?.saida?'':'empty'}">${reg?.saida?fmtHHMM(reg.saida):'—'}</div>
+      <div>${statusHtml}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('ponto-team-rows').innerHTML = rows || `<div class="empty"><p>Nenhum registro hoje</p></div>`;
+}
+
+async function autorizarDevice(did) {
+  await db.collection('devices').doc(did).update({ authorized: true, authorizedAt: new Date().toISOString() });
+  toast('Dispositivo autorizado!', 'ok');
+  renderAdmPonto();
+}
+async function negarDevice(did) {
+  await db.collection('devices').doc(did).delete();
+  toast('Dispositivo negado e removido', 'ok');
+  renderAdmPonto();
+}
+
+function exportarPontoExcel() {
+  const sel = document.getElementById('ponto-mes-filtro');
+  const mes = sel ? sel.value : todayKey().substr(0,7);
+  const registros = allPontos.filter(p => p.data && p.data.startsWith(mes));
+  if (!registros.length) { toast('Nenhum registro neste mês', 'err'); return; }
+  const header = ['Nome','Cargo','Local','Data','Entrada','Saída Almoço','Retorno Almoço','Saída'];
+  const rows = registros.map(r => [r.userName||'',r.cargo||'',r.local||'',r.data,fmtHHMM(r.entrada),fmtHHMM(r.saida_almoco),fmtHHMM(r.retorno_almoco),fmtHHMM(r.saida)]);
+  let csv = header.join(';') + '\n' + rows.map(r=>r.join(';')).join('\n');
+  const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `ponto_${mes}.csv`; a.click();
+  toast('Exportado com sucesso!', 'ok');
+}
+
+function exportarPontoPDF() {
+  const sel = document.getElementById('ponto-mes-filtro');
+  const mes = sel ? sel.value : todayKey().substr(0,7);
+  const [ano, numMes] = mes.split('-');
+  const registros = allPontos.filter(p => p.data && p.data.startsWith(mes));
+  const collabs = allUsers.filter(u => u.role !== 'admin');
+  let html = `<html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;padding:24px;color:#1a1a1a}h1{font-size:18px;margin-bottom:4px}h2{font-size:14px;color:#555;margin:20px 0 8px}table{width:100%;border-collapse:collapse;font-size:12px}th{background:#1a1a2e;color:#fff;padding:8px 10px;text-align:left}td{padding:7px 10px;border-bottom:1px solid #eee}.hd{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:16px;border-bottom:2px solid #c9a227}</style></head><body>`;
+  html += `<div class="hd"><div><h1>Gestão Grupo RG Rio — Relatório de Ponto</h1><p style="color:#666;font-size:13px">${nomeMes(parseInt(numMes)-1)} ${ano} • Gerado em ${new Date().toLocaleDateString('pt-BR')}</p></div></div>`;
+  collabs.forEach(c => {
+    const regs = registros.filter(r=>r.userId===c.id).sort((a,b)=>a.data.localeCompare(b.data));
+    if (!regs.length) return;
+    html += `<h2>${c.name} — ${c.cargo||''}</h2><table><thead><tr><th>Data</th><th>Entrada</th><th>Saída Almoço</th><th>Retorno</th><th>Saída</th></tr></thead><tbody>`;
+    regs.forEach(r => { html += `<tr><td>${fmtD(r.data)}</td><td>${fmtHHMM(r.entrada)}</td><td>${fmtHHMM(r.saida_almoco)}</td><td>${fmtHHMM(r.retorno_almoco)}</td><td>${fmtHHMM(r.saida)}</td></tr>`; });
+    html += `</tbody></table>`;
+  });
+  html += `</body></html>`;
+  const w = window.open('','_blank'); w.document.write(html); w.document.close(); setTimeout(()=>w.print(), 500);
+}
+
+async function exportarMeuPonto() {
+  const now = new Date();
+  const mes = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const registros = allPontos.filter(p => p.userId === currentUser.id && p.data && p.data.startsWith(mes)).sort((a,b)=>a.data.localeCompare(b.data));
+  if (!registros.length) { toast('Nenhum registro este mês', 'err'); return; }
+  const header = ['Data','Entrada','Saída Almoço','Retorno Almoço','Saída'];
+  const rows = registros.map(r => [r.data, fmtHHMM(r.entrada), fmtHHMM(r.saida_almoco), fmtHHMM(r.retorno_almoco), fmtHHMM(r.saida)]);
+  let csv = header.join(';') + '\n' + rows.map(r=>r.join(';')).join('\n');
+  const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `meu_ponto_${mes}.csv`; a.click();
+  toast('Exportado!', 'ok');
+}
 
 // ══════════════════════════════════════
 // START
