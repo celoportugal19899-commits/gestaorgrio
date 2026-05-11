@@ -390,6 +390,7 @@
       <input class="lf-input" type="password" id="login-pass" placeholder="••••••••">
       <div id="login-error" class="lf-err">E-mail ou senha incorretos. Tente novamente.</div>
       <button class="lf-btn" onclick="doLogin()">Entrar <span>→</span></button>
+      <button style="margin-top:12px;background:none;border:none;color:rgba(255,255,255,0.3);font-size:12px;cursor:pointer;width:100%;text-align:center;font-family:'Syne',sans-serif" onclick="showPage('forgot')">Esqueci minha senha</button>
       <div class="lf-footer">
         Acesso restrito a colaboradores autorizados<br>
         <span>Grupo RG Brasil © 2025</span>
@@ -440,6 +441,7 @@
         <div class="page-header" style="margin:0"><h1>Dashboard</h1><p>Visão macro do time em tempo real</p></div>
       </div>
       <div class="grid-4" id="stats-row" style="margin-bottom:20px"></div>
+      <div id="reset-requests-wrap"></div>
       <div id="sem-geral-wrap" style="margin-bottom:20px"></div>
       <div id="macro-team"></div>
     </div>
@@ -635,6 +637,42 @@
   </div>
 </div>
 
+<!-- TROCAR SENHA (primeiro acesso) -->
+<div id="page-change-password" class="page">
+  <div class="login-right" style="width:100%;max-width:480px;margin:0 auto;border:none">
+    <div class="lr-header">
+      <div class="lr-eyebrow">Segurança</div>
+      <div class="lr-title">Crie sua senha</div>
+      <div class="lr-sub">Por segurança, defina uma senha pessoal antes de continuar</div>
+    </div>
+    <div style="background:rgba(201,162,39,0.08);border:1px solid rgba(201,162,39,0.25);border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:rgba(255,255,255,0.6);line-height:1.6;">
+      A senha deve ter <strong style="color:#c9a227">mínimo 6 caracteres</strong>, conter <strong style="color:#c9a227">letras e números</strong>.
+    </div>
+    <label class="lf-label">Nova Senha</label>
+    <input class="lf-input" type="password" id="cp-nova" placeholder="Digite sua nova senha">
+    <label class="lf-label">Confirmar Senha</label>
+    <input class="lf-input" type="password" id="cp-conf" placeholder="Repita a nova senha">
+    <div id="cp-error" class="lf-err"></div>
+    <button class="lf-btn" onclick="doChangePassword()">Salvar e Entrar →</button>
+  </div>
+</div>
+
+<!-- ESQUECI MINHA SENHA -->
+<div id="page-forgot" class="page">
+  <div class="login-right" style="width:100%;max-width:480px;margin:0 auto;border:none">
+    <div class="lr-header">
+      <div class="lr-eyebrow">Recuperação de acesso</div>
+      <div class="lr-title">Esqueci minha senha</div>
+      <div class="lr-sub">Informe seu e-mail e o administrador irá resetar seu acesso</div>
+    </div>
+    <label class="lf-label">Seu E-mail</label>
+    <input class="lf-input" type="email" id="fs-email" placeholder="seu@gruporgbrasil.com">
+    <div id="fs-error" class="lf-err"></div>
+    <button class="lf-btn" onclick="doEsqueciSenha()">Enviar Solicitação →</button>
+    <button style="margin-top:12px;background:none;border:none;color:rgba(255,255,255,0.35);font-size:13px;cursor:pointer;width:100%;text-align:center" onclick="showPage('login')">← Voltar ao login</button>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -663,22 +701,53 @@ let allTasks = [];
 let unsubUsers = null;
 let unsubTasks = null;
 
+const SENHA_PADRAO = 'rg@2026';
+const COLABORADORES_INICIAIS = [
+  {name:'Maria Eduarda Ferreira Fraga', email:'mariaeduarda.fraga@gruporgbrasil.com', cargo:'Jovem Aprendiz', local:'Areal', expediente:'6hrs'},
+  {name:'Jasmin Teixeira Carvalho', email:'jasmin.carvalho@gruporgbrasil.com', cargo:'Jovem Aprendiz', local:'Bom Jardim', expediente:'6hrs'},
+  {name:'Marllem Ventania Perdigão', email:'marllem.perdigao@gruporgbrasil.com', cargo:'Jovem Aprendiz', local:'Bom Jardim', expediente:'6hrs'},
+  {name:'Alerrandra Merendaz Andrade', email:'alerrandra.andrade@gruporgbrasil.com', cargo:'Jovem Aprendiz', local:'Italva', expediente:'6hrs'},
+  {name:'Pedro Henrique Cordeiro Carvalho', email:'pedro.carvalho@gruporgbrasil.com', cargo:'Jovem Aprendiz', local:'Italva', expediente:'6hrs'},
+  {name:'Andressa de Souza Pinto', email:'andressa.pinto@gruporgbrasil.com', cargo:'Jovem Aprendiz', local:'Quissamã', expediente:'6hrs'},
+  {name:'Michele Miranda Batista', email:'michele.batista@gruporgbrasil.com', cargo:'Jovem Aprendiz', local:'Porto Real', expediente:'6hrs'},
+  {name:'Victor Leal de Oliveira Simões', email:'victor.simoes@gruporgbrasil.com', cargo:'Supervisor Comercial', local:'Sede', expediente:'8hrs'},
+  {name:'Andrey de Souza Silva', email:'andrey.silva@gruporgbrasil.com', cargo:'Backup de Faltas', local:'Sede', expediente:'8hrs'},
+  {name:'Plicila Gonçalves da Silva', email:'plicila.silva@gruporgbrasil.com', cargo:'Assistente Treinamento', local:'Sede', expediente:'8hrs'},
+  {name:'Leonardo Gabriel Rodrigues Costa', email:'leonardo.costa@gruporgbrasil.com', cargo:'Supervisor Comercial', local:'Sede', expediente:'8hrs'},
+  {name:'Danielly Olegario Ribeiro', email:'danielly.ribeiro@gruporgbrasil.com', cargo:'Backoffice Operação', local:'Sede', expediente:'8hrs'},
+];
+
+function validarSenha(senha) {
+  if (senha.length < 6) return 'A senha deve ter no mínimo 6 caracteres.';
+  if (!/[a-zA-Z]/.test(senha)) return 'A senha deve conter pelo menos uma letra.';
+  if (!/[0-9]/.test(senha)) return 'A senha deve conter pelo menos um número.';
+  return null;
+}
+
 // ══════════════════════════════════════
-// INIT — criar admin se não existir
+// INIT
 // ══════════════════════════════════════
 async function initSystem() {
   try {
-    const snap = await db.collection('users').where('role','==','admin').get();
-    if (snap.empty) {
+    // Criar admin se não existir
+    const admSnap = await db.collection('users').where('role','==','admin').get();
+    if (admSnap.empty) {
       await db.collection('users').doc('admin').set({
-        id: 'admin',
-        name: 'Administrador',
-        email: 'admin@gestaorgrio.com',
-        password: 'admin123',
-        role: 'admin',
-        cargo: 'Administrador',
-        createdAt: new Date().toISOString()
+        id:'admin', name:'Administrador', email:'admin@gestaorgrio.com',
+        password:'admin123', role:'admin', cargo:'Administrador',
+        mustChangePassword: false, createdAt: new Date().toISOString()
       });
+    }
+    // Criar colaboradores iniciais se não existirem
+    const colSnap = await db.collection('users').where('role','==','collaborator').get();
+    if (colSnap.empty) {
+      const batch = db.batch();
+      COLABORADORES_INICIAIS.forEach(c => {
+        const ref = db.collection('users').doc();
+        batch.set(ref, { id:ref.id, ...c, password: SENHA_PADRAO, role:'collaborator',
+          mustChangePassword: true, createdAt: new Date().toISOString() });
+      });
+      await batch.commit();
     }
     showPage('login');
   } catch(e) {
@@ -705,21 +774,63 @@ async function doLogin() {
   document.getElementById('login-error').style.display = 'none';
   try {
     const snap = await db.collection('users').where('email','==',email).where('password','==',pass).get();
-    if (snap.empty) {
-      document.getElementById('login-error').style.display = 'block';
-      return;
-    }
+    if (snap.empty) { document.getElementById('login-error').style.display = 'block'; return; }
     currentUser = { id: snap.docs[0].id, ...snap.docs[0].data() };
+    if (currentUser.mustChangePassword) { showPage('change-password'); return; }
     startApp();
-  } catch(e) {
-    toast('Erro ao conectar. Tente novamente.', 'err');
-  }
+  } catch(e) { toast('Erro ao conectar. Tente novamente.', 'err'); }
 }
 document.getElementById('login-pass').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+
+async function doChangePassword() {
+  const nova = document.getElementById('cp-nova').value;
+  const conf = document.getElementById('cp-conf').value;
+  const err = document.getElementById('cp-error');
+  err.style.display = 'none';
+  const valErr = validarSenha(nova);
+  if (valErr) { err.textContent = valErr; err.style.display = 'block'; return; }
+  if (nova !== conf) { err.textContent = 'As senhas não coincidem.'; err.style.display = 'block'; return; }
+  try {
+    await db.collection('users').doc(currentUser.id).update({ password: nova, mustChangePassword: false });
+    currentUser.password = nova; currentUser.mustChangePassword = false;
+    toast('Senha alterada com sucesso!', 'ok');
+    startApp();
+  } catch(e) { err.textContent = 'Erro ao salvar. Tente novamente.'; err.style.display = 'block'; }
+}
+
+async function doEsqueciSenha() {
+  const email = document.getElementById('fs-email').value.trim();
+  const err = document.getElementById('fs-error');
+  err.style.display = 'none';
+  if (!email) { err.textContent = 'Digite seu e-mail.'; err.style.display = 'block'; return; }
+  try {
+    const snap = await db.collection('users').where('email','==',email).get();
+    if (snap.empty) { err.textContent = 'E-mail não encontrado.'; err.style.display = 'block'; return; }
+    const user = snap.docs[0].data();
+    if (user.role === 'admin') { err.textContent = 'Entre em contato com o suporte.'; err.style.display = 'block'; return; }
+    await db.collection('reset_requests').add({
+      userId: snap.docs[0].id, userName: user.name, userEmail: email,
+      status: 'pendente', requestedAt: new Date().toISOString()
+    });
+    showPage('login');
+    document.getElementById('login-email').value = email;
+    toast('Solicitação enviada! Aguarde o administrador resetar sua senha.', 'ok');
+  } catch(e) { err.textContent = 'Erro ao enviar. Tente novamente.'; err.style.display = 'block'; }
+}
+
+async function resetarSenha(userId, reqId) {
+  try {
+    await db.collection('users').doc(userId).update({ password: SENHA_PADRAO, mustChangePassword: true });
+    await db.collection('reset_requests').doc(reqId).update({ status: 'concluido', resolvedAt: new Date().toISOString() });
+    toast('Senha resetada! O colaborador deverá criar uma nova senha.', 'ok');
+    renderAdmDashboardExtras();
+  } catch(e) { toast('Erro ao resetar senha', 'err'); }
+}
 
 function doLogout() {
   if (unsubUsers) unsubUsers();
   if (unsubTasks) unsubTasks();
+  if (unsubPontos) unsubPontos();
   currentUser = null; allUsers = []; allTasks = [];
   showPage('login');
   document.getElementById('login-email').value = '';
@@ -735,8 +846,6 @@ function startApp() {
   av.className = 'avatar ' + (currentUser.role === 'admin' ? 'avatar-admin' : 'avatar-collab');
   document.getElementById('nav-admin').style.display = currentUser.role === 'admin' ? 'block' : 'none';
   document.getElementById('nav-collab').style.display = currentUser.role !== 'admin' ? 'block' : 'none';
-
-  // realtime listeners
   unsubUsers = db.collection('users').onSnapshot(snap => {
     allUsers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     refreshCurrentView();
@@ -745,10 +854,18 @@ function startApp() {
     allTasks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     refreshCurrentView();
   });
-
   if (currentUser.role === 'admin') showView('adm-dashboard');
   else showView('col-tasks');
   initPonto();
+}
+
+async function renderAdmDashboardExtras() {
+  const reqSnap = await db.collection('reset_requests').where('status','==','pendente').get();
+  const reqs = reqSnap.docs.map(d => ({id:d.id,...d.data()}));
+  const wrap = document.getElementById('reset-requests-wrap');
+  if (!wrap) return;
+  if (!reqs.length) { wrap.innerHTML=''; return; }
+  wrap.innerHTML = `<div style="margin-bottom:20px"><div style="font-size:12px;color:var(--yellow);text-transform:uppercase;letter-spacing:.8px;font-weight:700;margin-bottom:10px">🔑 ${reqs.length} solicitação(ões) de reset de senha</div>${reqs.map(r=>`<div class="device-req-card"><div style="font-size:22px">🔑</div><div class="dr-info"><div class="dr-title">${r.userName}</div><div class="dr-sub">${r.userEmail} • ${fmtDT(r.requestedAt)}</div></div><button class="btn btn-sm btn-primary" onclick="resetarSenha('${r.userId}','${r.id}')">Resetar Senha</button></div>`).join('')}</div>`;
 }
 
 function refreshCurrentView() {
@@ -921,6 +1038,7 @@ async function deleteCollab(userId) {
 // RENDERS
 // ══════════════════════════════════════
 function renderDashboard() {
+  renderAdmDashboardExtras();
   const collabs = allUsers.filter(u => u.role !== 'admin');
   const done = allTasks.filter(t=>t.status==='concluida').length;
   const active = allTasks.filter(t=>t.status==='em_andamento').length;
