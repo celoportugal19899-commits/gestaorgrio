@@ -410,12 +410,27 @@
         <div class="sidebar-item" id="nav-tasks" onclick="showView('adm-tasks',this)"><span class="icon">◈</span> Demandas</div>
         <div class="sidebar-item" id="nav-team" onclick="showView('adm-team',this)"><span class="icon">◉</span> Time</div>
         <div class="sidebar-item" id="nav-ponto-adm" onclick="showView('adm-ponto',this)"><span class="icon">⏱</span> Ponto Eletrônico</div>
+        <div class="sidebar-item" id="nav-postos-adm" onclick="showView('adm-postos',this)"><span class="icon">🏪</span> Postos</div>
       </div>
     </div>
     <div id="nav-collab" style="display:none">
       <div class="sidebar-section">
         <div class="sidebar-section-label">Meu Painel</div>
         <div class="sidebar-item active" onclick="showView('col-tasks',this)"><span class="icon">◈</span> Minhas Tarefas</div>
+        <div class="sidebar-item" onclick="showView('col-ponto',this)"><span class="icon">⏱</span> Meu Ponto</div>
+      </div>
+    </div>
+    <div id="nav-posto" style="display:none">
+      <div class="sidebar-section">
+        <div class="sidebar-section-label">Atendimento</div>
+        <div class="sidebar-item active" onclick="showView('posto-registro',this)"><span class="icon">🏪</span> Registro</div>
+      </div>
+    </div>
+    <div id="nav-supervisor" style="display:none">
+      <div class="sidebar-section">
+        <div class="sidebar-section-label">Supervisão</div>
+        <div class="sidebar-item active" onclick="showView('supervisor-postos',this)"><span class="icon">🏪</span> Meus Postos</div>
+        <div class="sidebar-item" onclick="showView('col-tasks',this)"><span class="icon">◈</span> Minhas Tarefas</div>
         <div class="sidebar-item" onclick="showView('col-ponto',this)"><span class="icon">⏱</span> Meu Ponto</div>
       </div>
     </div>
@@ -572,6 +587,93 @@
         </div>
       </div>
     </div>
+
+    <!-- POSTOS ADM -->
+    <div id="view-adm-postos" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Postos de Atendimento</h1><p>Acompanhe todos os postos em tempo real</p></div>
+        <div class="topbar-actions">
+          <select class="form-select" id="postos-mes-filtro" style="width:160px" onchange="renderAdmPostos()"></select>
+        </div>
+      </div>
+      <div id="postos-adm-stats" class="grid-4" style="margin-bottom:20px"></div>
+      <div id="postos-adm-body"></div>
+      <div style="margin-top:16px" class="export-bar">
+        <div class="eb-left"><strong>Exportar relatório de postos</strong>Todos os postos — mês selecionado</div>
+        <div class="eb-btns">
+          <button class="eb-btn green" onclick="exportarPostosExcel()">📊 Excel</button>
+          <button class="eb-btn red" onclick="exportarPostosPDF()">📄 PDF</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- POSTO REGISTRO -->
+    <div id="view-posto-registro" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1 id="posto-titulo">Registro de Atendimento</h1><p id="posto-subtitulo">—</p></div>
+      </div>
+      <div class="ponto-wrap">
+        <div id="posto-blocked-card" class="blocked-card" style="display:none">
+          <div class="blocked-icon">🔒</div>
+          <div><div class="blocked-title">Dispositivo não autorizado</div>
+          <div class="blocked-desc">O registro só pode ser feito no computador autorizado do posto.<br>Solicite autorização ao administrador.</div></div>
+        </div>
+        <div id="posto-auth-request" style="display:none" class="device-req-card">
+          <div style="font-size:22px">💻</div>
+          <div class="dr-info">
+            <div class="dr-title">Solicitar autorização deste dispositivo</div>
+            <div class="dr-sub" id="posto-device-id-display">ID: carregando...</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="solicitarAutorizacaoPosto()">Solicitar</button>
+        </div>
+        <div id="posto-main" style="display:none">
+          <div class="ponto-clock-card">
+            <div class="ponto-date" id="posto-date-lbl">—</div>
+            <div class="ponto-time-big" id="posto-clock">00<span>:</span>00<span>:</span>00</div>
+            <div class="ponto-day-full" id="posto-day-full">—</div>
+          </div>
+          <div class="ponto-status-card">
+            <div class="pst-dot idle" id="posto-pst-dot"></div>
+            <div class="pst-label" id="posto-pst-label">Aguardando abertura</div>
+            <div class="pst-since" id="posto-pst-since"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
+            <div class="ponto-btn pb-active" id="pbtn-abertura" onclick="registrarPosto('abertura')">
+              <span class="pb-ico">🟢</span>
+              <div class="pb-lbl">Abertura do Posto</div>
+              <div class="pb-time" id="pt-abertura">—</div>
+            </div>
+            <div class="ponto-btn pb-locked" id="pbtn-fechamento" onclick="registrarPosto('fechamento')">
+              <span class="pb-ico">🔴</span>
+              <div class="pb-lbl">Fechamento do Posto</div>
+              <div class="pb-time" id="pt-fechamento">—</div>
+            </div>
+          </div>
+          <div class="ponto-summary">
+            <div class="ps-header">
+              <span class="ps-title">Resumo do dia</span>
+              <button class="btn btn-sm btn-secondary" onclick="exportarMeuRegistro()">↓ Exportar mês</button>
+            </div>
+            <div class="ps-row"><span class="ps-lbl">🟢 Abertura</span><span class="ps-val" id="psr-abertura">—</span><span class="ps-badge psb-wait" id="psb-abertura">aguardando</span></div>
+            <div class="ps-row"><span class="ps-lbl">🔴 Fechamento</span><span class="ps-val" id="psr-fechamento">—</span><span class="ps-badge psb-wait" id="psb-fechamento">aguardando</span></div>
+            <div id="posto-justif-row" class="ps-row" style="display:none">
+              <span class="ps-lbl">📋 Justificativa</span>
+              <span class="ps-val" id="psr-justificativa" style="font-size:12px;color:var(--text2)">—</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SUPERVISOR POSTOS -->
+    <div id="view-supervisor-postos" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Meus Postos</h1><p>Acompanhe os postos da sua equipe</p></div>
+      </div>
+      <div id="supervisor-stats" class="grid-3" style="margin-bottom:20px"></div>
+      <div id="supervisor-postos-body"></div>
+    </div>
+
   </div>
 </div>
 <!-- MODAL: NOVO COLABORADOR -->
@@ -698,10 +800,49 @@ let currentUser = null;
 let editingTaskId = null;
 let allUsers = [];
 let allTasks = [];
+let allPostos = [];
+let allRegistros = [];
 let unsubUsers = null;
 let unsubTasks = null;
+let unsubRegistros = null;
 
 const SENHA_PADRAO = 'rg@2026';
+const TOLERANCIA_MIN = 5;
+
+const POSTOS_INICIAIS = [
+  // Supervisor Leonardo
+  {nome:'Aperibé', email:'aperibe@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'14:00'},
+  {nome:'Conceição de Macabu', email:'conceicao@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'17:00'},
+  {nome:'Guarus', email:'guarus@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'14:00'},
+  {nome:'Cardoso Moreira', email:'cardoso@gruporgbrasil.com', supervisor:'Leonardo', abre:'09:00', fecha:'15:00'},
+  {nome:'Cambuci', email:'cambuci@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'12:00'},
+  {nome:'Quissamã', email:'quissama@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'16:00'},
+  {nome:'Carapebus', email:'carapebus@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'14:00'},
+  {nome:'São José de Ubá', email:'saojoseuba@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'12:00'},
+  {nome:'Cantagalo', email:'cantagalo@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'17:00'},
+  {nome:'Tanguá', email:'tangua@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'16:00'},
+  {nome:'Italva', email:'italva@gruporgbrasil.com', supervisor:'Leonardo', abre:'09:00', fecha:'15:00'},
+  {nome:'Macuco', email:'macuco@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'14:00'},
+  {nome:'Silva Jardim', email:'silvajardim@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'17:00'},
+  {nome:'Bom Jesus do Itabapoana', email:'bomjesus@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'16:00'},
+  // Supervisor Victor
+  {nome:'São José do Vale do Rio Preto', email:'saojosevale@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'17:00'},
+  {nome:'Nova Friburgo', email:'novafriburgo@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'12:00'},
+  {nome:'Santa Maria Madalena', email:'santamaria@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'14:00'},
+  {nome:'Porciúncula', email:'porciuncula@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'17:00'},
+  {nome:'Miracema', email:'miracema@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'17:00'},
+  {nome:'Sumidouro', email:'sumidouro@gruporgbrasil.com', supervisor:'Victor', abre:'12:00', fecha:'16:00'},
+  {nome:'Bom Jardim', email:'bomjardim@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'16:00'},
+  {nome:'Varre-Sai', email:'varresai@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'14:00'},
+  {nome:'Natividade', email:'natividade@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'17:00'},
+  {nome:'Areal', email:'areal@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'17:00'},
+  {nome:'Porto Real', email:'portoreal@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'17:00'},
+  {nome:'Duas Barras', email:'duasbarras@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'14:00'},
+  {nome:'Trajano de Moraes', email:'trajano@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'14:00'},
+  {nome:'Laje de Muriaé', email:'laje@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'12:00'},
+  {nome:'São Sebastião do Alto', email:'saosebastiao@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'12:00'},
+];
+
 const COLABORADORES_INICIAIS = [
   {name:'Colaborador Teste', email:'teste@gruporgbrasil.com', cargo:'Jovem Aprendiz', local:'Sede', expediente:'6hrs'},
   {name:'Maria Eduarda Ferreira Fraga', email:'mariaeduarda.fraga@gruporgbrasil.com', cargo:'Jovem Aprendiz', local:'Areal', expediente:'6hrs'},
@@ -750,6 +891,17 @@ async function initSystem() {
       });
       await batch.commit();
     }
+    // Criar postos iniciais se não existirem
+    const postoSnap = await db.collection('postos').get();
+    if (postoSnap.empty) {
+      const batch2 = db.batch();
+      POSTOS_INICIAIS.forEach(p => {
+        const ref = db.collection('postos').doc();
+        batch2.set(ref, { id:ref.id, ...p, password: SENHA_PADRAO,
+          role:'posto', mustChangePassword:false, createdAt: new Date().toISOString() });
+      });
+      await batch2.commit();
+    }
     showPage('login');
   } catch(e) {
     console.error(e);
@@ -774,11 +926,20 @@ async function doLogin() {
   const pass = document.getElementById('login-pass').value;
   document.getElementById('login-error').style.display = 'none';
   try {
+    // Check users first
     const snap = await db.collection('users').where('email','==',email).where('password','==',pass).get();
-    if (snap.empty) { document.getElementById('login-error').style.display = 'block'; return; }
-    currentUser = { id: snap.docs[0].id, ...snap.docs[0].data() };
-    if (currentUser.mustChangePassword) { showPage('change-password'); return; }
-    startApp();
+    if (!snap.empty) {
+      currentUser = { id: snap.docs[0].id, ...snap.docs[0].data() };
+      if (currentUser.mustChangePassword) { showPage('change-password'); return; }
+      startApp(); return;
+    }
+    // Check postos
+    const postoSnap = await db.collection('postos').where('email','==',email).where('password','==',pass).get();
+    if (!postoSnap.empty) {
+      currentUser = { id: postoSnap.docs[0].id, ...postoSnap.docs[0].data() };
+      startApp(); return;
+    }
+    document.getElementById('login-error').style.display = 'block';
   } catch(e) { toast('Erro ao conectar. Tente novamente.', 'err'); }
 }
 document.getElementById('login-pass').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
@@ -841,23 +1002,40 @@ function doLogout() {
 function startApp() {
   showPage('app');
   const av = document.getElementById('sb-avatar');
-  document.getElementById('sb-name').textContent = currentUser.name;
-  document.getElementById('sb-role').textContent = currentUser.role === 'admin' ? 'Administrador' : (currentUser.cargo || 'Colaborador');
-  av.textContent = currentUser.name[0].toUpperCase();
-  av.className = 'avatar ' + (currentUser.role === 'admin' ? 'avatar-admin' : 'avatar-collab');
-  document.getElementById('nav-admin').style.display = currentUser.role === 'admin' ? 'block' : 'none';
-  document.getElementById('nav-collab').style.display = currentUser.role !== 'admin' ? 'block' : 'none';
-  unsubUsers = db.collection('users').onSnapshot(snap => {
-    allUsers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const isPosto = currentUser.role === 'posto';
+  const isAdmin = currentUser.role === 'admin';
+  const isSupervisor = ['victor.simoes@gruporgbrasil.com','leonardo.costa@gruporgbrasil.com','plicila.silva@gruporgbrasil.com'].includes(currentUser.email);
+  document.getElementById('sb-name').textContent = isPosto ? currentUser.nome : currentUser.name;
+  document.getElementById('sb-role').textContent = isPosto ? ('Posto — '+currentUser.supervisor) : (isAdmin ? 'Administrador' : (currentUser.cargo||'Colaborador'));
+  av.textContent = isPosto ? currentUser.nome[0] : currentUser.name[0].toUpperCase();
+  av.className = 'avatar ' + (isAdmin ? 'avatar-admin' : 'avatar-collab');
+  document.getElementById('nav-admin').style.display = isAdmin ? 'block' : 'none';
+  document.getElementById('nav-collab').style.display = (!isAdmin && !isPosto) ? 'block' : 'none';
+  document.getElementById('nav-posto').style.display = isPosto ? 'block' : 'none';
+  document.getElementById('nav-supervisor').style.display = (!isAdmin && !isPosto && isSupervisor) ? 'block' : 'none';
+  if (!isPosto) {
+    unsubUsers = db.collection('users').onSnapshot(snap => {
+      allUsers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      refreshCurrentView();
+    });
+    unsubTasks = db.collection('tasks').orderBy('createdAt','desc').onSnapshot(snap => {
+      allTasks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      refreshCurrentView();
+    });
+  }
+  db.collection('postos').onSnapshot(snap => {
+    allPostos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     refreshCurrentView();
   });
-  unsubTasks = db.collection('tasks').orderBy('createdAt','desc').onSnapshot(snap => {
-    allTasks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  unsubRegistros = db.collection('registros').onSnapshot(snap => {
+    allRegistros = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     refreshCurrentView();
   });
-  if (currentUser.role === 'admin') showView('adm-dashboard');
+  if (isAdmin) showView('adm-dashboard');
+  else if (isPosto) showView('posto-registro');
+  else if (isSupervisor) showView('supervisor-postos');
   else showView('col-tasks');
-  initPonto();
+  if (!isPosto) initPonto();
 }
 
 async function renderAdmDashboardExtras() {
@@ -877,6 +1055,11 @@ function refreshCurrentView() {
   if (id === 'adm-tasks') renderAllTasks();
   if (id === 'adm-team') renderTeam();
   if (id === 'col-tasks') renderCollabTasks();
+  if (id === 'adm-ponto') renderAdmPonto();
+  if (id === 'col-ponto') renderColPonto();
+  if (id === 'adm-postos') renderAdmPostos();
+  if (id === 'posto-registro') renderPostoRegistro();
+  if (id === 'supervisor-postos') renderSupervisorPostos();
 }
 
 // ══════════════════════════════════════
@@ -893,6 +1076,9 @@ function showView(name, el) {
   if (name === 'col-tasks') renderCollabTasks();
   if (name === 'adm-ponto') renderAdmPonto();
   if (name === 'col-ponto') renderColPonto();
+  if (name === 'adm-postos') renderAdmPostos();
+  if (name === 'posto-registro') renderPostoRegistro();
+  if (name === 'supervisor-postos') renderSupervisorPostos();
 }
 
 // ══════════════════════════════════════
@@ -1458,6 +1644,323 @@ async function exportarMeuPonto() {
   const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8'});
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `meu_ponto_${mes}.csv`; a.click();
   toast('Exportado!', 'ok');
+}
+
+// ══════════════════════════════════════
+// POSTOS DE ATENDIMENTO
+// ══════════════════════════════════════
+function getPostoDeviceId() {
+  let did = localStorage.getItem('rg_posto_device_'+currentUser.id);
+  if (!did) { did = 'PST-'+Math.random().toString(36).substr(2,9).toUpperCase(); localStorage.setItem('rg_posto_device_'+currentUser.id, did); }
+  return did;
+}
+
+function horaParaMinutos(hhmm) {
+  const [h,m] = hhmm.split(':').map(Number); return h*60+m;
+}
+
+function minAtrasado(registrado, previsto) {
+  if (!registrado || !previsto) return 0;
+  const regMin = horaParaMinutos(fmtHHMM(registrado));
+  const prevMin = horaParaMinutos(previsto);
+  return Math.max(0, regMin - prevMin - TOLERANCIA_MIN);
+}
+
+async function renderPostoRegistro() {
+  if (!currentUser || currentUser.role !== 'posto') return;
+  document.getElementById('posto-titulo').textContent = currentUser.nome;
+  document.getElementById('posto-subtitulo').textContent = `Supervisor ${currentUser.supervisor} • Abre ${currentUser.abre} • Fecha ${currentUser.fecha}`;
+
+  const did = getPostoDeviceId();
+  document.getElementById('posto-device-id-display').textContent = 'ID: '+did;
+
+  if (isMobile()) {
+    document.getElementById('posto-blocked-card').style.display = 'flex';
+    document.getElementById('posto-auth-request').style.display = 'none';
+    document.getElementById('posto-main').style.display = 'none';
+    return;
+  }
+
+  const devSnap = await db.collection('posto_devices').doc(did).get();
+  if (!devSnap.exists) {
+    document.getElementById('posto-blocked-card').style.display = 'none';
+    document.getElementById('posto-auth-request').style.display = 'flex';
+    document.getElementById('posto-main').style.display = 'none';
+    return;
+  }
+  const dev = devSnap.data();
+  if (!dev.authorized) {
+    document.getElementById('posto-blocked-card').style.display = 'none';
+    document.getElementById('posto-auth-request').style.display = 'flex';
+    document.getElementById('posto-auth-request').querySelector('.dr-title').textContent = '⏳ Autorização pendente — aguarde o administrador';
+    document.getElementById('posto-main').style.display = 'none';
+    return;
+  }
+
+  document.getElementById('posto-blocked-card').style.display = 'none';
+  document.getElementById('posto-auth-request').style.display = 'none';
+  document.getElementById('posto-main').style.display = 'block';
+  startPostoClock();
+
+  const today = todayKey();
+  const reg = allRegistros.find(r => r.postoId === currentUser.id && r.data === today);
+
+  // Abertura
+  const abVal = reg?.abertura || null;
+  const feVal = reg?.fechamento || null;
+  document.getElementById('pt-abertura').textContent = abVal ? fmtHHMM(abVal) : '—';
+  document.getElementById('pt-fechamento').textContent = feVal ? fmtHHMM(feVal) : '—';
+  document.getElementById('psr-abertura').textContent = abVal ? fmtHHMM(abVal) : '—';
+  document.getElementById('psr-fechamento').textContent = feVal ? fmtHHMM(feVal) : '—';
+
+  const psb_ab = document.getElementById('psb-abertura');
+  const psb_fe = document.getElementById('psb-fechamento');
+  if (abVal) { psb_ab.textContent = 'registrado'; psb_ab.className = 'ps-badge psb-ok'; }
+  if (feVal) { psb_fe.textContent = 'registrado'; psb_fe.className = 'ps-badge psb-ok'; }
+
+  // Justificativa
+  if (reg?.justificativa) {
+    document.getElementById('posto-justif-row').style.display = 'flex';
+    document.getElementById('psr-justificativa').textContent = reg.justificativa;
+  }
+
+  // Botões
+  const btnAb = document.getElementById('pbtn-abertura');
+  const btnFe = document.getElementById('pbtn-fechamento');
+  if (abVal) {
+    btnAb.classList.remove('pb-active'); btnAb.classList.add('pb-done');
+    if (!btnAb.querySelector('.pb-check')) { const ck=document.createElement('div');ck.className='pb-check';ck.textContent='✓';btnAb.prepend(ck); }
+    btnFe.classList.remove('pb-locked'); btnFe.classList.add('pb-active');
+  }
+  if (feVal) {
+    btnFe.classList.remove('pb-active'); btnFe.classList.add('pb-done');
+    if (!btnFe.querySelector('.pb-check')) { const ck=document.createElement('div');ck.className='pb-check';ck.textContent='✓';btnFe.prepend(ck); }
+  }
+
+  // Status
+  const dot = document.getElementById('posto-pst-dot');
+  const lbl = document.getElementById('posto-pst-label');
+  const since = document.getElementById('posto-pst-since');
+  if (!abVal) { dot.className='pst-dot idle'; lbl.textContent='Aguardando abertura'; since.textContent=''; }
+  else if (feVal) { dot.className='pst-dot done'; lbl.textContent='Posto encerrado'; since.textContent='Fechou: '+fmtHHMM(feVal); }
+  else { dot.className='pst-dot working'; lbl.textContent='Posto aberto'; since.textContent='Desde: '+fmtHHMM(abVal); }
+}
+
+function startPostoClock() {
+  if (window._postoClockInt) clearInterval(window._postoClockInt);
+  const dias = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
+  function tick() {
+    const now = new Date();
+    const h = String(now.getHours()).padStart(2,'0');
+    const m = String(now.getMinutes()).padStart(2,'0');
+    const s = String(now.getSeconds()).padStart(2,'0');
+    const cl = document.getElementById('posto-clock');
+    if (cl) cl.innerHTML = `${h}<span>:</span>${m}<span>:</span>${s}`;
+    const dl = document.getElementById('posto-date-lbl');
+    if (dl) dl.textContent = `${now.getDate()} de ${nomeMes(now.getMonth())} de ${now.getFullYear()}`;
+    const df = document.getElementById('posto-day-full');
+    if (df) df.textContent = dias[now.getDay()];
+  }
+  tick(); window._postoClockInt = setInterval(tick, 1000);
+}
+
+async function registrarPosto(tipo) {
+  const btn = document.getElementById('pbtn-'+tipo);
+  if (!btn || btn.classList.contains('pb-locked') || btn.classList.contains('pb-done')) return;
+  const today = todayKey();
+  const existing = allRegistros.find(r => r.postoId === currentUser.id && r.data === today);
+  const now = new Date().toISOString();
+
+  // Verificar atraso na abertura
+  if (tipo === 'abertura') {
+    const minAtr = minAtrasado(now, currentUser.abre);
+    if (minAtr > 0) {
+      const justif = prompt(`⚠️ Abertura com ${minAtr} minuto(s) de atraso.\n\nPor favor, informe o motivo do atraso:`);
+      const dados = { postoId: currentUser.id, postoNome: currentUser.nome, supervisor: currentUser.supervisor, data: today, [tipo]: now, atrasoAbertura: minAtr, justificativa: justif||'Sem justificativa', updatedAt: now };
+      if (existing) { await db.collection('registros').doc(existing.id).update(dados); }
+      else { const ref=db.collection('registros').doc(); await ref.set({id:ref.id,...dados,createdAt:now}); }
+      toast(`Abertura registrada com ${minAtr}min de atraso`, 'ok');
+      return;
+    }
+  }
+  try {
+    const dados = { postoId: currentUser.id, postoNome: currentUser.nome, supervisor: currentUser.supervisor, data: today, [tipo]: now, updatedAt: now };
+    if (existing) { await db.collection('registros').doc(existing.id).update(dados); }
+    else { const ref=db.collection('registros').doc(); await ref.set({id:ref.id,...dados,createdAt:now}); }
+    toast(tipo==='abertura'?'Posto aberto!':'Posto encerrado!','ok');
+  } catch(e) { toast('Erro ao registrar','err'); }
+}
+
+async function solicitarAutorizacaoPosto() {
+  const did = getPostoDeviceId();
+  try {
+    await db.collection('posto_devices').doc(did).set({ id:did, postoId:currentUser.id, postoNome:currentUser.nome, authorized:false, requestedAt:new Date().toISOString() });
+    document.getElementById('posto-auth-request').querySelector('.dr-title').textContent = '✅ Solicitação enviada! Aguarde autorização.';
+    toast('Solicitação enviada!','ok');
+  } catch(e) { toast('Erro ao solicitar','err'); }
+}
+
+function getStatusPosto(posto, reg) {
+  if (!reg || !reg.abertura) {
+    const now = new Date();
+    const nowMin = now.getHours()*60+now.getMinutes();
+    const abreMin = horaParaMinutos(posto.abre);
+    if (nowMin > abreMin + TOLERANCIA_MIN) return 'atrasado';
+    return 'fechado';
+  }
+  if (reg.fechamento) return 'encerrado';
+  return 'aberto';
+}
+
+function farolHtml(status, minAtraso) {
+  if (status === 'aberto') return `<span class="semaforo sem-green"><span class="sem-dot"></span>Aberto</span>`;
+  if (status === 'encerrado') return `<span class="semaforo" style="background:rgba(108,108,255,0.12);color:var(--accent);border:1px solid rgba(108,108,255,0.25)"><span class="sem-dot" style="background:var(--accent)"></span>Encerrado</span>`;
+  if (status === 'atrasado') return `<span class="semaforo sem-red"><span class="sem-dot"></span>Atrasado${minAtraso?` +${minAtraso}min`:''}</span>`;
+  return `<span class="semaforo sem-yellow"><span class="sem-dot"></span>Aguardando</span>`;
+}
+
+async function renderAdmPostos() {
+  const today = todayKey();
+  const todayRegs = allRegistros.filter(r => r.data === today);
+
+  // Filtro mês
+  const sel = document.getElementById('postos-mes-filtro');
+  if (sel && !sel.options.length) {
+    const now = new Date();
+    for (let i=0;i<6;i++) {
+      const d = new Date(now.getFullYear(),now.getMonth()-i,1);
+      const val = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      const opt = document.createElement('option');
+      opt.value=val; opt.textContent=`${nomeMes(d.getMonth())} ${d.getFullYear()}`;
+      sel.appendChild(opt);
+    }
+  }
+
+  const abertos = todayRegs.filter(r=>r.abertura&&!r.fechamento).length;
+  const encerrados = todayRegs.filter(r=>r.fechamento).length;
+  const atrasados = allPostos.filter(p=>{const r=todayRegs.find(r=>r.postoId===p.id);return getStatusPosto(p,r)==='atrasado';}).length;
+  const total = allPostos.length;
+
+  document.getElementById('postos-adm-stats').innerHTML = `
+    <div class="stat-card"><div class="label">Abertos</div><div class="value" style="color:var(--green)">${abertos}</div><div class="sub">em atendimento</div></div>
+    <div class="stat-card"><div class="label">Encerrados</div><div class="value" style="color:var(--accent)">${encerrados}</div><div class="sub">hoje</div></div>
+    <div class="stat-card"><div class="label">Atrasados</div><div class="value" style="color:${atrasados>0?'var(--red)':'var(--green)'}">${atrasados}</div><div class="sub">sem abertura</div></div>
+    <div class="stat-card"><div class="label">Total Postos</div><div class="value">${total}</div><div class="sub">cadastrados</div></div>`;
+
+  // Soliciatções de dispositivo de posto
+  const devSnap = await db.collection('posto_devices').where('authorized','==',false).get();
+  const pendDevs = devSnap.docs.map(d=>d.data());
+
+  let body = '';
+  if (pendDevs.length) {
+    body += `<div style="margin-bottom:16px"><div style="font-size:12px;color:var(--yellow);text-transform:uppercase;letter-spacing:.8px;font-weight:700;margin-bottom:10px">⚠ ${pendDevs.length} posto(s) aguardando autorização de dispositivo</div>${pendDevs.map(d=>`<div class="device-req-card"><div style="font-size:22px">💻</div><div class="dr-info"><div class="dr-title">${d.postoNome||'Posto'}</div><div class="dr-sub">ID: ${d.id}</div></div><div class="dr-actions"><button class="btn btn-sm btn-success" onclick="autorizarPostoDevice('${d.id}')">✓ Autorizar</button><button class="btn btn-sm btn-danger" onclick="negarPostoDevice('${d.id}')">✕ Negar</button></div></div>`).join('')}</div>`;
+  }
+
+  // Tabela por supervisor
+  ['Leonardo','Victor'].forEach(sup => {
+    const postosSup = allPostos.filter(p=>p.supervisor===sup);
+    body += `<div style="margin-bottom:24px"><div style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px;display:flex;align-items:center;gap:8px"><span class="semaforo sem-green" style="font-size:10px"><span class="sem-dot"></span>Supervisor ${sup}</span><span style="color:var(--text3)">${postosSup.length} postos</span></div>`;
+    body += `<div class="ponto-team-table"><div style="display:grid;grid-template-columns:1.8fr 1fr 1fr 1fr 1fr;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border)"><span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-weight:700">Posto</span><span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-weight:700">Prev. Abertura</span><span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-weight:700">Abertura</span><span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-weight:700">Fechamento</span><span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-weight:700">Status</span></div>`;
+    postosSup.forEach(p => {
+      const r = todayRegs.find(r=>r.postoId===p.id);
+      const status = getStatusPosto(p,r);
+      const minAtr = r?.atrasoAbertura||0;
+      const avCls = status==='aberto'?'av-work':status==='encerrado'?'av-done':status==='atrasado'?'av-absent':'av-lunch';
+      body += `<div style="display:grid;grid-template-columns:1.8fr 1fr 1fr 1fr 1fr;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border);align-items:center;font-size:13px;transition:background .15s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+        <div style="display:flex;align-items:center;gap:10px"><div class="ptt-av ${avCls}">${p.nome[0]}</div><div><div style="font-size:13px;font-weight:600">${p.nome}</div>${r?.atrasoAbertura?`<div style="font-size:11px;color:var(--red)">⚠ ${r.atrasoAbertura}min de atraso</div>`:''}</div></div>
+        <div class="ptt-mono">${p.abre}</div>
+        <div class="ptt-mono ${r?.abertura?'':'empty'}">${r?.abertura?fmtHHMM(r.abertura):'—'}</div>
+        <div class="ptt-mono ${r?.fechamento?'':'empty'}">${r?.fechamento?fmtHHMM(r.fechamento):'—'}</div>
+        <div>${farolHtml(status,minAtr)}</div>
+      </div>`;
+    });
+    body += `</div></div>`;
+  });
+
+  document.getElementById('postos-adm-body').innerHTML = body;
+}
+
+async function autorizarPostoDevice(did) {
+  await db.collection('posto_devices').doc(did).update({authorized:true,authorizedAt:new Date().toISOString()});
+  toast('Dispositivo autorizado!','ok'); renderAdmPostos();
+}
+async function negarPostoDevice(did) {
+  await db.collection('posto_devices').doc(did).delete();
+  toast('Dispositivo negado','ok'); renderAdmPostos();
+}
+
+async function renderSupervisorPostos() {
+  const today = todayKey();
+  const sup = currentUser.name.split(' ')[0]; // Leonardo ou Victor
+  const meusSuperv = currentUser.cargo === 'Supervisor Comercial' ? allPostos.filter(p => p.supervisor === sup) : allPostos;
+  const todayRegs = allRegistros.filter(r => r.data === today);
+  const abertos = meusSuperv.filter(p=>{const r=todayRegs.find(r=>r.postoId===p.id);return getStatusPosto(p,r)==='aberto';}).length;
+  const atrasados = meusSuperv.filter(p=>{const r=todayRegs.find(r=>r.postoId===p.id);return getStatusPosto(p,r)==='atrasado';}).length;
+  document.getElementById('supervisor-stats').innerHTML = `
+    <div class="stat-card"><div class="label">Abertos</div><div class="value" style="color:var(--green)">${abertos}</div><div class="sub">em atendimento</div></div>
+    <div class="stat-card"><div class="label">Atrasados</div><div class="value" style="color:${atrasados>0?'var(--red)':'var(--green)'}">${atrasados}</div><div class="sub">sem abertura</div></div>
+    <div class="stat-card"><div class="label">Total</div><div class="value">${meusSuperv.length}</div><div class="sub">postos</div></div>`;
+  let rows = meusSuperv.map(p => {
+    const r = todayRegs.find(r=>r.postoId===p.id);
+    const status = getStatusPosto(p,r);
+    const minAtr = r?.atrasoAbertura||0;
+    const avCls = status==='aberto'?'av-work':status==='encerrado'?'av-done':status==='atrasado'?'av-absent':'av-lunch';
+    return `<div style="display:grid;grid-template-columns:1.8fr 1fr 1fr 1fr;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border);align-items:center;font-size:13px" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+      <div style="display:flex;align-items:center;gap:10px"><div class="ptt-av ${avCls}">${p.nome[0]}</div><div><div style="font-size:13px;font-weight:600">${p.nome}</div>${r?.justificativa?`<div style="font-size:11px;color:var(--yellow)">📋 ${r.justificativa}</div>`:''}</div></div>
+      <div class="ptt-mono">${p.abre}</div>
+      <div class="ptt-mono ${r?.abertura?'':'empty'}">${r?.abertura?fmtHHMM(r.abertura):'—'}</div>
+      <div>${farolHtml(status,minAtr)}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('supervisor-postos-body').innerHTML = `<div class="ponto-team-table"><div style="display:grid;grid-template-columns:1.8fr 1fr 1fr 1fr;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border)"><span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-weight:700">Posto</span><span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-weight:700">Prev. Abertura</span><span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-weight:700">Abertura</span><span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-weight:700">Status</span></div>${rows}</div>`;
+}
+
+function exportarPostosExcel() {
+  const sel = document.getElementById('postos-mes-filtro');
+  const mes = sel?sel.value:todayKey().substr(0,7);
+  const regs = allRegistros.filter(r=>r.data&&r.data.startsWith(mes));
+  if (!regs.length){toast('Nenhum registro neste mês','err');return;}
+  const header=['Posto','Supervisor','Data','Abertura','Prev. Abertura','Atraso (min)','Fechamento','Justificativa'];
+  const rows=regs.map(r=>[r.postoNome||'',r.supervisor||'',r.data,fmtHHMM(r.abertura),allPostos.find(p=>p.id===r.postoId)?.abre||'',r.atrasoAbertura||0,fmtHHMM(r.fechamento),r.justificativa||'']);
+  let csv=header.join(';')+'\n'+rows.map(r=>r.join(';')).join('\n');
+  const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`postos_${mes}.csv`;a.click();
+  toast('Exportado!','ok');
+}
+
+function exportarPostosPDF() {
+  const sel = document.getElementById('postos-mes-filtro');
+  const mes = sel?sel.value:todayKey().substr(0,7);
+  const [ano,numMes] = mes.split('-');
+  const regs = allRegistros.filter(r=>r.data&&r.data.startsWith(mes));
+  let html=`<html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;padding:24px;font-size:12px}h1{font-size:16px}h2{font-size:13px;color:#555;margin:16px 0 6px}table{width:100%;border-collapse:collapse}th{background:#1a1a2e;color:#fff;padding:6px 8px;text-align:left}td{padding:6px 8px;border-bottom:1px solid #eee}.atrasado{color:#dc2626;font-weight:bold}</style></head><body>`;
+  html+=`<h1>Gestão Grupo RG Rio — Relatório de Postos</h1><p style="color:#666">${nomeMes(parseInt(numMes)-1)} ${ano} • ${new Date().toLocaleDateString('pt-BR')}</p>`;
+  ['Leonardo','Victor'].forEach(sup=>{
+    const postosSup=allPostos.filter(p=>p.supervisor===sup);
+    const regsSup=regs.filter(r=>r.supervisor===sup);
+    if(!regsSup.length)return;
+    html+=`<h2>Supervisor ${sup}</h2><table><thead><tr><th>Posto</th><th>Data</th><th>Prev.</th><th>Abertura</th><th>Atraso</th><th>Fechamento</th><th>Justificativa</th></tr></thead><tbody>`;
+    postosSup.forEach(p=>{
+      const regsP=regsSup.filter(r=>r.postoId===p.id).sort((a,b)=>a.data.localeCompare(b.data));
+      regsP.forEach(r=>{html+=`<tr><td>${p.nome}</td><td>${fmtD(r.data)}</td><td>${p.abre}</td><td>${fmtHHMM(r.abertura)}</td><td class="${r.atrasoAbertura>0?'atrasado':''}">${r.atrasoAbertura>0?r.atrasoAbertura+'min':'—'}</td><td>${fmtHHMM(r.fechamento)}</td><td>${r.justificativa||'—'}</td></tr>`;});
+    });
+    html+=`</tbody></table>`;
+  });
+  html+=`</body></html>`;
+  const w=window.open('','_blank');w.document.write(html);w.document.close();setTimeout(()=>w.print(),500);
+}
+
+async function exportarMeuRegistro() {
+  const now=new Date();
+  const mes=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const regs=allRegistros.filter(r=>r.postoId===currentUser.id&&r.data&&r.data.startsWith(mes)).sort((a,b)=>a.data.localeCompare(b.data));
+  if(!regs.length){toast('Nenhum registro este mês','err');return;}
+  const header=['Data','Abertura','Fechamento','Atraso (min)','Justificativa'];
+  const rows=regs.map(r=>[r.data,fmtHHMM(r.abertura),fmtHHMM(r.fechamento),r.atrasoAbertura||0,r.justificativa||'']);
+  let csv=header.join(';')+'\n'+rows.map(r=>r.join(';')).join('\n');
+  const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`registro_${currentUser.nome}_${mes}.csv`;a.click();
+  toast('Exportado!','ok');
 }
 
 // ══════════════════════════════════════
