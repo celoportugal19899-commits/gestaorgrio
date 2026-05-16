@@ -903,6 +903,15 @@ async function initSystem() {
           role:'posto', mustChangePassword:false, createdAt: new Date().toISOString() });
       });
       await batch2.commit();
+    } else {
+      // Garantir que o posto de teste existe sempre
+      const testeSnap = await db.collection('postos').where('email','==','posto.teste@gruporgbrasil.com').get();
+      if (testeSnap.empty) {
+        const ref = db.collection('postos').doc();
+        await ref.set({ id:ref.id, nome:'Posto Teste', email:'posto.teste@gruporgbrasil.com',
+          supervisor:'Leonardo', abre:'08:00', fecha:'14:00', password: SENHA_PADRAO,
+          role:'posto', mustChangePassword:false, createdAt: new Date().toISOString() });
+      }
     }
     showPage('login');
   } catch(e) {
@@ -1726,10 +1735,19 @@ async function renderPostoRegistro() {
     document.getElementById('psr-justificativa').textContent = reg.justificativa;
   }
 
+  // Verificar janela de horário para botões
+  const nowMin2 = new Date().getHours()*60+new Date().getMinutes();
+  const abreMin2 = horaParaMinutos(currentUser.abre);
+  const fechaMin2 = horaParaMinutos(currentUser.fecha);
+  const dentroJanela = nowMin2 >= (abreMin2-60) && nowMin2 <= (fechaMin2+60);
+
   // Botões
   const btnAb = document.getElementById('pbtn-abertura');
   const btnFe = document.getElementById('pbtn-fechamento');
-  if (abVal) {
+  if (!dentroJanela && !abVal) {
+    btnAb.classList.remove('pb-active'); btnAb.classList.add('pb-locked');
+    btnFe.classList.remove('pb-active'); btnFe.classList.add('pb-locked');
+  } else if (abVal) {
     btnAb.classList.remove('pb-active'); btnAb.classList.add('pb-done');
     if (!btnAb.querySelector('.pb-check')) { const ck=document.createElement('div');ck.className='pb-check';ck.textContent='✓';btnAb.prepend(ck); }
     btnFe.classList.remove('pb-locked'); btnFe.classList.add('pb-active');
@@ -1743,9 +1761,15 @@ async function renderPostoRegistro() {
   const dot = document.getElementById('posto-pst-dot');
   const lbl = document.getElementById('posto-pst-label');
   const since = document.getElementById('posto-pst-since');
-  if (!abVal) { dot.className='pst-dot idle'; lbl.textContent='Aguardando abertura'; since.textContent=''; }
-  else if (feVal) { dot.className='pst-dot done'; lbl.textContent='Posto encerrado'; since.textContent='Fechou: '+fmtHHMM(feVal); }
-  else { dot.className='pst-dot working'; lbl.textContent='Posto aberto'; since.textContent='Desde: '+fmtHHMM(abVal); }
+  if (!dentroJanela && !abVal) {
+    dot.className='pst-dot idle'; lbl.textContent='Fora do Horário de Funcionamento'; since.textContent='';
+  } else if (!abVal) {
+    dot.className='pst-dot idle'; lbl.textContent='Aguardando abertura'; since.textContent=`Prev. abertura: ${currentUser.abre}`;
+  } else if (feVal) {
+    dot.className='pst-dot done'; lbl.textContent='Posto encerrado'; since.textContent='Fechou: '+fmtHHMM(feVal);
+  } else {
+    dot.className='pst-dot working'; lbl.textContent='Posto aberto — em atendimento'; since.textContent='Desde: '+fmtHHMM(abVal);
+  }
 }
 
 function startPostoClock() {
@@ -1769,26 +1793,36 @@ function startPostoClock() {
 async function registrarPosto(tipo) {
   const btn = document.getElementById('pbtn-'+tipo);
   if (!btn || btn.classList.contains('pb-locked') || btn.classList.contains('pb-done')) return;
+
+  // Verificar janela de horário
+  const now = new Date();
+  const nowMin = now.getHours()*60+now.getMinutes();
+  const abreMin = horaParaMinutos(currentUser.abre);
+  const fechaMin = horaParaMinutos(currentUser.fecha);
+  if (tipo === 'abertura' && (nowMin < abreMin - 60 || nowMin > fechaMin + 60)) {
+    toast('Registro fora do horário permitido', 'err'); return;
+  }
+
   const today = todayKey();
   const existing = allRegistros.find(r => r.postoId === currentUser.id && r.data === today);
-  const now = new Date().toISOString();
+  const nowIso = now.toISOString();
 
   // Verificar atraso na abertura
   if (tipo === 'abertura') {
-    const minAtr = minAtrasado(now, currentUser.abre);
+    const minAtr = minAtrasado(nowIso, currentUser.abre);
     if (minAtr > 0) {
       const justif = prompt(`⚠️ Abertura com ${minAtr} minuto(s) de atraso.\n\nPor favor, informe o motivo do atraso:`);
-      const dados = { postoId: currentUser.id, postoNome: currentUser.nome, supervisor: currentUser.supervisor, data: today, [tipo]: now, atrasoAbertura: minAtr, justificativa: justif||'Sem justificativa', updatedAt: now };
+      const dados = { postoId: currentUser.id, postoNome: currentUser.nome, supervisor: currentUser.supervisor, data: today, [tipo]: nowIso, atrasoAbertura: minAtr, justificativa: justif||'Sem justificativa', updatedAt: nowIso };
       if (existing) { await db.collection('registros').doc(existing.id).update(dados); }
-      else { const ref=db.collection('registros').doc(); await ref.set({id:ref.id,...dados,createdAt:now}); }
+      else { const ref=db.collection('registros').doc(); await ref.set({id:ref.id,...dados,createdAt:nowIso}); }
       toast(`Abertura registrada com ${minAtr}min de atraso`, 'ok');
       return;
     }
   }
   try {
-    const dados = { postoId: currentUser.id, postoNome: currentUser.nome, supervisor: currentUser.supervisor, data: today, [tipo]: now, updatedAt: now };
+    const dados = { postoId: currentUser.id, postoNome: currentUser.nome, supervisor: currentUser.supervisor, data: today, [tipo]: nowIso, updatedAt: nowIso };
     if (existing) { await db.collection('registros').doc(existing.id).update(dados); }
-    else { const ref=db.collection('registros').doc(); await ref.set({id:ref.id,...dados,createdAt:now}); }
+    else { const ref=db.collection('registros').doc(); await ref.set({id:ref.id,...dados,createdAt:nowIso}); }
     toast(tipo==='abertura'?'Posto aberto!':'Posto encerrado!','ok');
   } catch(e) { toast('Erro ao registrar','err'); }
 }
@@ -1803,22 +1837,35 @@ async function solicitarAutorizacaoPosto() {
 }
 
 function getStatusPosto(posto, reg) {
-  if (!reg || !reg.abertura) {
-    const now = new Date();
-    const nowMin = now.getHours()*60+now.getMinutes();
-    const abreMin = horaParaMinutos(posto.abre);
-    if (nowMin > abreMin + TOLERANCIA_MIN) return 'atrasado';
-    return 'fechado';
-  }
-  if (reg.fechamento) return 'encerrado';
-  return 'aberto';
+  const now = new Date();
+  const nowMin = now.getHours()*60+now.getMinutes();
+  const abreMin = horaParaMinutos(posto.abre);
+  const fechaMin = horaParaMinutos(posto.fecha);
+  const janelaAbre = abreMin - 60;   // 1h antes de abrir
+  const janelaFecha = fechaMin + 60; // 1h depois de fechar
+
+  // Fora da janela de funcionamento
+  if (nowMin < janelaAbre || nowMin > janelaFecha) return 'fora';
+
+  // Já registrou fechamento
+  if (reg?.fechamento) return 'encerrado';
+
+  // Já registrou abertura
+  if (reg?.abertura) return 'aberto';
+
+  // Dentro da janela mas sem registro
+  if (nowMin > abreMin + TOLERANCIA_MIN) return 'atrasado';
+
+  // Dentro da janela, ainda no prazo de abertura
+  return 'aguardando';
 }
 
 function farolHtml(status, minAtraso) {
-  if (status === 'aberto') return `<span class="semaforo sem-green"><span class="sem-dot"></span>Aberto</span>`;
+  if (status === 'aberto') return `<span class="semaforo sem-green"><span class="sem-dot"></span>Logado</span>`;
   if (status === 'encerrado') return `<span class="semaforo" style="background:rgba(108,108,255,0.12);color:var(--accent);border:1px solid rgba(108,108,255,0.25)"><span class="sem-dot" style="background:var(--accent)"></span>Encerrado</span>`;
   if (status === 'atrasado') return `<span class="semaforo sem-red"><span class="sem-dot"></span>Atrasado${minAtraso?` +${minAtraso}min`:''}</span>`;
-  return `<span class="semaforo sem-yellow"><span class="sem-dot"></span>Aguardando</span>`;
+  if (status === 'aguardando') return `<span class="semaforo sem-yellow"><span class="sem-dot"></span>Aguardando</span>`;
+  return `<span class="semaforo" style="background:var(--surface3);color:var(--text3);border:1px solid var(--border)"><span class="sem-dot" style="background:var(--text3)"></span>Fora Horário</span>`;
 }
 
 async function renderAdmPostos() {
