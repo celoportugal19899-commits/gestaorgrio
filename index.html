@@ -1107,7 +1107,7 @@ function startApp() {
   const av = document.getElementById('sb-avatar');
   const isPosto = currentUser.role === 'posto';
   const isAdmin = currentUser.role === 'admin';
-  const isSupervisor = ['victor.simoes@gruporgbrasil.com','leonardo.costa@gruporgbrasil.com','plicila.silva@gruporgbrasil.com','supervisor.teste@gruporgbrasil.com'].includes(currentUser.email);
+  const isSupervisor = ['victor.simoes@gruporgbrasil.com','leonardo.costa@gruporgbrasil.com','plicila.silva@gruporgbrasil.com','supervisor.teste@gruporgbrasil.com','teste@gruporgbrasil.com'].includes(currentUser.email);
   document.getElementById('sb-name').textContent = isPosto ? currentUser.nome : currentUser.name;
   document.getElementById('sb-role').textContent = isPosto ? ('Posto — '+currentUser.supervisor) : (isAdmin ? 'Administrador' : (currentUser.cargo||'Colaborador'));
   av.textContent = isPosto ? currentUser.nome[0] : currentUser.name[0].toUpperCase();
@@ -2112,7 +2112,7 @@ async function exportarMeuRegistro() {
 // ══════════════════════════════════════
 // CAIXA ROTATIVO
 // ══════════════════════════════════════
-const SUPERVISORES_CAIXA = ['victor.simoes@gruporgbrasil.com','leonardo.costa@gruporgbrasil.com','supervisor.teste@gruporgbrasil.com'];
+const SUPERVISORES_CAIXA = ['victor.simoes@gruporgbrasil.com','leonardo.costa@gruporgbrasil.com','supervisor.teste@gruporgbrasil.com','teste@gruporgbrasil.com'];
 const VALOR_CAIXA_INICIAL = 1000;
 let allCaixas = [];
 let unsubCaixas = null;
