@@ -2194,7 +2194,7 @@ async function renderSupCaixa() {
       <div style="margin-bottom:20px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
           <div style="font-size:13px;font-weight:700;color:var(--text2)">📎 Anexar arquivos da prestação</div>
-          ${(caixa.excelNome||caixa.pdfNomes?.length||excelBase64||pdfsBase64.length)?`<button class="btn btn-sm btn-danger" onclick="limparArquivos('${caixa.id}')">🗑 Limpar arquivos</button>`:''}
+          <button class="btn btn-sm btn-danger" onclick="limparArquivos('${caixa.id}')">🗑 Limpar arquivos</button>
         </div>
         <div class="upload-zone ${caixa.excelNome?'has-file':''}" id="uz-excel">
           <input type="file" accept=".xlsx,.xls" onchange="uploadArquivo(this,'excel')">
