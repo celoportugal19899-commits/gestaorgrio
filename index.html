@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -345,6 +346,45 @@
   .eb-btn.green:hover{background:rgba(34,197,94,0.2);}
   .eb-btn.red{border-color:rgba(239,68,68,0.3);color:var(--red);background:var(--red-bg);}
   .eb-btn.red:hover{background:rgba(239,68,68,0.2);}
+
+  /* ═══ CAIXA ROTATIVO ═══ */
+  .caixa-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px 24px;margin-bottom:16px;}
+  .caixa-header{display:flex;align-items:center;gap:14px;margin-bottom:16px;}
+  .caixa-av{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;background:rgba(201,162,39,0.15);color:#c9a227;flex-shrink:0;}
+  .caixa-nome{font-size:15px;font-weight:700;}
+  .caixa-sub{font-size:12px;color:var(--text3);font-family:'IBM Plex Mono',monospace;}
+  .caixa-saldo-big{font-size:32px;font-weight:800;font-family:'IBM Plex Mono',monospace;letter-spacing:-1px;}
+  .saldo-ok{color:var(--green);}
+  .saldo-warn{color:var(--yellow);}
+  .saldo-low{color:var(--red);}
+  .caixa-progress{height:8px;background:var(--surface3);border-radius:4px;overflow:hidden;margin:10px 0 6px;}
+  .caixa-progress-bar{height:100%;border-radius:4px;transition:width .5s;}
+  .cpb-green{background:var(--green);}
+  .cpb-yellow{background:var(--yellow);}
+  .cpb-red{background:var(--red);}
+  .caixa-status{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;}
+  .cs-uso{background:var(--green-bg);color:var(--green);border:1px solid rgba(34,197,94,.25);}
+  .cs-aguarda{background:var(--yellow-bg);color:var(--yellow);border:1px solid rgba(245,158,11,.25);}
+  .cs-pendente{background:var(--red-bg);color:var(--red);border:1px solid rgba(239,68,68,.25);}
+  .cs-aprovado{background:rgba(108,108,255,.12);color:var(--accent);border:1px solid rgba(108,108,255,.25);}
+  .upload-zone{border:2px dashed var(--border2);border-radius:12px;padding:28px 20px;text-align:center;cursor:pointer;transition:all .2s;margin-bottom:12px;position:relative;}
+  .upload-zone:hover{border-color:var(--accent);background:rgba(108,108,255,.04);}
+  .upload-zone.has-file{border-color:var(--green);background:var(--green-bg);}
+  .upload-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+  .uz-icon{font-size:26px;margin-bottom:8px;}
+  .uz-label{font-size:13px;color:var(--text2);font-weight:600;}
+  .uz-sub{font-size:12px;color:var(--text3);margin-top:4px;}
+  .validacao-linha{display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-radius:8px;margin-bottom:6px;font-size:13px;}
+  .vl-ok{background:var(--green-bg);border:1px solid rgba(34,197,94,.2);}
+  .vl-err{background:var(--red-bg);border:1px solid rgba(239,68,68,.2);}
+  .vl-icon{font-size:15px;flex-shrink:0;margin-top:1px;}
+  .vl-text{flex:1;}
+  .vl-text strong{display:block;margin-bottom:2px;}
+  .historico-item{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;}
+  .hi-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+  .hi-data{font-size:12px;color:var(--text3);font-family:'IBM Plex Mono',monospace;}
+  .hi-valor{font-size:16px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--red);}
+  .hi-obs{font-size:13px;color:var(--text2);margin-top:6px;padding-top:6px;border-top:1px solid var(--border);}
 </style>
 </head>
 <body>
@@ -411,6 +451,7 @@
         <div class="sidebar-item" id="nav-team" onclick="showView('adm-team',this)"><span class="icon">◉</span> Time</div>
         <div class="sidebar-item" id="nav-ponto-adm" onclick="showView('adm-ponto',this)"><span class="icon">⏱</span> Ponto Eletrônico</div>
         <div class="sidebar-item" id="nav-postos-adm" onclick="showView('adm-postos',this)"><span class="icon">🏪</span> Postos</div>
+        <div class="sidebar-item" id="nav-caixas-adm" onclick="showView('adm-caixas',this)"><span class="icon">💰</span> Caixas Rotativos <span id="caixa-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
       </div>
     </div>
     <div id="nav-collab" style="display:none">
@@ -432,6 +473,7 @@
         <div class="sidebar-item active" onclick="showView('supervisor-postos',this)"><span class="icon">🏪</span> Meus Postos</div>
         <div class="sidebar-item" onclick="showView('col-tasks',this)"><span class="icon">◈</span> Minhas Tarefas</div>
         <div class="sidebar-item" onclick="showView('col-ponto',this)"><span class="icon">⏱</span> Meu Ponto</div>
+        <div class="sidebar-item" onclick="showView('sup-caixa',this)"><span class="icon">💰</span> Caixa Rotativo</div>
       </div>
     </div>
     <div class="sidebar-footer">
@@ -674,6 +716,23 @@
       <div id="supervisor-postos-body"></div>
     </div>
 
+    <!-- SUPERVISOR — CAIXA ROTATIVO -->
+    <div id="view-sup-caixa" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Caixa Rotativo</h1><p>Prestação de contas — envie para aprovação</p></div>
+      </div>
+      <div id="sup-caixa-body"></div>
+    </div>
+
+    <!-- ADM — CAIXAS ROTATIVOS -->
+    <div id="view-adm-caixas" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Caixas Rotativos</h1><p>Aprovação e controle financeiro dos supervisores</p></div>
+      </div>
+      <div id="adm-caixas-stats" class="grid-3" style="margin-bottom:20px"></div>
+      <div id="adm-caixas-body"></div>
+    </div>
+
   </div>
 </div>
 <!-- MODAL: NOVO COLABORADOR -->
@@ -775,6 +834,38 @@
   </div>
 </div>
 
+<!-- MODAL: APROVAR CAIXA -->
+<div class="modal-overlay" id="modal-aprovar">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header"><div class="modal-title">Aprovar Prestação de Contas</div><button class="close-btn" onclick="closeModal('modal-aprovar')">✕</button></div>
+    <div id="apr-info" style="font-size:13px;color:var(--text2);margin-bottom:16px;padding:12px;background:var(--surface2);border-radius:8px;"></div>
+    <div class="form-group"><label class="form-label">Observação (opcional)</label>
+      <textarea class="form-textarea" id="apr-obs" placeholder="Alguma observação para o supervisor..."></textarea>
+    </div>
+    <input type="hidden" id="apr-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-danger" style="flex:1" onclick="recusarCaixa()">✕ Recusar</button>
+      <button class="btn btn-success" style="flex:1" onclick="aprovarCaixa()">✓ Aprovar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: REABASTECER -->
+<div class="modal-overlay" id="modal-reabastecer">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-header"><div class="modal-title">Confirmar Reabastecimento</div><button class="close-btn" onclick="closeModal('modal-reabastecer')">✕</button></div>
+    <div id="reab-info" style="font-size:13px;color:var(--text2);margin-bottom:16px;padding:12px;background:var(--surface2);border-radius:8px;"></div>
+    <div class="form-group"><label class="form-label">Valor depositado (R$)</label>
+      <input class="form-input" id="reab-valor" type="number" step="0.01" placeholder="0,00">
+    </div>
+    <input type="hidden" id="reab-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-reabastecer')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="confirmarReabastecimento()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -847,6 +938,7 @@ const POSTOS_INICIAIS = [
 
 const COLABORADORES_INICIAIS = [
   {name:'Colaborador Teste', email:'teste@gruporgbrasil.com', cargo:'Jovem Aprendiz', local:'Sede', expediente:'6hrs'},
+  {name:'Supervisor Teste', email:'supervisor.teste@gruporgbrasil.com', cargo:'Supervisor Comercial', local:'Sede', expediente:'8hrs'},
   {name:'Maria Eduarda Ferreira Fraga', email:'mariaeduarda.fraga@gruporgbrasil.com', cargo:'Jovem Aprendiz', local:'Areal', expediente:'6hrs'},
   {name:'Jasmin Teixeira Carvalho', email:'jasmin.carvalho@gruporgbrasil.com', cargo:'Jovem Aprendiz', local:'Bom Jardim', expediente:'6hrs'},
   {name:'Marllem Ventania Perdigão', email:'marllem.perdigao@gruporgbrasil.com', cargo:'Jovem Aprendiz', local:'Bom Jardim', expediente:'6hrs'},
@@ -1015,7 +1107,7 @@ function startApp() {
   const av = document.getElementById('sb-avatar');
   const isPosto = currentUser.role === 'posto';
   const isAdmin = currentUser.role === 'admin';
-  const isSupervisor = ['victor.simoes@gruporgbrasil.com','leonardo.costa@gruporgbrasil.com','plicila.silva@gruporgbrasil.com'].includes(currentUser.email);
+  const isSupervisor = ['victor.simoes@gruporgbrasil.com','leonardo.costa@gruporgbrasil.com','plicila.silva@gruporgbrasil.com','supervisor.teste@gruporgbrasil.com'].includes(currentUser.email);
   document.getElementById('sb-name').textContent = isPosto ? currentUser.nome : currentUser.name;
   document.getElementById('sb-role').textContent = isPosto ? ('Posto — '+currentUser.supervisor) : (isAdmin ? 'Administrador' : (currentUser.cargo||'Colaborador'));
   av.textContent = isPosto ? currentUser.nome[0] : currentUser.name[0].toUpperCase();
@@ -1047,6 +1139,7 @@ function startApp() {
   else if (isSupervisor) showView('supervisor-postos');
   else showView('col-tasks');
   if (!isPosto) initPonto();
+  initCaixas();
 }
 
 async function renderAdmDashboardExtras() {
@@ -1071,6 +1164,8 @@ function refreshCurrentView() {
   if (id === 'adm-postos') renderAdmPostos();
   if (id === 'posto-registro') renderPostoRegistro();
   if (id === 'supervisor-postos') renderSupervisorPostos();
+  if (id === 'sup-caixa') renderSupCaixa();
+  if (id === 'adm-caixas') renderAdmCaixas();
 }
 
 // ══════════════════════════════════════
@@ -1090,6 +1185,8 @@ function showView(name, el) {
   if (name === 'adm-postos') renderAdmPostos();
   if (name === 'posto-registro') renderPostoRegistro();
   if (name === 'supervisor-postos') renderSupervisorPostos();
+  if (name === 'sup-caixa') renderSupCaixa();
+  if (name === 'adm-caixas') renderAdmCaixas();
 }
 
 // ══════════════════════════════════════
@@ -2010,6 +2107,361 @@ async function exportarMeuRegistro() {
   const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`registro_${currentUser.nome}_${mes}.csv`;a.click();
   toast('Exportado!','ok');
+}
+
+// ══════════════════════════════════════
+// CAIXA ROTATIVO
+// ══════════════════════════════════════
+const SUPERVISORES_CAIXA = ['victor.simoes@gruporgbrasil.com','leonardo.costa@gruporgbrasil.com','supervisor.teste@gruporgbrasil.com'];
+const VALOR_CAIXA_INICIAL = 1000;
+let allCaixas = [];
+let unsubCaixas = null;
+
+function isSupervisorCaixa() {
+  return currentUser && SUPERVISORES_CAIXA.includes(currentUser.email);
+}
+
+function fmtBRL(val) {
+  return 'R$ ' + parseFloat(val||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+
+function initCaixas() {
+  if (unsubCaixas) unsubCaixas();
+  unsubCaixas = db.collection('caixas').onSnapshot(snap => {
+    allCaixas = snap.docs.map(d => ({id:d.id,...d.data()}));
+    // Badge no menu ADM
+    const pendentes = allCaixas.filter(c=>c.status==='aguarda_aprovacao').length;
+    const badge = document.getElementById('caixa-badge');
+    if (badge) { badge.textContent=pendentes; badge.style.display=pendentes>0?'inline':'none'; }
+    const active = document.querySelector('.view.active');
+    if (active?.id === 'view-adm-caixas') renderAdmCaixas();
+    if (active?.id === 'view-sup-caixa') renderSupCaixa();
+  });
+}
+
+// ─── SUPERVISOR VIEW ───
+async function renderSupCaixa() {
+  const el = document.getElementById('sup-caixa-body');
+  if (!el) return;
+
+  // Buscar ou criar caixa do supervisor
+  let caixa = allCaixas.find(c => c.supervisorEmail === currentUser.email && c.status !== 'reabastecido_historico');
+  if (!caixa) {
+    const ref = db.collection('caixas').doc();
+    const novoCaixa = {
+      id: ref.id, supervisorEmail: currentUser.email,
+      supervisorNome: currentUser.name, saldoInicial: VALOR_CAIXA_INICIAL,
+      saldoAtual: VALOR_CAIXA_INICIAL, totalGasto: 0,
+      status: 'em_uso', createdAt: new Date().toISOString()
+    };
+    await ref.set(novoCaixa);
+    caixa = novoCaixa;
+  }
+
+  const pct = Math.round(((caixa.saldoInicial - caixa.saldoAtual) / caixa.saldoInicial) * 100);
+  const pbCls = pct >= 75 ? 'cpb-red' : pct >= 50 ? 'cpb-yellow' : 'cpb-green';
+  const saldoCls = pct >= 75 ? 'saldo-low' : pct >= 50 ? 'saldo-warn' : 'saldo-ok';
+  const podeLancar = caixa.status === 'em_uso' || caixa.status === 'rascunho';
+  const podeEnviar = caixa.status === 'validado';
+  const aguardando = caixa.status === 'aguarda_aprovacao';
+  const aprovado = caixa.status === 'aprovado';
+
+  el.innerHTML = `
+    <div class="caixa-card">
+      <div class="caixa-header">
+        <div class="caixa-av">💰</div>
+        <div style="flex:1">
+          <div class="caixa-nome">Meu Caixa Rotativo</div>
+          <div class="caixa-sub">Saldo inicial: ${fmtBRL(caixa.saldoInicial)}</div>
+        </div>
+        <div style="text-align:right">
+          <div class="caixa-saldo-big ${saldoCls}">${fmtBRL(caixa.saldoAtual)}</div>
+          <div style="font-size:12px;color:var(--text3)">saldo disponível</div>
+        </div>
+      </div>
+      <div class="caixa-progress"><div class="caixa-progress-bar ${pbCls}" style="width:${pct}%"></div></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-bottom:16px">
+        <span>Gasto: ${fmtBRL(caixa.totalGasto)} (${pct}%)</span>
+        <span>${pct >= 50 ? '⚠️ Preste contas para continuar' : 'Caixa em uso'}</span>
+      </div>
+
+      ${aguardando ? `<div style="background:var(--yellow-bg);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:14px;text-align:center;color:var(--yellow);font-weight:600;margin-bottom:16px">⏳ Prestação enviada — aguardando aprovação do administrador</div>` : ''}
+      ${aprovado ? `<div style="background:var(--green-bg);border:1px solid rgba(34,197,94,.3);border-radius:10px;padding:14px;text-align:center;color:var(--green);font-weight:600;margin-bottom:16px">✅ Prestação aprovada! Aguarde reabastecimento do caixa.</div>` : ''}
+      ${caixa.obsAprovacao ? `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px"><span style="color:var(--text3);font-size:11px;display:block;margin-bottom:4px">OBSERVAÇÃO DO ADMINISTRADOR</span>${caixa.obsAprovacao}</div>` : ''}
+
+      ${podeLancar ? `
+      <div style="margin-bottom:20px">
+        <div style="font-size:13px;font-weight:700;margin-bottom:12px;color:var(--text2)">📎 Anexar arquivos da prestação</div>
+        <div class="upload-zone ${caixa.excelNome?'has-file':''}" id="uz-excel">
+          <input type="file" accept=".xlsx,.xls" onchange="uploadArquivo(this,'excel')">
+          <div class="uz-icon">📊</div>
+          <div class="uz-label">${caixa.excelNome||'Excel do Caixa Rotativo'}</div>
+          <div class="uz-sub">${caixa.excelNome?'✓ Arquivo carregado — clique para trocar':'Clique ou arraste o arquivo .xlsx'}</div>
+        </div>
+        <div class="upload-zone ${caixa.pdfNomes?.length?'has-file':''}" id="uz-pdfs">
+          <input type="file" accept=".pdf" multiple onchange="uploadArquivo(this,'pdf')">
+          <div class="uz-icon">📄</div>
+          <div class="uz-label">${caixa.pdfNomes?.length?caixa.pdfNomes.length+' PDF(s) carregado(s)':'Notas Fiscais em PDF'}</div>
+          <div class="uz-sub">${caixa.pdfNomes?.length?'✓ Clique para trocar':'Clique ou arraste (múltiplos PDFs)'}</div>
+        </div>
+        <div id="validacao-resultado"></div>
+        <div style="display:flex;gap:10px;margin-top:14px">
+          <button class="btn btn-secondary" style="flex:1" onclick="validarCaixa('${caixa.id}')">🔍 Validar Lançamentos</button>
+          <button class="btn btn-primary" style="flex:1;${!podeEnviar?'opacity:.4;cursor:not-allowed':''}" onclick="${podeEnviar?`enviarParaAprovacao('${caixa.id}')`:''}" id="btn-enviar-caixa">
+            ${podeEnviar?'✅ Enviar para Aprovação':'🔒 Valide primeiro'}
+          </button>
+        </div>
+      </div>` : ''}
+    </div>
+
+    <div class="card">
+      <div class="card-title">Histórico de Prestações</div>
+      <div id="historico-caixa-sup">${await getHistoricoHtml(currentUser.email)}</div>
+    </div>`;
+}
+
+let excelBase64 = null;
+let pdfsBase64 = [];
+let excelNomeLocal = '';
+let pdfsNomesLocal = [];
+
+function uploadArquivo(input, tipo) {
+  const files = Array.from(input.files);
+  if (!files.length) return;
+  if (tipo === 'excel') {
+    const file = files[0];
+    excelNomeLocal = file.name;
+    const reader = new FileReader();
+    reader.onload = e => { excelBase64 = e.target.result; document.querySelector('#uz-excel .uz-label').textContent = file.name; document.querySelector('#uz-excel .uz-sub').textContent = '✓ Arquivo carregado'; document.getElementById('uz-excel').classList.add('has-file'); toast('Excel carregado!','ok'); };
+    reader.readAsDataURL(file);
+  } else {
+    pdfsBase64 = []; pdfsNomesLocal = [];
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = e => { pdfsBase64.push(e.target.result); pdfsNomesLocal.push(file.name); };
+      reader.readAsDataURL(file);
+    });
+    document.querySelector('#uz-pdfs .uz-label').textContent = files.length + ' PDF(s) carregado(s)';
+    document.querySelector('#uz-pdfs .uz-sub').textContent = '✓ Clique para trocar';
+    document.getElementById('uz-pdfs').classList.add('has-file');
+    toast(files.length + ' PDF(s) carregado(s)!','ok');
+  }
+}
+
+async function validarCaixa(caixaId) {
+  const el = document.getElementById('validacao-resultado');
+  if (!excelBase64) { el.innerHTML=`<div class="validacao-linha vl-err"><div class="vl-icon">❌</div><div class="vl-text"><strong>Excel não carregado</strong>Faça o upload do Excel do caixa rotativo.</div></div>`; return; }
+  el.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text3)">🔍 Analisando lançamentos...</div>`;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        model:'claude-sonnet-4-20250514', max_tokens:1000,
+        messages:[{role:'user',content:[
+          {type:'text',text:`Você é um auditor financeiro. Analise esta planilha de caixa rotativo e retorne APENAS JSON válido no formato:
+{"valido":true/false,"erros":[{"linha":"descrição","erro":"descrição do erro"}],"totalEntradas":número,"totalSaidas":número,"saldoFinal":número,"resumo":"texto curto"}
+
+Verifique: 1) Se todos os lançamentos têm Nº Doc 2) Se todos têm histórico preenchido 3) Se o saldo final está correto (Entradas - Saídas) 4) Se há valores inconsistentes. Retorne APENAS o JSON, sem markdown.`},
+          {type:'document',source:{type:'base64',media_type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',data:excelBase64.split(',')[1]}}
+        ]}]
+      })
+    });
+    const data = await response.json();
+    const txt = data.content?.find(c=>c.type==='text')?.text || '{}';
+    let result;
+    try { result = JSON.parse(txt.replace(/```json|```/g,'').trim()); } catch { result = {valido:false,erros:[{linha:'Sistema',erro:'Erro ao analisar o arquivo'}],resumo:'Erro na análise'}; }
+
+    const caixa = allCaixas.find(c=>c.id===caixaId);
+    const linhasHtml = (result.erros||[]).map(e=>`<div class="validacao-linha vl-err"><div class="vl-icon">❌</div><div class="vl-text"><strong>${e.linha}</strong>${e.erro}</div></div>`).join('');
+    const validHtml = result.valido ? `<div class="validacao-linha vl-ok"><div class="vl-icon">✅</div><div class="vl-text"><strong>Validação aprovada!</strong>${result.resumo}</div></div>` : '';
+
+    el.innerHTML = `
+      <div style="margin-top:14px">
+        <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">Resultado da Validação</div>
+        ${validHtml}${linhasHtml}
+        ${result.totalEntradas!==undefined?`<div style="display:flex;gap:12px;margin-top:10px;font-size:13px;font-family:'IBM Plex Mono',monospace">
+          <span style="color:var(--green)">↑ ${fmtBRL(result.totalEntradas)}</span>
+          <span style="color:var(--red)">↓ ${fmtBRL(result.totalSaidas)}</span>
+          <span style="color:var(--accent)">= ${fmtBRL(result.saldoFinal)}</span>
+        </div>`:''}
+      </div>`;
+
+    if (result.valido) {
+      const gasto = result.totalSaidas || 0;
+      await db.collection('caixas').doc(caixaId).update({
+        status:'validado', totalGasto:gasto, saldoAtual:VALOR_CAIXA_INICIAL-gasto,
+        excelBase64: excelBase64, excelNome: excelNomeLocal,
+        pdfsBase64: pdfsBase64, pdfNomes: pdfsNomesLocal,
+        validadoEm: new Date().toISOString()
+      });
+      document.getElementById('btn-enviar-caixa').style.opacity='1';
+      document.getElementById('btn-enviar-caixa').style.cursor='pointer';
+      document.getElementById('btn-enviar-caixa').textContent='✅ Enviar para Aprovação';
+      document.getElementById('btn-enviar-caixa').onclick=()=>enviarParaAprovacao(caixaId);
+      toast('Validação aprovada! Você pode enviar.','ok');
+    }
+  } catch(e) { el.innerHTML=`<div class="validacao-linha vl-err"><div class="vl-icon">❌</div><div class="vl-text"><strong>Erro na validação</strong>Verifique sua conexão e tente novamente.</div></div>`; }
+}
+
+async function enviarParaAprovacao(caixaId) {
+  try {
+    await db.collection('caixas').doc(caixaId).update({status:'aguarda_aprovacao', enviadoEm:new Date().toISOString()});
+    toast('Prestação enviada para aprovação!','ok');
+  } catch(e) { toast('Erro ao enviar','err'); }
+}
+
+// ─── ADM VIEW ───
+async function renderAdmCaixas() {
+  const el = document.getElementById('adm-caixas-body');
+  const stats = document.getElementById('adm-caixas-stats');
+  if (!el) return;
+
+  const pendentes = allCaixas.filter(c=>c.status==='aguarda_aprovacao').length;
+  const emUso = allCaixas.filter(c=>c.status==='em_uso'||c.status==='rascunho'||c.status==='validado').length;
+  const aprovados = allCaixas.filter(c=>c.status==='aprovado').length;
+  const totalExposto = allCaixas.filter(c=>c.status!=='reabastecido_historico').reduce((a,c)=>a+(c.totalGasto||0),0);
+
+  if (stats) stats.innerHTML = `
+    <div class="stat-card"><div class="label">Aguardando Aprovação</div><div class="value" style="color:${pendentes>0?'var(--yellow)':'var(--green)'}">${pendentes}</div><div class="sub">prestações</div></div>
+    <div class="stat-card"><div class="label">Em Uso</div><div class="value" style="color:var(--accent)">${emUso}</div><div class="sub">supervisores</div></div>
+    <div class="stat-card"><div class="label">Total em Caixa</div><div class="value" style="color:var(--text);font-size:20px">${fmtBRL(totalExposto)}</div><div class="sub">em circulação</div></div>`;
+
+  const supervisores = allUsers.filter(u=>SUPERVISORES_CAIXA.includes(u.email)&&u.email!=='supervisor.teste@gruporgbrasil.com');
+  let html = '';
+
+  for (const sup of supervisores) {
+    const caixa = allCaixas.find(c=>c.supervisorEmail===sup.email&&c.status!=='reabastecido_historico') || {saldoInicial:VALOR_CAIXA_INICIAL,saldoAtual:VALOR_CAIXA_INICIAL,totalGasto:0,status:'sem_caixa'};
+    const pct = Math.round(((caixa.saldoInicial-(caixa.saldoAtual||VALOR_CAIXA_INICIAL))/caixa.saldoInicial)*100);
+    const pbCls = pct>=75?'cpb-red':pct>=50?'cpb-yellow':'cpb-green';
+    const saldoCls = pct>=75?'saldo-low':pct>=50?'saldo-warn':'saldo-ok';
+    const statusHtml = {
+      'em_uso':`<span class="caixa-status cs-uso">Em Uso</span>`,
+      'rascunho':`<span class="caixa-status cs-uso">Rascunho</span>`,
+      'validado':`<span class="caixa-status cs-aguarda">Validado</span>`,
+      'aguarda_aprovacao':`<span class="caixa-status cs-pendente">⚠ Aguarda Aprovação</span>`,
+      'aprovado':`<span class="caixa-status cs-aprovado">✓ Aprovado</span>`,
+      'sem_caixa':`<span class="caixa-status" style="background:var(--surface2);color:var(--text3);border:1px solid var(--border)">Sem lançamentos</span>`
+    }[caixa.status]||'';
+
+    html += `<div class="caixa-card">
+      <div class="caixa-header">
+        <div class="caixa-av">${sup.name[0]}</div>
+        <div style="flex:1"><div class="caixa-nome">${sup.name}</div><div class="caixa-sub">${sup.cargo}</div></div>
+        <div style="text-align:right">
+          <div class="caixa-saldo-big ${saldoCls}">${fmtBRL(caixa.saldoAtual||VALOR_CAIXA_INICIAL)}</div>
+          <div style="font-size:12px;color:var(--text3)">saldo atual</div>
+        </div>
+      </div>
+      <div class="caixa-progress"><div class="caixa-progress-bar ${pbCls}" style="width:${pct}%"></div></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-bottom:14px">
+        <span>Gasto: ${fmtBRL(caixa.totalGasto||0)} (${pct}%)</span>
+        ${statusHtml}
+      </div>
+      ${caixa.status==='aguarda_aprovacao'?`
+      <div style="background:var(--yellow-bg);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:14px;margin-bottom:14px">
+        <div style="font-size:13px;font-weight:700;color:var(--yellow);margin-bottom:10px">📥 Arquivos da Prestação</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+          ${caixa.excelNome?`<button class="btn btn-sm btn-secondary" onclick="downloadArquivo('${caixa.id}','excel')">📊 ${caixa.excelNome}</button>`:''}
+          ${(caixa.pdfNomes||[]).map((n,i)=>`<button class="btn btn-sm btn-secondary" onclick="downloadArquivo('${caixa.id}','pdf',${i})">📄 ${n}</button>`).join('')}
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary btn-sm" style="flex:1" onclick="abrirModalAprovar('${caixa.id}','${sup.name}',${caixa.totalGasto||0})">✓ Aprovar / Recusar</button>
+        </div>
+      </div>`:''}
+      ${caixa.status==='aprovado'?`
+      <div style="background:var(--green-bg);border:1px solid rgba(34,197,94,.3);border-radius:10px;padding:14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between">
+        <div><div style="color:var(--green);font-weight:700;font-size:13px">✅ Aprovado</div><div style="font-size:12px;color:var(--text3)">Reposição: ${fmtBRL(caixa.totalGasto||0)}</div></div>
+        <button class="btn btn-sm btn-primary" onclick="abrirModalReabastecer('${caixa.id}','${sup.name}',${caixa.totalGasto||0})">💰 Confirmar Reabastecimento</button>
+      </div>`:''}
+      <div id="hist-${sup.email.replace('@','_').replace('.','_')}"></div>
+    </div>`;
+  }
+
+  el.innerHTML = html || `<div class="empty"><div class="icon">💰</div><p>Nenhum supervisor com caixa ativo.</p></div>`;
+
+  // Carregar históricos
+  for (const sup of supervisores) {
+    const histEl = document.getElementById(`hist-${sup.email.replace('@','_').replace('.','_')}`);
+    if (histEl) histEl.innerHTML = await getHistoricoHtml(sup.email, true);
+  }
+}
+
+async function getHistoricoHtml(email, isAdm=false) {
+  const hist = allCaixas.filter(c=>c.supervisorEmail===email&&c.status==='reabastecido_historico').sort((a,b)=>b.createdAt?.localeCompare(a.createdAt));
+  if (!hist.length) return `<div style="font-size:13px;color:var(--text3);padding:12px">Nenhuma prestação anterior.</div>`;
+  return hist.slice(0,3).map(h=>`<div class="historico-item">
+    <div class="hi-header"><span style="font-size:13px;font-weight:600">Prestação ${fmtDT(h.enviadoEm)}</span><span class="hi-valor">-${fmtBRL(h.totalGasto)}</span></div>
+    <div style="font-size:12px;color:var(--text3);font-family:'IBM Plex Mono',monospace">Aprovado em ${fmtDT(h.aprovadoEm)} • Reposto em ${fmtDT(h.reabastecidoEm)}</div>
+    ${h.obsAprovacao?`<div class="hi-obs">💬 ${h.obsAprovacao}</div>`:''}
+  </div>`).join('');
+}
+
+function abrirModalAprovar(caixaId, nome, valor) {
+  document.getElementById('apr-id').value = caixaId;
+  document.getElementById('apr-obs').value = '';
+  document.getElementById('apr-info').innerHTML = `<strong>${nome}</strong><br>Valor gasto: ${fmtBRL(valor)}<br>Valor a repor: ${fmtBRL(valor)}`;
+  document.getElementById('modal-aprovar').classList.add('open');
+}
+
+async function aprovarCaixa() {
+  const id = document.getElementById('apr-id').value;
+  const obs = document.getElementById('apr-obs').value.trim();
+  try {
+    await db.collection('caixas').doc(id).update({status:'aprovado', obsAprovacao:obs||'', aprovadoEm:new Date().toISOString()});
+    closeModal('modal-aprovar');
+    toast('Prestação aprovada! Realize o reabastecimento quando o financeiro depositar.','ok');
+  } catch(e) { toast('Erro ao aprovar','err'); }
+}
+
+async function recusarCaixa() {
+  const id = document.getElementById('apr-id').value;
+  const obs = document.getElementById('apr-obs').value.trim();
+  if (!obs) { toast('Informe o motivo da recusa','err'); return; }
+  try {
+    await db.collection('caixas').doc(id).update({status:'em_uso', obsAprovacao:obs, recusadoEm:new Date().toISOString()});
+    closeModal('modal-aprovar');
+    toast('Prestação recusada. Supervisor foi notificado.','ok');
+  } catch(e) { toast('Erro','err'); }
+}
+
+function abrirModalReabastecer(caixaId, nome, valor) {
+  document.getElementById('reab-id').value = caixaId;
+  document.getElementById('reab-valor').value = valor.toFixed(2);
+  document.getElementById('reab-info').innerHTML = `<strong>${nome}</strong><br>Valor aprovado: ${fmtBRL(valor)}`;
+  document.getElementById('modal-reabastecer').classList.add('open');
+}
+
+async function confirmarReabastecimento() {
+  const id = document.getElementById('reab-id').value;
+  const valor = parseFloat(document.getElementById('reab-valor').value);
+  if (!valor || valor <= 0) { toast('Informe o valor','err'); return; }
+  try {
+    const caixa = allCaixas.find(c=>c.id===id);
+    // Arquivar prestação atual no histórico
+    const histRef = db.collection('caixas').doc();
+    await histRef.set({...caixa, id:histRef.id, status:'reabastecido_historico', reabastecidoEm:new Date().toISOString()});
+    // Criar novo caixa zerado para o supervisor
+    const novoRef = db.collection('caixas').doc();
+    await novoRef.set({id:novoRef.id, supervisorEmail:caixa.supervisorEmail, supervisorNome:caixa.supervisorNome,
+      saldoInicial:VALOR_CAIXA_INICIAL, saldoAtual:VALOR_CAIXA_INICIAL, totalGasto:0,
+      status:'em_uso', createdAt:new Date().toISOString()});
+    // Remover caixa antigo
+    await db.collection('caixas').doc(id).delete();
+    closeModal('modal-reabastecer');
+    toast(`Caixa reabastecido com ${fmtBRL(valor)}! Supervisor pode continuar.`,'ok');
+  } catch(e) { toast('Erro ao reabastecer','err'); }
+}
+
+function downloadArquivo(caixaId, tipo, idx=0) {
+  const caixa = allCaixas.find(c=>c.id===caixaId);
+  if (!caixa) return;
+  let data, nome;
+  if (tipo==='excel') { data=caixa.excelBase64; nome=caixa.excelNome||'caixa.xlsx'; }
+  else { data=caixa.pdfsBase64?.[idx]; nome=caixa.pdfNomes?.[idx]||'nota.pdf'; }
+  if (!data) { toast('Arquivo não disponível','err'); return; }
+  const a=document.createElement('a'); a.href=data; a.download=nome; a.click();
+  toast('Download iniciado!','ok');
 }
 
 // ══════════════════════════════════════
