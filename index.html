@@ -2192,7 +2192,10 @@ async function renderSupCaixa() {
 
       ${podeLancar ? `
       <div style="margin-bottom:20px">
-        <div style="font-size:13px;font-weight:700;margin-bottom:12px;color:var(--text2)">📎 Anexar arquivos da prestação</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="font-size:13px;font-weight:700;color:var(--text2)">📎 Anexar arquivos da prestação</div>
+          ${(caixa.excelNome||caixa.pdfNomes?.length||excelBase64||pdfsBase64.length)?`<button class="btn btn-sm btn-danger" onclick="limparArquivos('${caixa.id}')">🗑 Limpar arquivos</button>`:''}
+        </div>
         <div class="upload-zone ${caixa.excelNome?'has-file':''}" id="uz-excel">
           <input type="file" accept=".xlsx,.xls" onchange="uploadArquivo(this,'excel')">
           <div class="uz-icon">📊</div>
@@ -2531,7 +2534,17 @@ async function confirmarReabastecimento() {
   } catch(e) { toast('Erro ao reabastecer','err'); }
 }
 
-function downloadArquivo(caixaId, tipo, idx=0) {
+async function limparArquivos(caixaId) {
+  if (!confirm('Limpar todos os arquivos anexados? Você precisará fazer o upload novamente.')) return;
+  excelBase64 = null; pdfsBase64 = []; excelNomeLocal = ''; pdfsNomesLocal = [];
+  try {
+    await db.collection('caixas').doc(caixaId).update({
+      status: 'em_uso', excelBase64: null, excelNome: null,
+      pdfsBase64: [], pdfNomes: [], validadoEm: null
+    });
+    toast('Arquivos removidos! Faça o upload novamente.', 'ok');
+  } catch(e) { toast('Erro ao limpar', 'err'); }
+}
   const caixa = allCaixas.find(c=>c.id===caixaId);
   if (!caixa) return;
   let data, nome;
