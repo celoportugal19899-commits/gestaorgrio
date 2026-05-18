@@ -2545,7 +2545,8 @@ async function limparArquivos(caixaId) {
     toast('Arquivos removidos! Faça o upload novamente.', 'ok');
   } catch(e) { toast('Erro ao limpar', 'err'); }
 }
-  const caixa = allCaixas.find(c=>c.id===caixaId);
+
+function downloadArquivo(caixaId, tipo, idx=0) {
   if (!caixa) return;
   let data, nome;
   if (tipo==='excel') { data=caixa.excelBase64; nome=caixa.excelNome||'caixa.xlsx'; }
