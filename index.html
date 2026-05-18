@@ -9,6 +9,7 @@
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root {
     --bg:#0a0a0f; --surface:#111118; --surface2:#18181f; --surface3:#20202a;
@@ -2250,58 +2251,135 @@ function uploadArquivo(input, tipo) {
 
 async function validarCaixa(caixaId) {
   const el = document.getElementById('validacao-resultado');
-  if (!excelBase64) { el.innerHTML=`<div class="validacao-linha vl-err"><div class="vl-icon">❌</div><div class="vl-text"><strong>Excel não carregado</strong>Faça o upload do Excel do caixa rotativo.</div></div>`; return; }
+  if (!excelBase64) {
+    el.innerHTML=`<div class="validacao-linha vl-err"><div class="vl-icon">❌</div><div class="vl-text"><strong>Excel não carregado</strong>Faça o upload do Excel do caixa rotativo.</div></div>`;
+    return;
+  }
   el.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text3)">🔍 Analisando lançamentos...</div>`;
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        model:'claude-sonnet-4-20250514', max_tokens:1000,
-        messages:[{role:'user',content:[
-          {type:'text',text:`Você é um auditor financeiro. Analise esta planilha de caixa rotativo e retorne APENAS JSON válido no formato:
-{"valido":true/false,"erros":[{"linha":"descrição","erro":"descrição do erro"}],"totalEntradas":número,"totalSaidas":número,"saldoFinal":número,"resumo":"texto curto"}
+    // Parsear Excel localmente com SheetJS
+    const base64Data = excelBase64.split(',')[1];
+    const binary = atob(base64Data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const wb = XLSX.read(bytes, {type:'array'});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
 
-Verifique: 1) Se todos os lançamentos têm Nº Doc 2) Se todos têm histórico preenchido 3) Se o saldo final está correto (Entradas - Saídas) 4) Se há valores inconsistentes. Retorne APENAS o JSON, sem markdown.`},
-          {type:'document',source:{type:'base64',media_type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',data:excelBase64.split(',')[1]}}
-        ]}]
-      })
-    });
-    const data = await response.json();
-    const txt = data.content?.find(c=>c.type==='text')?.text || '{}';
-    let result;
-    try { result = JSON.parse(txt.replace(/```json|```/g,'').trim()); } catch { result = {valido:false,erros:[{linha:'Sistema',erro:'Erro ao analisar o arquivo'}],resumo:'Erro na análise'}; }
+    const erros = [];
+    let totalEntradas = 0;
+    let totalSaidas = 0;
+    let saldoInicial = 0;
+    let dataHdrIdx = -1;
 
-    const caixa = allCaixas.find(c=>c.id===caixaId);
-    const linhasHtml = (result.erros||[]).map(e=>`<div class="validacao-linha vl-err"><div class="vl-icon">❌</div><div class="vl-text"><strong>${e.linha}</strong>${e.erro}</div></div>`).join('');
-    const validHtml = result.valido ? `<div class="validacao-linha vl-ok"><div class="vl-icon">✅</div><div class="vl-text"><strong>Validação aprovada!</strong>${result.resumo}</div></div>` : '';
+    // Encontrar linha de cabeçalho (Data | Nº Doc | Histórico | Entradas | Saídas)
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i].map(c => String(c).toLowerCase());
+      if (row.some(c => c.includes('data')) && row.some(c => c.includes('hist'))) {
+        dataHdrIdx = i; break;
+      }
+    }
+
+    if (dataHdrIdx === -1) {
+      erros.push({linha:'Estrutura', erro:'Não encontrei o cabeçalho padrão (Data / Nº Doc / Histórico / Entradas / Saídas). Verifique o formato do arquivo.'});
+    } else {
+      const hdr = rows[dataHdrIdx].map(c => String(c).toLowerCase());
+      const iData = hdr.findIndex(c=>c.includes('data'));
+      const iDoc = hdr.findIndex(c=>c.includes('doc'));
+      const iHist = hdr.findIndex(c=>c.includes('hist'));
+      const iEnt = hdr.findIndex(c=>c.includes('entr'));
+      const iSai = hdr.findIndex(c=>c.includes('sa'));
+
+      // Primeira linha de dados — pegar saldo inicial (valor na coluna Entradas ou Saídas sem data)
+      for (let i = dataHdrIdx+1; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || row.every(c=>c==='')) continue;
+        const ent = parseFloat(String(row[iEnt]).replace(',','.')) || 0;
+        const sai = parseFloat(String(row[iSai]).replace(',','.')) || 0;
+        // Linha sem data e sem doc = saldo inicial
+        if ((!row[iData] || row[iData]==='') && (!row[iDoc] || row[iDoc]==='') && ent > 0) {
+          saldoInicial = ent; totalEntradas += ent; continue;
+        }
+        // Pular linhas de resumo/total
+        const hist = String(row[iHist]||'').toLowerCase();
+        if (hist.includes('saldo') || hist.includes('total') || hist.includes('observa')) continue;
+        if (!row[iData] && !row[iDoc] && !row[iHist]) continue;
+
+        // Validar linha de lançamento
+        const nLinha = `Linha ${i+1}`;
+        if (row[iData] && (!row[iDoc] || row[iDoc]==='')) {
+          erros.push({linha:nLinha, erro:`Lançamento "${row[iHist]||'sem histórico'}" sem número de documento.`});
+        }
+        if (row[iData] && (!row[iHist] || row[iHist]==='')) {
+          erros.push({linha:nLinha, erro:`Lançamento sem histórico preenchido.`});
+        }
+        if (sai > 0) totalSaidas += sai;
+        if (ent > 0 && i > dataHdrIdx+2) totalEntradas += ent;
+      }
+
+      // Verificar saldo
+      const saldoCalculado = totalEntradas - totalSaidas;
+      const saldoCalculadoSemInicial = saldoInicial - totalSaidas;
+
+      // Buscar saldo final declarado na planilha
+      let saldoDeclarado = null;
+      for (let i = rows.length-1; i >= 0; i--) {
+        const row = rows[i];
+        const txt = row.map(c=>String(c).toLowerCase()).join(' ');
+        if (txt.includes('saldo')) {
+          const vals = row.map(c=>parseFloat(String(c).replace(',','.'))).filter(v=>!isNaN(v)&&v>0);
+          if (vals.length) { saldoDeclarado = vals[vals.length-1]; break; }
+        }
+      }
+
+      if (saldoDeclarado !== null) {
+        const diff = Math.abs(saldoCalculadoSemInicial - saldoDeclarado);
+        if (diff > 0.10) {
+          erros.push({linha:'Saldo Final', erro:`Saldo calculado (${fmtBRL(saldoCalculadoSemInicial)}) difere do declarado (${fmtBRL(saldoDeclarado)}) em ${fmtBRL(diff)}. Verifique os lançamentos.`});
+        }
+      }
+    }
+
+    const valido = erros.length === 0;
+    const gasto = totalSaidas;
+    const saldoFinal = saldoInicial > 0 ? saldoInicial - gasto : VALOR_CAIXA_INICIAL - gasto;
+
+    const linhasHtml = erros.map(e=>`<div class="validacao-linha vl-err"><div class="vl-icon">❌</div><div class="vl-text"><strong>${e.linha}</strong>${e.erro}</div></div>`).join('');
 
     el.innerHTML = `
       <div style="margin-top:14px">
         <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">Resultado da Validação</div>
-        ${validHtml}${linhasHtml}
-        ${result.totalEntradas!==undefined?`<div style="display:flex;gap:12px;margin-top:10px;font-size:13px;font-family:'IBM Plex Mono',monospace">
-          <span style="color:var(--green)">↑ ${fmtBRL(result.totalEntradas)}</span>
-          <span style="color:var(--red)">↓ ${fmtBRL(result.totalSaidas)}</span>
-          <span style="color:var(--accent)">= ${fmtBRL(result.saldoFinal)}</span>
-        </div>`:''}
+        ${valido ? `<div class="validacao-linha vl-ok"><div class="vl-icon">✅</div><div class="vl-text"><strong>Validação aprovada! Todos os lançamentos estão corretos.</strong>Você já pode enviar para aprovação.</div></div>` : ''}
+        ${linhasHtml}
+        <div style="display:flex;gap:12px;margin-top:10px;font-size:13px;font-family:'IBM Plex Mono',monospace;flex-wrap:wrap">
+          <span style="color:var(--green)">↑ Entradas: ${fmtBRL(totalEntradas)}</span>
+          <span style="color:var(--red)">↓ Saídas: ${fmtBRL(gasto)}</span>
+          <span style="color:var(--accent)">= Saldo: ${fmtBRL(saldoFinal)}</span>
+        </div>
       </div>`;
 
-    if (result.valido) {
-      const gasto = result.totalSaidas || 0;
+    if (valido) {
       await db.collection('caixas').doc(caixaId).update({
-        status:'validado', totalGasto:gasto, saldoAtual:VALOR_CAIXA_INICIAL-gasto,
-        excelBase64: excelBase64, excelNome: excelNomeLocal,
-        pdfsBase64: pdfsBase64, pdfNomes: pdfsNomesLocal,
+        status:'validado', totalGasto: gasto, saldoAtual: saldoFinal,
+        excelBase64, excelNome: excelNomeLocal,
+        pdfsBase64, pdfNomes: pdfsNomesLocal,
         validadoEm: new Date().toISOString()
       });
-      document.getElementById('btn-enviar-caixa').style.opacity='1';
-      document.getElementById('btn-enviar-caixa').style.cursor='pointer';
-      document.getElementById('btn-enviar-caixa').textContent='✅ Enviar para Aprovação';
-      document.getElementById('btn-enviar-caixa').onclick=()=>enviarParaAprovacao(caixaId);
+      const btnEnviar = document.getElementById('btn-enviar-caixa');
+      if (btnEnviar) {
+        btnEnviar.style.opacity='1'; btnEnviar.style.cursor='pointer';
+        btnEnviar.textContent='✅ Enviar para Aprovação';
+        btnEnviar.onclick=()=>enviarParaAprovacao(caixaId);
+      }
       toast('Validação aprovada! Você pode enviar.','ok');
+    } else {
+      toast(`${erros.length} erro(s) encontrado(s). Corrija e valide novamente.`,'err');
     }
-  } catch(e) { el.innerHTML=`<div class="validacao-linha vl-err"><div class="vl-icon">❌</div><div class="vl-text"><strong>Erro na validação</strong>Verifique sua conexão e tente novamente.</div></div>`; }
+  } catch(e) {
+    console.error(e);
+    el.innerHTML=`<div class="validacao-linha vl-err"><div class="vl-icon">❌</div><div class="vl-text"><strong>Erro ao ler o arquivo</strong>Verifique se o arquivo Excel está no formato correto (.xlsx) e tente novamente.</div></div>`;
+  }
 }
 
 async function enviarParaAprovacao(caixaId) {
