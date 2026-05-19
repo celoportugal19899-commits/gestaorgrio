@@ -2294,8 +2294,8 @@ async function validarCaixa(caixaId) {
       const iEnt = hdr.findIndex(c=>c.includes('entr'));
       const iSai = hdr.findIndex(c=>c.includes('sa'));
 
-      // Palavras que indicam fim dos lançamentos (rodapé)
-      const PALAVRAS_RODAPE = ['observa','banco','agencia','agência','conta','cpf','pix','ass.','assinatura','saldo','total','aprovação','aprovacao','gerente','regional','diretoria'];
+      // Palavras que indicam linhas de RODAPÉ estrutural da planilha (não lançamentos)
+      const PALAVRAS_RODAPE = ['banco:', 'agencia:', 'agência:', 'conta corrente', 'conta poupança', 'cpf:', 'pix:', 'ass. gerente', 'assinatura', 'observações gerencia', 'obervações gerência', 'aprovação diretoria', 'gerente regional'];
 
       for (let i = dataHdrIdx+1; i < rows.length; i++) {
         const row = rows[i];
@@ -2305,9 +2305,13 @@ async function validarCaixa(caixaId) {
         const dataVal = String(row[iData]||'').trim();
         const docVal = String(row[iDoc]||'').trim();
 
-        // Parar se encontrar linha de rodapé
+        // Pular linhas de rodapé estrutural (sem data e com palavras de rodapé)
         const textoLinha = row.map(c=>String(c||'').toLowerCase()).join(' ');
-        if (PALAVRAS_RODAPE.some(p => textoLinha.includes(p))) continue;
+        const ehRodape = !dataVal && PALAVRAS_RODAPE.some(p => textoLinha.includes(p));
+        if (ehRodape) continue;
+        
+        // Pular linha de "Saldo" no rodapé (sem data, col histórico = "saldo")
+        if (!dataVal && (hist === 'saldo' || textoLinha.includes('=sum('))) continue;
 
         // Pular linha sem data (saldo inicial ou linha em branco)
         if (!dataVal || dataVal === '') {
