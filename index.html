@@ -2162,7 +2162,7 @@ async function renderSupCaixa() {
   const pct = Math.round(((caixa.saldoInicial - caixa.saldoAtual) / caixa.saldoInicial) * 100);
   const pbCls = pct >= 75 ? 'cpb-red' : pct >= 50 ? 'cpb-yellow' : 'cpb-green';
   const saldoCls = pct >= 75 ? 'saldo-low' : pct >= 50 ? 'saldo-warn' : 'saldo-ok';
-  const podeLancar = caixa.status === 'em_uso' || caixa.status === 'rascunho';
+  const podeLancar = caixa.status === 'em_uso' || caixa.status === 'rascunho' || caixa.status === 'validado';
   const podeEnviar = caixa.status === 'validado';
   const aguardando = caixa.status === 'aguarda_aprovacao';
   const aprovado = caixa.status === 'aprovado';
@@ -2208,7 +2208,7 @@ async function renderSupCaixa() {
           <div class="uz-label">${caixa.pdfNomes?.length?caixa.pdfNomes.length+' PDF(s) carregado(s)':'Notas Fiscais em PDF'}</div>
           <div class="uz-sub">${caixa.pdfNomes?.length?'✓ Clique para trocar':'Clique ou arraste (múltiplos PDFs)'}</div>
         </div>
-        <div id="validacao-resultado"></div>
+        <div id="validacao-resultado">${validacaoCaixaId === caixa.id ? validacaoResultadoHtml : ''}</div>
         <div style="display:flex;gap:10px;margin-top:14px">
           <button class="btn btn-secondary" style="flex:1" onclick="validarCaixa('${caixa.id}')">🔍 Validar Lançamentos</button>
           <button class="btn btn-primary" style="flex:1;${!podeEnviar?'opacity:.4;cursor:not-allowed':''}" onclick="${podeEnviar?`enviarParaAprovacao('${caixa.id}')`:''}" id="btn-enviar-caixa">
@@ -2228,6 +2228,8 @@ let excelBase64 = null;
 let pdfsBase64 = [];
 let excelNomeLocal = '';
 let pdfsNomesLocal = [];
+let validacaoResultadoHtml = '';
+let validacaoCaixaId = '';
 
 function uploadArquivo(input, tipo) {
   const files = Array.from(input.files);
@@ -2289,82 +2291,64 @@ async function validarCaixa(caixaId) {
     } else {
       const hdr = rows[dataHdrIdx].map(c => String(c).toLowerCase());
       const iData = hdr.findIndex(c=>c.includes('data'));
-      const iDoc = hdr.findIndex(c=>c.includes('doc'));
+      const iDoc  = hdr.findIndex(c=>c.includes('doc'));
       const iHist = hdr.findIndex(c=>c.includes('hist'));
-      const iEnt = hdr.findIndex(c=>c.includes('entr'));
-      const iSai = hdr.findIndex(c=>c.includes('sa'));
-
-      // Palavras que indicam linhas de RODAPÉ estrutural da planilha (não lançamentos)
-      const PALAVRAS_RODAPE = ['banco:', 'agencia:', 'agência:', 'conta corrente', 'conta poupança', 'cpf:', 'pix:', 'ass. gerente', 'assinatura', 'observações gerencia', 'obervações gerência', 'aprovação diretoria', 'gerente regional'];
+      const iEnt  = hdr.findIndex(c=>c.includes('entr'));
+      const iSai  = hdr.findIndex(c=>c.includes('sa'));
 
       for (let i = dataHdrIdx+1; i < rows.length; i++) {
         const row = rows[i];
-        if (!row || row.every(c=>c===''||c===null)) continue;
+        if (!row) continue;
 
-        const hist = String(row[iHist]||'').toLowerCase().trim();
-        const dataVal = String(row[iData]||'').trim();
-        const docVal = String(row[iDoc]||'').trim();
+        const dataVal = row[iData];
+        const docVal  = String(row[iDoc]  || '').trim();
+        const histVal = String(row[iHist] || '').trim();
+        const entRaw  = String(row[iEnt]  || '').trim();
+        const saiRaw  = String(row[iSai]  || '').trim();
 
-        // Pular linhas de rodapé estrutural (sem data e com palavras de rodapé)
-        const textoLinha = row.map(c=>String(c||'').toLowerCase()).join(' ');
-        const ehRodape = !dataVal && PALAVRAS_RODAPE.some(p => textoLinha.includes(p));
-        if (ehRodape) continue;
-        
-        // Pular linha de "Saldo" no rodapé (sem data, col histórico = "saldo")
-        if (!dataVal && (hist === 'saldo' || textoLinha.includes('=sum('))) continue;
-
-        // Pular linha sem data (saldo inicial — só primeira linha após cabeçalho)
-        if (!dataVal || dataVal === '') {
-          if (i === dataHdrIdx+1) {
-            const ent = parseFloat(String(row[iEnt]||'').replace(',','.').replace(/[^\d.]/g,'')) || 0;
-            if (ent > 0) { saldoInicial = ent; }
-          }
+        // Linha do saldo inicial (primeira linha após cabeçalho, sem data, com entrada)
+        if (!dataVal && i === dataHdrIdx+1) {
+          try { saldoInicial = parseFloat(entRaw.replace(',','.')) || 0; } catch(e){}
           continue;
         }
 
-        // Pular linhas cujo campo "data" contém texto em vez de data real (rodapé como "Observações gerencia")
-        const ehDataReal = /^\d{4}[-\/]/.test(dataVal) || /^\d{1,2}[\/\-]\d{1,2}/.test(dataVal) || (dataVal instanceof Date) || (!isNaN(parseFloat(dataVal)) && parseFloat(dataVal) > 40000);
-        if (!ehDataReal) continue;
+        // Pular linhas sem data
+        if (!dataVal || String(dataVal).trim() === '') continue;
 
-        // Pular células com fórmulas
-        if (dataVal.startsWith('=') || String(row[iEnt]||'').startsWith('=') || String(row[iSai]||'').startsWith('=')) continue;
+        // Pular linhas cuja "data" é texto (rodapé como "Observações gerencia")
+        const dataStr = String(dataVal).trim();
+        const temDigitoNoInicio = /^\d/.test(dataStr) || (dataVal instanceof Date) || (typeof dataVal === 'number' && dataVal > 40000);
+        if (!temDigitoNoInicio) continue;
 
-        const ent = parseFloat(String(row[iEnt]||'').replace(',','.')) || 0;
-        const sai = parseFloat(String(row[iSai]||'').replace(',','.')) || 0;
+        // Pular fórmulas
+        if (entRaw.startsWith('=') || saiRaw.startsWith('=')) continue;
 
-        // Só valida linhas que têm saída ou entrada (lançamentos reais)
-        if (ent === 0 && sai === 0) continue;
+        const sai = parseFloat(saiRaw.replace(',','.')) || 0;
+        const ent = parseFloat(entRaw.replace(',','.')) || 0;
+        if (sai === 0 && ent === 0) continue;
 
-        const nLinha = `Linha ${i+1}`;
-        if (!docVal || docVal === '') {
-          erros.push({linha:nLinha, erro:`Lançamento "${row[iHist]||'sem histórico'}" sem número de documento.`});
-        }
-        if (!hist || hist === '') {
-          erros.push({linha:nLinha, erro:`Lançamento sem histórico preenchido.`});
-        }
+        // Validar lançamento
+        if (!docVal)  erros.push({linha:`Linha ${i+1}`, erro:`Lançamento "${histVal||'sem histórico'}" sem número de documento.`});
+        if (!histVal) erros.push({linha:`Linha ${i+1}`, erro:`Lançamento sem histórico preenchido.`});
         if (sai > 0) totalSaidas += sai;
-        if (ent > 0 && i > dataHdrIdx+1) totalEntradas += ent;
       }
 
-      // Verificar saldo
-      const saldoCalculado = totalEntradas - totalSaidas;
-      const saldoCalculadoSemInicial = saldoInicial - totalSaidas;
-
-      // Buscar saldo final declarado na planilha
+      // Verificar saldo declarado na planilha
       let saldoDeclarado = null;
       for (let i = rows.length-1; i >= 0; i--) {
         const row = rows[i];
-        const txt = row.map(c=>String(c).toLowerCase()).join(' ');
-        if (txt.includes('saldo')) {
-          const vals = row.map(c=>parseFloat(String(c).replace(',','.'))).filter(v=>!isNaN(v)&&v>0);
+        if (!row) continue;
+        const txt = row.map(c=>String(c||'').toLowerCase()).join(' ');
+        if (txt.includes('saldo') && !txt.includes('observa')) {
+          const vals = row.map(c=>parseFloat(String(c||'').replace(',','.'))).filter(v=>!isNaN(v)&&v>0&&v<saldoInicial);
           if (vals.length) { saldoDeclarado = vals[vals.length-1]; break; }
         }
       }
-
       if (saldoDeclarado !== null) {
-        const diff = Math.abs(saldoCalculadoSemInicial - saldoDeclarado);
+        const saldoCalculado = saldoInicial - totalSaidas;
+        const diff = Math.abs(saldoCalculado - saldoDeclarado);
         if (diff > 0.10) {
-          erros.push({linha:'Saldo Final', erro:`Saldo calculado (${fmtBRL(saldoCalculadoSemInicial)}) difere do declarado (${fmtBRL(saldoDeclarado)}) em ${fmtBRL(diff)}. Verifique os lançamentos.`});
+          erros.push({linha:'Saldo Final', erro:`Saldo calculado (${fmtBRL(saldoCalculado)}) difere do declarado (${fmtBRL(saldoDeclarado)}) em ${fmtBRL(diff)}. Verifique os lançamentos.`});
         }
       }
     }
@@ -2375,17 +2359,23 @@ async function validarCaixa(caixaId) {
 
     const linhasHtml = erros.map(e=>`<div class="validacao-linha vl-err"><div class="vl-icon">❌</div><div class="vl-text"><strong>${e.linha}</strong>${e.erro}</div></div>`).join('');
 
-    el.innerHTML = `
+    const resultHtml = `
       <div style="margin-top:14px">
         <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">Resultado da Validação</div>
         ${valido ? `<div class="validacao-linha vl-ok"><div class="vl-icon">✅</div><div class="vl-text"><strong>Validação aprovada! Todos os lançamentos estão corretos.</strong>Você já pode enviar para aprovação.</div></div>` : ''}
-        ${linhasHtml}
+        ${erros.map(e=>`<div class="validacao-linha vl-err"><div class="vl-icon">❌</div><div class="vl-text"><strong>${e.linha}</strong>${e.erro}</div></div>`).join('')}
         <div style="display:flex;gap:12px;margin-top:10px;font-size:13px;font-family:'IBM Plex Mono',monospace;flex-wrap:wrap">
           <span style="color:var(--green)">↑ Entradas: ${fmtBRL(totalEntradas)}</span>
           <span style="color:var(--red)">↓ Saídas: ${fmtBRL(gasto)}</span>
           <span style="color:var(--accent)">= Saldo: ${fmtBRL(saldoFinal)}</span>
         </div>
       </div>`;
+
+    // Salvar resultado para persistir após re-render
+    validacaoResultadoHtml = resultHtml;
+    validacaoCaixaId = caixaId;
+
+    el.innerHTML = resultHtml;
 
     if (valido) {
       await db.collection('caixas').doc(caixaId).update({
