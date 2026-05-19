@@ -2294,31 +2294,46 @@ async function validarCaixa(caixaId) {
       const iEnt = hdr.findIndex(c=>c.includes('entr'));
       const iSai = hdr.findIndex(c=>c.includes('sa'));
 
-      // Primeira linha de dados — pegar saldo inicial (valor na coluna Entradas ou Saídas sem data)
+      // Palavras que indicam fim dos lançamentos (rodapé)
+      const PALAVRAS_RODAPE = ['observa','banco','agencia','agência','conta','cpf','pix','ass.','assinatura','saldo','total','aprovação','aprovacao','gerente','regional','diretoria'];
+
       for (let i = dataHdrIdx+1; i < rows.length; i++) {
         const row = rows[i];
-        if (!row || row.every(c=>c==='')) continue;
-        const ent = parseFloat(String(row[iEnt]).replace(',','.')) || 0;
-        const sai = parseFloat(String(row[iSai]).replace(',','.')) || 0;
-        // Linha sem data e sem doc = saldo inicial
-        if ((!row[iData] || row[iData]==='') && (!row[iDoc] || row[iDoc]==='') && ent > 0) {
-          saldoInicial = ent; totalEntradas += ent; continue;
-        }
-        // Pular linhas de resumo/total
-        const hist = String(row[iHist]||'').toLowerCase();
-        if (hist.includes('saldo') || hist.includes('total') || hist.includes('observa')) continue;
-        if (!row[iData] && !row[iDoc] && !row[iHist]) continue;
+        if (!row || row.every(c=>c===''||c===null)) continue;
 
-        // Validar linha de lançamento
+        const hist = String(row[iHist]||'').toLowerCase().trim();
+        const dataVal = String(row[iData]||'').trim();
+        const docVal = String(row[iDoc]||'').trim();
+
+        // Parar se encontrar linha de rodapé
+        const textoLinha = row.map(c=>String(c||'').toLowerCase()).join(' ');
+        if (PALAVRAS_RODAPE.some(p => textoLinha.includes(p))) continue;
+
+        // Pular linha sem data (saldo inicial ou linha em branco)
+        if (!dataVal || dataVal === '') {
+          const ent = parseFloat(String(row[iEnt]||'').replace(',','.')) || 0;
+          if (ent > 0 && i === dataHdrIdx+1) { saldoInicial = ent; totalEntradas += ent; }
+          continue;
+        }
+
+        // Pular células com fórmulas
+        if (dataVal.startsWith('=') || hist.startsWith('=')) continue;
+
+        const ent = parseFloat(String(row[iEnt]||'').replace(',','.')) || 0;
+        const sai = parseFloat(String(row[iSai]||'').replace(',','.')) || 0;
+
+        // Só valida linhas que têm saída ou entrada (lançamentos reais)
+        if (ent === 0 && sai === 0) continue;
+
         const nLinha = `Linha ${i+1}`;
-        if (row[iData] && (!row[iDoc] || row[iDoc]==='')) {
+        if (!docVal || docVal === '') {
           erros.push({linha:nLinha, erro:`Lançamento "${row[iHist]||'sem histórico'}" sem número de documento.`});
         }
-        if (row[iData] && (!row[iHist] || row[iHist]==='')) {
+        if (!hist || hist === '') {
           erros.push({linha:nLinha, erro:`Lançamento sem histórico preenchido.`});
         }
         if (sai > 0) totalSaidas += sai;
-        if (ent > 0 && i > dataHdrIdx+2) totalEntradas += ent;
+        if (ent > 0 && i > dataHdrIdx+1) totalEntradas += ent;
       }
 
       // Verificar saldo
