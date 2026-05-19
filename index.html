@@ -2205,8 +2205,8 @@ async function renderSupCaixa() {
         <div class="upload-zone ${caixa.pdfNomes?.length?'has-file':''}" id="uz-pdfs">
           <input type="file" accept=".pdf" multiple onchange="uploadArquivo(this,'pdf')">
           <div class="uz-icon">📄</div>
-          <div class="uz-label">${caixa.pdfNomes?.length?caixa.pdfNomes.length+' PDF(s) carregado(s)':'Notas Fiscais em PDF'}</div>
-          <div class="uz-sub">${caixa.pdfNomes?.length?'✓ Clique para trocar':'Clique ou arraste (múltiplos PDFs)'}</div>
+          <div class="uz-label">${caixa.pdfNomes?.length?caixa.pdfNomes.length+' PDF(s) registrado(s)':'Notas Fiscais em PDF'}</div>
+          <div class="uz-sub">${caixa.pdfNomes?.length?'Nomes registrados — envie os arquivos por e-mail ao ADM':'Clique ou arraste (nomes serão registrados)'}</div>
         </div>
         <div id="validacao-resultado">${validacaoCaixaId === caixa.id ? validacaoResultadoHtml : ''}</div>
         <div style="display:flex;gap:10px;margin-top:14px">
@@ -2378,12 +2378,16 @@ async function validarCaixa(caixaId) {
     el.innerHTML = resultHtml;
 
     if (valido) {
-      // Salvar apenas dados da validação — SEM os arquivos (evita limite do Firestore)
+      // Salvar Excel + dados na validação (PDFs são grandes demais pro Firestore)
       await db.collection('caixas').doc(caixaId).update({
-        status:'validado', totalGasto: gasto, saldoAtual: saldoFinal,
+        status: 'validado',
+        totalGasto: gasto,
+        saldoAtual: saldoFinal,
+        excelBase64: excelBase64,
+        excelNome: excelNomeLocal,
+        pdfNomes: pdfsNomesLocal, // apenas nomes, não conteúdo
         validadoEm: new Date().toISOString()
       });
-      // Arquivos ficam em memória até o envio
       const btnEnviar = document.getElementById('btn-enviar-caixa');
       if (btnEnviar) {
         btnEnviar.style.opacity='1'; btnEnviar.style.cursor='pointer';
@@ -2401,30 +2405,15 @@ async function validarCaixa(caixaId) {
 }
 
 async function enviarParaAprovacao(caixaId) {
-  if (!excelBase64) { toast('Arquivos não encontrados. Faça o upload novamente.','err'); return; }
   try {
-    // Dividir PDFs em chunks se necessário (evitar limite Firestore 1MB)
-    const pdfNomesStr = pdfsNomesLocal.join('|');
     await db.collection('caixas').doc(caixaId).update({
-      status:'aguarda_aprovacao',
-      excelBase64, excelNome: excelNomeLocal,
-      pdfsBase64, pdfNomes: pdfsNomesLocal,
+      status: 'aguarda_aprovacao',
       enviadoEm: new Date().toISOString()
     });
-    toast('Prestação enviada para aprovação!','ok');
+    toast('Prestação enviada para aprovação!', 'ok');
   } catch(e) {
     console.error(e);
-    // Se erro de tamanho, enviar sem os PDFs e avisar
-    try {
-      await db.collection('caixas').doc(caixaId).update({
-        status:'aguarda_aprovacao',
-        excelBase64, excelNome: excelNomeLocal,
-        pdfsBase64: [], pdfNomes: pdfsNomesLocal,
-        enviadoEm: new Date().toISOString(),
-        obsArquivos: 'PDFs muito grandes — envie por e-mail separadamente'
-      });
-      toast('Enviado! PDFs muito grandes — envie por e-mail separadamente.','ok');
-    } catch(e2) { toast('Erro ao enviar. Tente com menos PDFs.','err'); }
+    toast('Erro ao enviar. Tente novamente.', 'err');
   }
 }
 
@@ -2487,9 +2476,8 @@ async function renderAdmCaixas() {
       <div style="background:var(--yellow-bg);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:14px;margin-bottom:14px">
         <div style="font-size:13px;font-weight:700;color:var(--yellow);margin-bottom:10px">📥 Arquivos da Prestação</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-          ${caixa.excelBase64?`<button class="btn btn-sm btn-secondary" onclick="downloadArquivo('${caixa.id}','excel')">📊 ${caixa.excelNome||'Caixa.xlsx'}</button>`:'<span style="font-size:12px;color:var(--text3)">Excel não disponível</span>'}
-          ${(caixa.pdfNomes||[]).map((n,i)=>`<button class="btn btn-sm btn-secondary" onclick="downloadArquivo('${caixa.id}','pdf',${i})">📄 ${n}</button>`).join('')}
-          ${caixa.obsArquivos?`<div style="font-size:12px;color:var(--yellow);width:100%;margin-top:4px">⚠ ${caixa.obsArquivos}</div>`:''}
+          ${caixa.excelBase64?`<button class="btn btn-sm btn-secondary" onclick="downloadArquivo('${caixa.id}','excel')">📊 ${caixa.excelNome||'Caixa.xlsx'}</button>`:'<span style="font-size:12px;color:var(--red)">⚠ Excel não disponível — peça ao supervisor para reenviar</span>'}
+          ${(caixa.pdfNomes||[]).length?`<div style="width:100%;margin-top:6px;padding:8px 12px;background:var(--surface3);border-radius:8px;font-size:12px;color:var(--text2)">📄 PDFs enviados pelo supervisor: <strong>${(caixa.pdfNomes||[]).join(', ')}</strong><br><span style="color:var(--text3)">Solicite os PDFs por e-mail ou WhatsApp para conferência.</span></div>`:''}
         </div>
         <div style="display:flex;gap:8px">
           ${caixa.excelBase64?`<button class="btn btn-sm btn-secondary" onclick="auditarLancamentos('${caixa.id}')">🔍 Auditar Lançamentos</button>`:''}
