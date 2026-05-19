@@ -2313,15 +2313,21 @@ async function validarCaixa(caixaId) {
         // Pular linha de "Saldo" no rodapé (sem data, col histórico = "saldo")
         if (!dataVal && (hist === 'saldo' || textoLinha.includes('=sum('))) continue;
 
-        // Pular linha sem data (saldo inicial ou linha em branco)
+        // Pular linha sem data (saldo inicial — só primeira linha após cabeçalho)
         if (!dataVal || dataVal === '') {
-          const ent = parseFloat(String(row[iEnt]||'').replace(',','.')) || 0;
-          if (ent > 0 && i === dataHdrIdx+1) { saldoInicial = ent; totalEntradas += ent; }
+          if (i === dataHdrIdx+1) {
+            const ent = parseFloat(String(row[iEnt]||'').replace(',','.').replace(/[^\d.]/g,'')) || 0;
+            if (ent > 0) { saldoInicial = ent; }
+          }
           continue;
         }
 
+        // Pular linhas cujo campo "data" contém texto em vez de data real (rodapé como "Observações gerencia")
+        const ehDataReal = /^\d{4}[-\/]/.test(dataVal) || /^\d{1,2}[\/\-]\d{1,2}/.test(dataVal) || (dataVal instanceof Date) || (!isNaN(parseFloat(dataVal)) && parseFloat(dataVal) > 40000);
+        if (!ehDataReal) continue;
+
         // Pular células com fórmulas
-        if (dataVal.startsWith('=') || hist.startsWith('=')) continue;
+        if (dataVal.startsWith('=') || String(row[iEnt]||'').startsWith('=') || String(row[iSai]||'').startsWith('=')) continue;
 
         const ent = parseFloat(String(row[iEnt]||'').replace(',','.')) || 0;
         const sai = parseFloat(String(row[iSai]||'').replace(',','.')) || 0;
