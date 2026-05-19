@@ -730,7 +730,7 @@
       <div class="topbar">
         <div class="page-header" style="margin:0"><h1>Caixas Rotativos</h1><p>Aprovação e controle financeiro dos supervisores</p></div>
       </div>
-      <div id="adm-caixas-stats" class="grid-3" style="margin-bottom:20px"></div>
+      <div id="adm-caixas-stats" class="grid-4" style="margin-bottom:20px"></div>
       <div id="adm-caixas-body"></div>
     </div>
 
@@ -2436,15 +2436,23 @@ async function renderAdmCaixas() {
 
   const pendentes = allCaixas.filter(c=>c.status==='aguarda_aprovacao').length;
   const emUso = allCaixas.filter(c=>c.status==='em_uso'||c.status==='rascunho'||c.status==='validado').length;
-  const aprovados = allCaixas.filter(c=>c.status==='aprovado').length;
-  const totalExposto = allCaixas.filter(c=>c.status!=='reabastecido_historico').reduce((a,c)=>a+(c.totalGasto||0),0);
+  // Total em caixa = soma dos saldos gastos de todos os caixas ativos
+  const totalGastoGeral = allCaixas
+    .filter(c=>c.status!=='reabastecido_historico'&&c.status!=='sem_caixa')
+    .reduce((a,c)=>a+(c.totalGasto||0),0);
+  // Total disponível = valor inicial de cada supervisor ativo
+  const supervisores = allUsers.filter(u=>SUPERVISORES_CAIXA.includes(u.email)&&u.email!=='supervisor.teste@gruporgbrasil.com'&&u.email!=='teste@gruporgbrasil.com');
+  const totalDisponivel = supervisores.reduce((a,sup)=>{
+    const caixa = allCaixas.find(c=>c.supervisorEmail===sup.email&&c.status!=='reabastecido_historico');
+    return a + (caixa ? (caixa.saldoAtual||VALOR_CAIXA_INICIAL) : VALOR_CAIXA_INICIAL);
+  },0);
 
   if (stats) stats.innerHTML = `
     <div class="stat-card"><div class="label">Aguardando Aprovação</div><div class="value" style="color:${pendentes>0?'var(--yellow)':'var(--green)'}">${pendentes}</div><div class="sub">prestações</div></div>
     <div class="stat-card"><div class="label">Em Uso</div><div class="value" style="color:var(--accent)">${emUso}</div><div class="sub">supervisores</div></div>
-    <div class="stat-card"><div class="label">Total em Caixa</div><div class="value" style="color:var(--text);font-size:20px">${fmtBRL(totalExposto)}</div><div class="sub">em circulação</div></div>`;
+    <div class="stat-card"><div class="label">Saldo Total Disponível</div><div class="value" style="color:var(--green);font-size:20px">${fmtBRL(totalDisponivel)}</div><div class="sub">em circulação</div></div>
+    <div class="stat-card"><div class="label">Total Gasto</div><div class="value" style="color:var(--red);font-size:20px">${fmtBRL(totalGastoGeral)}</div><div class="sub">aguarda reposição</div></div>`;
 
-  const supervisores = allUsers.filter(u=>SUPERVISORES_CAIXA.includes(u.email)&&u.email!=='supervisor.teste@gruporgbrasil.com');
   let html = '';
 
   for (const sup of supervisores) {
@@ -2453,12 +2461,12 @@ async function renderAdmCaixas() {
     const pbCls = pct>=75?'cpb-red':pct>=50?'cpb-yellow':'cpb-green';
     const saldoCls = pct>=75?'saldo-low':pct>=50?'saldo-warn':'saldo-ok';
     const statusHtml = {
-      'em_uso':`<span class="caixa-status cs-uso">Em Uso</span>`,
-      'rascunho':`<span class="caixa-status cs-uso">Rascunho</span>`,
-      'validado':`<span class="caixa-status cs-aguarda">Validado</span>`,
-      'aguarda_aprovacao':`<span class="caixa-status cs-pendente">⚠ Aguarda Aprovação</span>`,
-      'aprovado':`<span class="caixa-status cs-aprovado">✓ Aprovado</span>`,
-      'sem_caixa':`<span class="caixa-status" style="background:var(--surface2);color:var(--text3);border:1px solid var(--border)">Sem lançamentos</span>`
+      'em_uso':`<span class="caixa-status cs-uso">🟢 Em Uso</span>`,
+      'rascunho':`<span class="caixa-status cs-uso">🟡 Rascunho</span>`,
+      'validado':`<span class="caixa-status cs-aguarda">🟡 Validado — aguardando envio</span>`,
+      'aguarda_aprovacao':`<span class="caixa-status cs-pendente">🔴 Aguarda Aprovação</span>`,
+      'aprovado':`<span class="caixa-status cs-aprovado">✅ Aprovado</span>`,
+      'sem_caixa':`<span class="caixa-status" style="background:var(--surface2);color:var(--text3);border:1px solid var(--border)">⚪ Sem lançamentos</span>`
     }[caixa.status]||'';
 
     html += `<div class="caixa-card">
@@ -2467,41 +2475,102 @@ async function renderAdmCaixas() {
         <div style="flex:1"><div class="caixa-nome">${sup.name}</div><div class="caixa-sub">${sup.cargo}</div></div>
         <div style="text-align:right">
           <div class="caixa-saldo-big ${saldoCls}">${fmtBRL(caixa.saldoAtual||VALOR_CAIXA_INICIAL)}</div>
-          <div style="font-size:12px;color:var(--text3)">saldo atual</div>
+          <div style="font-size:12px;color:var(--text3)">saldo disponível</div>
         </div>
       </div>
       <div class="caixa-progress"><div class="caixa-progress-bar ${pbCls}" style="width:${pct}%"></div></div>
-      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-bottom:14px">
-        <span>Gasto: ${fmtBRL(caixa.totalGasto||0)} (${pct}%)</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--text3);margin-bottom:14px">
+        <span>Gasto: <strong style="color:var(--text)">${fmtBRL(caixa.totalGasto||0)}</strong> (${pct}%) • A repor: <strong style="color:var(--yellow)">${fmtBRL(caixa.totalGasto||0)}</strong></span>
         ${statusHtml}
       </div>
       ${caixa.status==='aguarda_aprovacao'?`
       <div style="background:var(--yellow-bg);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:14px;margin-bottom:14px">
         <div style="font-size:13px;font-weight:700;color:var(--yellow);margin-bottom:10px">📥 Arquivos da Prestação</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-          ${caixa.excelNome?`<button class="btn btn-sm btn-secondary" onclick="downloadArquivo('${caixa.id}','excel')">📊 ${caixa.excelNome}</button>`:''}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          ${caixa.excelBase64?`<button class="btn btn-sm btn-secondary" onclick="downloadArquivo('${caixa.id}','excel')">📊 ${caixa.excelNome||'Caixa.xlsx'}</button>`:'<span style="font-size:12px;color:var(--text3)">Excel não disponível</span>'}
           ${(caixa.pdfNomes||[]).map((n,i)=>`<button class="btn btn-sm btn-secondary" onclick="downloadArquivo('${caixa.id}','pdf',${i})">📄 ${n}</button>`).join('')}
+          ${caixa.obsArquivos?`<div style="font-size:12px;color:var(--yellow);width:100%;margin-top:4px">⚠ ${caixa.obsArquivos}</div>`:''}
         </div>
         <div style="display:flex;gap:8px">
+          ${caixa.excelBase64?`<button class="btn btn-sm btn-secondary" onclick="auditarLancamentos('${caixa.id}')">🔍 Auditar Lançamentos</button>`:''}
           <button class="btn btn-primary btn-sm" style="flex:1" onclick="abrirModalAprovar('${caixa.id}','${sup.name}',${caixa.totalGasto||0})">✓ Aprovar / Recusar</button>
         </div>
+        <div id="auditoria-${caixa.id}" style="margin-top:12px"></div>
       </div>`:''}
       ${caixa.status==='aprovado'?`
       <div style="background:var(--green-bg);border:1px solid rgba(34,197,94,.3);border-radius:10px;padding:14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between">
-        <div><div style="color:var(--green);font-weight:700;font-size:13px">✅ Aprovado</div><div style="font-size:12px;color:var(--text3)">Reposição: ${fmtBRL(caixa.totalGasto||0)}</div></div>
+        <div><div style="color:var(--green);font-weight:700;font-size:13px">✅ Aprovado</div><div style="font-size:12px;color:var(--text3)">Reposição pendente: ${fmtBRL(caixa.totalGasto||0)}</div></div>
         <button class="btn btn-sm btn-primary" onclick="abrirModalReabastecer('${caixa.id}','${sup.name}',${caixa.totalGasto||0})">💰 Confirmar Reabastecimento</button>
       </div>`:''}
-      <div id="hist-${sup.email.replace('@','_').replace('.','_')}"></div>
+      <div id="hist-${sup.email.replace('@','_').replace(/\./g,'_')}"></div>
     </div>`;
   }
 
   el.innerHTML = html || `<div class="empty"><div class="icon">💰</div><p>Nenhum supervisor com caixa ativo.</p></div>`;
 
-  // Carregar históricos
   for (const sup of supervisores) {
-    const histEl = document.getElementById(`hist-${sup.email.replace('@','_').replace('.','_')}`);
+    const histEl = document.getElementById(`hist-${sup.email.replace('@','_').replace(/\./g,'_')}`);
     if (histEl) histEl.innerHTML = await getHistoricoHtml(sup.email, true);
   }
+}
+
+async function auditarLancamentos(caixaId) {
+  const el = document.getElementById('auditoria-'+caixaId);
+  if (!el) return;
+  const caixa = allCaixas.find(c=>c.id===caixaId);
+  if (!caixa?.excelBase64) { el.innerHTML=`<div style="font-size:13px;color:var(--red)">Arquivo Excel não disponível.</div>`; return; }
+  el.innerHTML=`<div style="font-size:13px;color:var(--text3);padding:10px">🔍 Analisando lançamentos...</div>`;
+  try {
+    const base64Data = caixa.excelBase64.split(',')[1];
+    const binary = atob(base64Data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
+    const wb = XLSX.read(bytes,{type:'array'});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+    let hdrIdx=-1;
+    for(let i=0;i<rows.length;i++){const r=rows[i].map(c=>String(c).toLowerCase());if(r.some(c=>c.includes('data'))&&r.some(c=>c.includes('hist'))){hdrIdx=i;break;}}
+    if(hdrIdx===-1){el.innerHTML=`<div class="validacao-linha vl-err"><div class="vl-icon">❌</div><div class="vl-text"><strong>Estrutura não reconhecida</strong></div></div>`;return;}
+    const hdr=rows[hdrIdx].map(c=>String(c).toLowerCase());
+    const iData=hdr.findIndex(c=>c.includes('data'));
+    const iDoc=hdr.findIndex(c=>c.includes('doc'));
+    const iHist=hdr.findIndex(c=>c.includes('hist'));
+    const iSai=hdr.findIndex(c=>c.includes('sa'));
+    let lancamentos=[];
+    let saldoInicial=0;
+    let totalSaidas=0;
+    for(let i=hdrIdx+1;i<rows.length;i++){
+      const row=rows[i];
+      const dataVal=row[iData];
+      const saiRaw=String(row[iSai]||'').trim();
+      if(!dataVal&&i===hdrIdx+1){try{saldoInicial=parseFloat(String(row[hdr.findIndex(c=>c.includes('entr'))]||'0').replace(',','.'))||0;}catch(e){}continue;}
+      if(!dataVal||!String(dataVal).trim())continue;
+      const dataStr=String(dataVal).trim();
+      if(!/^\d/.test(dataStr)&&!(dataVal instanceof Date)&&!(typeof dataVal==='number'&&dataVal>40000))continue;
+      if(saiRaw.startsWith('='))continue;
+      const sai=parseFloat(saiRaw.replace(',','.'))||0;
+      if(sai===0)continue;
+      totalSaidas+=sai;
+      lancamentos.push({linha:i+1,data:dataStr,doc:String(row[iDoc]||'').trim(),hist:String(row[iHist]||'').trim(),valor:sai});
+    }
+    const tabela=lancamentos.map(l=>`<tr><td style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px;font-family:'IBM Plex Mono',monospace">${l.data.toString().substring(0,10)}</td><td style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px">${l.doc}</td><td style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px;max-width:250px">${l.hist}</td><td style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px;font-family:'IBM Plex Mono',monospace;text-align:right;color:var(--red)">${fmtBRL(l.valor)}</td></tr>`).join('');
+    el.innerHTML=`<div style="margin-top:8px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;overflow:hidden">
+      <div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.6px">${lancamentos.length} lançamentos auditados</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--red)">Total: ${fmtBRL(totalSaidas)}</span>
+      </div>
+      <div style="max-height:250px;overflow-y:auto">
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="background:var(--surface3)"><th style="padding:7px 10px;font-size:11px;color:var(--text3);text-align:left;font-weight:700">Data</th><th style="padding:7px 10px;font-size:11px;color:var(--text3);text-align:left;font-weight:700">Nº Doc</th><th style="padding:7px 10px;font-size:11px;color:var(--text3);text-align:left;font-weight:700">Histórico</th><th style="padding:7px 10px;font-size:11px;color:var(--text3);text-align:right;font-weight:700">Valor</th></tr></thead>
+          <tbody>${tabela}</tbody>
+        </table>
+      </div>
+      <div style="padding:10px 14px;border-top:1px solid var(--border);display:flex;justify-content:space-between;font-size:12px;font-family:'IBM Plex Mono',monospace">
+        <span style="color:var(--text3)">Saldo inicial: ${fmtBRL(saldoInicial)}</span>
+        <span style="color:var(--green)">Saldo final: ${fmtBRL(saldoInicial-totalSaidas)}</span>
+      </div>
+    </div>`;
+  } catch(e){console.error(e);el.innerHTML=`<div class="validacao-linha vl-err"><div class="vl-icon">❌</div><div class="vl-text"><strong>Erro ao auditar</strong></div></div>`;}
 }
 
 async function getHistoricoHtml(email, isAdm=false) {
