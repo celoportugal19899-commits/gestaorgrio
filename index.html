@@ -2441,7 +2441,7 @@ async function renderAdmCaixas() {
     .filter(c=>c.status!=='reabastecido_historico'&&c.status!=='sem_caixa')
     .reduce((a,c)=>a+(c.totalGasto||0),0);
   // Total disponível = valor inicial de cada supervisor ativo
-  const supervisores = allUsers.filter(u=>SUPERVISORES_CAIXA.includes(u.email)&&u.email!=='supervisor.teste@gruporgbrasil.com'&&u.email!=='teste@gruporgbrasil.com');
+  const supervisores = allUsers.filter(u=>SUPERVISORES_CAIXA.includes(u.email)&&u.email!=='supervisor.teste@gruporgbrasil.com');
   const totalDisponivel = supervisores.reduce((a,sup)=>{
     const caixa = allCaixas.find(c=>c.supervisorEmail===sup.email&&c.status!=='reabastecido_historico');
     return a + (caixa ? (caixa.saldoAtual||VALOR_CAIXA_INICIAL) : VALOR_CAIXA_INICIAL);
