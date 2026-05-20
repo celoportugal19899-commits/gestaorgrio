@@ -472,6 +472,7 @@
         <div class="sidebar-item" id="nav-postos-adm" onclick="showView('adm-postos',this)"><span class="icon">🏪</span> Postos</div>
         <div class="sidebar-item" id="nav-caixas-adm" onclick="showView('adm-caixas',this)"><span class="icon">💰</span> Caixas Rotativos <span id="caixa-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
         <div class="sidebar-item" id="nav-comb-adm" onclick="showView('adm-combustivel',this)"><span class="icon">⛽</span> Combustível <span id="comb-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
+        <div class="sidebar-item" id="nav-relatorio-comb" onclick="showView('adm-relatorio-comb',this)"><span class="icon">📊</span> Relatório Combustível</div>
       </div>
     </div>
     <div id="nav-collab" style="display:none">
@@ -769,6 +770,17 @@
       </div>
       <div id="adm-comb-stats" class="grid-4" style="margin-bottom:20px"></div>
       <div id="adm-comb-body"></div>
+    </div>
+
+    <!-- ADM — RELATÓRIO COMBUSTÍVEL -->
+    <div id="view-adm-relatorio-comb" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Relatório de Combustível</h1><p>Consolidado mensal por supervisor</p></div>
+        <div class="topbar-actions">
+          <select class="form-select" id="rel-comb-mes" style="width:160px" onchange="renderRelatorioComb()"></select>
+        </div>
+      </div>
+      <div id="rel-comb-body"></div>
     </div>
 
   </div>
@@ -1207,6 +1219,7 @@ function refreshCurrentView() {
   if (id === 'adm-caixas') renderAdmCaixas();
   if (id === 'sup-combustivel') renderSupCombustivel();
   if (id === 'adm-combustivel') renderAdmCombustivel();
+  if (id === 'adm-relatorio-comb') renderRelatorioComb();
 }
 
 // ══════════════════════════════════════
@@ -1230,6 +1243,7 @@ function showView(name, el) {
   if (name === 'adm-caixas') renderAdmCaixas();
   if (name === 'sup-combustivel') renderSupCombustivel();
   if (name === 'adm-combustivel') renderAdmCombustivel();
+  if (name === 'adm-relatorio-comb') renderRelatorioComb();
 }
 
 // ══════════════════════════════════════
@@ -2704,17 +2718,25 @@ const DADOS_CARTAO = {
 };
 
 let allRecargas = [];
+let allUsos = [];
 let unsubRecargas = null;
+let unsubUsos = null;
 let cidadesSelecionadas = [];
 
 function initCombustivel() {
   if (unsubRecargas) unsubRecargas();
+  if (unsubUsos) unsubUsos();
   unsubRecargas = db.collection('recargas').onSnapshot(snap => {
     allRecargas = snap.docs.map(d=>({id:d.id,...d.data()}));
-    // Badge ADM
     const pend = allRecargas.filter(r=>r.status==='aguarda_aprovacao').length;
     const badge = document.getElementById('comb-badge');
     if (badge) { badge.textContent=pend; badge.style.display=pend>0?'inline':'none'; }
+    const active = document.querySelector('.view.active');
+    if (active?.id==='view-adm-combustivel') renderAdmCombustivel();
+    if (active?.id==='view-sup-combustivel') renderSupCombustivel();
+  });
+  unsubUsos = db.collection('usos_combustivel').onSnapshot(snap => {
+    allUsos = snap.docs.map(d=>({id:d.id,...d.data()}));
     const active = document.querySelector('.view.active');
     if (active?.id==='view-adm-combustivel') renderAdmCombustivel();
     if (active?.id==='view-sup-combustivel') renderSupCombustivel();
@@ -2728,17 +2750,9 @@ function mesAtualKey() {
 
 function getSaldoCombustivel(email) {
   const mes = mesAtualKey();
-  const recargas = allRecargas.filter(r=>r.supervisorEmail===email&&r.mes===mes&&r.status==='confirmada');
-  const totalRecargado = recargas.reduce((a,r)=>a+(r.valor||0),0);
-  return LIMITE_COMB_MENSAL + totalRecargado;
-}
-
-function getGastoCombustivel(email) {
-  // Valor total de solicitações aprovadas/pendentes no mês
-  const mes = mesAtualKey();
-  return allRecargas
-    .filter(r=>r.supervisorEmail===email&&r.mes===mes&&(r.status==='aguarda_aprovacao'||r.status==='aprovada'||r.status==='confirmada'))
-    .reduce((a,r)=>a+(r.valor||0),0);
+  const totalRecargado = allRecargas.filter(r=>r.supervisorEmail===email&&r.mes===mes&&r.status==='confirmada').reduce((a,r)=>a+(r.valor||0),0);
+  const totalUsado = allUsos.filter(u=>u.supervisorEmail===email&&u.mes===mes).reduce((a,u)=>a+(u.valor||0),0);
+  return LIMITE_COMB_MENSAL + totalRecargado - totalUsado;
 }
 
 // ─── SUPERVISOR VIEW ───
@@ -2749,11 +2763,15 @@ async function renderSupCombustivel() {
   const dados = DADOS_CARTAO[email] || {cartao:'—',placa:'—'};
   const mes = mesAtualKey();
   const totalRecargado = allRecargas.filter(r=>r.supervisorEmail===email&&r.mes===mes&&r.status==='confirmada').reduce((a,r)=>a+(r.valor||0),0);
+  const totalUsado = allUsos.filter(u=>u.supervisorEmail===email&&u.mes===mes).reduce((a,u)=>a+(u.valor||0),0);
   const totalSolicitado = allRecargas.filter(r=>r.supervisorEmail===email&&r.mes===mes&&r.status==='aguarda_aprovacao').reduce((a,r)=>a+(r.valor||0),0);
-  const saldoDisp = LIMITE_COMB_MENSAL + totalRecargado;
-  const pct = Math.min(100,Math.round((totalSolicitado/saldoDisp)*100));
+  const saldoDisp = LIMITE_COMB_MENSAL + totalRecargado - totalUsado;
+  const pct = Math.min(100,Math.round((totalUsado/(LIMITE_COMB_MENSAL+totalRecargado))*100));
   const saldoCls = saldoDisp<100?'saldo-low':saldoDisp<300?'saldo-warn':'saldo-ok';
   const pendente = allRecargas.find(r=>r.supervisorEmail===email&&r.mes===mes&&r.status==='aguarda_aprovacao');
+
+  // Histórico de usos
+  const usosMes = allUsos.filter(u=>u.supervisorEmail===email&&u.mes===mes).sort((a,b)=>b.createdAt?.localeCompare(a.createdAt));
 
   el.innerHTML = `
     <div class="comb-saldo-card">
@@ -2769,13 +2787,33 @@ async function renderSupCombustivel() {
         </div>
       </div>
       <div class="caixa-progress"><div class="caixa-progress-bar ${pct>75?'cpb-red':pct>40?'cpb-yellow':'cpb-green'}" style="width:${pct}%"></div></div>
-      <div style="font-size:12px;color:var(--text3);margin-bottom:16px">Limite mensal: ${fmtBRL(LIMITE_COMB_MENSAL)} • Recarregado este mês: ${fmtBRL(totalRecargado)}</div>
-      ${pendente?`<div style="background:var(--yellow-bg);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:14px;margin-bottom:16px;font-size:13px;color:var(--yellow);font-weight:600">⏳ Você tem uma solicitação de ${fmtBRL(pendente.valor)} aguardando aprovação.</div>`:''}
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-bottom:8px">
+        <span>Limite: ${fmtBRL(LIMITE_COMB_MENSAL)} + Recargas: ${fmtBRL(totalRecargado)}</span>
+        <span>Usado: <strong style="color:var(--red)">${fmtBRL(totalUsado)}</strong></span>
+      </div>
+      ${pendente?`<div style="background:var(--yellow-bg);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:12px 14px;margin-top:8px;font-size:13px;color:var(--yellow);font-weight:600">⏳ Recarga de ${fmtBRL(pendente.valor)} aguardando aprovação.</div>`:''}
     </div>
 
+    <!-- LANÇAR USO -->
+    <div class="comb-form-section">
+      <div style="font-size:13px;font-weight:700;margin-bottom:14px;color:var(--text2)">💳 Lançar Uso do Cartão</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Valor Usado (R$)</label>
+          <input class="form-input" id="uso-valor" type="number" step="0.01" placeholder="0,00">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Descrição</label>
+          <input class="form-input" id="uso-desc" placeholder="Ex: Gasolina - rota Aperibé">
+        </div>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="registrarUso()">💳 Registrar Uso</button>
+    </div>
+
+    <!-- SOLICITAR RECARGA -->
     ${!pendente?`
     <div class="comb-form-section">
-      <div style="font-size:13px;font-weight:700;margin-bottom:14px;color:var(--text2)">⛽ Nova Solicitação de Recarga</div>
+      <div style="font-size:13px;font-weight:700;margin-bottom:14px;color:var(--text2)">⛽ Solicitar Recarga</div>
       <div class="form-group">
         <label class="form-label">Rota — Postos a visitar</label>
         <div style="display:flex;gap:8px;margin-bottom:10px">
@@ -2787,30 +2825,42 @@ async function renderSupCombustivel() {
         </div>
         <div id="comb-cidades-chips" style="min-height:36px;padding:4px 0"></div>
       </div>
-      <div class="form-group">
-        <label class="form-label">Valor Solicitado (R$)</label>
-        <input class="form-input" id="comb-valor" type="number" step="0.01" placeholder="0,00">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Valor Solicitado (R$)</label>
+          <input class="form-input" id="comb-valor" type="number" step="0.01" placeholder="0,00">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Observação (opcional)</label>
+          <input class="form-input" id="comb-obs" placeholder="Ex: Saldo insuficiente para a rota">
+        </div>
       </div>
-      <div class="form-group">
-        <label class="form-label">Observação (opcional)</label>
-        <input class="form-input" id="comb-obs" placeholder="Ex: Gasolina insuficiente para a rota completa">
-      </div>
-      <button class="btn btn-primary btn-block" onclick="solicitarRecarga()">⛽ Solicitar Recarga</button>
+      <button class="btn btn-secondary btn-block" onclick="solicitarRecarga()">⛽ Solicitar Recarga</button>
     </div>`:''}
 
+    <!-- HISTÓRICO -->
     <div class="comb-form-section">
-      <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px">Histórico de Recargas — ${nomeMes(new Date().getMonth())} ${new Date().getFullYear()}</div>
+      <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px">Histórico — ${nomeMes(new Date().getMonth())} ${new Date().getFullYear()}</div>
+      
+      ${usosMes.length?`<div style="margin-bottom:14px">
+        <div style="font-size:12px;color:var(--text3);font-weight:600;margin-bottom:8px">💳 Usos registrados</div>
+        ${usosMes.map(u=>`<div class="comb-hist-item" style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div style="font-size:13px;font-weight:600;color:var(--red)">- ${fmtBRL(u.valor)}</div>
+            <div style="font-size:12px;color:var(--text2)">${u.desc||'—'}</div>
+            <div style="font-size:11px;color:var(--text3);font-family:'IBM Plex Mono',monospace">${fmtDT(u.createdAt)}</div>
+          </div>
+        </div>`).join('')}
+      </div>`:''}
+
       ${allRecargas.filter(r=>r.supervisorEmail===email&&r.mes===mes).sort((a,b)=>b.createdAt?.localeCompare(a.createdAt)).map(r=>`
         <div class="comb-hist-item">
           <div class="comb-hist-header">
-            <div>
-              <div style="font-size:13px;font-weight:700">${fmtBRL(r.valor)}</div>
-              <div style="font-size:11px;color:var(--text3);font-family:'IBM Plex Mono',monospace">${fmtDT(r.createdAt)}</div>
-            </div>
+            <div><div style="font-size:13px;font-weight:700;color:var(--green)">+ ${fmtBRL(r.valor)}</div>
+            <div style="font-size:11px;color:var(--text3);font-family:'IBM Plex Mono',monospace">${fmtDT(r.createdAt)}</div></div>
             ${{aguarda_aprovacao:`<span class="comb-pending">⏳ Aguardando</span>`,aprovada:`<span class="caixa-status cs-aprovado">✅ Aprovada</span>`,confirmada:`<span class="caixa-status cs-aprovado">✅ Confirmada</span>`,recusada:`<span class="caixa-status cs-pendente">❌ Recusada</span>`}[r.status]||''}
           </div>
           <div class="comb-rota-tags">${(r.rota||[]).map(c=>`<span class="rota-tag">${c}</span>`).join('')}</div>
-          ${r.obs?`<div style="font-size:12px;color:var(--text2);margin-top:8px">💬 ${r.obs}</div>`:''}
           ${r.obsAdm?`<div style="font-size:12px;color:var(--yellow);margin-top:6px">📋 ADM: ${r.obsAdm}</div>`:''}
         </div>`).join('') || '<div style="font-size:13px;color:var(--text3)">Nenhuma solicitação este mês.</div>'}
     </div>`;
@@ -2846,20 +2896,32 @@ async function solicitarRecarga() {
   if (!cidadesSelecionadas.length) { toast('Adicione pelo menos uma cidade à rota','err'); return; }
   const valor = parseFloat(document.getElementById('comb-valor').value);
   if (!valor || valor <= 0) { toast('Informe o valor solicitado','err'); return; }
-  const obs = document.getElementById('comb-obs').value.trim();
+  const obs = document.getElementById('comb-obs')?.value.trim()||'';
   const dados = DADOS_CARTAO[currentUser.email] || {};
   try {
     const ref = db.collection('recargas').doc();
-    await ref.set({
-      id: ref.id, supervisorEmail: currentUser.email, supervisorNome: currentUser.name,
-      cartao: dados.cartao, placa: dados.placa,
-      rota: cidadesSelecionadas, valor, obs,
-      mes: mesAtualKey(), status: 'aguarda_aprovacao',
-      createdAt: new Date().toISOString()
-    });
+    await ref.set({ id:ref.id, supervisorEmail:currentUser.email, supervisorNome:currentUser.name,
+      cartao:dados.cartao, placa:dados.placa, rota:cidadesSelecionadas, valor, obs,
+      mes:mesAtualKey(), status:'aguarda_aprovacao', createdAt:new Date().toISOString() });
     toast('Solicitação enviada!','ok');
     cidadesSelecionadas = [];
   } catch(e) { toast('Erro ao solicitar','err'); }
+}
+
+async function registrarUso() {
+  const valor = parseFloat(document.getElementById('uso-valor').value);
+  const desc = document.getElementById('uso-desc').value.trim();
+  if (!valor || valor <= 0) { toast('Informe o valor usado','err'); return; }
+  const saldoAtual = getSaldoCombustivel(currentUser.email);
+  if (valor > saldoAtual + 0.01) { toast(`Valor maior que o saldo disponível (${fmtBRL(saldoAtual)})`,'err'); return; }
+  try {
+    const ref = db.collection('usos_combustivel').doc();
+    await ref.set({ id:ref.id, supervisorEmail:currentUser.email, supervisorNome:currentUser.name,
+      valor, desc, mes:mesAtualKey(), createdAt:new Date().toISOString() });
+    document.getElementById('uso-valor').value='';
+    document.getElementById('uso-desc').value='';
+    toast(`Uso de ${fmtBRL(valor)} registrado! Saldo atualizado.`,'ok');
+  } catch(e) { toast('Erro ao registrar uso','err'); }
 }
 
 // ─── ADM VIEW ───
@@ -2973,6 +3035,95 @@ async function recusarRecarga(recargaId) {
     await db.collection('recargas').doc(recargaId).update({status:'recusada', obsAdm:motivo||'Sem justificativa', recusadaEm:new Date().toISOString()});
     toast('Solicitação recusada.','ok');
   } catch(e) { toast('Erro','err'); }
+}
+
+async function renderRelatorioComb() {
+  const el = document.getElementById('rel-comb-body');
+  if (!el) return;
+  const sel = document.getElementById('rel-comb-mes');
+  if (sel && !sel.options.length) {
+    const now = new Date();
+    for (let i=0;i<6;i++) {
+      const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+      const val = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      const opt = document.createElement('option');
+      opt.value=val; opt.textContent=`${nomeMes(d.getMonth())} ${d.getFullYear()}`;
+      sel.appendChild(opt);
+    }
+  }
+  const mes = sel ? sel.value : mesAtualKey();
+  const [ano, numMes] = mes.split('-');
+  const supervisores = allUsers.filter(u=>SUPERVISORES_CAIXA.includes(u.email)&&u.email!=='supervisor.teste@gruporgbrasil.com');
+
+  // Totais gerais
+  const totalRecargas = allRecargas.filter(r=>r.mes===mes&&r.status==='confirmada').reduce((a,r)=>a+(r.valor||0),0);
+  const totalUsos = allUsos.filter(u=>u.mes===mes).reduce((a,u)=>a+(u.valor||0),0);
+  const totalSaldos = supervisores.reduce((a,sup)=>a+getSaldoCombustivel(sup.email),0);
+
+  let html = `
+    <div class="grid-3" style="margin-bottom:20px">
+      <div class="stat-card"><div class="label">Total Recarregado</div><div class="value" style="color:var(--green);font-size:22px">${fmtBRL(totalRecargas)}</div><div class="sub">${nomeMes(parseInt(numMes)-1)} ${ano}</div></div>
+      <div class="stat-card"><div class="label">Total Usado</div><div class="value" style="color:var(--red);font-size:22px">${fmtBRL(totalUsos)}</div><div class="sub">lançado pelos supervisores</div></div>
+      <div class="stat-card"><div class="label">Saldo Total Atual</div><div class="value" style="color:var(--accent);font-size:22px">${fmtBRL(totalSaldos)}</div><div class="sub">disponível nos cartões</div></div>
+    </div>`;
+
+  // Individual por supervisor
+  supervisores.forEach(sup => {
+    const dados = DADOS_CARTAO[sup.email] || {cartao:'—',placa:'—'};
+    const recsConf = allRecargas.filter(r=>r.supervisorEmail===sup.email&&r.mes===mes&&r.status==='confirmada');
+    const usosSup = allUsos.filter(u=>u.supervisorEmail===sup.email&&u.mes===mes);
+    const totalRecSup = recsConf.reduce((a,r)=>a+(r.valor||0),0);
+    const totalUsoSup = usosSup.reduce((a,u)=>a+(u.valor||0),0);
+    const saldoSup = getSaldoCombustivel(sup.email);
+    const pct = Math.min(100,Math.round((totalUsoSup/(LIMITE_COMB_MENSAL+totalRecSup||1))*100));
+
+    html += `<div class="caixa-card" style="margin-bottom:16px">
+      <div class="caixa-header">
+        <div class="caixa-av" style="font-size:18px">⛽</div>
+        <div style="flex:1">
+          <div class="caixa-nome">${sup.name}</div>
+          <div class="caixa-sub" style="font-family:'IBM Plex Mono',monospace">${dados.cartao} • ${dados.placa}</div>
+        </div>
+        <div style="text-align:right">
+          <div class="comb-saldo-big ${saldoSup<100?'saldo-low':saldoSup<300?'saldo-warn':'saldo-ok'}">${fmtBRL(saldoSup)}</div>
+          <div style="font-size:12px;color:var(--text3)">saldo disponível</div>
+        </div>
+      </div>
+      <div class="caixa-progress"><div class="caixa-progress-bar ${pct>75?'cpb-red':pct>40?'cpb-yellow':'cpb-green'}" style="width:${pct}%"></div></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin:14px 0">
+        <div style="background:var(--surface2);border-radius:8px;padding:12px;text-align:center">
+          <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Limite</div>
+          <div style="font-size:18px;font-weight:700;font-family:'IBM Plex Mono',monospace">${fmtBRL(LIMITE_COMB_MENSAL)}</div>
+        </div>
+        <div style="background:var(--green-bg);border-radius:8px;padding:12px;text-align:center">
+          <div style="font-size:11px;color:var(--green);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Recarregado</div>
+          <div style="font-size:18px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--green)">+${fmtBRL(totalRecSup)}</div>
+        </div>
+        <div style="background:var(--red-bg);border-radius:8px;padding:12px;text-align:center">
+          <div style="font-size:11px;color:var(--red);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Usado</div>
+          <div style="font-size:18px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--red)">-${fmtBRL(totalUsoSup)}</div>
+        </div>
+      </div>
+      ${usosSup.length?`<div style="margin-top:4px">
+        <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Usos registrados</div>
+        ${usosSup.sort((a,b)=>b.createdAt?.localeCompare(a.createdAt)).map(u=>`
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--surface2);border-radius:8px;margin-bottom:6px;font-size:13px">
+            <div><div style="font-weight:600">${u.desc||'—'}</div><div style="font-size:11px;color:var(--text3);font-family:'IBM Plex Mono',monospace">${fmtDT(u.createdAt)}</div></div>
+            <div style="color:var(--red);font-family:'IBM Plex Mono',monospace;font-weight:700">-${fmtBRL(u.valor)}</div>
+          </div>`).join('')}
+      </div>`:''}
+      ${recsConf.length?`<div style="margin-top:10px">
+        <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Recargas confirmadas</div>
+        ${recsConf.sort((a,b)=>b.createdAt?.localeCompare(a.createdAt)).map(r=>`
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--green-bg);border-radius:8px;margin-bottom:6px;font-size:13px">
+            <div><div class="comb-rota-tags" style="margin:0">${(r.rota||[]).map(c=>`<span class="rota-tag">${c}</span>`).join('')}</div><div style="font-size:11px;color:var(--text3);font-family:'IBM Plex Mono',monospace;margin-top:4px">${fmtDT(r.createdAt)}</div></div>
+            <div style="color:var(--green);font-family:'IBM Plex Mono',monospace;font-weight:700">+${fmtBRL(r.valor)}</div>
+          </div>`).join('')}
+      </div>`:''}
+    </div>`;
+  });
+
+  el.innerHTML = html;
 }
 
 // ══════════════════════════════════════
