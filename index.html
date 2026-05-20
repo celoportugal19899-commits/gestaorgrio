@@ -3498,7 +3498,7 @@ async function renderRelatorioComb() {
 // ══════════════════════════════════════
 // NOTIFICAÇÕES
 // ══════════════════════════════════════
-let allNotifs = [];
+
 let unsubNotifs = null;
 
 function initNotificacoes() {
@@ -3757,7 +3757,7 @@ async function salvarJustifPonto() {
 // ══════════════════════════════════════
 // PAINEL TIME — VISÃO COMPLETA ADM
 // ══════════════════════════════════════
-let allPontos = [];
+
 function initPontoADM() {
   db.collection('pontos').orderBy('date','desc').limit(200).onSnapshot(snap=>{
     allPontos = snap.docs.map(d=>({id:d.id,...d.data()}));
@@ -3919,7 +3919,6 @@ function renderPostosAtrasados(supervisorEmail) {
 // NOTIFICAÇÕES
 // ══════════════════════════════════════
 let allNotifs = [];
-let unsubNotifs = null;
 
 function initNotificacoes() {
   if (unsubNotifs) unsubNotifs();
