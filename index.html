@@ -2542,9 +2542,15 @@ async function renderAdmCaixas() {
         <div id="auditoria-${caixa.id}" style="margin-top:12px"></div>
       </div>`:''}
       ${caixa.status==='aprovado'?`
-      <div style="background:var(--green-bg);border:1px solid rgba(34,197,94,.3);border-radius:10px;padding:14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between">
-        <div><div style="color:var(--green);font-weight:700;font-size:13px">✅ Aprovado</div><div style="font-size:12px;color:var(--text3)">Reposição pendente: ${fmtBRL(caixa.totalGasto||0)}</div></div>
-        <button class="btn btn-sm btn-primary" onclick="abrirModalReabastecer('${caixa.id}','${sup.name}',${caixa.totalGasto||0})">💰 Confirmar Reabastecimento</button>
+      <div style="background:var(--green-bg);border:1px solid rgba(34,197,94,.3);border-radius:10px;padding:14px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div><div style="color:var(--green);font-weight:700;font-size:13px">✅ Aprovado — Caixa Nº${caixa.numeroCaixa||'—'}</div><div style="font-size:12px;color:var(--text3)">Reposição pendente: ${fmtBRL(caixa.totalGasto||0)}</div></div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-sm btn-secondary" onclick="abrirEmailCaixa('${caixa.id}')">📧 Preparar E-mail</button>
+            <button class="btn btn-sm btn-primary" onclick="abrirModalReabastecer('${caixa.id}','${sup.name}',${caixa.totalGasto||0})">💰 Confirmar Reabastecimento</button>
+          </div>
+        </div>
+        <div id="email-caixa-${caixa.id}" style="display:none"></div>
       </div>`:''}
       <div id="hist-${sup.email.replace('@','_').replace(/\./g,'_')}"></div>
     </div>`;
@@ -2634,14 +2640,59 @@ function abrirModalAprovar(caixaId, nome, valor) {
   document.getElementById('modal-aprovar').classList.add('open');
 }
 
+async function getProximoNumeroCaixa() {
+  const snap = await db.collection('caixas').get();
+  let maxNum = 0;
+  snap.docs.forEach(d => {
+    const n = parseInt(d.data().numeroCaixa || 0);
+    if (n > maxNum) maxNum = n;
+  });
+  return maxNum + 1;
+}
+
 async function aprovarCaixa() {
   const id = document.getElementById('apr-id').value;
   const obs = document.getElementById('apr-obs').value.trim();
   try {
-    await db.collection('caixas').doc(id).update({status:'aprovado', obsAprovacao:obs||'', aprovadoEm:new Date().toISOString()});
+    const numeroCaixa = await getProximoNumeroCaixa();
+    await db.collection('caixas').doc(id).update({
+      status:'aprovado', obsAprovacao:obs||'',
+      aprovadoEm:new Date().toISOString(),
+      numeroCaixa
+    });
     closeModal('modal-aprovar');
-    toast('Prestação aprovada! Realize o reabastecimento quando o financeiro depositar.','ok');
+    toast(`Prestação aprovada! Caixa Nº${numeroCaixa} — prepare o e-mail.`,'ok');
   } catch(e) { toast('Erro ao aprovar','err'); }
+}
+
+function abrirEmailCaixa(caixaId) {
+  const caixa = allCaixas.find(c=>c.id===caixaId);
+  if (!caixa) return;
+  const sup = allUsers.find(u=>u.email===caixa.supervisorEmail);
+  const nomePrimeiro = (sup?.name||caixa.supervisorNome||'').split(' ')[0];
+  const numero = caixa.numeroCaixa || '—';
+  const valor = fmtBRL(caixa.totalGasto||0);
+  const assunto = `Caixa Rotativo N°${numero} - Sup. ${nomePrimeiro}`;
+  const corpo = `Bom dia!\n\nSegue anexo caixa rotativo supervisor ${nomePrimeiro}.\n\n${valor}`;
+  const mailto = `mailto:ivan.filho@gruporgbrasil.com.br?cc=financeiro@gruporgbrasil.com.br,ivan.siqueira@gruporgbrasil.com.br&subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(corpo)}`;
+  
+  // Mostrar preview + botão abrir outlook
+  const el = document.getElementById(`email-caixa-${caixaId}`);
+  if (!el) return;
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:10px">
+      <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px">📧 E-mail pronto</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:4px"><strong>Para:</strong> ivan.filho@gruporgbrasil.com.br</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:4px"><strong>Cc:</strong> financeiro@gruporgbrasil.com.br, ivan.siqueira@gruporgbrasil.com.br</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:4px"><strong>Assunto:</strong> ${assunto}</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px;padding:8px;background:var(--surface3);border-radius:6px;line-height:1.7;white-space:pre-wrap">${corpo}</div>
+      <div style="font-size:12px;color:var(--yellow);margin-bottom:10px">⚠️ Lembre-se de anexar o Excel do caixa e os PDFs das notas manualmente.</div>
+      <div style="display:flex;gap:8px">
+        <a href="${mailto}" class="btn btn-primary btn-sm" style="text-decoration:none">📨 Abrir no Outlook</a>
+        ${caixa.excelBase64?`<button class="btn btn-sm btn-secondary" onclick="downloadArquivo('${caixaId}','excel')">📊 Baixar Excel</button>`:''}
+      </div>
+    </div>`;
 }
 
 async function recusarCaixa() {
