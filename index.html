@@ -386,6 +386,24 @@
   .hi-data{font-size:12px;color:var(--text3);font-family:'IBM Plex Mono',monospace;}
   .hi-valor{font-size:16px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--red);}
   .hi-obs{font-size:13px;color:var(--text2);margin-top:6px;padding-top:6px;border-top:1px solid var(--border);}
+
+  /* ═══ COMBUSTÍVEL ═══ */
+  .comb-saldo-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px 24px;margin-bottom:16px;}
+  .comb-saldo-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+  .comb-saldo-big{font-size:36px;font-weight:800;font-family:'IBM Plex Mono',monospace;letter-spacing:-1px;}
+  .comb-tag{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;}
+  .comb-ok{background:var(--green-bg);color:var(--green);border:1px solid rgba(34,197,94,.25);}
+  .comb-warn{background:var(--yellow-bg);color:var(--yellow);border:1px solid rgba(245,158,11,.25);}
+  .comb-low{background:var(--red-bg);color:var(--red);border:1px solid rgba(239,68,68,.25);}
+  .comb-pending{background:rgba(108,108,255,.12);color:var(--accent);border:1px solid rgba(108,108,255,.25);}
+  .cidade-chip{display:inline-flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border2);border-radius:20px;padding:5px 12px;font-size:13px;margin:4px;}
+  .cidade-chip button{background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:0;line-height:1;}
+  .cidade-chip button:hover{color:var(--red);}
+  .comb-form-section{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:14px;}
+  .comb-hist-item{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;}
+  .comb-hist-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px;}
+  .comb-rota-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+  .rota-tag{background:rgba(108,108,255,.1);color:var(--accent);border:1px solid rgba(108,108,255,.2);border-radius:12px;padding:2px 10px;font-size:12px;}
 </style>
 </head>
 <body>
@@ -453,6 +471,7 @@
         <div class="sidebar-item" id="nav-ponto-adm" onclick="showView('adm-ponto',this)"><span class="icon">⏱</span> Ponto Eletrônico</div>
         <div class="sidebar-item" id="nav-postos-adm" onclick="showView('adm-postos',this)"><span class="icon">🏪</span> Postos</div>
         <div class="sidebar-item" id="nav-caixas-adm" onclick="showView('adm-caixas',this)"><span class="icon">💰</span> Caixas Rotativos <span id="caixa-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
+        <div class="sidebar-item" id="nav-comb-adm" onclick="showView('adm-combustivel',this)"><span class="icon">⛽</span> Combustível <span id="comb-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
       </div>
     </div>
     <div id="nav-collab" style="display:none">
@@ -475,6 +494,7 @@
         <div class="sidebar-item" onclick="showView('col-tasks',this)"><span class="icon">◈</span> Minhas Tarefas</div>
         <div class="sidebar-item" onclick="showView('col-ponto',this)"><span class="icon">⏱</span> Meu Ponto</div>
         <div class="sidebar-item" onclick="showView('sup-caixa',this)"><span class="icon">💰</span> Caixa Rotativo</div>
+        <div class="sidebar-item" onclick="showView('sup-combustivel',this)"><span class="icon">⛽</span> Recarga Combustível</div>
       </div>
     </div>
     <div class="sidebar-footer">
@@ -725,6 +745,14 @@
       <div id="sup-caixa-body"></div>
     </div>
 
+    <!-- SUPERVISOR — COMBUSTÍVEL -->
+    <div id="view-sup-combustivel" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Recarga Combustível</h1><p>Solicite recarga para suas rotas</p></div>
+      </div>
+      <div id="sup-comb-body"></div>
+    </div>
+
     <!-- ADM — CAIXAS ROTATIVOS -->
     <div id="view-adm-caixas" class="view">
       <div class="topbar">
@@ -732,6 +760,15 @@
       </div>
       <div id="adm-caixas-stats" class="grid-4" style="margin-bottom:20px"></div>
       <div id="adm-caixas-body"></div>
+    </div>
+
+    <!-- ADM — COMBUSTÍVEL -->
+    <div id="view-adm-combustivel" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Combustível</h1><p>Recargas dos cartões dos supervisores</p></div>
+      </div>
+      <div id="adm-comb-stats" class="grid-4" style="margin-bottom:20px"></div>
+      <div id="adm-comb-body"></div>
     </div>
 
   </div>
@@ -1141,6 +1178,7 @@ function startApp() {
   else showView('col-tasks');
   if (!isPosto) initPonto();
   initCaixas();
+  initCombustivel();
 }
 
 async function renderAdmDashboardExtras() {
@@ -1167,6 +1205,8 @@ function refreshCurrentView() {
   if (id === 'supervisor-postos') renderSupervisorPostos();
   if (id === 'sup-caixa') renderSupCaixa();
   if (id === 'adm-caixas') renderAdmCaixas();
+  if (id === 'sup-combustivel') renderSupCombustivel();
+  if (id === 'adm-combustivel') renderAdmCombustivel();
 }
 
 // ══════════════════════════════════════
@@ -1188,6 +1228,8 @@ function showView(name, el) {
   if (name === 'supervisor-postos') renderSupervisorPostos();
   if (name === 'sup-caixa') renderSupCaixa();
   if (name === 'adm-caixas') renderAdmCaixas();
+  if (name === 'sup-combustivel') renderSupCombustivel();
+  if (name === 'adm-combustivel') renderAdmCombustivel();
 }
 
 // ══════════════════════════════════════
@@ -2647,6 +2689,290 @@ function downloadArquivo(caixaId, tipo, idx=0) {
   if (!data) { toast('Arquivo não disponível','err'); return; }
   const a=document.createElement('a'); a.href=data; a.download=nome; a.click();
   toast('Download iniciado!','ok');
+}
+
+// ══════════════════════════════════════
+// COMBUSTÍVEL
+// ══════════════════════════════════════
+const LIMITE_COMB_MENSAL = 600;
+const CIDADES_POSTOS = ['Aperibé','Bom Jardim','Bom Jesus do Itabapoana','Cambuci','Cantagalo','Carapebus','Cardoso Moreira','Conceição de Macabu','Duas Barras','Guarus','Italva','Laje de Muriaé','Macuco','Miracema','Natividade','Nova Friburgo','Porciúncula','Porto Real','Quissamã','Santa Maria Madalena','São José de Ubá','São José do Vale do Rio Preto','São Sebastião do Alto','Silva Jardim','Sumidouro','Tanguá','Trajano de Moraes','Varre-Sai','Areal'];
+
+const DADOS_CARTAO = {
+  'victor.simoes@gruporgbrasil.com':  {cartao:'5067 4902 1530 9016', placa:'LLZ1880'},
+  'leonardo.costa@gruporgbrasil.com': {cartao:'5067 4902 1531 8017', placa:'COR0005'},
+  'teste@gruporgbrasil.com':          {cartao:'5067 0000 0000 0000', placa:'TST0000'},
+};
+
+let allRecargas = [];
+let unsubRecargas = null;
+let cidadesSelecionadas = [];
+
+function initCombustivel() {
+  if (unsubRecargas) unsubRecargas();
+  unsubRecargas = db.collection('recargas').onSnapshot(snap => {
+    allRecargas = snap.docs.map(d=>({id:d.id,...d.data()}));
+    // Badge ADM
+    const pend = allRecargas.filter(r=>r.status==='aguarda_aprovacao').length;
+    const badge = document.getElementById('comb-badge');
+    if (badge) { badge.textContent=pend; badge.style.display=pend>0?'inline':'none'; }
+    const active = document.querySelector('.view.active');
+    if (active?.id==='view-adm-combustivel') renderAdmCombustivel();
+    if (active?.id==='view-sup-combustivel') renderSupCombustivel();
+  });
+}
+
+function mesAtualKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+
+function getSaldoCombustivel(email) {
+  const mes = mesAtualKey();
+  const recargas = allRecargas.filter(r=>r.supervisorEmail===email&&r.mes===mes&&r.status==='confirmada');
+  const totalRecargado = recargas.reduce((a,r)=>a+(r.valor||0),0);
+  return LIMITE_COMB_MENSAL + totalRecargado;
+}
+
+function getGastoCombustivel(email) {
+  // Valor total de solicitações aprovadas/pendentes no mês
+  const mes = mesAtualKey();
+  return allRecargas
+    .filter(r=>r.supervisorEmail===email&&r.mes===mes&&(r.status==='aguarda_aprovacao'||r.status==='aprovada'||r.status==='confirmada'))
+    .reduce((a,r)=>a+(r.valor||0),0);
+}
+
+// ─── SUPERVISOR VIEW ───
+async function renderSupCombustivel() {
+  const el = document.getElementById('sup-comb-body');
+  if (!el) return;
+  const email = currentUser.email;
+  const dados = DADOS_CARTAO[email] || {cartao:'—',placa:'—'};
+  const mes = mesAtualKey();
+  const totalRecargado = allRecargas.filter(r=>r.supervisorEmail===email&&r.mes===mes&&r.status==='confirmada').reduce((a,r)=>a+(r.valor||0),0);
+  const totalSolicitado = allRecargas.filter(r=>r.supervisorEmail===email&&r.mes===mes&&r.status==='aguarda_aprovacao').reduce((a,r)=>a+(r.valor||0),0);
+  const saldoDisp = LIMITE_COMB_MENSAL + totalRecargado;
+  const pct = Math.min(100,Math.round((totalSolicitado/saldoDisp)*100));
+  const saldoCls = saldoDisp<100?'saldo-low':saldoDisp<300?'saldo-warn':'saldo-ok';
+  const pendente = allRecargas.find(r=>r.supervisorEmail===email&&r.mes===mes&&r.status==='aguarda_aprovacao');
+
+  el.innerHTML = `
+    <div class="comb-saldo-card">
+      <div class="comb-saldo-header">
+        <div>
+          <div style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;font-weight:700;margin-bottom:6px">Cartão Combustível</div>
+          <div style="font-size:14px;font-family:'IBM Plex Mono',monospace;color:var(--text2)">${dados.cartao}</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:3px">Placa: ${dados.placa}</div>
+        </div>
+        <div style="text-align:right">
+          <div class="comb-saldo-big ${saldoCls}">${fmtBRL(saldoDisp)}</div>
+          <div style="font-size:12px;color:var(--text3)">saldo disponível</div>
+        </div>
+      </div>
+      <div class="caixa-progress"><div class="caixa-progress-bar ${pct>75?'cpb-red':pct>40?'cpb-yellow':'cpb-green'}" style="width:${pct}%"></div></div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:16px">Limite mensal: ${fmtBRL(LIMITE_COMB_MENSAL)} • Recarregado este mês: ${fmtBRL(totalRecargado)}</div>
+      ${pendente?`<div style="background:var(--yellow-bg);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:14px;margin-bottom:16px;font-size:13px;color:var(--yellow);font-weight:600">⏳ Você tem uma solicitação de ${fmtBRL(pendente.valor)} aguardando aprovação.</div>`:''}
+    </div>
+
+    ${!pendente?`
+    <div class="comb-form-section">
+      <div style="font-size:13px;font-weight:700;margin-bottom:14px;color:var(--text2)">⛽ Nova Solicitação de Recarga</div>
+      <div class="form-group">
+        <label class="form-label">Rota — Postos a visitar</label>
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+          <select class="form-select" id="comb-cidade-sel">
+            <option value="">Selecione uma cidade...</option>
+            ${CIDADES_POSTOS.map(c=>`<option value="${c}">${c}</option>`).join('')}
+          </select>
+          <button class="btn btn-primary btn-sm" style="flex-shrink:0" onclick="addCidadeComb()">+ Adicionar</button>
+        </div>
+        <div id="comb-cidades-chips" style="min-height:36px;padding:4px 0"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Valor Solicitado (R$)</label>
+        <input class="form-input" id="comb-valor" type="number" step="0.01" placeholder="0,00">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Observação (opcional)</label>
+        <input class="form-input" id="comb-obs" placeholder="Ex: Gasolina insuficiente para a rota completa">
+      </div>
+      <button class="btn btn-primary btn-block" onclick="solicitarRecarga()">⛽ Solicitar Recarga</button>
+    </div>`:''}
+
+    <div class="comb-form-section">
+      <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px">Histórico de Recargas — ${nomeMes(new Date().getMonth())} ${new Date().getFullYear()}</div>
+      ${allRecargas.filter(r=>r.supervisorEmail===email&&r.mes===mes).sort((a,b)=>b.createdAt?.localeCompare(a.createdAt)).map(r=>`
+        <div class="comb-hist-item">
+          <div class="comb-hist-header">
+            <div>
+              <div style="font-size:13px;font-weight:700">${fmtBRL(r.valor)}</div>
+              <div style="font-size:11px;color:var(--text3);font-family:'IBM Plex Mono',monospace">${fmtDT(r.createdAt)}</div>
+            </div>
+            ${{aguarda_aprovacao:`<span class="comb-pending">⏳ Aguardando</span>`,aprovada:`<span class="caixa-status cs-aprovado">✅ Aprovada</span>`,confirmada:`<span class="caixa-status cs-aprovado">✅ Confirmada</span>`,recusada:`<span class="caixa-status cs-pendente">❌ Recusada</span>`}[r.status]||''}
+          </div>
+          <div class="comb-rota-tags">${(r.rota||[]).map(c=>`<span class="rota-tag">${c}</span>`).join('')}</div>
+          ${r.obs?`<div style="font-size:12px;color:var(--text2);margin-top:8px">💬 ${r.obs}</div>`:''}
+          ${r.obsAdm?`<div style="font-size:12px;color:var(--yellow);margin-top:6px">📋 ADM: ${r.obsAdm}</div>`:''}
+        </div>`).join('') || '<div style="font-size:13px;color:var(--text3)">Nenhuma solicitação este mês.</div>'}
+    </div>`;
+
+  cidadesSelecionadas = [];
+  renderCidadesChips();
+}
+
+function addCidadeComb() {
+  const sel = document.getElementById('comb-cidade-sel');
+  const cidade = sel.value;
+  if (!cidade) return;
+  if (cidadesSelecionadas.includes(cidade)) { toast('Cidade já adicionada','err'); return; }
+  cidadesSelecionadas.push(cidade);
+  sel.value = '';
+  renderCidadesChips();
+}
+
+function removeCidadeComb(cidade) {
+  cidadesSelecionadas = cidadesSelecionadas.filter(c=>c!==cidade);
+  renderCidadesChips();
+}
+
+function renderCidadesChips() {
+  const el = document.getElementById('comb-cidades-chips');
+  if (!el) return;
+  el.innerHTML = cidadesSelecionadas.length
+    ? cidadesSelecionadas.map(c=>`<span class="cidade-chip">${c}<button onclick="removeCidadeComb('${c}')">✕</button></span>`).join('')
+    : `<span style="font-size:13px;color:var(--text3)">Nenhuma cidade adicionada ainda</span>`;
+}
+
+async function solicitarRecarga() {
+  if (!cidadesSelecionadas.length) { toast('Adicione pelo menos uma cidade à rota','err'); return; }
+  const valor = parseFloat(document.getElementById('comb-valor').value);
+  if (!valor || valor <= 0) { toast('Informe o valor solicitado','err'); return; }
+  const obs = document.getElementById('comb-obs').value.trim();
+  const dados = DADOS_CARTAO[currentUser.email] || {};
+  try {
+    const ref = db.collection('recargas').doc();
+    await ref.set({
+      id: ref.id, supervisorEmail: currentUser.email, supervisorNome: currentUser.name,
+      cartao: dados.cartao, placa: dados.placa,
+      rota: cidadesSelecionadas, valor, obs,
+      mes: mesAtualKey(), status: 'aguarda_aprovacao',
+      createdAt: new Date().toISOString()
+    });
+    toast('Solicitação enviada!','ok');
+    cidadesSelecionadas = [];
+  } catch(e) { toast('Erro ao solicitar','err'); }
+}
+
+// ─── ADM VIEW ───
+async function renderAdmCombustivel() {
+  const el = document.getElementById('adm-comb-body');
+  const stats = document.getElementById('adm-comb-stats');
+  if (!el) return;
+  const mes = mesAtualKey();
+  const supervisores = allUsers.filter(u=>SUPERVISORES_CAIXA.includes(u.email)&&u.email!=='supervisor.teste@gruporgbrasil.com');
+  const pendentes = allRecargas.filter(r=>r.status==='aguarda_aprovacao').length;
+  const totalMes = allRecargas.filter(r=>r.mes===mes&&r.status==='confirmada').reduce((a,r)=>a+(r.valor||0),0);
+
+  if (stats) stats.innerHTML = `
+    <div class="stat-card"><div class="label">Aguardando Aprovação</div><div class="value" style="color:${pendentes>0?'var(--yellow)':'var(--green)'}">${pendentes}</div><div class="sub">solicitações</div></div>
+    <div class="stat-card"><div class="label">Total Recarregado</div><div class="value" style="color:var(--accent);font-size:20px">${fmtBRL(totalMes)}</div><div class="sub">${nomeMes(new Date().getMonth())}</div></div>
+    <div class="stat-card"><div class="label">Supervisores</div><div class="value">${supervisores.length}</div><div class="sub">cartões ativos</div></div>
+    <div class="stat-card"><div class="label">Limite Mensal/Sup</div><div class="value" style="font-size:20px">${fmtBRL(LIMITE_COMB_MENSAL)}</div><div class="sub">por cartão</div></div>`;
+
+  let html = '';
+  supervisores.forEach(sup => {
+    const dados = DADOS_CARTAO[sup.email] || {cartao:'—',placa:'—'};
+    const recsSupMes = allRecargas.filter(r=>r.supervisorEmail===sup.email&&r.mes===mes);
+    const totalConf = recsSupMes.filter(r=>r.status==='confirmada').reduce((a,r)=>a+(r.valor||0),0);
+    const pendSup = recsSupMes.filter(r=>r.status==='aguarda_aprovacao');
+    const saldo = LIMITE_COMB_MENSAL + totalConf;
+    const saldoCls = saldo<100?'saldo-low':saldo<300?'saldo-warn':'saldo-ok';
+
+    html += `<div class="caixa-card">
+      <div class="caixa-header">
+        <div class="caixa-av" style="font-size:18px">⛽</div>
+        <div style="flex:1">
+          <div class="caixa-nome">${sup.name}</div>
+          <div class="caixa-sub" style="font-family:'IBM Plex Mono',monospace">${dados.cartao} • ${dados.placa}</div>
+        </div>
+        <div style="text-align:right">
+          <div class="comb-saldo-big ${saldoCls}">${fmtBRL(saldo)}</div>
+          <div style="font-size:12px;color:var(--text3)">saldo disponível</div>
+        </div>
+      </div>
+      ${pendSup.map(r=>`
+      <div style="background:var(--yellow-bg);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:14px;margin-bottom:12px">
+        <div style="font-size:13px;font-weight:700;color:var(--yellow);margin-bottom:10px">⛽ Solicitação de Recarga — ${fmtBRL(r.valor)}</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:8px">Solicitado em: ${fmtDT(r.createdAt)}</div>
+        <div style="margin-bottom:8px"><span style="font-size:12px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.6px">Rota:</span>
+          <div class="comb-rota-tags" style="margin-top:6px">${(r.rota||[]).map(c=>`<span class="rota-tag">${c}</span>`).join('')}</div>
+        </div>
+        ${r.obs?`<div style="font-size:12px;color:var(--text2);margin-bottom:10px">💬 ${r.obs}</div>`:''}
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn btn-sm btn-secondary" onclick="abrirEmailRecarga('${r.id}')">📧 Preparar E-mail</button>
+          <button class="btn btn-sm btn-success" style="flex:1" onclick="aprovarRecarga('${r.id}')">✅ Aprovar</button>
+          <button class="btn btn-sm btn-danger" onclick="recusarRecarga('${r.id}')">✕ Recusar</button>
+        </div>
+        <div id="email-recarga-${r.id}" style="display:none;margin-top:14px"></div>
+      </div>`).join('')}
+      <div style="margin-top:8px">
+        <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">Histórico ${nomeMes(new Date().getMonth())}</div>
+        ${recsSupMes.filter(r=>r.status!=='aguarda_aprovacao').sort((a,b)=>b.createdAt?.localeCompare(a.createdAt)).map(r=>`
+          <div class="comb-hist-item">
+            <div class="comb-hist-header">
+              <div><div style="font-size:13px;font-weight:600">${fmtBRL(r.valor)}</div><div style="font-size:11px;color:var(--text3);font-family:'IBM Plex Mono',monospace">${fmtDT(r.createdAt)}</div></div>
+              ${{aprovada:`<span class="caixa-status cs-aprovado">✅ Aprovada</span>`,confirmada:`<span class="caixa-status cs-aprovado">✅ Confirmada</span>`,recusada:`<span class="caixa-status cs-pendente">❌ Recusada</span>`}[r.status]||''}
+            </div>
+            <div class="comb-rota-tags">${(r.rota||[]).map(c=>`<span class="rota-tag">${c}</span>`).join('')}</div>
+            ${r.status==='aprovada'?`<button class="btn btn-sm btn-success" style="margin-top:10px" onclick="confirmarRecarga('${r.id}')">💳 Confirmar Recarga Efetuada</button>`:''}
+          </div>`).join('') || '<div style="font-size:13px;color:var(--text3)">Nenhuma recarga este mês.</div>'}
+      </div>
+    </div>`;
+  });
+  el.innerHTML = html || `<div class="empty"><div class="icon">⛽</div><p>Nenhum supervisor cadastrado.</p></div>`;
+}
+
+function abrirEmailRecarga(recargaId) {
+  const r = allRecargas.find(r=>r.id===recargaId);
+  if (!r) return;
+  const el = document.getElementById('email-recarga-'+recargaId);
+  const rotaStr = (r.rota||[]).join(', ');
+  const texto = `Boa tarde!\n\nPara rota de visita no(s) Posto(s): ${rotaStr}\nSupervisor: ${r.supervisorNome}\nPreciso que credite o valor de ${fmtBRL(r.valor)} no Alelo.\n\nCartão: ${r.cartao}\nPlaca: ${r.placa}`;
+
+  const mailtoLink = `mailto:ivan.filho@gruporgbrasil.com.br?cc=documentacao@gruporgbrasil.com.br,ivan.siqueira@gruporgbrasil.com.br&subject=Recarga Combustível - Sup. ${r.supervisorNome.split(' ')[0]}&body=${encodeURIComponent(texto)}`;
+
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px">
+      <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px">📧 Texto do E-mail</div>
+      <pre style="font-size:12px;color:var(--text2);white-space:pre-wrap;line-height:1.7;margin-bottom:12px">${texto}</pre>
+      <div style="display:flex;gap:8px">
+        <a href="${mailtoLink}" class="btn btn-primary btn-sm" style="text-decoration:none">📨 Abrir no Outlook</a>
+        <button class="btn btn-sm btn-secondary" onclick="navigator.clipboard.writeText(\`${texto.replace(/`/g,"'")}\`);toast('Texto copiado!','ok')">📋 Copiar texto</button>
+      </div>
+    </div>`;
+}
+
+async function aprovarRecarga(recargaId) {
+  try {
+    await db.collection('recargas').doc(recargaId).update({status:'aprovada', aprovadaEm:new Date().toISOString()});
+    toast('Recarga aprovada! Prepare o e-mail e confirme após enviar.','ok');
+  } catch(e) { toast('Erro','err'); }
+}
+
+async function confirmarRecarga(recargaId) {
+  try {
+    await db.collection('recargas').doc(recargaId).update({status:'confirmada', confirmadaEm:new Date().toISOString()});
+    toast('Recarga confirmada! Saldo atualizado.','ok');
+  } catch(e) { toast('Erro','err'); }
+}
+
+async function recusarRecarga(recargaId) {
+  const motivo = prompt('Motivo da recusa:');
+  if (motivo === null) return;
+  try {
+    await db.collection('recargas').doc(recargaId).update({status:'recusada', obsAdm:motivo||'Sem justificativa', recusadaEm:new Date().toISOString()});
+    toast('Solicitação recusada.','ok');
+  } catch(e) { toast('Erro','err'); }
 }
 
 // ══════════════════════════════════════
