@@ -1,0 +1,6 @@
+name = "gestaorgrio"
+compatibility_date = "2026-05-19"
+
+[assets]
+directory = "."
+serve_single_page_app = true
