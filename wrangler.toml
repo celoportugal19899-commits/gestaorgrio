@@ -1,6 +1,6 @@
 name = "gestaorgrio"
 compatibility_date = "2026-05-19"
+main = "worker.js"
 
 [assets]
 directory = "."
-serve_single_page_app = true
