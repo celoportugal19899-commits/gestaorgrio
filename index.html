@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -348,7 +347,52 @@
   .eb-btn.red{border-color:rgba(239,68,68,0.3);color:var(--red);background:var(--red-bg);}
   .eb-btn.red:hover{background:rgba(239,68,68,0.2);}
 
-  /* ═══ CAIXA ROTATIVO ═══ */
+  /* ═══ NOTIFICAÇÕES ═══ */
+  .notif-panel{position:absolute;bottom:80px;left:8px;right:8px;background:var(--surface);border:1px solid var(--border2);border-radius:14px;box-shadow:var(--shadow);z-index:200;max-height:400px;overflow-y:auto;display:none;}
+  .notif-panel.open{display:block;}
+  .notif-header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+  .notif-header-title{font-size:13px;font-weight:700;}
+  .notif-clear{font-size:11px;color:var(--text3);cursor:pointer;background:none;border:none;color:var(--accent);font-family:'Syne',sans-serif;}
+  .notif-item{padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s;}
+  .notif-item:hover{background:var(--surface2);}
+  .notif-item.unread{border-left:3px solid var(--accent);}
+  .notif-item-title{font-size:13px;font-weight:600;margin-bottom:3px;}
+  .notif-item-sub{font-size:12px;color:var(--text3);}
+  .notif-item-time{font-size:11px;color:var(--text3);font-family:'IBM Plex Mono',monospace;margin-top:4px;}
+  .notif-empty{padding:24px;text-align:center;font-size:13px;color:var(--text3);}
+
+  /* ═══ SCORE ═══ */
+  .score-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;}
+  .score-s{background:rgba(34,197,94,.15);color:var(--green);border:1px solid rgba(34,197,94,.3);}
+  .score-a{background:rgba(108,108,255,.15);color:var(--accent);border:1px solid rgba(108,108,255,.3);}
+  .score-b{background:var(--yellow-bg);color:var(--yellow);border:1px solid rgba(245,158,11,.3);}
+  .score-c{background:var(--red-bg);color:var(--red);border:1px solid rgba(239,68,68,.3);}
+
+  /* ═══ TIMELINE ═══ */
+  .timeline{padding:10px 0;}
+  .tl-item{display:flex;gap:12px;margin-bottom:14px;}
+  .tl-dot{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;margin-top:2px;}
+  .tl-dot-green{background:var(--green-bg);border:2px solid var(--green);}
+  .tl-dot-yellow{background:var(--yellow-bg);border:2px solid var(--yellow);}
+  .tl-dot-red{background:var(--red-bg);border:2px solid var(--red);}
+  .tl-dot-blue{background:rgba(108,108,255,.15);border:2px solid var(--accent);}
+  .tl-content{flex:1;}
+  .tl-title{font-size:13px;font-weight:600;margin-bottom:2px;}
+  .tl-sub{font-size:12px;color:var(--text2);}
+  .tl-time{font-size:11px;color:var(--text3);font-family:'IBM Plex Mono',monospace;margin-top:3px;}
+  .tl-line{width:2px;background:var(--border);margin:0 13px;flex-shrink:0;}
+
+  /* TEAM EXPANDED */
+  .team-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;margin-bottom:14px;overflow:hidden;}
+  .team-card-header{display:flex;align-items:center;gap:14px;padding:18px 20px;cursor:pointer;transition:background .15s;}
+  .team-card-header:hover{background:var(--surface2);}
+  .team-card-body{padding:0 20px 18px;border-top:1px solid var(--border);display:none;}
+  .team-card-body.open{display:block;}
+  .risk-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;}
+  .risk-green{background:var(--green-bg);color:var(--green);border:1px solid rgba(34,197,94,.25);}
+  .risk-yellow{background:var(--yellow-bg);color:var(--yellow);border:1px solid rgba(245,158,11,.25);}
+  .risk-red{background:var(--red-bg);color:var(--red);border:1px solid rgba(239,68,68,.25);}
+</style>
   .caixa-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px 24px;margin-bottom:16px;}
   .caixa-header{display:flex;align-items:center;gap:14px;margin-bottom:16px;}
   .caixa-av{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;background:rgba(201,162,39,0.15);color:#c9a227;flex-shrink:0;}
@@ -404,9 +448,51 @@
   .comb-hist-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px;}
   .comb-rota-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
   .rota-tag{background:rgba(108,108,255,.1);color:var(--accent);border:1px solid rgba(108,108,255,.2);border-radius:12px;padding:2px 10px;font-size:12px;}
+  /* ═══ NOTIFICAÇÕES ═══ */
+  .notif-bell{position:relative;cursor:pointer;padding:6px;border-radius:8px;transition:background .15s;display:inline-flex;align-items:center;}
+  .notif-bell:hover{background:var(--surface3);}
+  .notif-count{position:absolute;top:0;right:0;background:var(--red);color:#fff;border-radius:10px;padding:1px 5px;font-size:10px;font-weight:700;min-width:16px;text-align:center;display:none;}
+  .notif-panel{position:fixed;top:0;right:0;width:340px;height:100vh;background:var(--surface);border-left:1px solid var(--border);z-index:300;transform:translateX(100%);transition:transform .25s;overflow-y:auto;}
+  .notif-panel.open{transform:translateX(0);}
+  .notif-header{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);z-index:1;}
+  .notif-item{padding:13px 20px;border-bottom:1px solid var(--border);transition:background .15s;border-left:3px solid transparent;}
+  .notif-item:hover{background:var(--surface2);}
+  .ni-accent{border-left-color:var(--accent)!important;}
+  .ni-red{border-left-color:var(--red)!important;}
+  .ni-yellow{border-left-color:var(--yellow)!important;}
+  .ni-green{border-left-color:var(--green)!important;}
+  .ni-title{font-size:13px;font-weight:600;margin-bottom:3px;}
+  .ni-body{font-size:12px;color:var(--text2);line-height:1.5;}
+  .ni-time{font-size:11px;color:var(--text3);font-family:'IBM Plex Mono',monospace;margin-top:4px;}
+  /* ═══ SCORE ═══ */
+  .score-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700;}
+  .score-s{background:rgba(34,197,94,.15);color:var(--green);border:1px solid rgba(34,197,94,.3);}
+  .score-a{background:rgba(34,197,94,.08);color:#86efac;border:1px solid rgba(34,197,94,.15);}
+  .score-b{background:rgba(245,158,11,.12);color:var(--yellow);border:1px solid rgba(245,158,11,.25);}
+  .score-c{background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.25);}
+  /* ═══ TIMELINE ═══ */
+  .tl-item{display:flex;gap:12px;margin-bottom:14px;}
+  .tl-dot{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;margin-top:2px;}
+  .tl-content{flex:1;}
+  .tl-title{font-size:13px;font-weight:600;}
+  .tl-sub{font-size:12px;color:var(--text2);margin-top:2px;line-height:1.5;}
+  .tl-time{font-size:11px;color:var(--text3);font-family:'IBM Plex Mono',monospace;margin-top:3px;}
 </style>
 </head>
 <body>
+
+<!-- PAINEL NOTIFICAÇÕES -->
+<div id="notif-panel" class="notif-panel">
+  <div class="notif-header">
+    <span style="font-size:15px;font-weight:700">🔔 Notificações</span>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn btn-sm btn-secondary" onclick="marcarTodasLidas()">Marcar lidas</button>
+      <button class="close-btn" onclick="toggleNotif()">✕</button>
+    </div>
+  </div>
+  <div id="notif-list"><div class="empty" style="padding:32px"><p>Nenhuma notificação</p></div></div>
+</div>
+<div id="notif-overlay" style="display:none;position:fixed;inset:0;z-index:299" onclick="toggleNotif()"></div>
 
 <!-- LOADING -->
 <div id="page-loading" class="page active">
@@ -491,16 +577,22 @@
     <div id="nav-supervisor" style="display:none">
       <div class="sidebar-section">
         <div class="sidebar-section-label">Supervisão</div>
-        <div class="sidebar-item active" onclick="showView('supervisor-postos',this)"><span class="icon">🏪</span> Meus Postos</div>
+        <div class="sidebar-item active" onclick="showView('supervisor-postos',this)"><span class="icon">🏪</span> Horários Postos</div>
         <div class="sidebar-item" onclick="showView('col-tasks',this)"><span class="icon">◈</span> Minhas Tarefas</div>
+        <div class="sidebar-item" onclick="showView('sup-demandas-equipe',this)"><span class="icon">◈</span> Demandas da Equipe</div>
         <div class="sidebar-item" onclick="showView('col-ponto',this)"><span class="icon">⏱</span> Meu Ponto</div>
         <div class="sidebar-item" onclick="showView('sup-caixa',this)"><span class="icon">💰</span> Caixa Rotativo</div>
         <div class="sidebar-item" onclick="showView('sup-combustivel',this)"><span class="icon">⛽</span> Recarga Combustível</div>
       </div>
     </div>
     <div class="sidebar-footer">
-      <div style="margin-bottom:10px">
+      <div id="notif-panel" class="notif-panel">
+        <div class="notif-header"><span class="notif-header-title">🔔 Notificações</span><button class="notif-clear" onclick="markAllRead()">Marcar todas lidas</button></div>
+        <div id="notif-list"><div class="notif-empty">Nenhuma notificação</div></div>
+      </div>
+      <div style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;">
         <span class="online-badge"><span class="online-dot"></span>Firebase Online</span>
+        <div class="notif-bell" onclick="toggleNotif()">🔔<span class="notif-count" id="notif-count">0</span></div>
       </div>
       <div class="user-chip">
         <div class="avatar" id="sb-avatar">A</div>
@@ -533,30 +625,42 @@
           <button class="btn btn-primary" onclick="openCreateTask()">+ Nova Demanda</button>
         </div>
       </div>
+      <div id="adm-pending-demandas-wrap"></div>
       <div id="all-tasks-list"></div>
+    </div>
+
+    <!-- SUPERVISOR — DEMANDAS DA EQUIPE -->
+    <div id="view-sup-demandas-equipe" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Demandas da Equipe</h1><p>Acompanhe e proponha demandas</p></div>
+        <div class="topbar-actions">
+          <button class="btn btn-primary" onclick="abrirProporDemanda()">+ Propor Demanda</button>
+        </div>
+      </div>
+      <div id="sup-demandas-equipe-body"></div>
     </div>
 
     <!-- ADM TIME -->
     <div id="view-adm-team" class="view">
       <div class="topbar">
-        <div class="page-header" style="margin:0"><h1>Time</h1><p>Colaboradores cadastrados</p></div>
+        <div class="page-header" style="margin:0"><h1>Time</h1><p>Colaboradores, demandas, score e risco</p></div>
         <div class="topbar-actions">
           <button class="btn btn-primary" onclick="openCreateCollab()">+ Novo Colaborador</button>
         </div>
       </div>
-      <div class="card">
-        <table class="data-table">
-          <thead><tr><th>Colaborador</th><th>E-mail</th><th>Cargo</th><th>Tarefas Ativas</th><th>Progresso Médio</th><th>Status</th><th></th></tr></thead>
-          <tbody id="team-tbody"></tbody>
-        </table>
-      </div>
+      <div id="adm-team-cards"></div>
+      <table style="display:none"><tbody id="team-tbody"></tbody></table>
     </div>
 
     <!-- COLABORADOR -->
     <div id="view-col-tasks" class="view">
       <div class="topbar">
         <div class="page-header" style="margin:0"><h1>Minhas Tarefas</h1><p>Acompanhe e atualize suas demandas</p></div>
+        <div class="topbar-actions">
+          <button class="btn btn-secondary" onclick="abrirProporDemanda()">+ Propor Demanda</button>
+        </div>
       </div>
+      <div id="col-prop-pendentes-wrap"></div>
       <div class="grid-3" id="col-task-stats" style="margin-bottom:24px"></div>
       <div id="col-tasks-list"></div>
     </div>
@@ -732,7 +836,7 @@
     <!-- SUPERVISOR POSTOS -->
     <div id="view-supervisor-postos" class="view">
       <div class="topbar">
-        <div class="page-header" style="margin:0"><h1>Meus Postos</h1><p>Acompanhe os postos da sua equipe</p></div>
+        <div class="page-header" style="margin:0"><h1>Horários Postos</h1><p>Acompanhe os postos da sua equipe</p></div>
       </div>
       <div id="supervisor-stats" class="grid-3" style="margin-bottom:20px"></div>
       <div id="supervisor-postos-body"></div>
@@ -800,6 +904,60 @@
   </div>
 </div>
 
+<!-- MODAL: PROPOR DEMANDA (colaborador/supervisor) -->
+<div class="modal-overlay" id="modal-propor-demanda">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Propor Demanda</div><button class="close-btn" onclick="closeModal('modal-propor-demanda')">✕</button></div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:14px;padding:10px;background:var(--surface2);border-radius:8px;">
+      📋 Sua proposta será enviada ao administrador para aprovação antes de entrar na lista oficial.
+    </div>
+    <div class="form-group"><label class="form-label">Título da Demanda</label>
+      <input class="form-input" id="prop-titulo" placeholder="Ex: Levantamento de dados Q3">
+    </div>
+    <div class="form-group"><label class="form-label">Descrição</label>
+      <textarea class="form-textarea" id="prop-desc" placeholder="Descreva o que precisa ser feito, entregáveis esperados..."></textarea>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Atribuir a</label>
+        <select class="form-select" id="prop-assignee"></select>
+      </div>
+      <div class="form-group"><label class="form-label">Prazo sugerido</label>
+        <input class="form-input" id="prop-deadline" type="date">
+      </div>
+    </div>
+    <div class="form-group"><label class="form-label">Prioridade</label>
+      <select class="form-select" id="prop-priority">
+        <option value="normal">Normal</option>
+        <option value="alta">Alta</option>
+        <option value="urgente">Urgente</option>
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">Justificativa (por que esta demanda?)</label>
+      <textarea class="form-textarea" id="prop-justif" placeholder="Por que esta demanda é necessária?"></textarea>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-propor-demanda')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="enviarPropostaDemanda()">📤 Enviar para Aprovação</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: REPROVAR DEMANDA -->
+<div class="modal-overlay" id="modal-reprovar-demanda">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header"><div class="modal-title">Reprovar Proposta</div><button class="close-btn" onclick="closeModal('modal-reprovar-demanda')">✕</button></div>
+    <div id="repr-demanda-info" style="font-size:13px;color:var(--text2);margin-bottom:14px;padding:10px;background:var(--surface2);border-radius:8px;"></div>
+    <div class="form-group"><label class="form-label">Motivo da reprovação</label>
+      <textarea class="form-textarea" id="repr-motivo" placeholder="Explique o motivo para o colaborador..."></textarea>
+    </div>
+    <input type="hidden" id="repr-demanda-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-reprovar-demanda')">Cancelar</button>
+      <button class="btn btn-danger" style="flex:1" onclick="reprovarDemanda()">✕ Reprovar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: NOVA TAREFA -->
 <div class="modal-overlay" id="modal-task">
   <div class="modal">
@@ -816,7 +974,79 @@
     <input type="hidden" id="nt-edit-id">
     <div style="display:flex;gap:10px;margin-top:8px">
       <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-task')">Cancelar</button>
-      <button class="btn btn-primary" style="flex:1" onclick="saveTask()">Salvar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="saveTaskComNotif()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: RETORNO DEMANDA (colaborador) -->
+<div class="modal-overlay" id="modal-retorno">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header"><div class="modal-title">Atualizar Demanda</div><button class="close-btn" onclick="closeModal('modal-retorno')">✕</button></div>
+    <div id="ret-task-title" style="color:var(--text2);font-size:14px;margin-bottom:16px"></div>
+    <div class="form-group">
+      <label class="form-label">Progresso Atual</label>
+      <input type="range" id="ret-progress" min="0" max="100" step="5" value="0" oninput="document.getElementById('ret-prog-num').textContent=this.value+'%'">
+      <div class="prog-display" id="ret-prog-num">0%</div>
+    </div>
+    <div class="form-group"><label class="form-label">Retorno / Atualização</label>
+      <textarea class="form-textarea" id="ret-comment" placeholder="Descreva o que foi feito, o que falta, possíveis bloqueios..."></textarea>
+    </div>
+    <div class="form-group"><label class="form-label">Status</label>
+      <select class="form-select" id="ret-status">
+        <option value="em_andamento">Em Andamento</option>
+        <option value="concluida">Concluída ✓</option>
+        <option value="bloqueada">Bloqueada ⚠</option>
+        <option value="pausada">Pausada ⏸</option>
+      </select>
+    </div>
+    <div class="form-group" id="ret-prazo-group">
+      <label class="form-label" style="color:var(--yellow)">⏰ Solicitar Novo Prazo? (opcional)</label>
+      <div style="display:flex;gap:10px;align-items:center">
+        <input class="form-input" id="ret-novo-prazo" type="date" placeholder="Deixe em branco para não solicitar">
+        <input class="form-input" id="ret-prazo-motivo" placeholder="Motivo da solicitação" style="flex:2">
+      </div>
+    </div>
+    <input type="hidden" id="ret-task-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-retorno')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="salvarRetorno()">Salvar Retorno</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: APROVAR/REPROVAR PRAZO -->
+<div class="modal-overlay" id="modal-prazo">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header"><div class="modal-title">Solicitação de Novo Prazo</div><button class="close-btn" onclick="closeModal('modal-prazo')">✕</button></div>
+    <div id="prazo-info" style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;color:var(--text2)"></div>
+    <div class="form-group"><label class="form-label">Novo Prazo (se aprovar ou redefinir)</label>
+      <input class="form-input" id="prazo-novo-data" type="date">
+    </div>
+    <div class="form-group"><label class="form-label">Observação</label>
+      <input class="form-input" id="prazo-obs" placeholder="Ex: Aprovado. / Prazo redefinido para...">
+    </div>
+    <input type="hidden" id="prazo-task-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-danger" style="flex:1" onclick="decidirPrazo('recusar')">✕ Recusar</button>
+      <button class="btn btn-success" style="flex:1" onclick="decidirPrazo('aprovar')">✓ Aprovar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: JUSTIFICATIVA PONTO -->
+<div class="modal-overlay" id="modal-justif-ponto">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header"><div class="modal-title">Justificativa de Ponto</div><button class="close-btn" onclick="closeModal('modal-justif-ponto')">✕</button></div>
+    <div id="justif-ponto-info" style="font-size:13px;color:var(--text2);margin-bottom:14px"></div>
+    <div class="form-group"><label class="form-label">Motivo</label>
+      <textarea class="form-textarea" id="justif-ponto-txt" placeholder="Descreva o motivo do atraso ou saída antecipada..."></textarea>
+    </div>
+    <input type="hidden" id="justif-ponto-tipo">
+    <input type="hidden" id="justif-ponto-taskid">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-justif-ponto')">Pular</button>
+      <button class="btn btn-primary" style="flex:1" onclick="salvarJustifPonto()">Salvar Justificativa</button>
     </div>
   </div>
 </div>
@@ -912,6 +1142,87 @@
     <div style="display:flex;gap:10px;margin-top:8px">
       <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-reabastecer')">Cancelar</button>
       <button class="btn btn-primary" style="flex:1" onclick="confirmarReabastecimento()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: JUSTIFICATIVA PONTO -->
+<div class="modal-overlay" id="modal-justif-ponto">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header"><div class="modal-title">Justificativa de Ponto</div><button class="close-btn" onclick="closeModal('modal-justif-ponto')">✕</button></div>
+    <div id="justif-ponto-info" style="font-size:13px;color:var(--text2);margin-bottom:14px;padding:10px;background:var(--surface2);border-radius:8px;"></div>
+    <div class="form-group"><label class="form-label">Motivo</label>
+      <textarea class="form-textarea" id="justif-ponto-text" placeholder="Descreva o motivo do atraso ou saída antecipada..."></textarea>
+    </div>
+    <input type="hidden" id="justif-ponto-tipo">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-justif-ponto')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="salvarJustificativaPonto()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: SOLICITAR NOVO PRAZO -->
+<div class="modal-overlay" id="modal-novo-prazo">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header"><div class="modal-title">Solicitar Novo Prazo</div><button class="close-btn" onclick="closeModal('modal-novo-prazo')">✕</button></div>
+    <div id="novo-prazo-info" style="font-size:13px;color:var(--text2);margin-bottom:14px;padding:10px;background:var(--surface2);border-radius:8px;"></div>
+    <div class="form-group"><label class="form-label">Novo prazo sugerido</label>
+      <input class="form-input" type="date" id="novo-prazo-data">
+    </div>
+    <div class="form-group"><label class="form-label">Justificativa</label>
+      <textarea class="form-textarea" id="novo-prazo-motivo" placeholder="Por que precisa de mais tempo?"></textarea>
+    </div>
+    <input type="hidden" id="novo-prazo-task-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-novo-prazo')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="solicitarNovoPrazo()">Enviar Solicitação</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: APROVAR/REPROVAR PRAZO -->
+<div class="modal-overlay" id="modal-resp-prazo">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header"><div class="modal-title">Solicitação de Novo Prazo</div><button class="close-btn" onclick="closeModal('modal-resp-prazo')">✕</button></div>
+    <div id="resp-prazo-info" style="font-size:13px;color:var(--text2);margin-bottom:14px;padding:12px;background:var(--surface2);border-radius:8px;"></div>
+    <div class="form-group"><label class="form-label">Prazo que você define (obrigatório se reprovar)</label>
+      <input class="form-input" type="date" id="resp-prazo-data">
+    </div>
+    <div class="form-group"><label class="form-label">Observação</label>
+      <textarea class="form-textarea" id="resp-prazo-obs" placeholder="Comentário para o colaborador..."></textarea>
+    </div>
+    <input type="hidden" id="resp-prazo-task-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-danger" style="flex:1" onclick="responderPrazo('reprovar')">✕ Reprovar</button>
+      <button class="btn btn-success" style="flex:1" onclick="responderPrazo('aprovar')">✓ Aprovar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: RETORNO COLABORADOR -->
+<div class="modal-overlay" id="modal-retorno">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header"><div class="modal-title">Atualizar Demanda</div><button class="close-btn" onclick="closeModal('modal-retorno')">✕</button></div>
+    <div id="retorno-task-info" style="font-size:13px;color:var(--text2);margin-bottom:14px;padding:10px;background:var(--surface2);border-radius:8px;"></div>
+    <div class="form-group"><label class="form-label">Progresso atual (%)</label>
+      <input class="form-input" type="range" id="retorno-progress" min="0" max="100" step="5" oninput="document.getElementById('retorno-progress-val').textContent=this.value+'%'">
+      <span id="retorno-progress-val" style="font-size:13px;color:var(--accent);font-weight:700">0%</span>
+    </div>
+    <div class="form-group"><label class="form-label">Status</label>
+      <select class="form-select" id="retorno-status">
+        <option value="em_andamento">Em andamento</option>
+        <option value="aguardando">Aguardando</option>
+        <option value="concluida">Concluída</option>
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">Retorno / Comentário</label>
+      <textarea class="form-textarea" id="retorno-text" placeholder="Como está a demanda? Algum impedimento?"></textarea>
+    </div>
+    <input type="hidden" id="retorno-task-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-retorno')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="salvarRetorno()">Atualizar</button>
     </div>
   </div>
 </div>
@@ -1191,6 +1502,9 @@ function startApp() {
   if (!isPosto) initPonto();
   initCaixas();
   initCombustivel();
+  initNotificacoes();
+  initPropostas();
+  setTimeout(verificarAlertas, 5000);
 }
 
 async function renderAdmDashboardExtras() {
@@ -1207,9 +1521,9 @@ function refreshCurrentView() {
   if (!active) return;
   const id = active.id.replace('view-','');
   if (id === 'adm-dashboard') renderDashboard();
-  if (id === 'adm-tasks') renderAllTasks();
+  if (id === 'adm-tasks') { renderAllTasks(); renderPendingDemandasAdm(); }
   if (id === 'adm-team') renderTeam();
-  if (id === 'col-tasks') renderCollabTasks();
+  if (id === 'col-tasks') { renderCollabTasks(); renderColPropPendentes(); }
   if (id === 'adm-ponto') renderAdmPonto();
   if (id === 'col-ponto') renderColPonto();
   if (id === 'adm-postos') renderAdmPostos();
@@ -1220,20 +1534,18 @@ function refreshCurrentView() {
   if (id === 'sup-combustivel') renderSupCombustivel();
   if (id === 'adm-combustivel') renderAdmCombustivel();
   if (id === 'adm-relatorio-comb') renderRelatorioComb();
+  if (id === 'sup-demandas-equipe') renderSupDemandasEquipe();
 }
 
-// ══════════════════════════════════════
-// NAVIGATION
-// ══════════════════════════════════════
 function showView(name, el) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById('view-' + name).classList.add('active');
   document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
   if (el) el.classList.add('active');
   if (name === 'adm-dashboard') renderDashboard();
-  if (name === 'adm-tasks') renderAllTasks();
+  if (name === 'adm-tasks') { renderAllTasks(); renderPendingDemandasAdm(); }
   if (name === 'adm-team') renderTeam();
-  if (name === 'col-tasks') renderCollabTasks();
+  if (name === 'col-tasks') { renderCollabTasks(); renderColPropPendentes(); }
   if (name === 'adm-ponto') renderAdmPonto();
   if (name === 'col-ponto') renderColPonto();
   if (name === 'adm-postos') renderAdmPostos();
@@ -1244,6 +1556,7 @@ function showView(name, el) {
   if (name === 'sup-combustivel') renderSupCombustivel();
   if (name === 'adm-combustivel') renderAdmCombustivel();
   if (name === 'adm-relatorio-comb') renderRelatorioComb();
+  if (name === 'sup-demandas-equipe') renderSupDemandasEquipe();
 }
 
 // ══════════════════════════════════════
@@ -1692,6 +2005,9 @@ async function solicitarAutorizacao() {
     await db.collection('devices').doc(did).set({ id: did, userId: currentUser.id, userName: currentUser.name, authorized: false, requestedAt: new Date().toISOString() });
     document.getElementById('ponto-auth-request').querySelector('.dr-title').textContent = '✅ Solicitação enviada! Aguarde o administrador autorizar.';
     toast('Solicitação enviada ao administrador!', 'ok');
+    // Notificar ADM
+    const adm = allUsers.find(u=>u.role==='admin');
+    if (adm) await criarNotif(adm.id,'maquina',`💻 Autorização de máquina`,`${currentUser.name} solicita autorização de dispositivo para o Ponto Eletrônico.`);
   } catch(e) { toast('Erro ao solicitar', 'err'); }
 }
 
@@ -3174,6 +3490,1003 @@ async function renderRelatorioComb() {
     </div>`;
   });
 
+  el.innerHTML = html;
+}
+
+// ══════════════════════════════════════
+// NOTIFICAÇÕES
+// ══════════════════════════════════════
+let allNotifs = [];
+let unsubNotifs = null;
+
+function initNotificacoes() {
+  if (unsubNotifs) unsubNotifs();
+  unsubNotifs = db.collection('notificacoes')
+    .where('para', '==', currentUser.email)
+    .orderBy('createdAt','desc')
+    .limit(30)
+    .onSnapshot(snap => {
+      allNotifs = snap.docs.map(d=>({id:d.id,...d.data()}));
+      const naoLidas = allNotifs.filter(n=>!n.lida).length;
+      const badge = document.getElementById('notif-count');
+      if (badge) { badge.textContent=naoLidas; badge.style.display=naoLidas>0?'block':'none'; }
+      renderNotifList();
+    });
+}
+
+function renderNotifList() {
+  const el = document.getElementById('notif-list');
+  if (!el) return;
+  if (!allNotifs.length) { el.innerHTML=`<div class="empty" style="padding:32px"><p>Nenhuma notificação</p></div>`; return; }
+  el.innerHTML = allNotifs.map(n=>`
+    <div class="notif-item ${n.lida?'':'ni-'+( n.cor||'accent')}" onclick="lerNotif('${n.id}')">
+      <div class="ni-title">${n.icone||'🔔'} ${n.titulo}</div>
+      <div class="ni-body">${n.corpo}</div>
+      <div class="ni-time">${fmtDT(n.createdAt)}</div>
+    </div>`).join('');
+}
+
+function toggleNotif() {
+  const panel = document.getElementById('notif-panel');
+  const overlay = document.getElementById('notif-overlay');
+  const open = panel.classList.toggle('open');
+  overlay.style.display = open?'block':'none';
+}
+
+async function lerNotif(id) {
+  await db.collection('notificacoes').doc(id).update({lida:true});
+}
+
+async function marcarTodasLidas() {
+  const batch = db.batch();
+  allNotifs.filter(n=>!n.lida).forEach(n=>batch.update(db.collection('notificacoes').doc(n.id),{lida:true}));
+  await batch.commit();
+}
+
+async function addNotificacao(para, titulo, corpo, icone='🔔', cor='accent') {
+  try {
+    const ref = db.collection('notificacoes').doc();
+    await ref.set({id:ref.id, para, titulo, corpo, icone, cor, lida:false, createdAt:new Date().toISOString()});
+  } catch(e) { console.error('Notif error',e); }
+}
+
+// ══════════════════════════════════════
+// SCORE DO COLABORADOR
+// ══════════════════════════════════════
+function calcScore(email, tasks, pontos) {
+  const minhas = tasks.filter(t=>t.assignedTo===email);
+  if (!minhas.length) return {score:100, label:'S', classe:'score-s', emoji:'🏆'};
+
+  let pts = 100;
+  const concluidas = minhas.filter(t=>t.status==='concluida');
+  const furadas = minhas.filter(t=>{
+    if (t.status==='concluida') return false;
+    const prazo = new Date(t.deadline);
+    return prazo < new Date() && t.status !== 'concluida';
+  });
+  const semUpdate = minhas.filter(t=>{
+    if (t.status==='concluida') return false;
+    const ultimo = t.updatedAt||t.createdAt;
+    const dias = (new Date()-new Date(ultimo))/(1000*60*60*24);
+    return dias > 3;
+  });
+
+  pts -= furadas.length * 15;
+  pts -= semUpdate.length * 8;
+  pts += concluidas.length * 5;
+  pts = Math.max(0, Math.min(100, pts));
+
+  // Pontualidade ponto (últimos 30 dias)
+  const meusPontos = pontos.filter(p=>p.email===email);
+  const atrasados = meusPontos.filter(p=>p.justificativa_entrada||p.justificativa_saida).length;
+  pts -= atrasados * 3;
+  pts = Math.max(0, Math.min(100, pts));
+
+  if (pts>=90) return {score:pts, label:'S', classe:'score-s', emoji:'🏆'};
+  if (pts>=75) return {score:pts, label:'A', classe:'score-a', emoji:'✅'};
+  if (pts>=55) return {score:pts, label:'B', classe:'score-b', emoji:'⚠️'};
+  return {score:pts, label:'C', classe:'score-c', emoji:'🔴'};
+}
+
+// ══════════════════════════════════════
+// DEMANDAS — COLABORADOR (retorno + prazo)
+// ══════════════════════════════════════
+function renderCollabTasks() {
+  const el = document.getElementById('col-tasks-list');
+  const stats = document.getElementById('col-task-stats');
+  if (!el) return;
+  const minhas = allTasks.filter(t=>t.assignedTo===currentUser.email);
+  const ativas = minhas.filter(t=>t.status!=='concluida').length;
+  const concluidas = minhas.filter(t=>t.status==='concluida').length;
+  const atrasadas = minhas.filter(t=>t.status!=='concluida'&&new Date(t.deadline)<new Date()).length;
+  const pendPrazo = minhas.filter(t=>t.prazoPendente).length;
+
+  if (stats) stats.innerHTML = `
+    <div class="stat-card"><div class="label">Em Andamento</div><div class="value" style="color:var(--accent)">${ativas}</div></div>
+    <div class="stat-card"><div class="label">Concluídas</div><div class="value" style="color:var(--green)">${concluidas}</div></div>
+    <div class="stat-card"><div class="label">Atrasadas</div><div class="value" style="color:var(--red)">${atrasadas}</div></div>`;
+
+  if (!minhas.length) { el.innerHTML=`<div class="empty"><div class="icon">◈</div><p>Nenhuma demanda atribuída.</p></div>`; return; }
+
+  el.innerHTML = minhas.sort((a,b)=>{
+    if (a.status==='concluida'&&b.status!=='concluida') return 1;
+    if (b.status==='concluida'&&a.status!=='concluida') return -1;
+    return new Date(a.deadline)-new Date(b.deadline);
+  }).map(t=>{
+    const atrasada = t.status!=='concluida'&&new Date(t.deadline)<new Date();
+    const diasRestantes = Math.ceil((new Date(t.deadline)-new Date())/(1000*60*60*24));
+    const ultRetorno = t.retornos?.slice(-1)[0];
+    const prazoPend = t.prazoPendente;
+
+    return `<div class="task-card ${atrasada?'border-red':''}">
+      <div class="task-header">
+        <div class="task-title">${t.title}</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          ${prioTag(t.priority)}
+          ${t.status==='concluida'?'<span class="badge badge-green">✓ Concluída</span>':atrasada?'<span class="badge badge-red">⚠ Atrasada</span>':diasRestantes<=2?'<span class="badge badge-yellow">⏰ Vence em breve</span>':''}
+        </div>
+      </div>
+      <div class="task-meta">
+        <span>📅 Prazo: <strong>${fmtDate(t.deadline)}</strong></span>
+        <span>👤 ${allUsers.find(u=>u.email===t.createdBy)?.name||'ADM'}</span>
+      </div>
+      ${t.description?`<div style="font-size:13px;color:var(--text2);margin:8px 0">${t.description}</div>`:''}
+      <div style="margin:10px 0">
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-bottom:4px"><span>Progresso</span><span>${t.progress||0}%</span></div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${t.progress||0}%;background:${(t.progress||0)>=100?'var(--green)':(t.progress||0)>=60?'var(--accent)':'var(--yellow)'}"></div></div>
+      </div>
+      ${ultRetorno?`<div style="background:var(--surface2);border-radius:8px;padding:10px 12px;margin-top:8px;font-size:12px"><span style="color:var(--text3)">Último retorno (${fmtDT(ultRetorno.em)}): </span>${ultRetorno.texto}</div>`:''}
+      ${prazoPend?`<div class="dem-prazo-req"><div style="font-size:12px;font-weight:700;color:var(--yellow)">⏰ Solicitação de novo prazo enviada</div><div style="font-size:12px;color:var(--text2);margin-top:4px">Para: ${fmtDate(prazoPend.novoPrazo)} — ${prazoPend.motivo}</div><div style="font-size:11px;color:var(--text3);margin-top:3px">Status: ${prazoPend.status==='pendente'?'⏳ Aguardando ADM':prazoPend.status==='aprovado'?'✅ Aprovado':'❌ Recusado'}</div></div>`:''}
+      ${t.obsAdmPrazo?`<div style="background:var(--surface2);border-radius:8px;padding:8px 12px;margin-top:8px;font-size:12px;color:var(--yellow)">📋 ADM: ${t.obsAdmPrazo}</div>`:''}
+      ${t.status!=='concluida'?`<div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn btn-primary btn-sm" style="flex:1" onclick="abrirModalRetorno('${t.id}','${t.title.replace(/'/g,"\\'")}',${t.progress||0})">💬 Atualizar</button>
+      </div>`:''}
+    </div>`;
+  }).join('');
+}
+
+function abrirModalRetorno(id, titulo, progress) {
+  document.getElementById('ret-task-id').value = id;
+  document.getElementById('ret-task-title').textContent = titulo;
+  document.getElementById('ret-progress').value = progress;
+  document.getElementById('ret-prog-num').textContent = progress+'%';
+  document.getElementById('ret-comment').value = '';
+  document.getElementById('ret-novo-prazo').value = '';
+  document.getElementById('ret-prazo-motivo').value = '';
+  document.getElementById('ret-status').value = 'em_andamento';
+  document.getElementById('modal-retorno').classList.add('open');
+}
+
+async function salvarRetorno() {
+  const id = document.getElementById('ret-task-id').value;
+  const progress = parseInt(document.getElementById('ret-progress').value);
+  const comment = document.getElementById('ret-comment').value.trim();
+  const status = document.getElementById('ret-status').value;
+  const novoPrazo = document.getElementById('ret-novo-prazo').value;
+  const prazoMotivo = document.getElementById('ret-prazo-motivo').value.trim();
+  if (!comment) { toast('Escreva uma atualização','err'); return; }
+
+  const task = allTasks.find(t=>t.id===id);
+  const retornos = task.retornos||[];
+  retornos.push({texto:comment, em:new Date().toISOString(), autor:currentUser.name, progress});
+
+  const upd = {progress, status, retornos, updatedAt:new Date().toISOString()};
+
+  if (novoPrazo && prazoMotivo) {
+    upd.prazoPendente = {novoPrazo, motivo:prazoMotivo, status:'pendente', solicitadoEm:new Date().toISOString()};
+    // Notificar ADM
+    const admUsers = allUsers.filter(u=>u.role==='admin');
+    for (const adm of admUsers) {
+      await addNotificacao(adm.email, 'Solicitação de Novo Prazo', `${currentUser.name} solicitou novo prazo para "${task.title}"`, '⏰', 'yellow');
+    }
+  }
+
+  await db.collection('tasks').doc(id).update(upd);
+
+  // Notificar ADM sobre retorno
+  const admUsers = allUsers.filter(u=>u.role==='admin');
+  for (const adm of admUsers) {
+    await addNotificacao(adm.email, 'Retorno em Demanda', `${currentUser.name} atualizou "${task.title}" — ${progress}%`, '💬', 'accent');
+  }
+
+  closeModal('modal-retorno');
+  toast('Retorno salvo!','ok');
+}
+
+function abrirModalPrazo(taskId) {
+  const t = allTasks.find(t=>t.id===taskId);
+  if (!t||!t.prazoPendente) return;
+  document.getElementById('prazo-task-id').value = taskId;
+  document.getElementById('prazo-novo-data').value = t.prazoPendente.novoPrazo||'';
+  document.getElementById('prazo-obs').value = '';
+  document.getElementById('prazo-info').innerHTML = `
+    <strong>${t.title}</strong><br>
+    Solicitante: ${allUsers.find(u=>u.email===t.assignedTo)?.name||'—'}<br>
+    Novo prazo solicitado: ${fmtDate(t.prazoPendente.novoPrazo)}<br>
+    Motivo: ${t.prazoPendente.motivo}`;
+  document.getElementById('modal-prazo').classList.add('open');
+}
+
+async function decidirPrazo(decisao) {
+  const id = document.getElementById('prazo-task-id').value;
+  const novaData = document.getElementById('prazo-novo-data').value;
+  const obs = document.getElementById('prazo-obs').value.trim();
+  const task = allTasks.find(t=>t.id===id);
+  if (decisao==='aprovar'&&!novaData) { toast('Informe o novo prazo','err'); return; }
+
+  const upd = {
+    prazoPendente: {...task.prazoPendente, status:decisao==='aprovar'?'aprovado':'recusado'},
+    obsAdmPrazo: obs||''
+  };
+  if (decisao==='aprovar') upd.deadline = novaData;
+
+  await db.collection('tasks').doc(id).update(upd);
+  await addNotificacao(task.assignedTo, decisao==='aprovar'?'Prazo Aprovado!':'Prazo Recusado',
+    decisao==='aprovar'?`Novo prazo para "${task.title}": ${fmtDate(novaData)}`:`Seu pedido de prazo para "${task.title}" foi recusado. ${obs}`,
+    decisao==='aprovar'?'✅':'❌', decisao==='aprovar'?'green':'red');
+
+  closeModal('modal-prazo');
+  toast(decisao==='aprovar'?'Prazo aprovado!':'Prazo recusado.','ok');
+}
+
+// ══════════════════════════════════════
+// PONTO — JUSTIFICATIVA
+// ══════════════════════════════════════
+function abrirJustifPonto(tipo, pontoId) {
+  const tipos = {entrada:'Atraso na Entrada', almoco:'Atraso no Almoço', retorno:'Atraso no Retorno', saida:'Saída Antecipada'};
+  document.getElementById('justif-ponto-info').innerHTML = `<strong>${tipos[tipo]||tipo}</strong><br>Descreva o motivo abaixo (opcional — você pode pular):`;
+  document.getElementById('justif-ponto-tipo').value = tipo;
+  document.getElementById('justif-ponto-taskid').value = pontoId||'';
+  document.getElementById('justif-ponto-txt').value = '';
+  document.getElementById('modal-justif-ponto').classList.add('open');
+}
+
+async function salvarJustifPonto() {
+  const tipo = document.getElementById('justif-ponto-tipo').value;
+  const txt = document.getElementById('justif-ponto-txt').value.trim();
+  const pontoId = document.getElementById('justif-ponto-taskid').value;
+  if (txt && pontoId) {
+    await db.collection('pontos').doc(pontoId).update({[`justificativa_${tipo}`]: txt});
+    toast('Justificativa salva!','ok');
+  }
+  closeModal('modal-justif-ponto');
+}
+
+// ══════════════════════════════════════
+// PAINEL TIME — VISÃO COMPLETA ADM
+// ══════════════════════════════════════
+let allPontos = [];
+function initPontoADM() {
+  db.collection('pontos').orderBy('date','desc').limit(200).onSnapshot(snap=>{
+    allPontos = snap.docs.map(d=>({id:d.id,...d.data()}));
+  });
+}
+
+function renderTeam() {
+  const el = document.getElementById('team-body');
+  if (!el) return;
+  const colaboradores = allUsers.filter(u=>u.role!=='admin'&&!u.isPosto&&!SUPERVISORES_CAIXA.includes(u.email));
+
+  const pendPrazo = allTasks.filter(t=>t.prazoPendente&&t.prazoPendente.status==='pendente').length;
+  document.getElementById('team-stats').innerHTML = `
+    <div class="stat-card"><div class="label">Colaboradores</div><div class="value">${colaboradores.length}</div></div>
+    <div class="stat-card"><div class="label">Prazos Pendentes</div><div class="value" style="color:${pendPrazo>0?'var(--yellow)':'var(--green)'}">${pendPrazo}</div><div class="sub">aguardando decisão</div></div>
+    <div class="stat-card"><div class="label">Demandas Ativas</div><div class="value" style="color:var(--accent)">${allTasks.filter(t=>t.status!=='concluida').length}</div></div>`;
+
+  if (!colaboradores.length) { el.innerHTML=`<div class="empty"><p>Nenhum colaborador.</p></div>`; return; }
+
+  el.innerHTML = colaboradores.map(col=>{
+    const minhas = allTasks.filter(t=>t.assignedTo===col.email);
+    const ativas = minhas.filter(t=>t.status!=='concluida').length;
+    const concluidas = minhas.filter(t=>t.status==='concluida').length;
+    const furadas = minhas.filter(t=>t.status!=='concluida'&&t.deadline&&new Date(t.deadline)<new Date()).length;
+    const prazoPend = minhas.filter(t=>t.prazoPendente?.status==='pendente');
+    const score = calcScore(col.email, allTasks, allPontos);
+
+    return `<div class="card" style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+        <div class="avatar" style="width:44px;height:44px;font-size:16px">${col.name[0]}</div>
+        <div style="flex:1">
+          <div style="font-size:15px;font-weight:700">${col.name}</div>
+          <div style="font-size:12px;color:var(--text3)">${col.cargo} • ${col.email}</div>
+        </div>
+        <span class="score-badge ${score.classe}">${score.emoji} Score ${score.label} — ${score.score}pts</span>
+      </div>
+      <div class="grid-4" style="margin-bottom:14px;gap:8px">
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px">Ativas</div><div style="font-size:20px;font-weight:700;color:var(--accent)">${ativas}</div></div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px">Concluídas</div><div style="font-size:20px;font-weight:700;color:var(--green)">${concluidas}</div></div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:2px">Prazos Furados</div><div style="font-size:20px;font-weight:700;color:${furadas>0?'var(--red)':'var(--green)'}">${furadas}</div></div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px">Prazo Solicitado</div><div style="font-size:20px;font-weight:700;color:${prazoPend.length>0?'var(--yellow)':'var(--text3)'}">${prazoPend.length}</div></div>
+      </div>
+      ${prazoPend.length?`<div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.2);border-radius:8px;padding:10px 12px;margin-bottom:12px">
+        <div style="font-size:12px;font-weight:700;color:var(--yellow);margin-bottom:6px">⏰ Solicitações de Novo Prazo</div>
+        ${prazoPend.map(t=>`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div style="font-size:13px">${t.title}</div><button class="btn btn-sm btn-primary" onclick="abrirModalPrazo('${t.id}')">Decidir</button></div>`).join('')}
+      </div>`:''}
+      ${minhas.length?`<div>
+        <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px">Demandas</div>
+        ${minhas.sort((a,b)=>new Date(a.deadline)-new Date(b.deadline)).map(t=>{
+          const atrasada = t.status!=='concluida'&&new Date(t.deadline)<new Date();
+          const ultRet = t.retornos?.slice(-1)[0];
+          return `<div style="background:var(--surface2);border-radius:10px;padding:12px 14px;margin-bottom:8px;border-left:3px solid ${t.status==='concluida'?'var(--green)':atrasada?'var(--red)':'var(--accent)'}">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+              <div style="font-size:13px;font-weight:600;flex:1">${t.title}</div>
+              <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+                ${t.status==='concluida'?'<span class="badge badge-green">✓</span>':atrasada?'<span class="badge badge-red">Atrasada</span>':''}
+                ${prioTag(t.priority)}
+              </div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-bottom:8px">
+              <span>Prazo: ${fmtDate(t.deadline)}</span>
+              <span>Progresso: ${t.progress||0}%</span>
+            </div>
+            <div class="progress-bar" style="margin-bottom:${ultRet?'8':'0'}px"><div class="progress-fill" style="width:${t.progress||0}%;background:${(t.progress||0)>=100?'var(--green)':(t.progress||0)>=60?'var(--accent)':'var(--yellow)'}"></div></div>
+            ${ultRet?`<div style="font-size:12px;color:var(--text2);padding-top:6px;border-top:1px solid var(--border)">💬 ${fmtDT(ultRet.em)}: ${ultRet.texto}</div>`:''}
+          </div>`;
+        }).join('')}
+      </div>`:'<div style="font-size:13px;color:var(--text3)">Nenhuma demanda atribuída.</div>'}
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════
+// ALERTAS AUTOMÁTICOS
+// ══════════════════════════════════════
+async function checarAlertas() {
+  if (!currentUser || currentUser.role!=='admin') return;
+  const agora = new Date();
+
+  for (const t of allTasks) {
+    if (t.status==='concluida') continue;
+    const prazo = new Date(t.deadline);
+    const diasPrazo = Math.ceil((prazo-agora)/(1000*60*60*24));
+    const ultimoUpdate = t.updatedAt||t.createdAt;
+    const diasSemUpdate = Math.floor((agora-new Date(ultimoUpdate))/(1000*60*60*24));
+    const key = `alerta_${t.id}`;
+    const jaNotificou = sessionStorage.getItem(key);
+    if (jaNotificou) continue;
+
+    if (diasPrazo<=2&&diasPrazo>=0) {
+      sessionStorage.setItem(key,'1');
+      const admUsers = allUsers.filter(u=>u.role==='admin');
+      for (const adm of admUsers) {
+        await addNotificacao(adm.email, '⚠️ Prazo Vencendo', `"${t.title}" vence em ${diasPrazo===0?'hoje':`${diasPrazo} dia(s)`} — ${allUsers.find(u=>u.email===t.assignedTo)?.name||'—'}`, '⏰','yellow');
+      }
+    }
+    if (diasSemUpdate>=3) {
+      sessionStorage.setItem(key+'_update','1');
+      const admUsers = allUsers.filter(u=>u.role==='admin');
+      for (const adm of admUsers) {
+        await addNotificacao(adm.email, '🔇 Sem Atualização', `"${t.title}" (${allUsers.find(u=>u.email===t.assignedTo)?.name||'—'}) sem update há ${diasSemUpdate} dias`, '🔇','red');
+      }
+    }
+  }
+}
+
+// ══════════════════════════════════════
+// INDICADORES SEMANAIS NO DASHBOARD
+// ══════════════════════════════════════
+function renderIndicadoresSemanais() {
+  const el = document.getElementById('dash-indicadores');
+  if (!el) return;
+  const agora = new Date();
+  const semAgo = new Date(agora.getTime()-7*24*60*60*1000);
+
+  const entregues = allTasks.filter(t=>t.status==='concluida'&&t.updatedAt&&new Date(t.updatedAt)>=semAgo).length;
+  const atrasadas = allTasks.filter(t=>t.status!=='concluida'&&t.deadline&&new Date(t.deadline)<agora).length;
+  const postosAtrasados = allRegistros.filter(r=>r.atraso&&new Date(r.data||r.updatedAt||r.createdAt)>=semAgo).length;
+
+  el.innerHTML = `
+    <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px">📊 Últimos 7 Dias</div>
+    <div class="grid-3" style="gap:10px">
+      <div style="background:var(--surface2);border-radius:10px;padding:14px;text-align:center">
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">Entregas</div>
+        <div style="font-size:24px;font-weight:800;color:var(--green)">${entregues}</div>
+        <div style="font-size:11px;color:var(--text3)">demandas</div>
+      </div>
+      <div style="background:var(--surface2);border-radius:10px;padding:14px;text-align:center">
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">Atrasadas</div>
+        <div style="font-size:24px;font-weight:800;color:${atrasadas>0?'var(--red)':'var(--green)'}">${atrasadas}</div>
+        <div style="font-size:11px;color:var(--text3)">demandas</div>
+      </div>
+      <div style="background:var(--surface2);border-radius:10px;padding:14px;text-align:center">
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">Postos Atrasados</div>
+        <div style="font-size:24px;font-weight:800;color:${postosAtrasados>0?'var(--yellow)':'var(--green)'}">${postosAtrasados}</div>
+        <div style="font-size:11px;color:var(--text3)">esta semana</div>
+      </div>
+    </div>`;
+}
+
+// ══════════════════════════════════════
+// POSTOS ATRASADOS — SUPERVISOR
+// ══════════════════════════════════════
+function renderPostosAtrasados(supervisorEmail) {
+  const el = document.getElementById('supervisor-atrasados');
+  if (!el) return;
+  const seusPostos = POSTOS_INICIAIS.filter(p=>p.supervisor===supervisorEmail);
+  const atrasados = seusPostos.filter(p=>{
+    const regs = allRegistros.filter(r=>r.postoId===p.id||r.postoEmail===p.email);
+    return regs.some(r=>r.atraso);
+  });
+  if (!atrasados.length) { el.innerHTML=`<div style="font-size:13px;color:var(--green)">✅ Nenhum posto com atraso recente.</div>`; return; }
+  el.innerHTML = `
+    <div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:8px">🔴 Postos com Atrasos Recentes</div>
+    ${atrasados.map(p=>`<div style="background:var(--red-bg);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:10px 12px;margin-bottom:6px;font-size:13px">${p.name}</div>`).join('')}`;
+}
+
+// ══════════════════════════════════════
+// NOTIFICAÇÕES
+// ══════════════════════════════════════
+let allNotifs = [];
+let unsubNotifs = null;
+
+function initNotificacoes() {
+  if (unsubNotifs) unsubNotifs();
+  // Use simple query without orderBy to avoid index requirement
+  unsubNotifs = db.collection('notificacoes')
+    .where('para', '==', currentUser.id)
+    .onSnapshot(snap => {
+      allNotifs = snap.docs.map(d=>({id:d.id,...d.data()}))
+        .sort((a,b)=>new Date(b.criadoEm)-new Date(a.criadoEm))
+        .slice(0,30);
+      renderNotifs();
+    });
+}
+
+function renderNotifs() {
+  const unread = allNotifs.filter(n=>!n.lida).length;
+  const cnt = document.getElementById('notif-count');
+  if (cnt) { cnt.textContent = unread; cnt.style.display = unread > 0 ? 'flex' : 'none'; }
+  const el = document.getElementById('notif-list');
+  if (!el) return;
+  if (!allNotifs.length) { el.innerHTML = '<div class="notif-empty">Nenhuma notificação</div>'; return; }
+  const icons = {demanda:'◈',ponto:'⏱',prazo:'📅',posto:'🏪',maquina:'💻',caixa:'💰',comb:'⛽',alerta:'⚠️'};
+  el.innerHTML = allNotifs.map(n => `
+    <div class="notif-item ${n.lida?'':'unread'}" onclick="marcarLida('${n.id}')">
+      <div class="notif-item-title">${icons[n.tipo]||'🔔'} ${n.titulo}</div>
+      <div class="notif-item-sub">${n.mensagem}</div>
+      <div class="notif-item-time">${fmtDT(n.criadoEm)}</div>
+    </div>`).join('');
+}
+
+async function criarNotif(paraId, tipo, titulo, mensagem) {
+  if (!paraId) return;
+  try {
+    await db.collection('notificacoes').add({
+      para: paraId, tipo, titulo, mensagem,
+      lida: false, criadoEm: new Date().toISOString()
+    });
+  } catch(e) { console.warn('Notif err:', e); }
+}
+
+async function marcarLida(id) {
+  await db.collection('notificacoes').doc(id).update({lida:true});
+}
+
+async function markAllRead() {
+  const batch = db.batch();
+  allNotifs.filter(n=>!n.lida).forEach(n=>{
+    batch.update(db.collection('notificacoes').doc(n.id),{lida:true});
+  });
+  await batch.commit();
+}
+
+function toggleNotif() {
+  document.getElementById('notif-panel').classList.toggle('open');
+}
+
+document.addEventListener('click', e => {
+  const panel = document.getElementById('notif-panel');
+  const bell = document.querySelector('.notif-bell');
+  if (panel && !panel.contains(e.target) && bell && !bell.contains(e.target)) {
+    panel.classList.remove('open');
+  }
+});
+
+// ══════════════════════════════════════
+// SCORE AUTOMÁTICO
+// ══════════════════════════════════════
+function calcScore(userId) {
+  const tasks = allTasks.filter(t=>t.assignedTo===userId);
+  if (!tasks.length) return {score:100,label:'S',cls:'score-s',txt:'Excelente',prazosFurados:0};
+  let pontos = 100; let prazosFurados = 0;
+  tasks.forEach(t => {
+    if (t.status === 'concluida') {
+      const entregaTs = (t.updates||[]).slice().reverse().find(u=>u.status==='concluida')?.timestamp;
+      if (entregaTs && t.deadline && new Date(entregaTs) > new Date(t.deadline)) { pontos -= 15; prazosFurados++; }
+    } else {
+      if (t.deadline && new Date(t.deadline) < new Date()) { pontos -= 10; prazosFurados++; }
+      const lastUpd = (t.updates||[]).slice(-1)[0]?.timestamp;
+      const diasSemUpd = lastUpd ? (Date.now()-new Date(lastUpd))/86400000 : 99;
+      if (diasSemUpd > 3) pontos -= 5;
+    }
+  });
+  const pontPessoa = allPontos.filter(p=>p.userId===userId);
+  pontos -= pontPessoa.filter(p=>p.entradaStatus==='atrasado').length * 3;
+  pontos = Math.max(0, Math.min(100, pontos));
+  if (pontos>=85) return {score:pontos,label:'S',cls:'score-s',txt:'Excelente',prazosFurados};
+  if (pontos>=70) return {score:pontos,label:'A',cls:'score-a',txt:'Bom',prazosFurados};
+  if (pontos>=50) return {score:pontos,label:'B',cls:'score-b',txt:'Regular',prazosFurados};
+  return {score:pontos,label:'C',cls:'score-c',txt:'Atenção',prazosFurados};
+}
+
+// ══════════════════════════════════════
+// TIMELINE DE DEMANDAS
+// ══════════════════════════════════════
+function renderTimeline(task) {
+  const events = [];
+  events.push({tipo:'blue',icone:'◈',titulo:'Demanda criada',sub:task.description?.substring(0,60)||'',ts:task.createdAt||''});
+  (task.updates||[]).forEach(u=>{
+    const tipo=u.status==='concluida'?'green':u.tipo==='prazo_aprovado'?'green':u.tipo==='prazo_reprovado'?'red':u.novoPrazo?'yellow':'blue';
+    events.push({tipo,icone:u.status==='concluida'?'✅':u.novoPrazo?'📅':u.tipo==='prazo_aprovado'?'✓':u.tipo==='prazo_reprovado'?'✕':'💬',titulo:u.titulo||'Atualização',sub:u.text||'',ts:u.timestamp,user:u.userName});
+  });
+  if (task.prazoPendente) events.push({tipo:'yellow',icone:'📅',titulo:'Novo prazo solicitado',sub:`Sugeriu: ${fmtD(task.prazoPendente.data)} — ${task.prazoPendente.motivo}`,ts:task.prazoPendente.ts});
+  return `<div class="timeline">${events.map((e,i)=>`
+    <div class="tl-item">
+      <div style="display:flex;flex-direction:column;align-items:center">
+        <div class="tl-dot tl-dot-${e.tipo}">${e.icone}</div>
+        ${i<events.length-1?`<div style="width:2px;background:var(--border);height:20px;margin:2px 0"></div>`:''}
+      </div>
+      <div class="tl-content" style="padding-bottom:8px">
+        <div class="tl-title">${e.titulo}</div>
+        ${e.sub?`<div class="tl-sub">${e.sub}</div>`:''}
+        <div class="tl-time">${fmtDT(e.ts)}${e.user?' · '+e.user:''}</div>
+      </div>
+    </div>`).join('')}</div>`;
+}
+
+function toggleTimeline(id) {
+  const el = document.getElementById('tl-'+id);
+  if (el) el.style.display = el.style.display==='none'?'block':'none';
+}
+
+// ══════════════════════════════════════
+// DEMANDAS — COLABORADOR MELHORADO
+// ══════════════════════════════════════
+function renderCollabTasks() {
+  const tasks = allTasks.filter(t=>t.assignedTo===currentUser.id);
+  const done = tasks.filter(t=>t.status==='concluida').length;
+  const atRisk = tasks.filter(t=>getSem(t)==='red'&&t.status!=='concluida').length;
+  const sc = calcScore(currentUser.id);
+  document.getElementById('col-task-stats').innerHTML = `
+    <div class="stat-card"><div class="label">Total</div><div class="value" style="color:var(--accent)">${tasks.length}</div><div class="sub">demandas</div></div>
+    <div class="stat-card"><div class="label">Concluídas</div><div class="value" style="color:var(--green)">${done}</div><div class="sub">entregues</div></div>
+    <div class="stat-card"><div class="label">Em Risco</div><div class="value" style="color:${atRisk>0?'var(--red)':'var(--green)'}">${atRisk}</div><div class="sub">${atRisk>0?'urgente':'tudo ok'}</div></div>
+    <div class="stat-card"><div class="label">Seu Score</div><div class="value"><span class="score-badge ${sc.cls}">${sc.label} ${sc.score}</span></div><div class="sub">${sc.txt}</div></div>`;
+  const el = document.getElementById('col-tasks-list');
+  if (!tasks.length) { el.innerHTML=`<div class="empty"><div class="icon">◈</div><p>Nenhuma tarefa atribuída ainda.</p></div>`; return; }
+  tasks.sort((a,b)=>({red:0,yellow:1,green:2}[getSem(a)]-{red:0,yellow:1,green:2}[getSem(b)]));
+  el.innerHTML = tasks.map(t=>{
+    const sc2=getSem(t); const canUpd=t.status!=='concluida'; const hasPrazoPend=!!t.prazoPendente;
+    return `<div class="task-card">
+      <div class="task-header"><div class="task-title">${t.title}</div>${semHtml(sc2,semLbl(sc2))}</div>
+      ${t.description?`<div style="font-size:13px;color:var(--text2);margin-bottom:10px">${t.description}</div>`:''}
+      <div class="task-meta">
+        <span>📅 ${fmtD(t.deadline)}</span>
+        <span style="color:${t.priority==='urgente'?'var(--red)':t.priority==='alta'?'var(--yellow)':'var(--text3)'}">⚑ ${t.priority||'normal'}</span>
+        <span>${stIco(t.status)} ${stLbl(t.status)}</span>
+      </div>
+      <div class="task-progress-row"><div class="task-progress-label">${t.progress||0}%</div><div class="progress-wrap" style="flex:1"><div class="progress-bar ${pbCls(sc2)}" style="width:${t.progress||0}%"></div></div></div>
+      ${hasPrazoPend?`<div style="background:var(--yellow-bg);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;color:var(--yellow)">⏳ Solicitação de prazo enviada — aguardando aprovação</div>`:''}
+      <div class="task-actions">
+        ${canUpd?`<button class="btn btn-primary btn-sm" onclick="abrirRetorno('${t.id}')">💬 Atualizar</button>`:`<span style="color:var(--green);font-size:13px;font-weight:600">✅ Concluída</span>`}
+        ${canUpd&&!hasPrazoPend?`<button class="btn btn-sm btn-secondary" onclick="abrirNovoPrazo('${t.id}')">📅 Pedir prazo</button>`:''}
+        <button class="btn btn-sm btn-secondary" onclick="toggleTimeline('${t.id}')">🕐 Linha do tempo</button>
+      </div>
+      <div id="tl-${t.id}" style="display:none;margin-top:10px;border-top:1px solid var(--border);padding-top:10px">${renderTimeline(t)}</div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════
+// DEMANDAS — MODAIS
+// ══════════════════════════════════════
+function abrirRetorno(taskId) {
+  const t = allTasks.find(t=>t.id===taskId); if (!t) return;
+  document.getElementById('retorno-task-id').value = taskId;
+  document.getElementById('retorno-progress').value = t.progress||0;
+  document.getElementById('retorno-progress-val').textContent = (t.progress||0)+'%';
+  document.getElementById('retorno-status').value = t.status||'em_andamento';
+  document.getElementById('retorno-text').value = '';
+  document.getElementById('retorno-task-info').innerHTML = `<strong>${t.title}</strong><br>Prazo: ${fmtD(t.deadline)} · Progresso: ${t.progress||0}%`;
+  document.getElementById('modal-retorno').classList.add('open');
+}
+
+async function salvarRetorno() {
+  const taskId = document.getElementById('retorno-task-id').value;
+  const progress = parseInt(document.getElementById('retorno-progress').value);
+  const status = document.getElementById('retorno-status').value;
+  const text = document.getElementById('retorno-text').value.trim();
+  if (!text) { toast('Descreva o retorno','err'); return; }
+  const t = allTasks.find(t=>t.id===taskId);
+  const upd = {text,progress,status,titulo:'Retorno do colaborador',userName:currentUser.name,timestamp:new Date().toISOString()};
+  await db.collection('tasks').doc(taskId).update({progress,status,updates:[...(t.updates||[]),upd]});
+  const adm = allUsers.find(u=>u.role==='admin');
+  if (adm) await criarNotif(adm.id,'demanda',`Atualização: ${t.title}`,`${currentUser.name}: ${text.substring(0,80)}`);
+  closeModal('modal-retorno'); toast('Demanda atualizada!','ok');
+}
+
+function abrirNovoPrazo(taskId) {
+  const t = allTasks.find(t=>t.id===taskId); if (!t) return;
+  document.getElementById('novo-prazo-task-id').value = taskId;
+  document.getElementById('novo-prazo-data').value = '';
+  document.getElementById('novo-prazo-motivo').value = '';
+  document.getElementById('novo-prazo-info').innerHTML = `<strong>${t.title}</strong><br>Prazo atual: ${fmtD(t.deadline)}`;
+  document.getElementById('modal-novo-prazo').classList.add('open');
+}
+
+async function solicitarNovoPrazo() {
+  const taskId = document.getElementById('novo-prazo-task-id').value;
+  const data = document.getElementById('novo-prazo-data').value;
+  const motivo = document.getElementById('novo-prazo-motivo').value.trim();
+  if (!data || !motivo) { toast('Preencha prazo e motivo','err'); return; }
+  const t = allTasks.find(t=>t.id===taskId);
+  await db.collection('tasks').doc(taskId).update({prazoPendente:{data,motivo,solicitante:currentUser.name,ts:new Date().toISOString()}});
+  const adm = allUsers.find(u=>u.role==='admin');
+  if (adm) await criarNotif(adm.id,'prazo',`Pedido de prazo: ${t.title}`,`${currentUser.name} sugere ${fmtD(data)}: ${motivo}`);
+  closeModal('modal-novo-prazo'); toast('Solicitação enviada!','ok');
+}
+
+function abrirRespPrazo(taskId) {
+  const t = allTasks.find(t=>t.id===taskId); if (!t||!t.prazoPendente) return;
+  document.getElementById('resp-prazo-task-id').value = taskId;
+  document.getElementById('resp-prazo-data').value = t.prazoPendente.data;
+  document.getElementById('resp-prazo-obs').value = '';
+  document.getElementById('resp-prazo-info').innerHTML = `<strong>${t.title}</strong><br>Colaborador: ${t.prazoPendente.solicitante}<br>Prazo sugerido: <strong>${fmtD(t.prazoPendente.data)}</strong><br>Motivo: ${t.prazoPendente.motivo}`;
+  document.getElementById('modal-resp-prazo').classList.add('open');
+}
+
+async function responderPrazo(acao) {
+  const taskId = document.getElementById('resp-prazo-task-id').value;
+  const data = document.getElementById('resp-prazo-data').value;
+  const obs = document.getElementById('resp-prazo-obs').value.trim();
+  if (!data) { toast('Defina um prazo','err'); return; }
+  const t = allTasks.find(t=>t.id===taskId);
+  const upd = {tipo:acao==='aprovar'?'prazo_aprovado':'prazo_reprovado',titulo:acao==='aprovar'?'Novo prazo aprovado':'Prazo reprovado — ADM definiu novo',text:obs||`ADM ${acao==='aprovar'?'aprovou':'reprovou'}.`,novoPrazo:data,userName:'ADM',timestamp:new Date().toISOString()};
+  await db.collection('tasks').doc(taskId).update({deadline:data,updates:[...(t.updates||[]),upd],prazoPendente:null});
+  const colab = allUsers.find(u=>u.id===t.assignedTo);
+  if (colab) await criarNotif(colab.id,'prazo',acao==='aprovar'?`Prazo aprovado: ${t.title}`:`Prazo reprovado: ${t.title}`,acao==='aprovar'?`Novo prazo: ${fmtD(data)}`:`ADM definiu: ${fmtD(data)}. ${obs}`);
+  closeModal('modal-resp-prazo'); toast(acao==='aprovar'?'Prazo aprovado!':'Prazo reprovado com novo definido.','ok');
+}
+
+// ══════════════════════════════════════
+// PAINEL TIME MELHORADO
+// ══════════════════════════════════════
+function renderTeam() {
+  const mainEl = document.getElementById('adm-team-cards');
+  const tbodyEl = document.getElementById('team-tbody');
+  if (!mainEl) return;
+  const collabs = allUsers.filter(u=>u.role!=='admin');
+  if (!collabs.length) { mainEl.innerHTML=`<div class="empty"><div class="icon">◉</div><p>Nenhum colaborador cadastrado.</p></div>`; if(tbodyEl)tbodyEl.innerHTML=''; return; }
+
+  mainEl.innerHTML = collabs.map(c => {
+    const ct = allTasks.filter(t=>t.assignedTo===c.id);
+    const active = ct.filter(t=>t.status!=='concluida').length;
+    const done = ct.filter(t=>t.status==='concluida').length;
+    const avg = ct.length?Math.round(ct.reduce((a,t)=>a+(t.progress||0),0)/ct.length):0;
+    const sc = calcScore(c.id);
+    const prazosFurados = sc.prazosFurados||0;
+    const prazoPend = ct.filter(t=>t.prazoPendente).length;
+    const riskCls = sc.score>=85?'risk-green':sc.score>=60?'risk-yellow':'risk-red';
+    const riskLbl = sc.score>=85?'🟢 OK':sc.score>=60?'🟡 Atenção':'🔴 Risco';
+
+    const demandasHtml = ct.length ? ct.map(t=>{
+      const sem=getSem(t);
+      return `<div style="background:var(--surface3);border-radius:8px;padding:12px 14px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:600">${t.title}</div>
+            <div style="font-size:12px;color:var(--text3);margin-top:2px">Prazo: ${fmtD(t.deadline)} ${t.prazoPendente?'<span style="color:var(--yellow)">⏳ Prazo pendente</span>':''}</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+              <div class="progress-wrap" style="width:120px"><div class="progress-bar ${pbCls(sem)}" style="width:${t.progress||0}%"></div></div>
+              <span style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--text2)">${t.progress||0}%</span>
+              ${semHtml(sem,semLbl(sem))}
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            ${t.prazoPendente?`<button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="abrirRespPrazo('${t.id}')">📅 Resp. prazo</button>`:''}
+            <button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="toggleTimeline('tl2-${t.id}')">🕐 Hist.</button>
+          </div>
+        </div>
+        <div id="tl2-${t.id}" style="display:none;margin-top:10px;border-top:1px solid var(--border);padding-top:10px">${renderTimeline(t)}</div>
+      </div>`;
+    }).join('') : `<div style="font-size:13px;color:var(--text3);padding:10px 0">Nenhuma demanda atribuída.</div>`;
+
+    return `<div class="team-card">
+      <div class="team-card-header" onclick="toggleTeamCard('${c.id}')">
+        <div class="avatar avatar-collab" style="font-size:13px;width:38px;height:38px">${c.name[0]}</div>
+        <div style="flex:1">
+          <div style="font-size:14px;font-weight:700">${c.name}</div>
+          <div style="font-size:12px;color:var(--text3)">${c.cargo||'—'} · ${active} ativas · ${done} concluídas · progresso médio: ${avg}%</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+          <span class="score-badge ${sc.cls}">${sc.label} ${sc.score}</span>
+          <span class="risk-badge ${riskCls}">${riskLbl}</span>
+          ${prazosFurados>0?`<span style="font-size:11px;color:var(--red);font-weight:700;background:var(--red-bg);padding:3px 8px;border-radius:12px">⚠ ${prazosFurados} prazo(s) furado(s)</span>`:''}
+          ${prazoPend>0?`<span style="font-size:11px;color:var(--yellow);font-weight:700;background:var(--yellow-bg);padding:3px 8px;border-radius:12px">📅 ${prazoPend} pedido(s)</span>`:''}
+          <span style="font-size:16px;color:var(--text3)">▾</span>
+        </div>
+      </div>
+      <div class="team-card-body" id="team-body-${c.id}">${demandasHtml}</div>
+    </div>`;
+  }).join('');
+  if (tbodyEl) tbodyEl.innerHTML = '';
+}
+
+function toggleTeamCard(id) {
+  const el = document.getElementById('team-body-'+id);
+  if (el) el.classList.toggle('open');
+}
+
+// ══════════════════════════════════════
+// SAVE TASK — NOTIFICAR COLABORADOR
+// ══════════════════════════════════════
+async function saveTaskComNotif() {
+  const editId = document.getElementById('nt-edit-id').value;
+  const assignedTo = document.getElementById('nt-assign').value;
+  await saveTask(); // chama função original
+  if (!editId) {
+    // Nova demanda — notificar colaborador
+    const colab = allUsers.find(u=>u.id===assignedTo);
+    const titulo = document.getElementById('nt-title').value;
+    if (colab) await criarNotif(colab.id,'demanda',`Nova demanda: ${titulo}`,`ADM atribuiu uma nova demanda para você.`);
+  }
+}
+
+// ══════════════════════════════════════
+// ALERTAS AUTOMÁTICOS (roda ao carregar)
+// ══════════════════════════════════════
+async function verificarAlertas() {
+  if (!currentUser || currentUser.role !== 'admin') return;
+  const adm = allUsers.find(u=>u.role==='admin');
+  if (!adm) return;
+  const hoje = new Date();
+  const em2dias = new Date(hoje.getTime() + 2*86400000);
+  for (const t of allTasks) {
+    if (t.status === 'concluida') continue;
+    const deadlineDate = new Date(t.deadline);
+    if (deadlineDate <= em2dias && deadlineDate >= hoje) {
+      const lastUpd = (t.updates||[]).slice(-1)[0]?.timestamp;
+      const diasSemUpd = lastUpd ? (Date.now()-new Date(lastUpd))/86400000 : 99;
+      if (diasSemUpd > 2) {
+        const colab = allUsers.find(u=>u.id===t.assignedTo);
+        await criarNotif(adm.id,'alerta',`⚠ Vence em breve: ${t.title}`,`${colab?.name||'—'} sem update há ${Math.round(diasSemUpd)}d. Prazo: ${fmtD(t.deadline)}`);
+      }
+    }
+  }
+}
+
+// ══════════════════════════════════════
+// PROPOSTA DE DEMANDA
+// ══════════════════════════════════════
+let allPropostas = [];
+let unsubPropostas = null;
+
+// Regras de quem pode propor para quem
+const CARGO_REGRAS = {
+  'Supervisor Comercial': ['Jovem Aprendiz'],
+  'Assistente Treinamento': ['Backoffice Operação'],
+};
+
+function getDestinatariosPermitidos(user) {
+  // Colaborador comum → só para si mesmo
+  // Supervisor → Jovem Aprendiz
+  // Assistente Treinamento → Backoffice
+  const cargo = user.cargo || '';
+  const permitidos = [user.id]; // sempre pode para si mesmo
+  const cargosAlvo = CARGO_REGRAS[cargo] || [];
+  allUsers.filter(u => cargosAlvo.includes(u.cargo)).forEach(u => permitidos.push(u.id));
+  return permitidos;
+}
+
+function initPropostas() {
+  if (unsubPropostas) unsubPropostas();
+  unsubPropostas = db.collection('propostas_demanda').onSnapshot(snap => {
+    allPropostas = snap.docs.map(d=>({id:d.id,...d.data()}));
+    // Badge no ADM nav demandas
+    const pendAdm = allPropostas.filter(p=>p.status==='pendente').length;
+    const navTasks = document.getElementById('nav-tasks');
+    if (navTasks) {
+      let badge = document.getElementById('prop-badge');
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.id = 'prop-badge';
+        badge.style.cssText = 'background:var(--yellow);color:#000;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px';
+        navTasks.appendChild(badge);
+      }
+      badge.textContent = pendAdm;
+      badge.style.display = pendAdm > 0 ? 'inline' : 'none';
+    }
+    // Atualizar views abertas
+    const active = document.querySelector('.view.active');
+    if (active?.id === 'view-adm-tasks') renderPendingDemandasAdm();
+    if (active?.id === 'view-col-tasks') renderColPropPendentes();
+    if (active?.id === 'view-sup-demandas-equipe') renderSupDemandasEquipe();
+  });
+}
+
+function abrirProporDemanda() {
+  const permitidos = getDestinatariosPermitidos(currentUser);
+  const destinatarios = allUsers.filter(u => permitidos.includes(u.id));
+  document.getElementById('prop-titulo').value = '';
+  document.getElementById('prop-desc').value = '';
+  document.getElementById('prop-deadline').value = '';
+  document.getElementById('prop-justif').value = '';
+  document.getElementById('prop-priority').value = 'normal';
+  const sel = document.getElementById('prop-assignee');
+  sel.innerHTML = destinatarios.map(u => `<option value="${u.id}">${u.name}${u.id===currentUser.id?' (você)':''}</option>`).join('');
+  document.getElementById('modal-propor-demanda').classList.add('open');
+}
+
+async function enviarPropostaDemanda() {
+  const titulo = document.getElementById('prop-titulo').value.trim();
+  const desc = document.getElementById('prop-desc').value.trim();
+  const assigneeId = document.getElementById('prop-assignee').value;
+  const deadline = document.getElementById('prop-deadline').value;
+  const priority = document.getElementById('prop-priority').value;
+  const justif = document.getElementById('prop-justif').value.trim();
+  if (!titulo) { toast('Informe o título da demanda','err'); return; }
+  if (!deadline) { toast('Informe o prazo sugerido','err'); return; }
+  if (!justif) { toast('Informe a justificativa','err'); return; }
+  const assignee = allUsers.find(u=>u.id===assigneeId);
+  try {
+    const ref = db.collection('propostas_demanda').doc();
+    await ref.set({
+      id: ref.id, titulo, desc, assigneeId, assigneeName: assignee?.name||'',
+      deadline, priority, justif,
+      proponenteId: currentUser.id, proponenteNome: currentUser.name,
+      proponenteCargo: currentUser.cargo||'',
+      status: 'pendente', criadoEm: new Date().toISOString()
+    });
+    // Notificar ADM
+    const adm = allUsers.find(u=>u.role==='admin');
+    if (adm) await criarNotif(adm.id,'demanda',`📋 Proposta de demanda: ${titulo}`,`${currentUser.name} propôs demanda para ${assignee?.name||'—'}. Aguarda sua aprovação.`);
+    closeModal('modal-propor-demanda');
+    toast('Proposta enviada! Aguardando aprovação do ADM.','ok');
+  } catch(e) { console.error(e); toast('Erro ao enviar proposta','err'); }
+}
+
+async function aprovarProposta(propostaId) {
+  const p = allPropostas.find(x=>x.id===propostaId);
+  if (!p) return;
+  try {
+    // Criar demanda oficial
+    const ref = db.collection('tasks').doc();
+    await ref.set({
+      id: ref.id, title: p.titulo, description: p.desc,
+      assignedTo: p.assigneeId, deadline: p.deadline,
+      priority: p.priority, status: 'em_andamento', progress: 0,
+      updates: [], createdAt: new Date().toISOString()
+    });
+    // Marcar proposta como aprovada
+    await db.collection('propostas_demanda').doc(propostaId).update({status:'aprovada', aprovadaEm:new Date().toISOString()});
+    // Notificar proponente
+    if (p.proponenteId !== p.assigneeId) {
+      await criarNotif(p.proponenteId,'demanda',`✅ Proposta aprovada: ${p.titulo}`,`ADM aprovou sua proposta. A demanda foi criada para ${p.assigneeName}.`);
+    }
+    // Notificar destinatário
+    await criarNotif(p.assigneeId,'demanda',`◈ Nova demanda: ${p.titulo}`,`Proposta de ${p.proponenteNome} foi aprovada pelo ADM e atribuída a você.`);
+    toast('Proposta aprovada! Demanda criada.','ok');
+  } catch(e) { console.error(e); toast('Erro ao aprovar','err'); }
+}
+
+function abrirReprovarDemanda(propostaId) {
+  const p = allPropostas.find(x=>x.id===propostaId);
+  if (!p) return;
+  document.getElementById('repr-demanda-id').value = propostaId;
+  document.getElementById('repr-motivo').value = '';
+  document.getElementById('repr-demanda-info').innerHTML = `<strong>${p.titulo}</strong><br>Proposta por: ${p.proponenteNome} → para ${p.assigneeName}`;
+  document.getElementById('modal-reprovar-demanda').classList.add('open');
+}
+
+async function reprovarDemanda() {
+  const id = document.getElementById('repr-demanda-id').value;
+  const motivo = document.getElementById('repr-motivo').value.trim();
+  if (!motivo) { toast('Informe o motivo da reprovação','err'); return; }
+  const p = allPropostas.find(x=>x.id===id);
+  try {
+    await db.collection('propostas_demanda').doc(id).update({status:'reprovada', motivoReprovacao:motivo, reprovadaEm:new Date().toISOString()});
+    await criarNotif(p.proponenteId,'demanda',`✕ Proposta reprovada: ${p.titulo}`,`ADM reprovou: ${motivo}`);
+    closeModal('modal-reprovar-demanda');
+    toast('Proposta reprovada.','ok');
+  } catch(e) { toast('Erro','err'); }
+}
+
+// ─── Render: ADM vê propostas pendentes ───
+function renderPendingDemandasAdm() {
+  const el = document.getElementById('adm-pending-demandas-wrap');
+  if (!el) return;
+  const pendentes = allPropostas.filter(p=>p.status==='pendente');
+  if (!pendentes.length) { el.innerHTML=''; return; }
+  el.innerHTML = `
+    <div class="card" style="margin-bottom:20px;border:1px solid rgba(245,158,11,.3);background:var(--yellow-bg)">
+      <div style="font-size:13px;font-weight:700;color:var(--yellow);margin-bottom:14px">📋 ${pendentes.length} proposta(s) aguardando aprovação</div>
+      ${pendentes.map(p=>`
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+            <div style="flex:1">
+              <div style="font-size:14px;font-weight:700;margin-bottom:4px">${p.titulo}</div>
+              <div style="font-size:12px;color:var(--text2);margin-bottom:4px">
+                <strong>${p.proponenteNome}</strong> → <strong>${p.assigneeName}</strong>
+                <span style="margin-left:8px;color:var(--text3)">Prazo: ${fmtD(p.deadline)}</span>
+                <span style="margin-left:8px;color:${p.priority==='urgente'?'var(--red)':p.priority==='alta'?'var(--yellow)':'var(--text3)'}">⚑ ${p.priority}</span>
+              </div>
+              ${p.desc?`<div style="font-size:13px;color:var(--text2);margin-bottom:6px">${p.desc}</div>`:''}
+              <div style="font-size:12px;background:var(--surface2);border-radius:6px;padding:8px;color:var(--text2)">
+                💬 Justificativa: ${p.justif}
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;flex-shrink:0">
+              <button class="btn btn-sm btn-success" onclick="aprovarProposta('${p.id}')">✓ Aprovar</button>
+              <button class="btn btn-sm btn-danger" onclick="abrirReprovarDemanda('${p.id}')">✕ Reprovar</button>
+            </div>
+          </div>
+        </div>`).join('')}
+    </div>`;
+}
+
+// ─── Render: Colaborador vê suas propostas pendentes ───
+function renderColPropPendentes() {
+  const el = document.getElementById('col-prop-pendentes-wrap');
+  if (!el) return;
+  const minhas = allPropostas.filter(p=>p.proponenteId===currentUser.id&&p.status==='pendente');
+  if (!minhas.length) { el.innerHTML=''; return; }
+  el.innerHTML = `
+    <div style="background:var(--yellow-bg);border:1px solid rgba(245,158,11,.25);border-radius:10px;padding:14px 16px;margin-bottom:16px">
+      <div style="font-size:12px;font-weight:700;color:var(--yellow);margin-bottom:8px">📋 Suas propostas aguardando aprovação</div>
+      ${minhas.map(p=>`
+        <div style="font-size:13px;color:var(--text2);padding:8px 0;border-bottom:1px solid var(--border)">
+          <strong>${p.titulo}</strong> → ${p.assigneeName} · Prazo: ${fmtD(p.deadline)}
+        </div>`).join('')}
+    </div>`;
+}
+
+// ─── Render: Supervisor vê demandas da equipe ───
+function renderSupDemandasEquipe() {
+  const el = document.getElementById('sup-demandas-equipe-body');
+  if (!el) return;
+  const cargosAlvo = CARGO_REGRAS[currentUser.cargo||''] || [];
+  const equipe = allUsers.filter(u=>cargosAlvo.includes(u.cargo));
+  if (!equipe.length) { el.innerHTML=`<div class="empty"><div class="icon">◈</div><p>Nenhum colaborador sob sua supervisão.</p></div>`; return; }
+
+  // Propostas pendentes do supervisor
+  const propPend = allPropostas.filter(p=>p.proponenteId===currentUser.id&&p.status==='pendente');
+
+  let html = '';
+  if (propPend.length) {
+    html += `<div style="background:var(--yellow-bg);border:1px solid rgba(245,158,11,.25);border-radius:10px;padding:14px 16px;margin-bottom:16px">
+      <div style="font-size:12px;font-weight:700;color:var(--yellow);margin-bottom:8px">⏳ Suas propostas aguardando aprovação ADM</div>
+      ${propPend.map(p=>`<div style="font-size:13px;color:var(--text2);padding:6px 0">◈ <strong>${p.titulo}</strong> → ${p.assigneeName}</div>`).join('')}
+    </div>`;
+  }
+
+  equipe.forEach(colab => {
+    const tarefas = allTasks.filter(t=>t.assignedTo===colab.id);
+    const sc = calcScore(colab.id);
+    html += `<div class="caixa-card">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+        <div class="avatar avatar-collab" style="font-size:13px;width:36px;height:36px">${colab.name[0]}</div>
+        <div style="flex:1">
+          <div style="font-size:14px;font-weight:700">${colab.name}</div>
+          <div style="font-size:12px;color:var(--text3)">${colab.cargo||'—'} · ${tarefas.filter(t=>t.status!=='concluida').length} ativas</div>
+        </div>
+        <span class="score-badge ${sc.cls}">${sc.label} ${sc.score}</span>
+      </div>
+      ${tarefas.length ? tarefas.map(t=>{
+        const sem=getSem(t);
+        return `<div style="background:var(--surface2);border-radius:8px;padding:10px 12px;margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div style="font-size:13px;font-weight:600">${t.title}</div>
+            ${semHtml(sem,semLbl(sem))}
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+            <div class="progress-wrap" style="width:100px"><div class="progress-bar ${pbCls(sem)}" style="width:${t.progress||0}%"></div></div>
+            <span style="font-size:12px;font-family:'IBM Plex Mono',monospace">${t.progress||0}%</span>
+            <span style="font-size:12px;color:var(--text3)">Prazo: ${fmtD(t.deadline)}</span>
+          </div>
+        </div>`;
+      }).join('') : `<div style="font-size:13px;color:var(--text3)">Nenhuma demanda ativa.</div>`}
+    </div>`;
+  });
   el.innerHTML = html;
 }
 
