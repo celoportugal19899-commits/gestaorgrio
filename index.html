@@ -1783,10 +1783,7 @@ function renderAllTasks() {
   }).join('');
 }
 
-function renderTeam() {
-  const collabs = allUsers.filter(u=>u.role!=='admin');
-  const tbody = document.getElementById('team-tbody');
-  if (!collabs.length) { tbody.innerHTML=`<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:32px">Nenhum colaborador cadastrado</td></tr>`; return; }
+function renderTeam()
   tbody.innerHTML = collabs.map(c => {
     const ct = allTasks.filter(t=>t.assignedTo===c.id);
     const active = ct.filter(t=>t.status!=='concluida').length;
@@ -3764,18 +3761,7 @@ function initPontoADM() {
   });
 }
 
-function renderTeam() {
-  const el = document.getElementById('team-body');
-  if (!el) return;
-  const colaboradores = allUsers.filter(u=>u.role!=='admin'&&!u.isPosto&&!SUPERVISORES_CAIXA.includes(u.email));
-
-  const pendPrazo = allTasks.filter(t=>t.prazoPendente&&t.prazoPendente.status==='pendente').length;
-  document.getElementById('team-stats').innerHTML = `
-    <div class="stat-card"><div class="label">Colaboradores</div><div class="value">${colaboradores.length}</div></div>
-    <div class="stat-card"><div class="label">Prazos Pendentes</div><div class="value" style="color:${pendPrazo>0?'var(--yellow)':'var(--green)'}">${pendPrazo}</div><div class="sub">aguardando decisão</div></div>
-    <div class="stat-card"><div class="label">Demandas Ativas</div><div class="value" style="color:var(--accent)">${allTasks.filter(t=>t.status!=='concluida').length}</div></div>`;
-
-  if (!colaboradores.length) { el.innerHTML=`<div class="empty"><p>Nenhum colaborador.</p></div>`; return; }
+function renderTeam()
 
   el.innerHTML = colaboradores.map(col=>{
     const minhas = allTasks.filter(t=>t.assignedTo===col.email);
@@ -4185,7 +4171,7 @@ function renderTeam() {
           </div>
           <div style="display:flex;flex-direction:column;gap:6px">
             ${t.prazoPendente?`<button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="abrirRespPrazo('${t.id}')">📅 Resp. prazo</button>`:''}
-            <button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="toggleTimeline('tl2-${t.id}')">🕐 Hist.</button>
+            <button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="const el=document.getElementById('tl2-${t.id}');if(el)el.style.display=el.style.display==='none'?'block':'none'">🕐 Hist.</button>
           </div>
         </div>
         <div id="tl2-${t.id}" style="display:none;margin-top:10px;border-top:1px solid var(--border);padding-top:10px">${renderTimeline(t)}</div>
