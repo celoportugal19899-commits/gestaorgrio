@@ -4085,9 +4085,9 @@ function abrirRetorno(taskId) {
   const t = allTasks.find(t=>t.id===taskId); if (!t) return;
   document.getElementById('ret-task-id').value = taskId;
   document.getElementById('ret-progress').value = t.progress||0;
-  document.getElementById(ret-prog-num).textContent = (t.progress||0)+'%';
+  document.getElementById('ret-prog-num').textContent = (t.progress||0)+'%';
   document.getElementById('ret-status').value = t.status||'em_andamento';
-  document.getElementById(ret-comment').value = '';
+  document.getElementById('ret-comment').value = '';
   document.getElementById('ret-task-title').textContent = t.title;
   document.getElementById('modal-retorno').classList.add('open');
 }
