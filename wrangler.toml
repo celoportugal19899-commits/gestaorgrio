@@ -1,4 +1,4 @@
-name = "gestaorgrio"
+name = "gestaorg-rio"
 compatibility_date = "2026-05-19"
 main = "worker.js"
 
