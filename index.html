@@ -3742,384 +3742,71 @@ function initPontoADM() {
   });
 }
 
-function renderTeam()
-
-  el.innerHTML = colaboradores.map(col=>{
-    const minhas = allTasks.filter(t=>t.assignedTo===col.email);
-    const ativas = minhas.filter(t=>t.status!=='concluida').length;
-    const concluidas = minhas.filter(t=>t.status==='concluida').length;
-    const furadas = minhas.filter(t=>t.status!=='concluida'&&t.deadline&&new Date(t.deadline)<new Date()).length;
-    const prazoPend = minhas.filter(t=>t.prazoPendente?.status==='pendente');
-    const score = calcScore(col.email, allTasks, allPontos);
-
-    return `<div class="card" style="margin-bottom:16px">
-      <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
-        <div class="avatar" style="width:44px;height:44px;font-size:16px">${col.name[0]}</div>
-        <div style="flex:1">
-          <div style="font-size:15px;font-weight:700">${col.name}</div>
-          <div style="font-size:12px;color:var(--text3)">${col.cargo} • ${col.email}</div>
-        </div>
-        <span class="score-badge ${score.classe}">${score.emoji} Score ${score.label} — ${score.score}pts</span>
-      </div>
-      <div class="grid-4" style="margin-bottom:14px;gap:8px">
-        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px">Ativas</div><div style="font-size:20px;font-weight:700;color:var(--accent)">${ativas}</div></div>
-        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px">Concluídas</div><div style="font-size:20px;font-weight:700;color:var(--green)">${concluidas}</div></div>
-        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:2px">Prazos Furados</div><div style="font-size:20px;font-weight:700;color:${furadas>0?'var(--red)':'var(--green)'}">${furadas}</div></div>
-        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px">Prazo Solicitado</div><div style="font-size:20px;font-weight:700;color:${prazoPend.length>0?'var(--yellow)':'var(--text3)'}">${prazoPend.length}</div></div>
-      </div>
-      ${prazoPend.length?`<div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.2);border-radius:8px;padding:10px 12px;margin-bottom:12px">
-        <div style="font-size:12px;font-weight:700;color:var(--yellow);margin-bottom:6px">⏰ Solicitações de Novo Prazo</div>
-        ${prazoPend.map(t=>`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div style="font-size:13px">${t.title}</div><button class="btn btn-sm btn-primary" onclick="abrirModalPrazo('${t.id}')">Decidir</button></div>`).join('')}
-      </div>`:''}
-      ${minhas.length?`<div>
-        <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px">Demandas</div>
-        ${minhas.sort((a,b)=>new Date(a.deadline)-new Date(b.deadline)).map(t=>{
-          const atrasada = t.status!=='concluida'&&new Date(t.deadline)<new Date();
-          const ultRet = t.retornos?.slice(-1)[0];
-          return `<div style="background:var(--surface2);border-radius:10px;padding:12px 14px;margin-bottom:8px;border-left:3px solid ${t.status==='concluida'?'var(--green)':atrasada?'var(--red)':'var(--accent)'}">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
-              <div style="font-size:13px;font-weight:600;flex:1">${t.title}</div>
-              <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
-                ${t.status==='concluida'?'<span class="badge badge-green">✓</span>':atrasada?'<span class="badge badge-red">Atrasada</span>':''}
-                ${prioTag(t.priority)}
-              </div>
-            </div>
-            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-bottom:8px">
-              <span>Prazo: ${fmtDate(t.deadline)}</span>
-              <span>Progresso: ${t.progress||0}%</span>
-            </div>
-            <div class="progress-bar" style="margin-bottom:${ultRet?'8':'0'}px"><div class="progress-fill" style="width:${t.progress||0}%;background:${(t.progress||0)>=100?'var(--green)':(t.progress||0)>=60?'var(--accent)':'var(--yellow)'}"></div></div>
-            ${ultRet?`<div style="font-size:12px;color:var(--text2);padding-top:6px;border-top:1px solid var(--border)">💬 ${fmtDT(ultRet.em)}: ${ultRet.texto}</div>`:''}
-          </div>`;
-        }).join('')}
-      </div>`:'<div style="font-size:13px;color:var(--text3)">Nenhuma demanda atribuída.</div>'}
-    </div>`;
-  }).join('');
-}
-
-// ══════════════════════════════════════
-// ALERTAS AUTOMÁTICOS
-// ══════════════════════════════════════
-async function checarAlertas() {
-  if (!currentUser || currentUser.role!=='admin') return;
-  const agora = new Date();
-
-  for (const t of allTasks) {
-    if (t.status==='concluida') continue;
-    const prazo = new Date(t.deadline);
-    const diasPrazo = Math.ceil((prazo-agora)/(1000*60*60*24));
-    const ultimoUpdate = t.updatedAt||t.createdAt;
-    const diasSemUpdate = Math.floor((agora-new Date(ultimoUpdate))/(1000*60*60*24));
-    const key = `alerta_${t.id}`;
-    const jaNotificou = sessionStorage.getItem(key);
-    if (jaNotificou) continue;
-
-    if (diasPrazo<=2&&diasPrazo>=0) {
-      sessionStorage.setItem(key,'1');
-      const admUsers = allUsers.filter(u=>u.role==='admin');
-      for (const adm of admUsers) {
-        await addNotificacao(adm.email, '⚠️ Prazo Vencendo', `"${t.title}" vence em ${diasPrazo===0?'hoje':`${diasPrazo} dia(s)`} — ${allUsers.find(u=>u.email===t.assignedTo)?.name||'—'}`, '⏰','yellow');
-      }
-    }
-    if (diasSemUpdate>=3) {
-      sessionStorage.setItem(key+'_update','1');
-      const admUsers = allUsers.filter(u=>u.role==='admin');
-      for (const adm of admUsers) {
-        await addNotificacao(adm.email, '🔇 Sem Atualização', `"${t.title}" (${allUsers.find(u=>u.email===t.assignedTo)?.name||'—'}) sem update há ${diasSemUpdate} dias`, '🔇','red');
-      }
-    }
-  }
-}
-
-// ══════════════════════════════════════
-// INDICADORES SEMANAIS NO DASHBOARD
-// ══════════════════════════════════════
-function renderIndicadoresSemanais() {
-  const el = document.getElementById('dash-indicadores');
-  if (!el) return;
-  const agora = new Date();
-  const semAgo = new Date(agora.getTime()-7*24*60*60*1000);
-
-  const entregues = allTasks.filter(t=>t.status==='concluida'&&t.updatedAt&&new Date(t.updatedAt)>=semAgo).length;
-  const atrasadas = allTasks.filter(t=>t.status!=='concluida'&&t.deadline&&new Date(t.deadline)<agora).length;
-  const postosAtrasados = allRegistros.filter(r=>r.atraso&&new Date(r.data||r.updatedAt||r.createdAt)>=semAgo).length;
-
-  el.innerHTML = `
-    <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px">📊 Últimos 7 Dias</div>
-    <div class="grid-3" style="gap:10px">
-      <div style="background:var(--surface2);border-radius:10px;padding:14px;text-align:center">
-        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">Entregas</div>
-        <div style="font-size:24px;font-weight:800;color:var(--green)">${entregues}</div>
-        <div style="font-size:11px;color:var(--text3)">demandas</div>
-      </div>
-      <div style="background:var(--surface2);border-radius:10px;padding:14px;text-align:center">
-        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">Atrasadas</div>
-        <div style="font-size:24px;font-weight:800;color:${atrasadas>0?'var(--red)':'var(--green)'}">${atrasadas}</div>
-        <div style="font-size:11px;color:var(--text3)">demandas</div>
-      </div>
-      <div style="background:var(--surface2);border-radius:10px;padding:14px;text-align:center">
-        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">Postos Atrasados</div>
-        <div style="font-size:24px;font-weight:800;color:${postosAtrasados>0?'var(--yellow)':'var(--green)'}">${postosAtrasados}</div>
-        <div style="font-size:11px;color:var(--text3)">esta semana</div>
-      </div>
-    </div>`;
-}
-
-// ══════════════════════════════════════
-// POSTOS ATRASADOS — SUPERVISOR
-// ══════════════════════════════════════
-function renderPostosAtrasados(supervisorEmail) {
-  const el = document.getElementById('supervisor-atrasados');
-  if (!el) return;
-  const seusPostos = POSTOS_INICIAIS.filter(p=>p.supervisor===supervisorEmail);
-  const atrasados = seusPostos.filter(p=>{
-    const regs = allRegistros.filter(r=>r.postoId===p.id||r.postoEmail===p.email);
-    return regs.some(r=>r.atraso);
-  });
-  if (!atrasados.length) { el.innerHTML=`<div style="font-size:13px;color:var(--green)">✅ Nenhum posto com atraso recente.</div>`; return; }
-  el.innerHTML = `
-    <div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:8px">🔴 Postos com Atrasos Recentes</div>
-    ${atrasados.map(p=>`<div style="background:var(--red-bg);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:10px 12px;margin-bottom:6px;font-size:13px">${p.name}</div>`).join('')}`;
-}
-
-// ══════════════════════════════════════
-// NOTIFICAÇÕES
-// ══════════════════════════════════════
-let allNotifs = [];
-
-function initNotificacoes() {
-  if (unsubNotifs) unsubNotifs();
-  // Use simple query without orderBy to avoid index requirement
-  unsubNotifs = db.collection('notificacoes')
-    .where('para', '==', currentUser.id)
-    .onSnapshot(snap => {
-      allNotifs = snap.docs.map(d=>({id:d.id,...d.data()}))
-        .sort((a,b)=>new Date(b.criadoEm)-new Date(a.criadoEm))
-        .slice(0,30);
-      renderNotifs();
-    });
-}
-
-function renderNotifs() {
-  const unread = allNotifs.filter(n=>!n.lida).length;
-  const cnt = document.getElementById('notif-count');
-  if (cnt) { cnt.textContent = unread; cnt.style.display = unread > 0 ? 'flex' : 'none'; }
-  const el = document.getElementById('notif-list');
-  if (!el) return;
-  if (!allNotifs.length) { el.innerHTML = '<div class="notif-empty">Nenhuma notificação</div>'; return; }
-  const icons = {demanda:'◈',ponto:'⏱',prazo:'📅',posto:'🏪',maquina:'💻',caixa:'💰',comb:'⛽',alerta:'⚠️'};
-  el.innerHTML = allNotifs.map(n => `
-    <div class="notif-item ${n.lida?'':'unread'}" onclick="marcarLida('${n.id}')">
-      <div class="notif-item-title">${icons[n.tipo]||'🔔'} ${n.titulo}</div>
-      <div class="notif-item-sub">${n.mensagem}</div>
-      <div class="notif-item-time">${fmtDT(n.criadoEm)}</div>
-    </div>`).join('');
-}
-
-async function criarNotif(paraId, tipo, titulo, mensagem) {
-  if (!paraId) return;
-  try {
-    await db.collection('notificacoes').add({
-      para: paraId, tipo, titulo, mensagem,
-      lida: false, criadoEm: new Date().toISOString()
-    });
-  } catch(e) { console.warn('Notif err:', e); }
-}
-
-async function marcarLida(id) {
-  await db.collection('notificacoes').doc(id).update({lida:true});
-}
-
-async function markAllRead() {
-  const batch = db.batch();
-  allNotifs.filter(n=>!n.lida).forEach(n=>{
-    batch.update(db.collection('notificacoes').doc(n.id),{lida:true});
-  });
-  await batch.commit();
-}
-
-function toggleNotif() {
-  document.getElementById('notif-panel').classList.toggle('open');
-}
-
-document.addEventListener('click', e => {
-  const panel = document.getElementById('notif-panel');
-  const bell = document.querySelector('.notif-bell');
-  if (panel && !panel.contains(e.target) && bell && !bell.contains(e.target)) {
-    panel.classList.remove('open');
-  }
-});
-
-// ══════════════════════════════════════
-// SCORE AUTOMÁTICO
-// ══════════════════════════════════════
-function calcScore(userId) {
-  const tasks = allTasks.filter(t=>t.assignedTo===userId);
-  if (!tasks.length) return {score:100,label:'S',cls:'score-s',txt:'Excelente',prazosFurados:0};
-  let pontos = 100; let prazosFurados = 0;
-  tasks.forEach(t => {
-    if (t.status === 'concluida') {
-      const entregaTs = (t.updates||[]).slice().reverse().find(u=>u.status==='concluida')?.timestamp;
-      if (entregaTs && t.deadline && new Date(entregaTs) > new Date(t.deadline)) { pontos -= 15; prazosFurados++; }
-    } else {
-      if (t.deadline && new Date(t.deadline) < new Date()) { pontos -= 10; prazosFurados++; }
-      const lastUpd = (t.updates||[]).slice(-1)[0]?.timestamp;
-      const diasSemUpd = lastUpd ? (Date.now()-new Date(lastUpd))/86400000 : 99;
-      if (diasSemUpd > 3) pontos -= 5;
-    }
-  });
-  const pontPessoa = allPontos.filter(p=>p.userId===userId);
-  pontos -= pontPessoa.filter(p=>p.entradaStatus==='atrasado').length * 3;
-  pontos = Math.max(0, Math.min(100, pontos));
-  if (pontos>=85) return {score:pontos,label:'S',cls:'score-s',txt:'Excelente',prazosFurados};
-  if (pontos>=70) return {score:pontos,label:'A',cls:'score-a',txt:'Bom',prazosFurados};
-  if (pontos>=50) return {score:pontos,label:'B',cls:'score-b',txt:'Regular',prazosFurados};
-  return {score:pontos,label:'C',cls:'score-c',txt:'Atenção',prazosFurados};
-}
-
-// ══════════════════════════════════════
-// TIMELINE DE DEMANDAS
-// ══════════════════════════════════════
-function renderTimeline(task) {
-  const events = [];
-  events.push({tipo:'blue',icone:'◈',titulo:'Demanda criada',sub:task.description?.substring(0,60)||'',ts:task.createdAt||''});
-  (task.updates||[]).forEach(u=>{
-    const tipo=u.status==='concluida'?'green':u.tipo==='prazo_aprovado'?'green':u.tipo==='prazo_reprovado'?'red':u.novoPrazo?'yellow':'blue';
-    events.push({tipo,icone:u.status==='concluida'?'✅':u.novoPrazo?'📅':u.tipo==='prazo_aprovado'?'✓':u.tipo==='prazo_reprovado'?'✕':'💬',titulo:u.titulo||'Atualização',sub:u.text||'',ts:u.timestamp,user:u.userName});
-  });
-  if (task.prazoPendente) events.push({tipo:'yellow',icone:'📅',titulo:'Novo prazo solicitado',sub:`Sugeriu: ${fmtD(task.prazoPendente.data)} — ${task.prazoPendente.motivo}`,ts:task.prazoPendente.ts});
-  return `<div class="timeline">${events.map((e,i)=>`
-    <div class="tl-item">
-      <div style="display:flex;flex-direction:column;align-items:center">
-        <div class="tl-dot tl-dot-${e.tipo}">${e.icone}</div>
-        ${i<events.length-1?`<div style="width:2px;background:var(--border);height:20px;margin:2px 0"></div>`:''}
-      </div>
-      <div class="tl-content" style="padding-bottom:8px">
-        <div class="tl-title">${e.titulo}</div>
-        ${e.sub?`<div class="tl-sub">${e.sub}</div>`:''}
-        <div class="tl-time">${fmtDT(e.ts)}${e.user?' · '+e.user:''}</div>
-      </div>
-    </div>`).join('')}</div>`;
-}
-
-function toggleTimeline(id) {
-  const el = document.getElementById('tl-'+id);
-  if (el) el.style.display = el.style.display==='none'?'block':'none';
-}
-
-// ══════════════════════════════════════
-// DEMANDAS — COLABORADOR MELHORADO
-// ══════════════════════════════════════
-function renderCollabTasks() {
-  const tasks = allTasks.filter(t=>t.assignedTo===currentUser.id);
-  const done = tasks.filter(t=>t.status==='concluida').length;
-  const atRisk = tasks.filter(t=>getSem(t)==='red'&&t.status!=='concluida').length;
-  const sc = calcScore(currentUser.id);
-  document.getElementById('col-task-stats').innerHTML = `
-    <div class="stat-card"><div class="label">Total</div><div class="value" style="color:var(--accent)">${tasks.length}</div><div class="sub">demandas</div></div>
-    <div class="stat-card"><div class="label">Concluídas</div><div class="value" style="color:var(--green)">${done}</div><div class="sub">entregues</div></div>
-    <div class="stat-card"><div class="label">Em Risco</div><div class="value" style="color:${atRisk>0?'var(--red)':'var(--green)'}">${atRisk}</div><div class="sub">${atRisk>0?'urgente':'tudo ok'}</div></div>
-    <div class="stat-card"><div class="label">Seu Score</div><div class="value"><span class="score-badge ${sc.cls}">${sc.label} ${sc.score}</span></div><div class="sub">${sc.txt}</div></div>`;
-  const el = document.getElementById('col-tasks-list');
-  if (!tasks.length) { el.innerHTML=`<div class="empty"><div class="icon">◈</div><p>Nenhuma tarefa atribuída ainda.</p></div>`; return; }
-  tasks.sort((a,b)=>({red:0,yellow:1,green:2}[getSem(a)]-{red:0,yellow:1,green:2}[getSem(b)]));
-  el.innerHTML = tasks.map(t=>{
-    const sc2=getSem(t); const canUpd=t.status!=='concluida'; const hasPrazoPend=!!t.prazoPendente;
-    return `<div class="task-card">
-      <div class="task-header"><div class="task-title">${t.title}</div>${semHtml(sc2,semLbl(sc2))}</div>
-      ${t.description?`<div style="font-size:13px;color:var(--text2);margin-bottom:10px">${t.description}</div>`:''}
-      <div class="task-meta">
-        <span>📅 ${fmtD(t.deadline)}</span>
-        <span style="color:${t.priority==='urgente'?'var(--red)':t.priority==='alta'?'var(--yellow)':'var(--text3)'}">⚑ ${t.priority||'normal'}</span>
-        <span>${stIco(t.status)} ${stLbl(t.status)}</span>
-      </div>
-      <div class="task-progress-row"><div class="task-progress-label">${t.progress||0}%</div><div class="progress-wrap" style="flex:1"><div class="progress-bar ${pbCls(sc2)}" style="width:${t.progress||0}%"></div></div></div>
-      ${hasPrazoPend?`<div style="background:var(--yellow-bg);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;color:var(--yellow)">⏳ Solicitação de prazo enviada — aguardando aprovação</div>`:''}
-      <div class="task-actions">
-        ${canUpd?`<button class="btn btn-primary btn-sm" onclick="abrirRetorno('${t.id}')">💬 Atualizar</button>`:`<span style="color:var(--green);font-size:13px;font-weight:600">✅ Concluída</span>`}
-        ${canUpd&&!hasPrazoPend?`<button class="btn btn-sm btn-secondary" onclick="abrirNovoPrazo('${t.id}')">📅 Pedir prazo</button>`:''}
-        <button class="btn btn-sm btn-secondary" onclick="toggleTimeline('${t.id}')">🕐 Linha do tempo</button>
-      </div>
-      <div id="tl-${t.id}" style="display:none;margin-top:10px;border-top:1px solid var(--border);padding-top:10px">${renderTimeline(t)}</div>
-    </div>`;
-  }).join('');
-}
-
-// ══════════════════════════════════════
-// DEMANDAS — MODAIS
-// ══════════════════════════════════════
-function abrirRetorno(taskId) {
-  const t = allTasks.find(t=>t.id===taskId); if (!t) return;
-  document.getElementById('ret-task-id').value = taskId;
-  document.getElementById('ret-progress').value = t.progress||0;
-  document.getElementById('ret-prog-num').textContent = (t.progress||0)+'%';
-  document.getElementById('ret-status').value = t.status||'em_andamento';
-  document.getElementById('ret-comment').value = '';
-  document.getElementById('ret-task-title').textContent = t.title;
-  document.getElementById('modal-retorno').classList.add('open');
-}
-
-async function salvarRetorno() {
-  const taskId = document.getElementById('ret-task-id').value;
-  const progress = parseInt(document.getElementById('ret-progress').value);
-  const status = document.getElementById('ret-status').value;
-  const text = document.getElementById('ret-comment').value.trim();
-  if (!text) { toast('Descreva o retorno','err'); return; }
-  const t = allTasks.find(t=>t.id===taskId);
-  const upd = {text,progress,status,titulo:'Retorno do colaborador',userName:currentUser.name,timestamp:new Date().toISOString()};
-  await db.collection('tasks').doc(taskId).update({progress,status,updates:[...(t.updates||[]),upd]});
-  const adm = allUsers.find(u=>u.role==='admin');
-  if (adm) await criarNotif(adm.id,'demanda',`Atualização: ${t.title}`,`${currentUser.name}: ${text.substring(0,80)}`);
-  closeModal('modal-retorno'); toast('Demanda atualizada!','ok');
-}
-
-function abrirNovoPrazo(taskId) {
-  const t = allTasks.find(t=>t.id===taskId); if (!t) return;
-  document.getElementById('novo-prazo-task-id').value = taskId;
-  document.getElementById('novo-prazo-data').value = '';
-  document.getElementById('novo-prazo-motivo').value = '';
-  document.getElementById('novo-prazo-info').innerHTML = `<strong>${t.title}</strong><br>Prazo atual: ${fmtD(t.deadline)}`;
-  document.getElementById('modal-novo-prazo').classList.add('open');
-}
-
-async function solicitarNovoPrazo() {
-  const taskId = document.getElementById('novo-prazo-task-id').value;
-  const data = document.getElementById('novo-prazo-data').value;
-  const motivo = document.getElementById('novo-prazo-motivo').value.trim();
-  if (!data || !motivo) { toast('Preencha prazo e motivo','err'); return; }
-  const t = allTasks.find(t=>t.id===taskId);
-  await db.collection('tasks').doc(taskId).update({prazoPendente:{data,motivo,solicitante:currentUser.name,ts:new Date().toISOString()}});
-  const adm = allUsers.find(u=>u.role==='admin');
-  if (adm) await criarNotif(adm.id,'prazo',`Pedido de prazo: ${t.title}`,`${currentUser.name} sugere ${fmtD(data)}: ${motivo}`);
-  closeModal('modal-novo-prazo'); toast('Solicitação enviada!','ok');
-}
-
-function abrirRespPrazo(taskId) {
-  const t = allTasks.find(t=>t.id===taskId); if (!t||!t.prazoPendente) return;
-  document.getElementById('resp-prazo-task-id').value = taskId;
-  document.getElementById('resp-prazo-data').value = t.prazoPendente.data;
-  document.getElementById('resp-prazo-obs').value = '';
-  document.getElementById('resp-prazo-info').innerHTML = `<strong>${t.title}</strong><br>Colaborador: ${t.prazoPendente.solicitante}<br>Prazo sugerido: <strong>${fmtD(t.prazoPendente.data)}</strong><br>Motivo: ${t.prazoPendente.motivo}`;
-  document.getElementById('modal-resp-prazo').classList.add('open');
-}
-
-async function responderPrazo(acao) {
-  const taskId = document.getElementById('resp-prazo-task-id').value;
-  const data = document.getElementById('resp-prazo-data').value;
-  const obs = document.getElementById('resp-prazo-obs').value.trim();
-  if (!data) { toast('Defina um prazo','err'); return; }
-  const t = allTasks.find(t=>t.id===taskId);
-  const upd = {tipo:acao==='aprovar'?'prazo_aprovado':'prazo_reprovado',titulo:acao==='aprovar'?'Novo prazo aprovado':'Prazo reprovado — ADM definiu novo',text:obs||`ADM ${acao==='aprovar'?'aprovou':'reprovou'}.`,novoPrazo:data,userName:'ADM',timestamp:new Date().toISOString()};
-  await db.collection('tasks').doc(taskId).update({deadline:data,updates:[...(t.updates||[]),upd],prazoPendente:null});
-  const colab = allUsers.find(u=>u.id===t.assignedTo);
-  if (colab) await criarNotif(colab.id,'prazo',acao==='aprovar'?`Prazo aprovado: ${t.title}`:`Prazo reprovado: ${t.title}`,acao==='aprovar'?`Novo prazo: ${fmtD(data)}`:`ADM definiu: ${fmtD(data)}. ${obs}`);
-  closeModal('modal-resp-prazo'); toast(acao==='aprovar'?'Prazo aprovado!':'Prazo reprovado com novo definido.','ok');
-}
-
-// ══════════════════════════════════════
-// PAINEL TIME MELHORADO
-// ══════════════════════════════════════
 function renderTeam() {
+  const mainEl = document.getElementById('adm-team-cards');
+  const tbodyEl = document.getElementById('team-tbody');
+  if (!mainEl) return;
+  const collabs = allUsers.filter(u=>u.role!=='admin');
+  if (!collabs.length) { mainEl.innerHTML=`<div class="empty"><div class="icon">◉</div><p>Nenhum colaborador cadastrado.</p></div>`; if(tbodyEl)tbodyEl.innerHTML=''; return; }
+ 
+  mainEl.innerHTML = collabs.map(c => {
+    const ct = allTasks.filter(t=>t.assignedTo===c.id);
+    const active = ct.filter(t=>t.status!=='concluida').length;
+    const done = ct.filter(t=>t.status==='concluida').length;
+    const avg = ct.length?Math.round(ct.reduce((a,t)=>a+(t.progress||0),0)/ct.length):0;
+    const sc = calcScore(c.id);
+    const prazosFurados = sc.prazosFurados||0;
+    const prazoPend = ct.filter(t=>t.prazoPendente).length;
+    const riskCls = sc.score>=85?'risk-green':sc.score>=60?'risk-yellow':'risk-red';
+    const riskLbl = sc.score>=85?'🟢 OK':sc.score>=60?'🟡 Atenção':'🔴 Risco';
+ 
+    const demandasHtml = ct.length ? ct.map(t=>{
+      const sem=getSem(t);
+      return `<div style="background:var(--surface3);border-radius:8px;padding:12px 14px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:600">${t.title}</div>
+            <div style="font-size:12px;color:var(--text3);margin-top:2px">Prazo: ${fmtD(t.deadline)} ${t.prazoPendente?'<span style="color:var(--yellow)">⏳ Prazo pendente</span>':''}</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+              <div class="progress-wrap" style="width:120px"><div class="progress-bar ${pbCls(sem)}" style="width:${t.progress||0}%"></div></div>
+              <span style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--text2)">${t.progress||0}%</span>
+              ${semHtml(sem,semLbl(sem))}
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            ${t.prazoPendente?`<button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="abrirRespPrazo('${t.id}')">📅 Resp. prazo</button>`:''}
+            <button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="const el=document.getElementById('tl2-${t.id}');if(el)el.style.display=el.style.display==='none'?'block':'none'">🕐 Hist.</button>
+          </div>
+        </div>
+        <div id="tl2-${t.id}" style="display:none;margin-top:10px;border-top:1px solid var(--border);padding-top:10px">${renderTimeline(t)}</div>
+      </div>`;
+    }).join('') : `<div style="font-size:13px;color:var(--text3);padding:10px 0">Nenhuma demanda atribuída.</div>`;
+ 
+    return `<div class="team-card">
+      <div class="team-card-header" onclick="toggleTeamCard('${c.id}')">
+        <div class="avatar avatar-collab" style="font-size:13px;width:38px;height:38px">${c.name[0]}</div>
+        <div style="flex:1">
+          <div style="font-size:14px;font-weight:700">${c.name}</div>
+          <div style="font-size:12px;color:var(--text3)">${c.cargo||'—'} · ${active} ativas · ${done} concluídas · progresso médio: ${avg}%</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+          <span class="score-badge ${sc.cls}">${sc.label} ${sc.score}</span>
+          <span class="risk-badge ${riskCls}">${riskLbl}</span>
+          ${prazosFurados>0?`<span style="font-size:11px;color:var(--red);font-weight:700;background:var(--red-bg);padding:3px 8px;border-radius:12px">⚠ ${prazosFurados} prazo(s) furado(s)</span>`:''}
+          ${prazoPend>0?`<span style="font-size:11px;color:var(--yellow);font-weight:700;background:var(--yellow-bg);padding:3px 8px;border-radius:12px">📅 ${prazoPend} pedido(s)</span>`:''}
+          <span style="font-size:16px;color:var(--text3)">▾</span>
+        </div>
+      </div>
+      <div class="team-card-body" id="team-body-${c.id}">${demandasHtml}</div>
+    </div>`;
+  }).join('');
+  if (tbodyEl) tbodyEl.innerHTML = '';
+}
+ 
+function toggleTeamCard(id) {
+  const el = document.getElementById('team-body-'+id);
+  if (el) el.classList.toggle('open');
+}
   const mainEl = document.getElementById('adm-team-cards');
   
   if (!mainEl) return;
