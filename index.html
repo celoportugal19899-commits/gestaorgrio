@@ -3746,167 +3746,78 @@ function renderTeam() {
   const mainEl = document.getElementById('adm-team-cards');
   const tbodyEl = document.getElementById('team-tbody');
   if (!mainEl) return;
-  const collabs = allUsers.filter(u=>u.role!=='admin');
-  if (!collabs.length) { mainEl.innerHTML=`<div class="empty"><div class="icon">◉</div><p>Nenhum colaborador cadastrado.</p></div>`; if(tbodyEl)tbodyEl.innerHTML=''; return; }
+
+  const collabs = allUsers.filter(u => u.role !== 'admin');
+  if (!collabs.length) {
+    mainEl.innerHTML = `<div class="empty"><div class="icon">◉</div><p>Nenhum colaborador cadastrado.</p></div>`;
+    if (tbodyEl) tbodyEl.innerHTML = '';
+    return;
+  }
 
   mainEl.innerHTML = collabs.map(c => {
-    const ct = allTasks.filter(t=>t.assignedTo===c.id);
-    const active = ct.filter(t=>t.status!=='concluida').length;
-    const done = ct.filter(t=>t.status==='concluida').length;
-    const avg = ct.length?Math.round(ct.reduce((a,t)=>a+(t.progress||0),0)/ct.length):0;
+    const ct = allTasks.filter(t => t.assignedTo === c.id);
+    const active = ct.filter(t => t.status !== 'concluida').length;
+    const done = ct.filter(t => t.status === 'concluida').length;
+    const avg = ct.length ? Math.round(ct.reduce((a, t) => a + (t.progress || 0), 0) / ct.length) : 0;
     const sc = calcScore(c.id);
-    const prazosFurados = sc.prazosFurados||0;
-    const prazoPend = ct.filter(t=>t.prazoPendente).length;
-    const riskCls = sc.score>=85?'risk-green':sc.score>=60?'risk-yellow':'risk-red';
-    const riskLbl = sc.score>=85?'🟢 OK':sc.score>=60?'🟡 Atenção':'🔴 Risco';
+    const prazosFurados = sc.prazosFurados || 0;
+    const prazoPend = ct.filter(t => t.prazoPendente).length;
+    const riskCls = sc.score >= 85 ? 'risk-green' : sc.score >= 60 ? 'risk-yellow' : 'risk-red';
+    const riskLbl = sc.score >= 85 ? '🟢 OK' : sc.score >= 60 ? '🟡 Atenção' : '🔴 Risco';
 
-    const demandasHtml = ct.length ? ct.map(t=>{
-      const sem=getSem(t);
+    const demandasHtml = ct.length ? ct.map(t => {
+      const sem = getSem(t);
+      const tlId = `tl2-${t.id}`;
       return `<div style="background:var(--surface3);border-radius:8px;padding:12px 14px;margin-bottom:8px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
           <div style="flex:1">
-            <div style="font-size:13px;font-weight:600">${t.title}</div>
-            <div style="font-size:12px;color:var(--text3);margin-top:2px">Prazo: ${fmtD(t.deadline)} ${t.prazoPendente?'<span style="color:var(--yellow)">⏳ Prazo pendente</span>':''}</div>
+            <div style="font-size:13px;font-weight:600">${t.title || 'Sem título'}</div>
+            <div style="font-size:12px;color:var(--text3);margin-top:2px">Prazo: ${fmtD(t.deadline)} ${t.prazoPendente ? '<span style="color:var(--yellow)">⏳ Prazo pendente</span>' : ''}</div>
             <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
-              <div class="progress-wrap" style="width:120px"><div class="progress-bar ${pbCls(sem)}" style="width:${t.progress||0}%"></div></div>
-              <span style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--text2)">${t.progress||0}%</span>
-              ${semHtml(sem,semLbl(sem))}
+              <div class="progress-wrap" style="width:120px"><div class="progress-bar ${pbCls(sem)}" style="width:${t.progress || 0}%"></div></div>
+              <span style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--text2)">${t.progress || 0}%</span>
+              ${semHtml(sem, semLbl(sem))}
             </div>
           </div>
           <div style="display:flex;flex-direction:column;gap:6px">
-            ${t.prazoPendente?`<button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="abrirRespPrazo('${t.id}')">📅 Resp. prazo</button>`:''}
-            <button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="const el=document.getElementById('tl2-${t.id}');if(el)el.style.display=el.style.display==='none'?'block':'none'">🕐 Hist.</button>
+            ${t.prazoPendente ? `<button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="abrirRespPrazo('${t.id}')">📅 Resp. prazo</button>` : ''}
+            <button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="toggleTimelineTime('${t.id}')">🕐 Hist.</button>
           </div>
         </div>
-        <div id="tl2-${t.id}" style="display:none;margin-top:10px;border-top:1px solid var(--border);padding-top:10px">${renderTimeline(t)}</div>
+        <div id="${tlId}" style="display:none;margin-top:10px;border-top:1px solid var(--border);padding-top:10px">${renderTimeline(t)}</div>
       </div>`;
     }).join('') : `<div style="font-size:13px;color:var(--text3);padding:10px 0">Nenhuma demanda atribuída.</div>`;
 
     return `<div class="team-card">
       <div class="team-card-header" onclick="toggleTeamCard('${c.id}')">
-        <div class="avatar avatar-collab" style="font-size:13px;width:38px;height:38px">${c.name[0]}</div>
+        <div class="avatar avatar-collab" style="font-size:13px;width:38px;height:38px">${(c.name || '?')[0]}</div>
         <div style="flex:1">
-          <div style="font-size:14px;font-weight:700">${c.name}</div>
-          <div style="font-size:12px;color:var(--text3)">${c.cargo||'—'} · ${active} ativas · ${done} concluídas · progresso médio: ${avg}%</div>
+          <div style="font-size:14px;font-weight:700">${c.name || 'Sem nome'}</div>
+          <div style="font-size:12px;color:var(--text3)">${c.cargo || '—'} · ${active} ativas · ${done} concluídas · progresso médio: ${avg}%</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
           <span class="score-badge ${sc.cls}">${sc.label} ${sc.score}</span>
           <span class="risk-badge ${riskCls}">${riskLbl}</span>
-          ${prazosFurados>0?`<span style="font-size:11px;color:var(--red);font-weight:700;background:var(--red-bg);padding:3px 8px;border-radius:12px">⚠ ${prazosFurados} prazo(s) furado(s)</span>`:''}
-          ${prazoPend>0?`<span style="font-size:11px;color:var(--yellow);font-weight:700;background:var(--yellow-bg);padding:3px 8px;border-radius:12px">📅 ${prazoPend} pedido(s)</span>`:''}
+          ${prazosFurados > 0 ? `<span style="font-size:11px;color:var(--red);font-weight:700;background:var(--red-bg);padding:3px 8px;border-radius:12px">⚠ ${prazosFurados} prazo(s) furado(s)</span>` : ''}
+          ${prazoPend > 0 ? `<span style="font-size:11px;color:var(--yellow);font-weight:700;background:var(--yellow-bg);padding:3px 8px;border-radius:12px">📅 ${prazoPend} pedido(s)</span>` : ''}
           <span style="font-size:16px;color:var(--text3)">▾</span>
         </div>
       </div>
       <div class="team-card-body" id="team-body-${c.id}">${demandasHtml}</div>
     </div>`;
   }).join('');
+
   if (tbodyEl) tbodyEl.innerHTML = '';
 }
 
 function toggleTeamCard(id) {
-  const el = document.getElementById('team-body-'+id);
+  const el = document.getElementById('team-body-' + id);
   if (el) el.classList.toggle('open');
 }
 
-            </div>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:6px">
-            ${t.prazoPendente?`<button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="abrirRespPrazo('${t.id}')">📅 Resp. prazo</button>`:''}
-            <button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="const el=document.getElementById('tl2-${t.id}');if(el)el.style.display=el.style.display==='none'?'block':'none'">🕐 Hist.</button>
-          </div>
-        </div>
-        <div id="tl2-${t.id}" style="display:none;margin-top:10px;border-top:1px solid var(--border);padding-top:10px">${renderTimeline(t)}</div>
-      </div>`;
-    }).join('') : `<div style="font-size:13px;color:var(--text3);padding:10px 0">Nenhuma demanda atribuída.</div>`;
- 
-    return `<div class="team-card">
-      <div class="team-card-header" onclick="toggleTeamCard('${c.id}')">
-        <div class="avatar avatar-collab" style="font-size:13px;width:38px;height:38px">${c.name[0]}</div>
-        <div style="flex:1">
-          <div style="font-size:14px;font-weight:700">${c.name}</div>
-          <div style="font-size:12px;color:var(--text3)">${c.cargo||'—'} · ${active} ativas · ${done} concluídas · progresso médio: ${avg}%</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
-          <span class="score-badge ${sc.cls}">${sc.label} ${sc.score}</span>
-          <span class="risk-badge ${riskCls}">${riskLbl}</span>
-          ${prazosFurados>0?`<span style="font-size:11px;color:var(--red);font-weight:700;background:var(--red-bg);padding:3px 8px;border-radius:12px">⚠ ${prazosFurados} prazo(s) furado(s)</span>`:''}
-          ${prazoPend>0?`<span style="font-size:11px;color:var(--yellow);font-weight:700;background:var(--yellow-bg);padding:3px 8px;border-radius:12px">📅 ${prazoPend} pedido(s)</span>`:''}
-          <span style="font-size:16px;color:var(--text3)">▾</span>
-        </div>
-      </div>
-      <div class="team-card-body" id="team-body-${c.id}">${demandasHtml}</div>
-    </div>`;
-  }).join('');
-  if (tbodyEl) tbodyEl.innerHTML = '';
-}
- 
-function toggleTeamCard(id) {
-  const el = document.getElementById('team-body-'+id);
-  if (el) el.classList.toggle('open');
-}
-  const mainEl = document.getElementById('adm-team-cards');
-  
-  if (!mainEl) return;
-  const collabs = allUsers.filter(u=>u.role!=='admin');
-  if (!collabs.length) { mainEl.innerHTML=`<div class="empty"><div class="icon">◉</div><p>Nenhum colaborador cadastrado.</p></div>`; if(tbodyEl)tbodyEl.innerHTML=''; return; }
-
-  mainEl.innerHTML = collabs.map(c => {
-    const ct = allTasks.filter(t=>t.assignedTo===c.id);
-    const active = ct.filter(t=>t.status!=='concluida').length;
-    const done = ct.filter(t=>t.status==='concluida').length;
-    const avg = ct.length?Math.round(ct.reduce((a,t)=>a+(t.progress||0),0)/ct.length):0;
-    const sc = calcScore(c.id);
-    const prazosFurados = sc.prazosFurados||0;
-    const prazoPend = ct.filter(t=>t.prazoPendente).length;
-    const riskCls = sc.score>=85?'risk-green':sc.score>=60?'risk-yellow':'risk-red';
-    const riskLbl = sc.score>=85?'🟢 OK':sc.score>=60?'🟡 Atenção':'🔴 Risco';
-
-    const demandasHtml = ct.length ? ct.map(t=>{
-      const sem=getSem(t);
-      return `<div style="background:var(--surface3);border-radius:8px;padding:12px 14px;margin-bottom:8px">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
-          <div style="flex:1">
-            <div style="font-size:13px;font-weight:600">${t.title}</div>
-            <div style="font-size:12px;color:var(--text3);margin-top:2px">Prazo: ${fmtD(t.deadline)} ${t.prazoPendente?'<span style="color:var(--yellow)">⏳ Prazo pendente</span>':''}</div>
-            <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
-              <div class="progress-wrap" style="width:120px"><div class="progress-bar ${pbCls(sem)}" style="width:${t.progress||0}%"></div></div>
-              <span style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--text2)">${t.progress||0}%</span>
-              ${semHtml(sem,semLbl(sem))}
-            </div>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:6px">
-            ${t.prazoPendente?`<button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="abrirRespPrazo('${t.id}')">📅 Resp. prazo</button>`:''}
-            <button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="const el=document.getElementById('tl2-${t.id}');if(el)el.style.display=el.style.display==='none'?'block':'none'">🕐 Hist.</button>
-          </div>
-        </div>
-        <div id="tl2-${t.id}" style="display:none;margin-top:10px;border-top:1px solid var(--border);padding-top:10px">${renderTimeline(t)}</div>
-      </div>`;
-    }).join('') : `<div style="font-size:13px;color:var(--text3);padding:10px 0">Nenhuma demanda atribuída.</div>`;
-
-    return `<div class="team-card">
-      <div class="team-card-header" onclick="toggleTeamCard('${c.id}')">
-        <div class="avatar avatar-collab" style="font-size:13px;width:38px;height:38px">${c.name[0]}</div>
-        <div style="flex:1">
-          <div style="font-size:14px;font-weight:700">${c.name}</div>
-          <div style="font-size:12px;color:var(--text3)">${c.cargo||'—'} · ${active} ativas · ${done} concluídas · progresso médio: ${avg}%</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
-          <span class="score-badge ${sc.cls}">${sc.label} ${sc.score}</span>
-          <span class="risk-badge ${riskCls}">${riskLbl}</span>
-          ${prazosFurados>0?`<span style="font-size:11px;color:var(--red);font-weight:700;background:var(--red-bg);padding:3px 8px;border-radius:12px">⚠ ${prazosFurados} prazo(s) furado(s)</span>`:''}
-          ${prazoPend>0?`<span style="font-size:11px;color:var(--yellow);font-weight:700;background:var(--yellow-bg);padding:3px 8px;border-radius:12px">📅 ${prazoPend} pedido(s)</span>`:''}
-          <span style="font-size:16px;color:var(--text3)">▾</span>
-        </div>
-      </div>
-      <div class="team-card-body" id="team-body-${c.id}">${demandasHtml}</div>
-    </div>`;
-  }).join('');
-  if (tbodyEl) tbodyEl.innerHTML = '';
-}
-
-function toggleTeamCard(id) {
-  const el = document.getElementById('team-body-'+id);
-  if (el) el.classList.toggle('open');
+function toggleTimelineTime(taskId) {
+  const el = document.getElementById('tl2-' + taskId);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
 // ══════════════════════════════════════
