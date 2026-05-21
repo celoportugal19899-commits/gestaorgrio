@@ -4140,7 +4140,7 @@ async function responderPrazo(acao) {
 // ══════════════════════════════════════
 function renderTeam() {
   const mainEl = document.getElementById('adm-team-cards');
-  const tbodyEl = document.getElementById('team-tbody');
+  
   if (!mainEl) return;
   const collabs = allUsers.filter(u=>u.role!=='admin');
   if (!collabs.length) { mainEl.innerHTML=`<div class="empty"><div class="icon">◉</div><p>Nenhum colaborador cadastrado.</p></div>`; if(tbodyEl)tbodyEl.innerHTML=''; return; }
