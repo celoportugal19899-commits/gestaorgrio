@@ -1586,6 +1586,13 @@ function stLbl(s) { return {em_andamento:'Em Andamento', concluida:'Concluída',
 function stIco(s) { return {em_andamento:'▶', concluida:'✓', bloqueada:'⚠', pausada:'⏸'}[s]||'•'; }
 function fmtD(s) { if(!s) return '—'; const[y,m,d]=s.split('-'); return `${d}/${m}/${y}`; }
 function fmtDT(iso) { if(!iso) return '—'; const dt=new Date(iso); return dt.toLocaleDateString('pt-BR')+' '+dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }
+function fmtDate(s) { return fmtD(s); } // Alias for fmtD
+function prioTag(priority) {
+  const map = {urgente:'⚑ Urgente',alta:'⚑ Alta',normal:'⚑ Normal'};
+  const colorMap = {urgente:'var(--red)',alta:'var(--yellow)',normal:'var(--text3)'};
+  const p = priority || 'normal';
+  return `<span style="color:${colorMap[p]};font-size:12px;font-weight:600">${map[p]||'⚑ Normal'}</span>`;
+}
 
 // ══════════════════════════════════════
 // MODAIS
@@ -3742,6 +3749,36 @@ function initPontoADM() {
   });
 }
 
+// Helper function for timeline rendering
+function renderTimeline(task) {
+  const retornos = task.retornos || [];
+  if (!retornos.length) return '<div style="font-size:12px;color:var(--text3);padding:8px">Nenhuma atualização ainda.</div>';
+  return retornos.slice().reverse().map(r => `
+    <div style="display:flex;gap:10px;margin-bottom:10px">
+      <div style="width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">💬</div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:600">${r.autor||'—'}</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:2px">${r.texto}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:3px;font-family:'IBM Plex Mono',monospace">${fmtDT(r.em)} • ${r.progress||0}%</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// Helper function for creating notifications (wrapper for addNotificacao)
+async function criarNotif(userId, tipo, titulo, corpo) {
+  const iconMap = {maquina:'💻', demanda:'◈', alerta:'⚠️'};
+  const corMap = {maquina:'yellow', demanda:'accent', alerta:'red'};
+  const user = allUsers.find(u=>u.id===userId);
+  if (!user) return;
+  await addNotificacao(user.email, titulo, corpo, iconMap[tipo]||'🔔', corMap[tipo]||'accent');
+}
+
+// Alias for modal prazo opening
+function abrirRespPrazo(taskId) {
+  abrirModalPrazo(taskId);
+}
+
 function renderTeam() {
   const mainEl = document.getElementById('adm-team-cards');
   const tbodyEl = document.getElementById('team-tbody');
@@ -3754,7 +3791,7 @@ function renderTeam() {
     const active = ct.filter(t=>t.status!=='concluida').length;
     const done = ct.filter(t=>t.status==='concluida').length;
     const avg = ct.length?Math.round(ct.reduce((a,t)=>a+(t.progress||0),0)/ct.length):0;
-    const sc = calcScore(c.id);
+    const sc = calcScore(c.id, allTasks, allPontos);
     const prazosFurados = sc.prazosFurados||0;
     const prazoPend = ct.filter(t=>t.prazoPendente).length;
     const riskCls = sc.score>=85?'risk-green':sc.score>=60?'risk-yellow':'risk-red';
