@@ -1,12 +1,11 @@
 <!DOCTYPE html>
-
 <html lang="pt-BR">
 <head>
-<meta content="text/html; charset=utf-8" http-equiv="Content-Type"/>
-<meta charset="utf-8"/>
-<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gestão Grupo RG Rio</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&amp;family=IBM+Plex+Mono:wght@300;400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
@@ -395,7 +394,7 @@
   .risk-yellow{background:var(--yellow-bg);color:var(--yellow);border:1px solid rgba(245,158,11,.25);}
   .risk-red{background:var(--red-bg);color:var(--red);border:1px solid rgba(239,68,68,.25);}
 </style>
-<style>
+  <style>
   .caixa-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px 24px;margin-bottom:16px;}
   .caixa-header{display:flex;align-items:center;gap:14px;margin-bottom:16px;}
   .caixa-av{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;background:rgba(201,162,39,0.15);color:#c9a227;flex-shrink:0;}
@@ -483,716 +482,755 @@
 </style>
 </head>
 <body>
+
 <!-- PAINEL NOTIFICAÇÕES -->
-<div class="notif-panel" id="notif-panel">
-<div class="notif-header">
-<span style="font-size:15px;font-weight:700">🔔 Notificações</span>
-<div style="display:flex;gap:8px;align-items:center">
-<button class="btn btn-sm btn-secondary" onclick="marcarTodasLidas()">Marcar lidas</button>
-<button class="close-btn" onclick="toggleNotif()">✕</button>
+<div id="notif-panel" class="notif-panel">
+  <div class="notif-header">
+    <span style="font-size:15px;font-weight:700">🔔 Notificações</span>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn btn-sm btn-secondary" onclick="marcarTodasLidas()">Marcar lidas</button>
+      <button class="close-btn" onclick="toggleNotif()">✕</button>
+    </div>
+  </div>
+  <div id="notif-list"><div class="empty" style="padding:32px"><p>Nenhuma notificação</p></div></div>
 </div>
-</div>
-<div id="notif-list"><div class="empty" style="padding:32px"><p>Nenhuma notificação</p></div></div>
-</div>
-<div id="notif-overlay" onclick="toggleNotif()" style="display:none;position:fixed;inset:0;z-index:299"></div>
+<div id="notif-overlay" style="display:none;position:fixed;inset:0;z-index:299" onclick="toggleNotif()"></div>
+
 <!-- LOADING -->
-<div class="page active" id="page-loading">
-<div class="spinner"></div>
-<div class="loading-txt">Conectando ao servidor...</div>
+<div id="page-loading" class="page active">
+  <div class="spinner"></div>
+  <div class="loading-txt">Conectando ao servidor...</div>
 </div>
+
 <!-- LOGIN -->
-<div class="page" id="page-login">
-<!-- LADO ESQUERDO — BRAND -->
-<div class="login-left">
-<div class="login-left-content">
-<div class="ll-logo">
-<img alt="Grupo RG Brasil" onerror="this.style.display='none';this.nextElementSibling.style.display='block'" src="https://static.wixstatic.com/media/56bd15_18ffc639be91448c85bbb5d84c001c37~mv2.png"/>
-<div style="display:none;font-size:26px;font-weight:800;color:#fff;letter-spacing:-1px;">Grupo <span style="color:#c9a227">RG</span> Brasil</div>
+<div id="page-login" class="page">
+
+  <!-- LADO ESQUERDO — BRAND -->
+  <div class="login-left">
+    <div class="login-left-content">
+      <div class="ll-logo">
+        <img src="https://static.wixstatic.com/media/56bd15_18ffc639be91448c85bbb5d84c001c37~mv2.png" alt="Grupo RG Brasil" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+        <div style="display:none;font-size:26px;font-weight:800;color:#fff;letter-spacing:-1px;">Grupo <span style="color:#c9a227">RG</span> Brasil</div>
+      </div>
+      <div class="ll-tag"><span class="ll-tag-dot"></span>Sistema Interno</div>
+      <div class="ll-title">Gestão de<br><span>Colaboradores</span></div>
+      <div class="ll-desc">Plataforma exclusiva para gerenciamento de equipes, acompanhamento de demandas e controle de produtividade em tempo real.</div>
+      <div class="ll-badges">
+        <div class="ll-badge"><strong>🔒 Acesso Seguro</strong>Login individual</div>
+        <div class="ll-badge"><strong>☁️ Nuvem</strong>Dados em tempo real</div>
+        <div class="ll-badge"><strong>🚦 Semáforos</strong>Controle visual</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LADO DIREITO — FORMULÁRIO -->
+  <div class="login-right">
+    <div class="lr-header">
+      <div class="lr-eyebrow">Portal do Colaborador</div>
+      <div class="lr-title">Bem-vindo de volta</div>
+      <div class="lr-sub">Acesse com suas credenciais</div>
+    </div>
+    <div class="login-card">
+      <label class="lf-label">E-mail</label>
+      <input class="lf-input" type="email" id="login-email" placeholder="seu@email.com" autocomplete="off">
+      <label class="lf-label">Senha</label>
+      <input class="lf-input" type="password" id="login-pass" placeholder="••••••••">
+      <div id="login-error" class="lf-err">E-mail ou senha incorretos. Tente novamente.</div>
+      <button class="lf-btn" onclick="doLogin()">Entrar <span>→</span></button>
+      <button style="margin-top:12px;background:none;border:none;color:rgba(255,255,255,0.3);font-size:12px;cursor:pointer;width:100%;text-align:center;font-family:'Syne',sans-serif" onclick="showPage('forgot')">Esqueci minha senha</button>
+      <div class="lf-footer">
+        Acesso restrito a colaboradores autorizados<br>
+        <span>Grupo RG Brasil © 2025</span>
+      </div>
+    </div>
+  </div>
 </div>
-<div class="ll-tag"><span class="ll-tag-dot"></span>Sistema Interno</div>
-<div class="ll-title">Gestão de<br/><span>Colaboradores</span></div>
-<div class="ll-desc">Plataforma exclusiva para gerenciamento de equipes, acompanhamento de demandas e controle de produtividade em tempo real.</div>
-<div class="ll-badges">
-<div class="ll-badge"><strong>🔒 Acesso Seguro</strong>Login individual</div>
-<div class="ll-badge"><strong>☁️ Nuvem</strong>Dados em tempo real</div>
-<div class="ll-badge"><strong>🚦 Semáforos</strong>Controle visual</div>
-</div>
-</div>
-</div>
-<!-- LADO DIREITO — FORMULÁRIO -->
-<div class="login-right">
-<div class="lr-header">
-<div class="lr-eyebrow">Portal do Colaborador</div>
-<div class="lr-title">Bem-vindo de volta</div>
-<div class="lr-sub">Acesse com suas credenciais</div>
-</div>
-<div class="login-card">
-<label class="lf-label">E-mail</label>
-<input autocomplete="off" class="lf-input" id="login-email" placeholder="seu@email.com" type="email"/>
-<label class="lf-label">Senha</label>
-<input class="lf-input" id="login-pass" placeholder="••••••••" type="password"/>
-<div class="lf-err" id="login-error">E-mail ou senha incorretos. Tente novamente.</div>
-<button class="lf-btn" onclick="doLogin()">Entrar <span>→</span></button>
-<button onclick="showPage('forgot')" style="margin-top:12px;background:none;border:none;color:rgba(255,255,255,0.3);font-size:12px;cursor:pointer;width:100%;text-align:center;font-family:'Syne',sans-serif">Esqueci minha senha</button>
-<div class="lf-footer">
-        Acesso restrito a colaboradores autorizados<br/>
-<span>Grupo RG Brasil © 2025</span>
-</div>
-</div>
-</div>
-</div>
+
 <!-- APP -->
-<div class="page" id="page-app" style="flex-direction:row">
-<div class="sidebar">
-<div class="sidebar-logo">Gestão<br/>Grupo RG Rio</div>
-<div id="nav-admin" style="display:none">
-<div class="sidebar-section">
-<div class="sidebar-section-label">Gestão</div>
-<div class="sidebar-item active" id="nav-dash" onclick="showView('adm-dashboard',this)"><span class="icon">⬡</span> Dashboard</div>
-<div class="sidebar-item" id="nav-tasks" onclick="showView('adm-tasks',this)"><span class="icon">◈</span> Demandas</div>
-<div class="sidebar-item" id="nav-team" onclick="showView('adm-team',this)"><span class="icon">◉</span> Time</div>
-<div class="sidebar-item" id="nav-ponto-adm" onclick="showView('adm-ponto',this)"><span class="icon">⏱</span> Ponto Eletrônico</div>
-<div class="sidebar-item" id="nav-postos-adm" onclick="showView('adm-postos',this)"><span class="icon">🏪</span> Postos</div>
-<div class="sidebar-item" id="nav-caixas-adm" onclick="showView('adm-caixas',this)"><span class="icon">💰</span> Caixas Rotativos <span id="caixa-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
-<div class="sidebar-item" id="nav-comb-adm" onclick="showView('adm-combustivel',this)"><span class="icon">⛽</span> Combustível <span id="comb-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
-<div class="sidebar-item" id="nav-relatorio-comb" onclick="showView('adm-relatorio-comb',this)"><span class="icon">📊</span> Relatório Combustível</div>
-</div>
-</div>
-<div id="nav-collab" style="display:none">
-<div class="sidebar-section">
-<div class="sidebar-section-label">Meu Painel</div>
-<div class="sidebar-item active" onclick="showView('col-tasks',this)"><span class="icon">◈</span> Minhas Tarefas</div>
-<div class="sidebar-item" onclick="showView('col-ponto',this)"><span class="icon">⏱</span> Meu Ponto</div>
-</div>
-</div>
-<div id="nav-posto" style="display:none">
-<div class="sidebar-section">
-<div class="sidebar-section-label">Atendimento</div>
-<div class="sidebar-item active" onclick="showView('posto-registro',this)"><span class="icon">🏪</span> Registro</div>
-</div>
-</div>
-<div id="nav-supervisor" style="display:none">
-<div class="sidebar-section">
-<div class="sidebar-section-label">Supervisão</div>
-<div class="sidebar-item active" onclick="showView('supervisor-postos',this)"><span class="icon">🏪</span> Horários Postos</div>
-<div class="sidebar-item" onclick="showView('col-tasks',this)"><span class="icon">◈</span> Minhas Tarefas</div>
-<div class="sidebar-item" onclick="showView('sup-demandas-equipe',this)"><span class="icon">◈</span> Demandas da Equipe</div>
-<div class="sidebar-item" onclick="showView('col-ponto',this)"><span class="icon">⏱</span> Meu Ponto</div>
-<div class="sidebar-item" onclick="showView('sup-caixa',this)"><span class="icon">💰</span> Caixa Rotativo</div>
-<div class="sidebar-item" onclick="showView('sup-combustivel',this)"><span class="icon">⛽</span> Recarga Combustível</div>
-</div>
-</div>
-<div class="sidebar-footer">
-<div class="notif-panel" id="notif-panel">
-<div class="notif-header"><span class="notif-header-title">🔔 Notificações</span><button class="notif-clear" onclick="markAllRead()">Marcar todas lidas</button></div>
-<div id="notif-list"><div class="notif-empty">Nenhuma notificação</div></div>
-</div>
-<div style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;">
-<span class="online-badge"><span class="online-dot"></span>Firebase Online</span>
-<div class="notif-bell" onclick="toggleNotif()">🔔<span class="notif-count" id="notif-count">0</span></div>
-</div>
-<div class="user-chip">
-<div class="avatar" id="sb-avatar">A</div>
-<div class="user-info">
-<div class="name" id="sb-name">—</div>
-<div class="role" id="sb-role">—</div>
-</div>
-</div>
-<button class="btn btn-secondary btn-block btn-sm" onclick="doLogout()">Sair</button>
-</div>
-</div>
-<div class="main">
-<!-- ADM DASHBOARD -->
-<div class="view active" id="view-adm-dashboard">
-<div class="topbar">
-<div class="page-header" style="margin:0"><h1>Dashboard</h1><p>Visão macro do time em tempo real</p></div>
-</div>
-<div class="grid-4" id="stats-row" style="margin-bottom:20px"></div>
-<div id="reset-requests-wrap"></div>
-<div id="sem-geral-wrap" style="margin-bottom:20px"></div>
-<div id="macro-team"></div>
-</div>
-<!-- ADM DEMANDAS -->
-<div class="view" id="view-adm-tasks">
-<div class="topbar">
-<div class="page-header" style="margin:0"><h1>Demandas</h1><p>Gerencie todas as tarefas do time</p></div>
-<div class="topbar-actions">
-<button class="btn btn-primary" onclick="openCreateTask()">+ Nova Demanda</button>
-</div>
-</div>
-<div id="adm-pending-demandas-wrap"></div>
-<div id="all-tasks-list"></div>
-</div>
-<!-- SUPERVISOR — DEMANDAS DA EQUIPE -->
-<div class="view" id="view-sup-demandas-equipe">
-<div class="topbar">
-<div class="page-header" style="margin:0"><h1>Demandas da Equipe</h1><p>Acompanhe e proponha demandas</p></div>
-<div class="topbar-actions">
-<button class="btn btn-primary" onclick="abrirProporDemanda()">+ Propor Demanda</button>
-</div>
-</div>
-<div id="sup-demandas-equipe-body"></div>
-</div>
-<!-- ADM TIME -->
-<div class="view" id="view-adm-team">
-<div class="topbar">
-<div class="page-header" style="margin:0"><h1>Time</h1><p>Colaboradores, demandas, score e risco</p></div>
-<div class="topbar-actions">
-<button class="btn btn-primary" onclick="openCreateCollab()">+ Novo Colaborador</button>
-</div>
-</div>
-<div id="adm-team-cards"></div>
-<table style="display:none"><tbody id="team-tbody"></tbody></table>
-</div>
-<!-- COLABORADOR -->
-<div class="view" id="view-col-tasks">
-<div class="topbar">
-<div class="page-header" style="margin:0"><h1>Minhas Tarefas</h1><p>Acompanhe e atualize suas demandas</p></div>
-<div class="topbar-actions">
-<button class="btn btn-secondary" onclick="abrirProporDemanda()">+ Propor Demanda</button>
-</div>
-</div>
-<div id="col-prop-pendentes-wrap"></div>
-<div class="grid-3" id="col-task-stats" style="margin-bottom:24px"></div>
-<div id="col-tasks-list"></div>
-</div>
-<!-- PONTO COLABORADOR -->
-<div class="view" id="view-col-ponto">
-<div class="topbar">
-<div class="page-header" style="margin:0"><h1>Meu Ponto</h1><p>Registre sua jornada de trabalho</p></div>
-</div>
-<div class="ponto-wrap">
-<div class="blocked-card" id="ponto-blocked-card" style="display:none">
-<div class="blocked-icon">🔒</div>
-<div>
-<div class="blocked-title">Dispositivo não autorizado</div>
-<div class="blocked-desc">O registro de ponto só pode ser feito no computador autorizado da sua loja.<br/>Solicite ao administrador a autorização deste dispositivo.</div>
-</div>
-</div>
-<div class="device-req-card" id="ponto-auth-request" style="display:none">
-<div style="font-size:22px">💻</div>
-<div class="dr-info">
-<div class="dr-title">Solicitar autorização deste dispositivo</div>
-<div class="dr-sub" id="device-id-display">ID: carregando...</div>
-</div>
-<button class="btn btn-primary btn-sm" onclick="solicitarAutorizacao()">Solicitar</button>
-</div>
-<div id="ponto-main" style="display:none">
-<div class="ponto-clock-card">
-<div class="ponto-date" id="ponto-date-lbl">—</div>
-<div class="ponto-time-big" id="ponto-clock">00<span>:</span>00<span>:</span>00</div>
-<div class="ponto-day-full" id="ponto-day-full">—</div>
-</div>
-<div class="ponto-status-card">
-<div class="pst-dot idle" id="pst-dot"></div>
-<div class="pst-label" id="pst-label">Aguardando entrada</div>
-<div class="pst-since" id="pst-since"></div>
-</div>
-<div class="ponto-btns">
-<div class="ponto-btn pb-active" id="pbtn-entrada" onclick="registrarPonto('entrada')">
-<span class="pb-ico">🟢</span>
-<div class="pb-lbl">Entrada</div>
-<div class="pb-time" id="pt-entrada">—</div>
-</div>
-<div class="ponto-btn pb-locked" id="pbtn-saida-almoco" onclick="registrarPonto('saida_almoco')">
-<span class="pb-ico">🍽️</span>
-<div class="pb-lbl">Saída Almoço</div>
-<div class="pb-time" id="pt-saida-almoco">—</div>
-</div>
-<div class="ponto-btn pb-locked" id="pbtn-retorno-almoco" onclick="registrarPonto('retorno_almoco')">
-<span class="pb-ico">↩️</span>
-<div class="pb-lbl">Retorno Almoço</div>
-<div class="pb-time" id="pt-retorno-almoco">—</div>
-</div>
-<div class="ponto-btn pb-locked" id="pbtn-saida" onclick="registrarPonto('saida')">
-<span class="pb-ico">🔴</span>
-<div class="pb-lbl">Saída</div>
-<div class="pb-time" id="pt-saida">—</div>
-</div>
-</div>
-<div class="ponto-summary">
-<div class="ps-header">
-<span class="ps-title">Resumo do dia</span>
-<button class="btn btn-sm btn-secondary" onclick="exportarMeuPonto()">↓ Exportar mês</button>
-</div>
-<div class="ps-row"><span class="ps-lbl">🟢 Entrada</span><span class="ps-val" id="psr-entrada">—</span><span class="ps-badge psb-wait" id="psb-entrada">aguardando</span></div>
-<div class="ps-row"><span class="ps-lbl">🍽️ Saída almoço</span><span class="ps-val" id="psr-saida-almoco">—</span><span class="ps-badge psb-wait" id="psb-saida-almoco">aguardando</span></div>
-<div class="ps-row"><span class="ps-lbl">↩️ Retorno almoço</span><span class="ps-val" id="psr-retorno-almoco">—</span><span class="ps-badge psb-wait" id="psb-retorno-almoco">aguardando</span></div>
-<div class="ps-row"><span class="ps-lbl">🔴 Saída</span><span class="ps-val" id="psr-saida">—</span><span class="ps-badge psb-wait" id="psb-saida">aguardando</span></div>
-</div>
-</div>
-</div>
-</div>
-<!-- PONTO ADM -->
-<div class="view" id="view-adm-ponto">
-<div class="topbar">
-<div class="page-header" style="margin:0"><h1>Ponto Eletrônico</h1><p>Jornada do time em tempo real</p></div>
-<div class="topbar-actions">
-<select class="form-select" id="ponto-mes-filtro" onchange="renderAdmPonto()" style="width:160px"></select>
-</div>
-</div>
-<div class="ponto-adm-stats" id="ponto-adm-stats"></div>
-<div id="device-requests-wrap"></div>
-<div class="ponto-team-table">
-<div class="ptt-header"><span>Colaborador</span><span>Entrada</span><span>S. Almoço</span><span>Retorno</span><span>Saída</span><span>Status</span></div>
-<div id="ponto-team-rows"></div>
-</div>
-<div class="export-bar" style="margin-top:16px">
-<div class="eb-left"><strong>Exportar relatório de ponto</strong>Todos os colaboradores — mês selecionado</div>
-<div class="eb-btns">
-<button class="eb-btn green" onclick="exportarPontoExcel()">📊 Excel</button>
-<button class="eb-btn red" onclick="exportarPontoPDF()">📄 PDF</button>
-</div>
-</div>
-</div>
-<!-- POSTOS ADM -->
-<div class="view" id="view-adm-postos">
-<div class="topbar">
-<div class="page-header" style="margin:0"><h1>Postos de Atendimento</h1><p>Acompanhe todos os postos em tempo real</p></div>
-<div class="topbar-actions">
-<select class="form-select" id="postos-mes-filtro" onchange="renderAdmPostos()" style="width:160px"></select>
-</div>
-</div>
-<div class="grid-4" id="postos-adm-stats" style="margin-bottom:20px"></div>
-<div id="postos-adm-body"></div>
-<div class="export-bar" style="margin-top:16px">
-<div class="eb-left"><strong>Exportar relatório de postos</strong>Todos os postos — mês selecionado</div>
-<div class="eb-btns">
-<button class="eb-btn green" onclick="exportarPostosExcel()">📊 Excel</button>
-<button class="eb-btn red" onclick="exportarPostosPDF()">📄 PDF</button>
-</div>
-</div>
-</div>
-<!-- POSTO REGISTRO -->
-<div class="view" id="view-posto-registro">
-<div class="topbar">
-<div class="page-header" style="margin:0"><h1 id="posto-titulo">Registro de Atendimento</h1><p id="posto-subtitulo">—</p></div>
-</div>
-<div class="ponto-wrap">
-<div class="blocked-card" id="posto-blocked-card" style="display:none">
-<div class="blocked-icon">🔒</div>
-<div><div class="blocked-title">Dispositivo não autorizado</div>
-<div class="blocked-desc">O registro só pode ser feito no computador autorizado do posto.<br/>Solicite autorização ao administrador.</div></div>
-</div>
-<div class="device-req-card" id="posto-auth-request" style="display:none">
-<div style="font-size:22px">💻</div>
-<div class="dr-info">
-<div class="dr-title">Solicitar autorização deste dispositivo</div>
-<div class="dr-sub" id="posto-device-id-display">ID: carregando...</div>
-</div>
-<button class="btn btn-primary btn-sm" onclick="solicitarAutorizacaoPosto()">Solicitar</button>
-</div>
-<div id="posto-main" style="display:none">
-<div class="ponto-clock-card">
-<div class="ponto-date" id="posto-date-lbl">—</div>
-<div class="ponto-time-big" id="posto-clock">00<span>:</span>00<span>:</span>00</div>
-<div class="ponto-day-full" id="posto-day-full">—</div>
-</div>
-<div class="ponto-status-card">
-<div class="pst-dot idle" id="posto-pst-dot"></div>
-<div class="pst-label" id="posto-pst-label">Aguardando abertura</div>
-<div class="pst-since" id="posto-pst-since"></div>
-</div>
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
-<div class="ponto-btn pb-active" id="pbtn-abertura" onclick="registrarPosto('abertura')">
-<span class="pb-ico">🟢</span>
-<div class="pb-lbl">Abertura do Posto</div>
-<div class="pb-time" id="pt-abertura">—</div>
-</div>
-<div class="ponto-btn pb-locked" id="pbtn-fechamento" onclick="registrarPosto('fechamento')">
-<span class="pb-ico">🔴</span>
-<div class="pb-lbl">Fechamento do Posto</div>
-<div class="pb-time" id="pt-fechamento">—</div>
-</div>
-</div>
-<div class="ponto-summary">
-<div class="ps-header">
-<span class="ps-title">Resumo do dia</span>
-<button class="btn btn-sm btn-secondary" onclick="exportarMeuRegistro()">↓ Exportar mês</button>
-</div>
-<div class="ps-row"><span class="ps-lbl">🟢 Abertura</span><span class="ps-val" id="psr-abertura">—</span><span class="ps-badge psb-wait" id="psb-abertura">aguardando</span></div>
-<div class="ps-row"><span class="ps-lbl">🔴 Fechamento</span><span class="ps-val" id="psr-fechamento">—</span><span class="ps-badge psb-wait" id="psb-fechamento">aguardando</span></div>
-<div class="ps-row" id="posto-justif-row" style="display:none">
-<span class="ps-lbl">📋 Justificativa</span>
-<span class="ps-val" id="psr-justificativa" style="font-size:12px;color:var(--text2)">—</span>
-</div>
-</div>
-</div>
-</div>
-</div>
-<!-- SUPERVISOR POSTOS -->
-<div class="view" id="view-supervisor-postos">
-<div class="topbar">
-<div class="page-header" style="margin:0"><h1>Horários Postos</h1><p>Acompanhe os postos da sua equipe</p></div>
-</div>
-<div class="grid-3" id="supervisor-stats" style="margin-bottom:20px"></div>
-<div id="supervisor-postos-body"></div>
-</div>
-<!-- SUPERVISOR — CAIXA ROTATIVO -->
-<div class="view" id="view-sup-caixa">
-<div class="topbar">
-<div class="page-header" style="margin:0"><h1>Caixa Rotativo</h1><p>Prestação de contas — envie para aprovação</p></div>
-</div>
-<div id="sup-caixa-body"></div>
-</div>
-<!-- SUPERVISOR — COMBUSTÍVEL -->
-<div class="view" id="view-sup-combustivel">
-<div class="topbar">
-<div class="page-header" style="margin:0"><h1>Recarga Combustível</h1><p>Solicite recarga para suas rotas</p></div>
-</div>
-<div id="sup-comb-body"></div>
-</div>
-<!-- ADM — CAIXAS ROTATIVOS -->
-<div class="view" id="view-adm-caixas">
-<div class="topbar">
-<div class="page-header" style="margin:0"><h1>Caixas Rotativos</h1><p>Aprovação e controle financeiro dos supervisores</p></div>
-</div>
-<div class="grid-4" id="adm-caixas-stats" style="margin-bottom:20px"></div>
-<div id="adm-caixas-body"></div>
-</div>
-<!-- ADM — COMBUSTÍVEL -->
-<div class="view" id="view-adm-combustivel">
-<div class="topbar">
-<div class="page-header" style="margin:0"><h1>Combustível</h1><p>Recargas dos cartões dos supervisores</p></div>
-</div>
-<div class="grid-4" id="adm-comb-stats" style="margin-bottom:20px"></div>
-<div id="adm-comb-body"></div>
-</div>
-<!-- ADM — RELATÓRIO COMBUSTÍVEL -->
-<div class="view" id="view-adm-relatorio-comb">
-<div class="topbar">
-<div class="page-header" style="margin:0"><h1>Relatório de Combustível</h1><p>Consolidado mensal por supervisor</p></div>
-<div class="topbar-actions">
-<select class="form-select" id="rel-comb-mes" onchange="renderRelatorioComb()" style="width:160px"></select>
-</div>
-</div>
-<div id="rel-comb-body"></div>
-</div>
-</div>
+<div id="page-app" class="page" style="flex-direction:row">
+  <div class="sidebar">
+    <div class="sidebar-logo">Gestão<br>Grupo RG Rio</div>
+    <div id="nav-admin" style="display:none">
+      <div class="sidebar-section">
+        <div class="sidebar-section-label">Gestão</div>
+        <div class="sidebar-item active" id="nav-dash" onclick="showView('adm-dashboard',this)"><span class="icon">⬡</span> Dashboard</div>
+        <div class="sidebar-item" id="nav-tasks" onclick="showView('adm-tasks',this)"><span class="icon">◈</span> Demandas</div>
+        <div class="sidebar-item" id="nav-team" onclick="showView('adm-team',this)"><span class="icon">◉</span> Time</div>
+        <div class="sidebar-item" id="nav-ponto-adm" onclick="showView('adm-ponto',this)"><span class="icon">⏱</span> Ponto Eletrônico</div>
+        <div class="sidebar-item" id="nav-postos-adm" onclick="showView('adm-postos',this)"><span class="icon">🏪</span> Postos</div>
+        <div class="sidebar-item" id="nav-caixas-adm" onclick="showView('adm-caixas',this)"><span class="icon">💰</span> Caixas Rotativos <span id="caixa-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
+        <div class="sidebar-item" id="nav-comb-adm" onclick="showView('adm-combustivel',this)"><span class="icon">⛽</span> Combustível <span id="comb-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
+        <div class="sidebar-item" id="nav-relatorio-comb" onclick="showView('adm-relatorio-comb',this)"><span class="icon">📊</span> Relatório Combustível</div>
+      </div>
+    </div>
+    <div id="nav-collab" style="display:none">
+      <div class="sidebar-section">
+        <div class="sidebar-section-label">Meu Painel</div>
+        <div class="sidebar-item active" onclick="showView('col-tasks',this)"><span class="icon">◈</span> Minhas Tarefas</div>
+        <div class="sidebar-item" onclick="showView('col-ponto',this)"><span class="icon">⏱</span> Meu Ponto</div>
+      </div>
+    </div>
+    <div id="nav-posto" style="display:none">
+      <div class="sidebar-section">
+        <div class="sidebar-section-label">Atendimento</div>
+        <div class="sidebar-item active" onclick="showView('posto-registro',this)"><span class="icon">🏪</span> Registro</div>
+      </div>
+    </div>
+    <div id="nav-supervisor" style="display:none">
+      <div class="sidebar-section">
+        <div class="sidebar-section-label">Supervisão</div>
+        <div class="sidebar-item active" onclick="showView('supervisor-postos',this)"><span class="icon">🏪</span> Horários Postos</div>
+        <div class="sidebar-item" onclick="showView('col-tasks',this)"><span class="icon">◈</span> Minhas Tarefas</div>
+        <div class="sidebar-item" onclick="showView('sup-demandas-equipe',this)"><span class="icon">◈</span> Demandas da Equipe</div>
+        <div class="sidebar-item" onclick="showView('col-ponto',this)"><span class="icon">⏱</span> Meu Ponto</div>
+        <div class="sidebar-item" onclick="showView('sup-caixa',this)"><span class="icon">💰</span> Caixa Rotativo</div>
+        <div class="sidebar-item" onclick="showView('sup-combustivel',this)"><span class="icon">⛽</span> Recarga Combustível</div>
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      <div id="notif-panel" class="notif-panel">
+        <div class="notif-header"><span class="notif-header-title">🔔 Notificações</span><button class="notif-clear" onclick="markAllRead()">Marcar todas lidas</button></div>
+        <div id="notif-list"><div class="notif-empty">Nenhuma notificação</div></div>
+      </div>
+      <div style="margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;">
+        <span class="online-badge"><span class="online-dot"></span>Firebase Online</span>
+        <div class="notif-bell" onclick="toggleNotif()">🔔<span class="notif-count" id="notif-count">0</span></div>
+      </div>
+      <div class="user-chip">
+        <div class="avatar" id="sb-avatar">A</div>
+        <div class="user-info">
+          <div class="name" id="sb-name">—</div>
+          <div class="role" id="sb-role">—</div>
+        </div>
+      </div>
+      <button class="btn btn-secondary btn-block btn-sm" onclick="doLogout()">Sair</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <!-- ADM DASHBOARD -->
+    <div id="view-adm-dashboard" class="view active">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Dashboard</h1><p>Visão macro do time em tempo real</p></div>
+      </div>
+      <div class="grid-4" id="stats-row" style="margin-bottom:20px"></div>
+      <div id="reset-requests-wrap"></div>
+      <div id="sem-geral-wrap" style="margin-bottom:20px"></div>
+      <div id="macro-team"></div>
+    </div>
+
+    <!-- ADM DEMANDAS -->
+    <div id="view-adm-tasks" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Demandas</h1><p>Gerencie todas as tarefas do time</p></div>
+        <div class="topbar-actions">
+          <button class="btn btn-primary" onclick="openCreateTask()">+ Nova Demanda</button>
+        </div>
+      </div>
+      <div id="adm-pending-demandas-wrap"></div>
+      <div id="all-tasks-list"></div>
+    </div>
+
+    <!-- SUPERVISOR — DEMANDAS DA EQUIPE -->
+    <div id="view-sup-demandas-equipe" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Demandas da Equipe</h1><p>Acompanhe e proponha demandas</p></div>
+        <div class="topbar-actions">
+          <button class="btn btn-primary" onclick="abrirProporDemanda()">+ Propor Demanda</button>
+        </div>
+      </div>
+      <div id="sup-demandas-equipe-body"></div>
+    </div>
+
+    <!-- ADM TIME -->
+    <div id="view-adm-team" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Time</h1><p>Colaboradores, demandas, score e risco</p></div>
+        <div class="topbar-actions">
+          <button class="btn btn-primary" onclick="openCreateCollab()">+ Novo Colaborador</button>
+        </div>
+      </div>
+      <div id="adm-team-cards"></div>
+      <table style="display:none"><tbody id="team-tbody"></tbody></table>
+    </div>
+
+    <!-- COLABORADOR -->
+    <div id="view-col-tasks" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Minhas Tarefas</h1><p>Acompanhe e atualize suas demandas</p></div>
+        <div class="topbar-actions">
+          <button class="btn btn-secondary" onclick="abrirProporDemanda()">+ Propor Demanda</button>
+        </div>
+      </div>
+      <div id="col-prop-pendentes-wrap"></div>
+      <div class="grid-3" id="col-task-stats" style="margin-bottom:24px"></div>
+      <div id="col-tasks-list"></div>
+    </div>
+
+    <!-- PONTO COLABORADOR -->
+    <div id="view-col-ponto" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Meu Ponto</h1><p>Registre sua jornada de trabalho</p></div>
+      </div>
+      <div class="ponto-wrap">
+        <div id="ponto-blocked-card" class="blocked-card" style="display:none">
+          <div class="blocked-icon">🔒</div>
+          <div>
+            <div class="blocked-title">Dispositivo não autorizado</div>
+            <div class="blocked-desc">O registro de ponto só pode ser feito no computador autorizado da sua loja.<br>Solicite ao administrador a autorização deste dispositivo.</div>
+          </div>
+        </div>
+        <div id="ponto-auth-request" style="display:none" class="device-req-card">
+          <div style="font-size:22px">💻</div>
+          <div class="dr-info">
+            <div class="dr-title">Solicitar autorização deste dispositivo</div>
+            <div class="dr-sub" id="device-id-display">ID: carregando...</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="solicitarAutorizacao()">Solicitar</button>
+        </div>
+        <div id="ponto-main" style="display:none">
+          <div class="ponto-clock-card">
+            <div class="ponto-date" id="ponto-date-lbl">—</div>
+            <div class="ponto-time-big" id="ponto-clock">00<span>:</span>00<span>:</span>00</div>
+            <div class="ponto-day-full" id="ponto-day-full">—</div>
+          </div>
+          <div class="ponto-status-card">
+            <div class="pst-dot idle" id="pst-dot"></div>
+            <div class="pst-label" id="pst-label">Aguardando entrada</div>
+            <div class="pst-since" id="pst-since"></div>
+          </div>
+          <div class="ponto-btns">
+            <div class="ponto-btn pb-active" id="pbtn-entrada" onclick="registrarPonto('entrada')">
+              <span class="pb-ico">🟢</span>
+              <div class="pb-lbl">Entrada</div>
+              <div class="pb-time" id="pt-entrada">—</div>
+            </div>
+            <div class="ponto-btn pb-locked" id="pbtn-saida-almoco" onclick="registrarPonto('saida_almoco')">
+              <span class="pb-ico">🍽️</span>
+              <div class="pb-lbl">Saída Almoço</div>
+              <div class="pb-time" id="pt-saida-almoco">—</div>
+            </div>
+            <div class="ponto-btn pb-locked" id="pbtn-retorno-almoco" onclick="registrarPonto('retorno_almoco')">
+              <span class="pb-ico">↩️</span>
+              <div class="pb-lbl">Retorno Almoço</div>
+              <div class="pb-time" id="pt-retorno-almoco">—</div>
+            </div>
+            <div class="ponto-btn pb-locked" id="pbtn-saida" onclick="registrarPonto('saida')">
+              <span class="pb-ico">🔴</span>
+              <div class="pb-lbl">Saída</div>
+              <div class="pb-time" id="pt-saida">—</div>
+            </div>
+          </div>
+          <div class="ponto-summary">
+            <div class="ps-header">
+              <span class="ps-title">Resumo do dia</span>
+              <button class="btn btn-sm btn-secondary" onclick="exportarMeuPonto()">↓ Exportar mês</button>
+            </div>
+            <div class="ps-row"><span class="ps-lbl">🟢 Entrada</span><span class="ps-val" id="psr-entrada">—</span><span class="ps-badge psb-wait" id="psb-entrada">aguardando</span></div>
+            <div class="ps-row"><span class="ps-lbl">🍽️ Saída almoço</span><span class="ps-val" id="psr-saida-almoco">—</span><span class="ps-badge psb-wait" id="psb-saida-almoco">aguardando</span></div>
+            <div class="ps-row"><span class="ps-lbl">↩️ Retorno almoço</span><span class="ps-val" id="psr-retorno-almoco">—</span><span class="ps-badge psb-wait" id="psb-retorno-almoco">aguardando</span></div>
+            <div class="ps-row"><span class="ps-lbl">🔴 Saída</span><span class="ps-val" id="psr-saida">—</span><span class="ps-badge psb-wait" id="psb-saida">aguardando</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PONTO ADM -->
+    <div id="view-adm-ponto" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Ponto Eletrônico</h1><p>Jornada do time em tempo real</p></div>
+        <div class="topbar-actions">
+          <select class="form-select" id="ponto-mes-filtro" style="width:160px" onchange="renderAdmPonto()"></select>
+        </div>
+      </div>
+      <div class="ponto-adm-stats" id="ponto-adm-stats"></div>
+      <div id="device-requests-wrap"></div>
+      <div class="ponto-team-table">
+        <div class="ptt-header"><span>Colaborador</span><span>Entrada</span><span>S. Almoço</span><span>Retorno</span><span>Saída</span><span>Status</span></div>
+        <div id="ponto-team-rows"></div>
+      </div>
+      <div style="margin-top:16px" class="export-bar">
+        <div class="eb-left"><strong>Exportar relatório de ponto</strong>Todos os colaboradores — mês selecionado</div>
+        <div class="eb-btns">
+          <button class="eb-btn green" onclick="exportarPontoExcel()">📊 Excel</button>
+          <button class="eb-btn red" onclick="exportarPontoPDF()">📄 PDF</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- POSTOS ADM -->
+    <div id="view-adm-postos" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Postos de Atendimento</h1><p>Acompanhe todos os postos em tempo real</p></div>
+        <div class="topbar-actions">
+          <select class="form-select" id="postos-mes-filtro" style="width:160px" onchange="renderAdmPostos()"></select>
+        </div>
+      </div>
+      <div id="postos-adm-stats" class="grid-4" style="margin-bottom:20px"></div>
+      <div id="postos-adm-body"></div>
+      <div style="margin-top:16px" class="export-bar">
+        <div class="eb-left"><strong>Exportar relatório de postos</strong>Todos os postos — mês selecionado</div>
+        <div class="eb-btns">
+          <button class="eb-btn green" onclick="exportarPostosExcel()">📊 Excel</button>
+          <button class="eb-btn red" onclick="exportarPostosPDF()">📄 PDF</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- POSTO REGISTRO -->
+    <div id="view-posto-registro" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1 id="posto-titulo">Registro de Atendimento</h1><p id="posto-subtitulo">—</p></div>
+      </div>
+      <div class="ponto-wrap">
+        <div id="posto-blocked-card" class="blocked-card" style="display:none">
+          <div class="blocked-icon">🔒</div>
+          <div><div class="blocked-title">Dispositivo não autorizado</div>
+          <div class="blocked-desc">O registro só pode ser feito no computador autorizado do posto.<br>Solicite autorização ao administrador.</div></div>
+        </div>
+        <div id="posto-auth-request" style="display:none" class="device-req-card">
+          <div style="font-size:22px">💻</div>
+          <div class="dr-info">
+            <div class="dr-title">Solicitar autorização deste dispositivo</div>
+            <div class="dr-sub" id="posto-device-id-display">ID: carregando...</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="solicitarAutorizacaoPosto()">Solicitar</button>
+        </div>
+        <div id="posto-main" style="display:none">
+          <div class="ponto-clock-card">
+            <div class="ponto-date" id="posto-date-lbl">—</div>
+            <div class="ponto-time-big" id="posto-clock">00<span>:</span>00<span>:</span>00</div>
+            <div class="ponto-day-full" id="posto-day-full">—</div>
+          </div>
+          <div class="ponto-status-card">
+            <div class="pst-dot idle" id="posto-pst-dot"></div>
+            <div class="pst-label" id="posto-pst-label">Aguardando abertura</div>
+            <div class="pst-since" id="posto-pst-since"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
+            <div class="ponto-btn pb-active" id="pbtn-abertura" onclick="registrarPosto('abertura')">
+              <span class="pb-ico">🟢</span>
+              <div class="pb-lbl">Abertura do Posto</div>
+              <div class="pb-time" id="pt-abertura">—</div>
+            </div>
+            <div class="ponto-btn pb-locked" id="pbtn-fechamento" onclick="registrarPosto('fechamento')">
+              <span class="pb-ico">🔴</span>
+              <div class="pb-lbl">Fechamento do Posto</div>
+              <div class="pb-time" id="pt-fechamento">—</div>
+            </div>
+          </div>
+          <div class="ponto-summary">
+            <div class="ps-header">
+              <span class="ps-title">Resumo do dia</span>
+              <button class="btn btn-sm btn-secondary" onclick="exportarMeuRegistro()">↓ Exportar mês</button>
+            </div>
+            <div class="ps-row"><span class="ps-lbl">🟢 Abertura</span><span class="ps-val" id="psr-abertura">—</span><span class="ps-badge psb-wait" id="psb-abertura">aguardando</span></div>
+            <div class="ps-row"><span class="ps-lbl">🔴 Fechamento</span><span class="ps-val" id="psr-fechamento">—</span><span class="ps-badge psb-wait" id="psb-fechamento">aguardando</span></div>
+            <div id="posto-justif-row" class="ps-row" style="display:none">
+              <span class="ps-lbl">📋 Justificativa</span>
+              <span class="ps-val" id="psr-justificativa" style="font-size:12px;color:var(--text2)">—</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SUPERVISOR POSTOS -->
+    <div id="view-supervisor-postos" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Horários Postos</h1><p>Acompanhe os postos da sua equipe</p></div>
+      </div>
+      <div id="supervisor-stats" class="grid-3" style="margin-bottom:20px"></div>
+      <div id="supervisor-postos-body"></div>
+    </div>
+
+    <!-- SUPERVISOR — CAIXA ROTATIVO -->
+    <div id="view-sup-caixa" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Caixa Rotativo</h1><p>Prestação de contas — envie para aprovação</p></div>
+      </div>
+      <div id="sup-caixa-body"></div>
+    </div>
+
+    <!-- SUPERVISOR — COMBUSTÍVEL -->
+    <div id="view-sup-combustivel" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Recarga Combustível</h1><p>Solicite recarga para suas rotas</p></div>
+      </div>
+      <div id="sup-comb-body"></div>
+    </div>
+
+    <!-- ADM — CAIXAS ROTATIVOS -->
+    <div id="view-adm-caixas" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Caixas Rotativos</h1><p>Aprovação e controle financeiro dos supervisores</p></div>
+      </div>
+      <div id="adm-caixas-stats" class="grid-4" style="margin-bottom:20px"></div>
+      <div id="adm-caixas-body"></div>
+    </div>
+
+    <!-- ADM — COMBUSTÍVEL -->
+    <div id="view-adm-combustivel" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Combustível</h1><p>Recargas dos cartões dos supervisores</p></div>
+      </div>
+      <div id="adm-comb-stats" class="grid-4" style="margin-bottom:20px"></div>
+      <div id="adm-comb-body"></div>
+    </div>
+
+    <!-- ADM — RELATÓRIO COMBUSTÍVEL -->
+    <div id="view-adm-relatorio-comb" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Relatório de Combustível</h1><p>Consolidado mensal por supervisor</p></div>
+        <div class="topbar-actions">
+          <select class="form-select" id="rel-comb-mes" style="width:160px" onchange="renderRelatorioComb()"></select>
+        </div>
+      </div>
+      <div id="rel-comb-body"></div>
+    </div>
+
+  </div>
 </div>
 <!-- MODAL: NOVO COLABORADOR -->
 <div class="modal-overlay" id="modal-collab">
-<div class="modal">
-<div class="modal-header"><div class="modal-title">Novo Colaborador</div><button class="close-btn" onclick="closeModal('modal-collab')">✕</button></div>
-<div class="form-group"><label class="form-label">Nome Completo</label><input class="form-input" id="nc-name" placeholder="Ex: João Silva"/></div>
-<div class="form-group"><label class="form-label">E-mail</label><input class="form-input" id="nc-email" placeholder="joao@empresa.com" type="email"/></div>
-<div class="form-group"><label class="form-label">Senha de Acesso</label><input class="form-input" id="nc-pass" placeholder="Mínimo 4 caracteres" type="password"/></div>
-<div class="form-group"><label class="form-label">Cargo / Função</label><input class="form-input" id="nc-role" placeholder="Ex: Designer, Analista..."/></div>
-<div style="display:flex;gap:10px;margin-top:8px">
-<button class="btn btn-secondary" onclick="closeModal('modal-collab')" style="flex:1">Cancelar</button>
-<button class="btn btn-primary" onclick="saveCollab()" style="flex:1">Salvar</button>
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Novo Colaborador</div><button class="close-btn" onclick="closeModal('modal-collab')">✕</button></div>
+    <div class="form-group"><label class="form-label">Nome Completo</label><input class="form-input" id="nc-name" placeholder="Ex: João Silva"></div>
+    <div class="form-group"><label class="form-label">E-mail</label><input class="form-input" id="nc-email" type="email" placeholder="joao@empresa.com"></div>
+    <div class="form-group"><label class="form-label">Senha de Acesso</label><input class="form-input" id="nc-pass" type="password" placeholder="Mínimo 4 caracteres"></div>
+    <div class="form-group"><label class="form-label">Cargo / Função</label><input class="form-input" id="nc-role" placeholder="Ex: Designer, Analista..."></div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-collab')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="saveCollab()">Salvar</button>
+    </div>
+  </div>
 </div>
-</div>
-</div>
+
 <!-- MODAL: PROPOR DEMANDA (colaborador/supervisor) -->
 <div class="modal-overlay" id="modal-propor-demanda">
-<div class="modal">
-<div class="modal-header"><div class="modal-title">Propor Demanda</div><button class="close-btn" onclick="closeModal('modal-propor-demanda')">✕</button></div>
-<div style="font-size:13px;color:var(--text2);margin-bottom:14px;padding:10px;background:var(--surface2);border-radius:8px;">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Propor Demanda</div><button class="close-btn" onclick="closeModal('modal-propor-demanda')">✕</button></div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:14px;padding:10px;background:var(--surface2);border-radius:8px;">
       📋 Sua proposta será enviada ao administrador para aprovação antes de entrar na lista oficial.
     </div>
-<div class="form-group"><label class="form-label">Título da Demanda</label>
-<input class="form-input" id="prop-titulo" placeholder="Ex: Levantamento de dados Q3"/>
+    <div class="form-group"><label class="form-label">Título da Demanda</label>
+      <input class="form-input" id="prop-titulo" placeholder="Ex: Levantamento de dados Q3">
+    </div>
+    <div class="form-group"><label class="form-label">Descrição</label>
+      <textarea class="form-textarea" id="prop-desc" placeholder="Descreva o que precisa ser feito, entregáveis esperados..."></textarea>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Atribuir a</label>
+        <select class="form-select" id="prop-assignee"></select>
+      </div>
+      <div class="form-group"><label class="form-label">Prazo sugerido</label>
+        <input class="form-input" id="prop-deadline" type="date">
+      </div>
+    </div>
+    <div class="form-group"><label class="form-label">Prioridade</label>
+      <select class="form-select" id="prop-priority">
+        <option value="normal">Normal</option>
+        <option value="alta">Alta</option>
+        <option value="urgente">Urgente</option>
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">Justificativa (por que esta demanda?)</label>
+      <textarea class="form-textarea" id="prop-justif" placeholder="Por que esta demanda é necessária?"></textarea>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-propor-demanda')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="enviarPropostaDemanda()">📤 Enviar para Aprovação</button>
+    </div>
+  </div>
 </div>
-<div class="form-group"><label class="form-label">Descrição</label>
-<textarea class="form-textarea" id="prop-desc" placeholder="Descreva o que precisa ser feito, entregáveis esperados..."></textarea>
-</div>
-<div class="form-row">
-<div class="form-group"><label class="form-label">Atribuir a</label>
-<select class="form-select" id="prop-assignee"></select>
-</div>
-<div class="form-group"><label class="form-label">Prazo sugerido</label>
-<input class="form-input" id="prop-deadline" type="date"/>
-</div>
-</div>
-<div class="form-group"><label class="form-label">Prioridade</label>
-<select class="form-select" id="prop-priority">
-<option value="normal">Normal</option>
-<option value="alta">Alta</option>
-<option value="urgente">Urgente</option>
-</select>
-</div>
-<div class="form-group"><label class="form-label">Justificativa (por que esta demanda?)</label>
-<textarea class="form-textarea" id="prop-justif" placeholder="Por que esta demanda é necessária?"></textarea>
-</div>
-<div style="display:flex;gap:10px;margin-top:8px">
-<button class="btn btn-secondary" onclick="closeModal('modal-propor-demanda')" style="flex:1">Cancelar</button>
-<button class="btn btn-primary" onclick="enviarPropostaDemanda()" style="flex:1">📤 Enviar para Aprovação</button>
-</div>
-</div>
-</div>
+
 <!-- MODAL: REPROVAR DEMANDA -->
 <div class="modal-overlay" id="modal-reprovar-demanda">
-<div class="modal" style="max-width:400px">
-<div class="modal-header"><div class="modal-title">Reprovar Proposta</div><button class="close-btn" onclick="closeModal('modal-reprovar-demanda')">✕</button></div>
-<div id="repr-demanda-info" style="font-size:13px;color:var(--text2);margin-bottom:14px;padding:10px;background:var(--surface2);border-radius:8px;"></div>
-<div class="form-group"><label class="form-label">Motivo da reprovação</label>
-<textarea class="form-textarea" id="repr-motivo" placeholder="Explique o motivo para o colaborador..."></textarea>
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header"><div class="modal-title">Reprovar Proposta</div><button class="close-btn" onclick="closeModal('modal-reprovar-demanda')">✕</button></div>
+    <div id="repr-demanda-info" style="font-size:13px;color:var(--text2);margin-bottom:14px;padding:10px;background:var(--surface2);border-radius:8px;"></div>
+    <div class="form-group"><label class="form-label">Motivo da reprovação</label>
+      <textarea class="form-textarea" id="repr-motivo" placeholder="Explique o motivo para o colaborador..."></textarea>
+    </div>
+    <input type="hidden" id="repr-demanda-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-reprovar-demanda')">Cancelar</button>
+      <button class="btn btn-danger" style="flex:1" onclick="reprovarDemanda()">✕ Reprovar</button>
+    </div>
+  </div>
 </div>
-<input id="repr-demanda-id" type="hidden"/>
-<div style="display:flex;gap:10px;margin-top:8px">
-<button class="btn btn-secondary" onclick="closeModal('modal-reprovar-demanda')" style="flex:1">Cancelar</button>
-<button class="btn btn-danger" onclick="reprovarDemanda()" style="flex:1">✕ Reprovar</button>
-</div>
-</div>
-</div>
+
 <!-- MODAL: NOVA TAREFA -->
 <div class="modal-overlay" id="modal-task">
-<div class="modal">
-<div class="modal-header"><div class="modal-title" id="modal-task-title">Nova Demanda</div><button class="close-btn" onclick="closeModal('modal-task')">✕</button></div>
-<div class="form-group"><label class="form-label">Título da Demanda</label><input class="form-input" id="nt-title" placeholder="Ex: Criar landing page Q3"/></div>
-<div class="form-group"><label class="form-label">Descrição</label><textarea class="form-textarea" id="nt-desc" placeholder="Descreva a demanda, entregáveis esperados..."></textarea></div>
-<div class="form-row">
-<div class="form-group"><label class="form-label">Atribuir a</label><select class="form-select" id="nt-assign"></select></div>
-<div class="form-group"><label class="form-label">Prazo</label><input class="form-input" id="nt-deadline" type="date"/></div>
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title" id="modal-task-title">Nova Demanda</div><button class="close-btn" onclick="closeModal('modal-task')">✕</button></div>
+    <div class="form-group"><label class="form-label">Título da Demanda</label><input class="form-input" id="nt-title" placeholder="Ex: Criar landing page Q3"></div>
+    <div class="form-group"><label class="form-label">Descrição</label><textarea class="form-textarea" id="nt-desc" placeholder="Descreva a demanda, entregáveis esperados..."></textarea></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Atribuir a</label><select class="form-select" id="nt-assign"></select></div>
+      <div class="form-group"><label class="form-label">Prazo</label><input class="form-input" id="nt-deadline" type="date"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Prioridade</label>
+      <select class="form-select" id="nt-priority"><option value="normal">Normal</option><option value="alta">Alta</option><option value="urgente">Urgente</option></select>
+    </div>
+    <input type="hidden" id="nt-edit-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-task')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="saveTaskComNotif()">Salvar</button>
+    </div>
+  </div>
 </div>
-<div class="form-group"><label class="form-label">Prioridade</label>
-<select class="form-select" id="nt-priority"><option value="normal">Normal</option><option value="alta">Alta</option><option value="urgente">Urgente</option></select>
-</div>
-<input id="nt-edit-id" type="hidden"/>
-<div style="display:flex;gap:10px;margin-top:8px">
-<button class="btn btn-secondary" onclick="closeModal('modal-task')" style="flex:1">Cancelar</button>
-<button class="btn btn-primary" onclick="saveTaskComNotif()" style="flex:1">Salvar</button>
-</div>
-</div>
-</div>
+
 <!-- MODAL: RETORNO DEMANDA (colaborador) -->
 <div class="modal-overlay" id="modal-retorno">
-<div class="modal" style="max-width:460px">
-<div class="modal-header"><div class="modal-title">Atualizar Demanda</div><button class="close-btn" onclick="closeModal('modal-retorno')">✕</button></div>
-<div id="ret-task-title" style="color:var(--text2);font-size:14px;margin-bottom:16px"></div>
-<div class="form-group">
-<label class="form-label">Progresso Atual</label>
-<input id="ret-progress" max="100" min="0" oninput="document.getElementById('ret-prog-num').textContent=this.value+'%'" step="5" type="range" value="0"/>
-<div class="prog-display" id="ret-prog-num">0%</div>
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header"><div class="modal-title">Atualizar Demanda</div><button class="close-btn" onclick="closeModal('modal-retorno')">✕</button></div>
+    <div id="ret-task-title" style="color:var(--text2);font-size:14px;margin-bottom:16px"></div>
+    <div class="form-group">
+      <label class="form-label">Progresso Atual</label>
+      <input type="range" id="ret-progress" min="0" max="100" step="5" value="0" oninput="document.getElementById('ret-prog-num').textContent=this.value+'%'">
+      <div class="prog-display" id="ret-prog-num">0%</div>
+    </div>
+    <div class="form-group"><label class="form-label">Retorno / Atualização</label>
+      <textarea class="form-textarea" id="ret-comment" placeholder="Descreva o que foi feito, o que falta, possíveis bloqueios..."></textarea>
+    </div>
+    <div class="form-group"><label class="form-label">Status</label>
+      <select class="form-select" id="ret-status">
+        <option value="em_andamento">Em Andamento</option>
+        <option value="concluida">Concluída ✓</option>
+        <option value="bloqueada">Bloqueada ⚠</option>
+        <option value="pausada">Pausada ⏸</option>
+      </select>
+    </div>
+    <div class="form-group" id="ret-prazo-group">
+      <label class="form-label" style="color:var(--yellow)">⏰ Solicitar Novo Prazo? (opcional)</label>
+      <div style="display:flex;gap:10px;align-items:center">
+        <input class="form-input" id="ret-novo-prazo" type="date" placeholder="Deixe em branco para não solicitar">
+        <input class="form-input" id="ret-prazo-motivo" placeholder="Motivo da solicitação" style="flex:2">
+      </div>
+    </div>
+    <input type="hidden" id="ret-task-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-retorno')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="salvarRetorno()">Salvar Retorno</button>
+    </div>
+  </div>
 </div>
-<div class="form-group"><label class="form-label">Retorno / Atualização</label>
-<textarea class="form-textarea" id="ret-comment" placeholder="Descreva o que foi feito, o que falta, possíveis bloqueios..."></textarea>
-</div>
-<div class="form-group"><label class="form-label">Status</label>
-<select class="form-select" id="ret-status">
-<option value="em_andamento">Em Andamento</option>
-<option value="concluida">Concluída ✓</option>
-<option value="bloqueada">Bloqueada ⚠</option>
-<option value="pausada">Pausada ⏸</option>
-</select>
-</div>
-<div class="form-group" id="ret-prazo-group">
-<label class="form-label" style="color:var(--yellow)">⏰ Solicitar Novo Prazo? (opcional)</label>
-<div style="display:flex;gap:10px;align-items:center">
-<input class="form-input" id="ret-novo-prazo" placeholder="Deixe em branco para não solicitar" type="date"/>
-<input class="form-input" id="ret-prazo-motivo" placeholder="Motivo da solicitação" style="flex:2"/>
-</div>
-</div>
-<input id="ret-task-id" type="hidden"/>
-<div style="display:flex;gap:10px;margin-top:8px">
-<button class="btn btn-secondary" onclick="closeModal('modal-retorno')" style="flex:1">Cancelar</button>
-<button class="btn btn-primary" onclick="salvarRetorno()" style="flex:1">Salvar Retorno</button>
-</div>
-</div>
-</div>
+
 <!-- MODAL: APROVAR/REPROVAR PRAZO -->
 <div class="modal-overlay" id="modal-prazo">
-<div class="modal" style="max-width:420px">
-<div class="modal-header"><div class="modal-title">Solicitação de Novo Prazo</div><button class="close-btn" onclick="closeModal('modal-prazo')">✕</button></div>
-<div id="prazo-info" style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;color:var(--text2)"></div>
-<div class="form-group"><label class="form-label">Novo Prazo (se aprovar ou redefinir)</label>
-<input class="form-input" id="prazo-novo-data" type="date"/>
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header"><div class="modal-title">Solicitação de Novo Prazo</div><button class="close-btn" onclick="closeModal('modal-prazo')">✕</button></div>
+    <div id="prazo-info" style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;color:var(--text2)"></div>
+    <div class="form-group"><label class="form-label">Novo Prazo (se aprovar ou redefinir)</label>
+      <input class="form-input" id="prazo-novo-data" type="date">
+    </div>
+    <div class="form-group"><label class="form-label">Observação</label>
+      <input class="form-input" id="prazo-obs" placeholder="Ex: Aprovado. / Prazo redefinido para...">
+    </div>
+    <input type="hidden" id="prazo-task-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-danger" style="flex:1" onclick="decidirPrazo('recusar')">✕ Recusar</button>
+      <button class="btn btn-success" style="flex:1" onclick="decidirPrazo('aprovar')">✓ Aprovar</button>
+    </div>
+  </div>
 </div>
-<div class="form-group"><label class="form-label">Observação</label>
-<input class="form-input" id="prazo-obs" placeholder="Ex: Aprovado. / Prazo redefinido para..."/>
-</div>
-<input id="prazo-task-id" type="hidden"/>
-<div style="display:flex;gap:10px;margin-top:8px">
-<button class="btn btn-danger" onclick="decidirPrazo('recusar')" style="flex:1">✕ Recusar</button>
-<button class="btn btn-success" onclick="decidirPrazo('aprovar')" style="flex:1">✓ Aprovar</button>
-</div>
-</div>
-</div>
+
 <!-- MODAL: JUSTIFICATIVA PONTO -->
 <div class="modal-overlay" id="modal-justif-ponto">
-<div class="modal" style="max-width:420px">
-<div class="modal-header"><div class="modal-title">Justificativa de Ponto</div><button class="close-btn" onclick="closeModal('modal-justif-ponto')">✕</button></div>
-<div id="justif-ponto-info" style="font-size:13px;color:var(--text2);margin-bottom:14px"></div>
-<div class="form-group"><label class="form-label">Motivo</label>
-<textarea class="form-textarea" id="justif-ponto-txt" placeholder="Descreva o motivo do atraso ou saída antecipada..."></textarea>
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header"><div class="modal-title">Justificativa de Ponto</div><button class="close-btn" onclick="closeModal('modal-justif-ponto')">✕</button></div>
+    <div id="justif-ponto-info" style="font-size:13px;color:var(--text2);margin-bottom:14px"></div>
+    <div class="form-group"><label class="form-label">Motivo</label>
+      <textarea class="form-textarea" id="justif-ponto-txt" placeholder="Descreva o motivo do atraso ou saída antecipada..."></textarea>
+    </div>
+    <input type="hidden" id="justif-ponto-tipo">
+    <input type="hidden" id="justif-ponto-taskid">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-justif-ponto')">Pular</button>
+      <button class="btn btn-primary" style="flex:1" onclick="salvarJustifPonto()">Salvar Justificativa</button>
+    </div>
+  </div>
 </div>
-<input id="justif-ponto-tipo" type="hidden"/>
-<input id="justif-ponto-taskid" type="hidden"/>
-<div style="display:flex;gap:10px;margin-top:8px">
-<button class="btn btn-secondary" onclick="closeModal('modal-justif-ponto')" style="flex:1">Pular</button>
-<button class="btn btn-primary" onclick="salvarJustifPonto()" style="flex:1">Salvar Justificativa</button>
-</div>
-</div>
-</div>
+
 <!-- MODAL: ATUALIZAR PROGRESSO -->
 <div class="modal-overlay" id="modal-update">
-<div class="modal" style="max-width:420px">
-<div class="modal-header"><div class="modal-title">Atualizar Progresso</div><button class="close-btn" onclick="closeModal('modal-update')">✕</button></div>
-<div id="upd-task-title" style="color:var(--text2);font-size:14px;margin-bottom:16px"></div>
-<div class="form-group">
-<label class="form-label">Progresso Atual</label>
-<input id="upd-progress" max="100" min="0" oninput="document.getElementById('upd-prog-display').textContent=this.value+'%'" step="5" type="range" value="0"/>
-<div class="prog-display" id="upd-prog-display">0%</div>
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header"><div class="modal-title">Atualizar Progresso</div><button class="close-btn" onclick="closeModal('modal-update')">✕</button></div>
+    <div id="upd-task-title" style="color:var(--text2);font-size:14px;margin-bottom:16px"></div>
+    <div class="form-group">
+      <label class="form-label">Progresso Atual</label>
+      <input type="range" id="upd-progress" min="0" max="100" step="5" value="0" oninput="document.getElementById('upd-prog-display').textContent=this.value+'%'">
+      <div class="prog-display" id="upd-prog-display">0%</div>
+    </div>
+    <div class="form-group"><label class="form-label">Comentário / Atualização</label><textarea class="form-textarea" id="upd-comment" placeholder="Descreva o que foi feito, bloqueios, próximos passos..."></textarea></div>
+    <div class="form-group"><label class="form-label">Status</label>
+      <select class="form-select" id="upd-status">
+        <option value="em_andamento">Em Andamento</option>
+        <option value="concluida">Concluída ✓</option>
+        <option value="bloqueada">Bloqueada ⚠</option>
+        <option value="pausada">Pausada ⏸</option>
+      </select>
+    </div>
+    <input type="hidden" id="upd-task-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-update')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="saveUpdate()">Salvar Atualização</button>
+    </div>
+  </div>
 </div>
-<div class="form-group"><label class="form-label">Comentário / Atualização</label><textarea class="form-textarea" id="upd-comment" placeholder="Descreva o que foi feito, bloqueios, próximos passos..."></textarea></div>
-<div class="form-group"><label class="form-label">Status</label>
-<select class="form-select" id="upd-status">
-<option value="em_andamento">Em Andamento</option>
-<option value="concluida">Concluída ✓</option>
-<option value="bloqueada">Bloqueada ⚠</option>
-<option value="pausada">Pausada ⏸</option>
-</select>
-</div>
-<input id="upd-task-id" type="hidden"/>
-<div style="display:flex;gap:10px;margin-top:8px">
-<button class="btn btn-secondary" onclick="closeModal('modal-update')" style="flex:1">Cancelar</button>
-<button class="btn btn-primary" onclick="saveUpdate()" style="flex:1">Salvar Atualização</button>
-</div>
-</div>
-</div>
+
 <!-- TROCAR SENHA (primeiro acesso) -->
-<div class="page" id="page-change-password">
-<div class="login-right" style="width:100%;max-width:480px;margin:0 auto;border:none">
-<div class="lr-header">
-<div class="lr-eyebrow">Segurança</div>
-<div class="lr-title">Crie sua senha</div>
-<div class="lr-sub">Por segurança, defina uma senha pessoal antes de continuar</div>
-</div>
-<div style="background:rgba(201,162,39,0.08);border:1px solid rgba(201,162,39,0.25);border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:rgba(255,255,255,0.6);line-height:1.6;">
+<div id="page-change-password" class="page">
+  <div class="login-right" style="width:100%;max-width:480px;margin:0 auto;border:none">
+    <div class="lr-header">
+      <div class="lr-eyebrow">Segurança</div>
+      <div class="lr-title">Crie sua senha</div>
+      <div class="lr-sub">Por segurança, defina uma senha pessoal antes de continuar</div>
+    </div>
+    <div style="background:rgba(201,162,39,0.08);border:1px solid rgba(201,162,39,0.25);border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:rgba(255,255,255,0.6);line-height:1.6;">
       A senha deve ter <strong style="color:#c9a227">mínimo 6 caracteres</strong>, conter <strong style="color:#c9a227">letras e números</strong>.
     </div>
-<label class="lf-label">Nova Senha</label>
-<input class="lf-input" id="cp-nova" placeholder="Digite sua nova senha" type="password"/>
-<label class="lf-label">Confirmar Senha</label>
-<input class="lf-input" id="cp-conf" placeholder="Repita a nova senha" type="password"/>
-<div class="lf-err" id="cp-error"></div>
-<button class="lf-btn" onclick="doChangePassword()">Salvar e Entrar →</button>
+    <label class="lf-label">Nova Senha</label>
+    <input class="lf-input" type="password" id="cp-nova" placeholder="Digite sua nova senha">
+    <label class="lf-label">Confirmar Senha</label>
+    <input class="lf-input" type="password" id="cp-conf" placeholder="Repita a nova senha">
+    <div id="cp-error" class="lf-err"></div>
+    <button class="lf-btn" onclick="doChangePassword()">Salvar e Entrar →</button>
+  </div>
 </div>
-</div>
+
 <!-- ESQUECI MINHA SENHA -->
-<div class="page" id="page-forgot">
-<div class="login-right" style="width:100%;max-width:480px;margin:0 auto;border:none">
-<div class="lr-header">
-<div class="lr-eyebrow">Recuperação de acesso</div>
-<div class="lr-title">Esqueci minha senha</div>
-<div class="lr-sub">Informe seu e-mail e o administrador irá resetar seu acesso</div>
+<div id="page-forgot" class="page">
+  <div class="login-right" style="width:100%;max-width:480px;margin:0 auto;border:none">
+    <div class="lr-header">
+      <div class="lr-eyebrow">Recuperação de acesso</div>
+      <div class="lr-title">Esqueci minha senha</div>
+      <div class="lr-sub">Informe seu e-mail e o administrador irá resetar seu acesso</div>
+    </div>
+    <label class="lf-label">Seu E-mail</label>
+    <input class="lf-input" type="email" id="fs-email" placeholder="seu@gruporgbrasil.com">
+    <div id="fs-error" class="lf-err"></div>
+    <button class="lf-btn" onclick="doEsqueciSenha()">Enviar Solicitação →</button>
+    <button style="margin-top:12px;background:none;border:none;color:rgba(255,255,255,0.35);font-size:13px;cursor:pointer;width:100%;text-align:center" onclick="showPage('login')">← Voltar ao login</button>
+  </div>
 </div>
-<label class="lf-label">Seu E-mail</label>
-<input class="lf-input" id="fs-email" placeholder="seu@gruporgbrasil.com" type="email"/>
-<div class="lf-err" id="fs-error"></div>
-<button class="lf-btn" onclick="doEsqueciSenha()">Enviar Solicitação →</button>
-<button onclick="showPage('login')" style="margin-top:12px;background:none;border:none;color:rgba(255,255,255,0.35);font-size:13px;cursor:pointer;width:100%;text-align:center">← Voltar ao login</button>
-</div>
-</div>
+
 <!-- MODAL: APROVAR CAIXA -->
 <div class="modal-overlay" id="modal-aprovar">
-<div class="modal" style="max-width:420px">
-<div class="modal-header"><div class="modal-title">Aprovar Prestação de Contas</div><button class="close-btn" onclick="closeModal('modal-aprovar')">✕</button></div>
-<div id="apr-info" style="font-size:13px;color:var(--text2);margin-bottom:16px;padding:12px;background:var(--surface2);border-radius:8px;"></div>
-<div class="form-group"><label class="form-label">Observação (opcional)</label>
-<textarea class="form-textarea" id="apr-obs" placeholder="Alguma observação para o supervisor..."></textarea>
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header"><div class="modal-title">Aprovar Prestação de Contas</div><button class="close-btn" onclick="closeModal('modal-aprovar')">✕</button></div>
+    <div id="apr-info" style="font-size:13px;color:var(--text2);margin-bottom:16px;padding:12px;background:var(--surface2);border-radius:8px;"></div>
+    <div class="form-group"><label class="form-label">Observação (opcional)</label>
+      <textarea class="form-textarea" id="apr-obs" placeholder="Alguma observação para o supervisor..."></textarea>
+    </div>
+    <input type="hidden" id="apr-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-danger" style="flex:1" onclick="recusarCaixa()">✕ Recusar</button>
+      <button class="btn btn-success" style="flex:1" onclick="aprovarCaixa()">✓ Aprovar</button>
+    </div>
+  </div>
 </div>
-<input id="apr-id" type="hidden"/>
-<div style="display:flex;gap:10px;margin-top:8px">
-<button class="btn btn-danger" onclick="recusarCaixa()" style="flex:1">✕ Recusar</button>
-<button class="btn btn-success" onclick="aprovarCaixa()" style="flex:1">✓ Aprovar</button>
-</div>
-</div>
-</div>
+
 <!-- MODAL: REABASTECER -->
 <div class="modal-overlay" id="modal-reabastecer">
-<div class="modal" style="max-width:380px">
-<div class="modal-header"><div class="modal-title">Confirmar Reabastecimento</div><button class="close-btn" onclick="closeModal('modal-reabastecer')">✕</button></div>
-<div id="reab-info" style="font-size:13px;color:var(--text2);margin-bottom:16px;padding:12px;background:var(--surface2);border-radius:8px;"></div>
-<div class="form-group"><label class="form-label">Valor depositado (R$)</label>
-<input class="form-input" id="reab-valor" placeholder="0,00" step="0.01" type="number"/>
+  <div class="modal" style="max-width:380px">
+    <div class="modal-header"><div class="modal-title">Confirmar Reabastecimento</div><button class="close-btn" onclick="closeModal('modal-reabastecer')">✕</button></div>
+    <div id="reab-info" style="font-size:13px;color:var(--text2);margin-bottom:16px;padding:12px;background:var(--surface2);border-radius:8px;"></div>
+    <div class="form-group"><label class="form-label">Valor depositado (R$)</label>
+      <input class="form-input" id="reab-valor" type="number" step="0.01" placeholder="0,00">
+    </div>
+    <input type="hidden" id="reab-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-reabastecer')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="confirmarReabastecimento()">Confirmar</button>
+    </div>
+  </div>
 </div>
-<input id="reab-id" type="hidden"/>
-<div style="display:flex;gap:10px;margin-top:8px">
-<button class="btn btn-secondary" onclick="closeModal('modal-reabastecer')" style="flex:1">Cancelar</button>
-<button class="btn btn-primary" onclick="confirmarReabastecimento()" style="flex:1">Confirmar</button>
-</div>
-</div>
-</div>
+
 <!-- MODAL: JUSTIFICATIVA PONTO -->
 <div class="modal-overlay" id="modal-justif-ponto">
-<div class="modal" style="max-width:400px">
-<div class="modal-header"><div class="modal-title">Justificativa de Ponto</div><button class="close-btn" onclick="closeModal('modal-justif-ponto')">✕</button></div>
-<div id="justif-ponto-info" style="font-size:13px;color:var(--text2);margin-bottom:14px;padding:10px;background:var(--surface2);border-radius:8px;"></div>
-<div class="form-group"><label class="form-label">Motivo</label>
-<textarea class="form-textarea" id="justif-ponto-text" placeholder="Descreva o motivo do atraso ou saída antecipada..."></textarea>
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header"><div class="modal-title">Justificativa de Ponto</div><button class="close-btn" onclick="closeModal('modal-justif-ponto')">✕</button></div>
+    <div id="justif-ponto-info" style="font-size:13px;color:var(--text2);margin-bottom:14px;padding:10px;background:var(--surface2);border-radius:8px;"></div>
+    <div class="form-group"><label class="form-label">Motivo</label>
+      <textarea class="form-textarea" id="justif-ponto-text" placeholder="Descreva o motivo do atraso ou saída antecipada..."></textarea>
+    </div>
+    <input type="hidden" id="justif-ponto-tipo">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-justif-ponto')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="salvarJustificativaPonto()">Salvar</button>
+    </div>
+  </div>
 </div>
-<input id="justif-ponto-tipo" type="hidden"/>
-<div style="display:flex;gap:10px;margin-top:8px">
-<button class="btn btn-secondary" onclick="closeModal('modal-justif-ponto')" style="flex:1">Cancelar</button>
-<button class="btn btn-primary" onclick="salvarJustificativaPonto()" style="flex:1">Salvar</button>
-</div>
-</div>
-</div>
+
 <!-- MODAL: SOLICITAR NOVO PRAZO -->
 <div class="modal-overlay" id="modal-novo-prazo">
-<div class="modal" style="max-width:400px">
-<div class="modal-header"><div class="modal-title">Solicitar Novo Prazo</div><button class="close-btn" onclick="closeModal('modal-novo-prazo')">✕</button></div>
-<div id="novo-prazo-info" style="font-size:13px;color:var(--text2);margin-bottom:14px;padding:10px;background:var(--surface2);border-radius:8px;"></div>
-<div class="form-group"><label class="form-label">Novo prazo sugerido</label>
-<input class="form-input" id="novo-prazo-data" type="date"/>
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header"><div class="modal-title">Solicitar Novo Prazo</div><button class="close-btn" onclick="closeModal('modal-novo-prazo')">✕</button></div>
+    <div id="novo-prazo-info" style="font-size:13px;color:var(--text2);margin-bottom:14px;padding:10px;background:var(--surface2);border-radius:8px;"></div>
+    <div class="form-group"><label class="form-label">Novo prazo sugerido</label>
+      <input class="form-input" type="date" id="novo-prazo-data">
+    </div>
+    <div class="form-group"><label class="form-label">Justificativa</label>
+      <textarea class="form-textarea" id="novo-prazo-motivo" placeholder="Por que precisa de mais tempo?"></textarea>
+    </div>
+    <input type="hidden" id="novo-prazo-task-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-novo-prazo')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="solicitarNovoPrazo()">Enviar Solicitação</button>
+    </div>
+  </div>
 </div>
-<div class="form-group"><label class="form-label">Justificativa</label>
-<textarea class="form-textarea" id="novo-prazo-motivo" placeholder="Por que precisa de mais tempo?"></textarea>
-</div>
-<input id="novo-prazo-task-id" type="hidden"/>
-<div style="display:flex;gap:10px;margin-top:8px">
-<button class="btn btn-secondary" onclick="closeModal('modal-novo-prazo')" style="flex:1">Cancelar</button>
-<button class="btn btn-primary" onclick="solicitarNovoPrazo()" style="flex:1">Enviar Solicitação</button>
-</div>
-</div>
-</div>
+
 <!-- MODAL: APROVAR/REPROVAR PRAZO -->
 <div class="modal-overlay" id="modal-resp-prazo">
-<div class="modal" style="max-width:420px">
-<div class="modal-header"><div class="modal-title">Solicitação de Novo Prazo</div><button class="close-btn" onclick="closeModal('modal-resp-prazo')">✕</button></div>
-<div id="resp-prazo-info" style="font-size:13px;color:var(--text2);margin-bottom:14px;padding:12px;background:var(--surface2);border-radius:8px;"></div>
-<div class="form-group"><label class="form-label">Prazo que você define (obrigatório se reprovar)</label>
-<input class="form-input" id="resp-prazo-data" type="date"/>
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header"><div class="modal-title">Solicitação de Novo Prazo</div><button class="close-btn" onclick="closeModal('modal-resp-prazo')">✕</button></div>
+    <div id="resp-prazo-info" style="font-size:13px;color:var(--text2);margin-bottom:14px;padding:12px;background:var(--surface2);border-radius:8px;"></div>
+    <div class="form-group"><label class="form-label">Prazo que você define (obrigatório se reprovar)</label>
+      <input class="form-input" type="date" id="resp-prazo-data">
+    </div>
+    <div class="form-group"><label class="form-label">Observação</label>
+      <textarea class="form-textarea" id="resp-prazo-obs" placeholder="Comentário para o colaborador..."></textarea>
+    </div>
+    <input type="hidden" id="resp-prazo-task-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-danger" style="flex:1" onclick="responderPrazo('reprovar')">✕ Reprovar</button>
+      <button class="btn btn-success" style="flex:1" onclick="responderPrazo('aprovar')">✓ Aprovar</button>
+    </div>
+  </div>
 </div>
-<div class="form-group"><label class="form-label">Observação</label>
-<textarea class="form-textarea" id="resp-prazo-obs" placeholder="Comentário para o colaborador..."></textarea>
-</div>
-<input id="resp-prazo-task-id" type="hidden"/>
-<div style="display:flex;gap:10px;margin-top:8px">
-<button class="btn btn-danger" onclick="responderPrazo('reprovar')" style="flex:1">✕ Reprovar</button>
-<button class="btn btn-success" onclick="responderPrazo('aprovar')" style="flex:1">✓ Aprovar</button>
-</div>
-</div>
-</div>
+
 <!-- MODAL: RETORNO COLABORADOR -->
 <div class="modal-overlay" id="modal-retorno">
-<div class="modal" style="max-width:420px">
-<div class="modal-header"><div class="modal-title">Atualizar Demanda</div><button class="close-btn" onclick="closeModal('modal-retorno')">✕</button></div>
-<div id="retorno-task-info" style="font-size:13px;color:var(--text2);margin-bottom:14px;padding:10px;background:var(--surface2);border-radius:8px;"></div>
-<div class="form-group"><label class="form-label">Progresso atual (%)</label>
-<input class="form-input" id="retorno-progress" max="100" min="0" oninput="document.getElementById('retorno-progress-val').textContent=this.value+'%'" step="5" type="range"/>
-<span id="retorno-progress-val" style="font-size:13px;color:var(--accent);font-weight:700">0%</span>
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header"><div class="modal-title">Atualizar Demanda</div><button class="close-btn" onclick="closeModal('modal-retorno')">✕</button></div>
+    <div id="retorno-task-info" style="font-size:13px;color:var(--text2);margin-bottom:14px;padding:10px;background:var(--surface2);border-radius:8px;"></div>
+    <div class="form-group"><label class="form-label">Progresso atual (%)</label>
+      <input class="form-input" type="range" id="retorno-progress" min="0" max="100" step="5" oninput="document.getElementById('retorno-progress-val').textContent=this.value+'%'">
+      <span id="retorno-progress-val" style="font-size:13px;color:var(--accent);font-weight:700">0%</span>
+    </div>
+    <div class="form-group"><label class="form-label">Status</label>
+      <select class="form-select" id="retorno-status">
+        <option value="em_andamento">Em andamento</option>
+        <option value="aguardando">Aguardando</option>
+        <option value="concluida">Concluída</option>
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">Retorno / Comentário</label>
+      <textarea class="form-textarea" id="retorno-text" placeholder="Como está a demanda? Algum impedimento?"></textarea>
+    </div>
+    <input type="hidden" id="retorno-task-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-retorno')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="salvarRetorno()">Atualizar</button>
+    </div>
+  </div>
 </div>
-<div class="form-group"><label class="form-label">Status</label>
-<select class="form-select" id="retorno-status">
-<option value="em_andamento">Em andamento</option>
-<option value="aguardando">Aguardando</option>
-<option value="concluida">Concluída</option>
-</select>
-</div>
-<div class="form-group"><label class="form-label">Retorno / Comentário</label>
-<textarea class="form-textarea" id="retorno-text" placeholder="Como está a demanda? Algum impedimento?"></textarea>
-</div>
-<input id="retorno-task-id" type="hidden"/>
-<div style="display:flex;gap:10px;margin-top:8px">
-<button class="btn btn-secondary" onclick="closeModal('modal-retorno')" style="flex:1">Cancelar</button>
-<button class="btn btn-primary" onclick="salvarRetorno()" style="flex:1">Atualizar</button>
-</div>
-</div>
-</div>
+
 <div id="toast"></div>
+
 <script>
 // ══════════════════════════════════════
 // FIREBASE CONFIG
@@ -3770,6 +3808,106 @@ function toggleTeamCard(id) {
   if (el) el.classList.toggle('open');
 }
 
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            ${t.prazoPendente?`<button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="abrirRespPrazo('${t.id}')">📅 Resp. prazo</button>`:''}
+            <button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="const el=document.getElementById('tl2-${t.id}');if(el)el.style.display=el.style.display==='none'?'block':'none'">🕐 Hist.</button>
+          </div>
+        </div>
+        <div id="tl2-${t.id}" style="display:none;margin-top:10px;border-top:1px solid var(--border);padding-top:10px">${renderTimeline(t)}</div>
+      </div>`;
+    }).join('') : `<div style="font-size:13px;color:var(--text3);padding:10px 0">Nenhuma demanda atribuída.</div>`;
+ 
+    return `<div class="team-card">
+      <div class="team-card-header" onclick="toggleTeamCard('${c.id}')">
+        <div class="avatar avatar-collab" style="font-size:13px;width:38px;height:38px">${c.name[0]}</div>
+        <div style="flex:1">
+          <div style="font-size:14px;font-weight:700">${c.name}</div>
+          <div style="font-size:12px;color:var(--text3)">${c.cargo||'—'} · ${active} ativas · ${done} concluídas · progresso médio: ${avg}%</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+          <span class="score-badge ${sc.cls}">${sc.label} ${sc.score}</span>
+          <span class="risk-badge ${riskCls}">${riskLbl}</span>
+          ${prazosFurados>0?`<span style="font-size:11px;color:var(--red);font-weight:700;background:var(--red-bg);padding:3px 8px;border-radius:12px">⚠ ${prazosFurados} prazo(s) furado(s)</span>`:''}
+          ${prazoPend>0?`<span style="font-size:11px;color:var(--yellow);font-weight:700;background:var(--yellow-bg);padding:3px 8px;border-radius:12px">📅 ${prazoPend} pedido(s)</span>`:''}
+          <span style="font-size:16px;color:var(--text3)">▾</span>
+        </div>
+      </div>
+      <div class="team-card-body" id="team-body-${c.id}">${demandasHtml}</div>
+    </div>`;
+  }).join('');
+  if (tbodyEl) tbodyEl.innerHTML = '';
+}
+ 
+function toggleTeamCard(id) {
+  const el = document.getElementById('team-body-'+id);
+  if (el) el.classList.toggle('open');
+}
+  const mainEl = document.getElementById('adm-team-cards');
+  
+  if (!mainEl) return;
+  const collabs = allUsers.filter(u=>u.role!=='admin');
+  if (!collabs.length) { mainEl.innerHTML=`<div class="empty"><div class="icon">◉</div><p>Nenhum colaborador cadastrado.</p></div>`; if(tbodyEl)tbodyEl.innerHTML=''; return; }
+
+  mainEl.innerHTML = collabs.map(c => {
+    const ct = allTasks.filter(t=>t.assignedTo===c.id);
+    const active = ct.filter(t=>t.status!=='concluida').length;
+    const done = ct.filter(t=>t.status==='concluida').length;
+    const avg = ct.length?Math.round(ct.reduce((a,t)=>a+(t.progress||0),0)/ct.length):0;
+    const sc = calcScore(c.id);
+    const prazosFurados = sc.prazosFurados||0;
+    const prazoPend = ct.filter(t=>t.prazoPendente).length;
+    const riskCls = sc.score>=85?'risk-green':sc.score>=60?'risk-yellow':'risk-red';
+    const riskLbl = sc.score>=85?'🟢 OK':sc.score>=60?'🟡 Atenção':'🔴 Risco';
+
+    const demandasHtml = ct.length ? ct.map(t=>{
+      const sem=getSem(t);
+      return `<div style="background:var(--surface3);border-radius:8px;padding:12px 14px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:600">${t.title}</div>
+            <div style="font-size:12px;color:var(--text3);margin-top:2px">Prazo: ${fmtD(t.deadline)} ${t.prazoPendente?'<span style="color:var(--yellow)">⏳ Prazo pendente</span>':''}</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+              <div class="progress-wrap" style="width:120px"><div class="progress-bar ${pbCls(sem)}" style="width:${t.progress||0}%"></div></div>
+              <span style="font-size:12px;font-family:'IBM Plex Mono',monospace;color:var(--text2)">${t.progress||0}%</span>
+              ${semHtml(sem,semLbl(sem))}
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            ${t.prazoPendente?`<button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="abrirRespPrazo('${t.id}')">📅 Resp. prazo</button>`:''}
+            <button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="const el=document.getElementById('tl2-${t.id}');if(el)el.style.display=el.style.display==='none'?'block':'none'">🕐 Hist.</button>
+          </div>
+        </div>
+        <div id="tl2-${t.id}" style="display:none;margin-top:10px;border-top:1px solid var(--border);padding-top:10px">${renderTimeline(t)}</div>
+      </div>`;
+    }).join('') : `<div style="font-size:13px;color:var(--text3);padding:10px 0">Nenhuma demanda atribuída.</div>`;
+
+    return `<div class="team-card">
+      <div class="team-card-header" onclick="toggleTeamCard('${c.id}')">
+        <div class="avatar avatar-collab" style="font-size:13px;width:38px;height:38px">${c.name[0]}</div>
+        <div style="flex:1">
+          <div style="font-size:14px;font-weight:700">${c.name}</div>
+          <div style="font-size:12px;color:var(--text3)">${c.cargo||'—'} · ${active} ativas · ${done} concluídas · progresso médio: ${avg}%</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+          <span class="score-badge ${sc.cls}">${sc.label} ${sc.score}</span>
+          <span class="risk-badge ${riskCls}">${riskLbl}</span>
+          ${prazosFurados>0?`<span style="font-size:11px;color:var(--red);font-weight:700;background:var(--red-bg);padding:3px 8px;border-radius:12px">⚠ ${prazosFurados} prazo(s) furado(s)</span>`:''}
+          ${prazoPend>0?`<span style="font-size:11px;color:var(--yellow);font-weight:700;background:var(--yellow-bg);padding:3px 8px;border-radius:12px">📅 ${prazoPend} pedido(s)</span>`:''}
+          <span style="font-size:16px;color:var(--text3)">▾</span>
+        </div>
+      </div>
+      <div class="team-card-body" id="team-body-${c.id}">${demandasHtml}</div>
+    </div>`;
+  }).join('');
+  if (tbodyEl) tbodyEl.innerHTML = '';
+}
+
+function toggleTeamCard(id) {
+  const el = document.getElementById('team-body-'+id);
+  if (el) el.classList.toggle('open');
+}
 
 // ══════════════════════════════════════
 // SAVE TASK — NOTIFICAR COLABORADOR
@@ -4047,6 +4185,7 @@ function renderSupDemandasEquipe() {
 // ══════════════════════════════════════
 // START
 // ══════════════════════════════════════
-initSystem();</script>
+initSystem();
+</script>
 </body>
 </html>
