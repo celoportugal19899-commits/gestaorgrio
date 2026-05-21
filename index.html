@@ -4084,18 +4084,18 @@ function renderCollabTasks() {
 function abrirRetorno(taskId) {
   const t = allTasks.find(t=>t.id===taskId); if (!t) return;
   document.getElementById('ret-task-id').value = taskId;
-  document.getElementById('ret-progress').valu = t.progress||0;
-  document.getElementById('retorno-progress-val').textContent = (t.progress||0)+'%';
+  document.getElementById('ret-progress').value = t.progress||0;
+  document.getElementById(ret-prog-num).textContent = (t.progress||0)+'%';
   document.getElementById('ret-status').value = t.status||'em_andamento';
-  document.getElementById('retorno-text').value = '';
-  document.getElementById('retorno-task-info').innerHTML = `<strong>${t.title}</strong><br>Prazo: ${fmtD(t.deadline)} · Progresso: ${t.progress||0}%`;
+  document.getElementById(ret-comment').value = '';
+  document.getElementById('ret-task-title').textContent = t.title;
   document.getElementById('modal-retorno').classList.add('open');
 }
 
 async function salvarRetorno() {
-  const taskId = document.getElementById('retorno-task-id').value;
-  const progress = parseInt(document.getElementById('retorno-progress').value);
-  const status = document.getElementById('retorno-status').value;
+  const taskId = document.getElementById('ret-task-id').value;
+  const progress = parseInt(document.getElementById('ret-progress').value);
+  const status = document.getElementById('ret-status').value;
   const text = document.getElementById('ret-comment').value.trim();
   if (!text) { toast('Descreva o retorno','err'); return; }
   const t = allTasks.find(t=>t.id===taskId);
