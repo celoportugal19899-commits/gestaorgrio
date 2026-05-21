@@ -1782,25 +1782,6 @@ function renderAllTasks() {
     </div>`;
   }).join('');
 }
-
-function renderTeam()
-  tbody.innerHTML = collabs.map(c => {
-    const ct = allTasks.filter(t=>t.assignedTo===c.id);
-    const active = ct.filter(t=>t.status!=='concluida').length;
-    const avg = ct.length?Math.round(ct.reduce((a,t)=>a+(t.progress||0),0)/ct.length):0;
-    const worst = ct.reduce((w,t)=>{const s=getSem(t);return({red:2,yellow:1,green:0}[s]||0)>({red:2,yellow:1,green:0}[w]||0)?s:w;},'green');
-    return `<tr>
-      <td><div style="display:flex;align-items:center;gap:8px"><div class="avatar avatar-collab" style="font-size:12px">${c.name[0]}</div>${c.name}</div></td>
-      <td class="mono" style="font-size:12px;color:var(--text2)">${c.email}</td>
-      <td style="color:var(--text2);font-size:13px">${c.cargo||'—'}</td>
-      <td class="mono" style="font-size:13px">${active}</td>
-      <td><div style="display:flex;align-items:center;gap:8px"><span class="mono" style="font-size:13px;min-width:32px">${avg}%</span><div class="progress-wrap" style="width:80px"><div class="progress-bar pb-accent" style="width:${avg}%"></div></div></div></td>
-      <td>${semHtml(worst,semLbl(worst))}</td>
-      <td><button class="btn btn-sm btn-danger" onclick="deleteCollab('${c.id}')">✕</button></td>
-    </tr>`;
-  }).join('');
-}
-
 function renderCollabTasks() {
   const tasks = allTasks.filter(t=>t.assignedTo===currentUser.id);
   const done = tasks.filter(t=>t.status==='concluida').length;
