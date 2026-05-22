@@ -1789,41 +1789,6 @@ function renderAllTasks() {
     </div>`;
   }).join('');
 }
-function renderCollabTasks() {
-  const tasks = allTasks.filter(t=>t.assignedTo===currentUser.id);
-  const done = tasks.filter(t=>t.status==='concluida').length;
-  const atRisk = tasks.filter(t=>getSem(t)==='red'&&t.status!=='concluida').length;
-  document.getElementById('col-task-stats').innerHTML = `
-    <div class="stat-card"><div class="label">Total</div><div class="value" style="color:var(--accent)">${tasks.length}</div><div class="sub">demandas</div></div>
-    <div class="stat-card"><div class="label">Concluídas</div><div class="value" style="color:var(--green)">${done}</div><div class="sub">entregues</div></div>
-    <div class="stat-card"><div class="label">Em Risco</div><div class="value" style="color:${atRisk>0?'var(--red)':'var(--green)'}">${atRisk}</div><div class="sub">${atRisk>0?'verifique urgente':'tudo ok'}</div></div>`;
-  const el = document.getElementById('col-tasks-list');
-  if (!tasks.length) { el.innerHTML=`<div class="empty"><div class="icon">◈</div><p>Nenhuma tarefa atribuída ainda.</p></div>`; return; }
-  tasks.sort((a,b)=>({red:0,yellow:1,green:2}[getSem(a)]-{red:0,yellow:1,green:2}[getSem(b)])||new Date(a.deadline)-new Date(b.deadline));
-  el.innerHTML = tasks.map(t => {
-    const sc = getSem(t);
-    const uc = (t.updates||[]).length;
-    const canUpd = t.status !== 'concluida';
-    return `<div class="task-card">
-      <div class="task-header"><div class="task-title">${t.title}</div>${semHtml(sc,semLbl(sc))}</div>
-      ${t.description?`<div style="font-size:13px;color:var(--text2);margin-bottom:10px">${t.description}</div>`:''}
-      <div class="task-meta">
-        <span>📅 Prazo: <strong style="color:var(--text)">${fmtD(t.deadline)}</strong></span>
-        <span style="color:${t.priority==='urgente'?'var(--red)':t.priority==='alta'?'var(--yellow)':'var(--text3)'}">⚑ ${t.priority||'normal'}</span>
-        <span>${stIco(t.status)} ${stLbl(t.status)}</span>
-      </div>
-      <div class="task-progress-row"><div class="task-progress-label">${t.progress||0}%</div><div class="progress-wrap" style="flex:1"><div class="progress-bar ${pbCls(sc)}" style="width:${t.progress||0}%"></div></div></div>
-      <div class="task-actions">
-        ${canUpd?`<button class="btn btn-primary btn-sm" onclick="openUpdateModal('${t.id}')">↑ Atualizar Progresso</button>`:`${semHtml('green','Concluída')}`}
-        ${uc?`<button class="btn btn-sm btn-secondary" onclick="toggleUpd('${t.id}')">💬 ${uc} atualiz.</button>`:''}
-      </div>
-      <div class="updates-list" id="upd-${t.id}">
-        ${(t.updates||[]).slice().reverse().map(u=>`<div class="update-item"><div class="upd-header"><span>${u.userName||'—'}</span><span>${fmtDT(u.timestamp)}</span></div><div class="upd-text">${u.text}</div></div>`).join('')}
-      </div>
-    </div>`;
-  }).join('');
-}
-
 // ══════════════════════════════════════
 // HELPERS
 // ══════════════════════════════════════
@@ -3582,7 +3547,7 @@ function renderCollabTasks() {
   const el = document.getElementById('col-tasks-list');
   const stats = document.getElementById('col-task-stats');
   if (!el) return;
-  const minhas = allTasks.filter(t=>t.assignedTo===currentUser.email);
+  const minhas = allTasks.filter(t=>t.assignedTo===currentUser.id);
   const ativas = minhas.filter(t=>t.status!=='concluida').length;
   const concluidas = minhas.filter(t=>t.status==='concluida').length;
   const atrasadas = minhas.filter(t=>t.status!=='concluida'&&new Date(t.deadline)<new Date()).length;
