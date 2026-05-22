@@ -1004,10 +1004,8 @@
     </div>
     <div class="form-group" id="ret-prazo-group">
       <label class="form-label" style="color:var(--yellow)">⏰ Solicitar Novo Prazo? (opcional)</label>
-      <div style="display:flex;gap:10px;align-items:center">
-        <input class="form-input" id="ret-novo-prazo" type="date" placeholder="Deixe em branco para não solicitar">
-        <input class="form-input" id="ret-prazo-motivo" placeholder="Motivo da solicitação" style="flex:2">
-      </div>
+      <input class="form-input" id="ret-novo-prazo" type="date" placeholder="Deixe em branco para não solicitar" style="margin-bottom:8px">
+      <input class="form-input" id="ret-prazo-motivo" placeholder="Motivo da solicitação (obrigatório se solicitar novo prazo)">
     </div>
     <input type="hidden" id="ret-task-id">
     <div style="display:flex;gap:10px;margin-top:8px">
@@ -1203,33 +1201,9 @@
 </div>
 
 <!-- MODAL: RETORNO COLABORADOR -->
-<div class="modal-overlay" id="modal-retorno">
-  <div class="modal" style="max-width:420px">
-    <div class="modal-header"><div class="modal-title">Atualizar Demanda</div><button class="close-btn" onclick="closeModal('modal-retorno')">✕</button></div>
-    <div id="retorno-task-info" style="font-size:13px;color:var(--text2);margin-bottom:14px;padding:10px;background:var(--surface2);border-radius:8px;"></div>
-    <div class="form-group"><label class="form-label">Progresso atual (%)</label>
-      <input class="form-input" type="range" id="retorno-progress" min="0" max="100" step="5" oninput="document.getElementById('retorno-progress-val').textContent=this.value+'%'">
-      <span id="retorno-progress-val" style="font-size:13px;color:var(--accent);font-weight:700">0%</span>
-    </div>
-    <div class="form-group"><label class="form-label">Status</label>
-      <select class="form-select" id="retorno-status">
-        <option value="em_andamento">Em andamento</option>
-        <option value="aguardando">Aguardando</option>
-        <option value="concluida">Concluída</option>
-      </select>
-    </div>
-    <div class="form-group"><label class="form-label">Retorno / Comentário</label>
-      <textarea class="form-textarea" id="retorno-text" placeholder="Como está a demanda? Algum impedimento?"></textarea>
-    </div>
-    <input type="hidden" id="retorno-task-id">
-    <div style="display:flex;gap:10px;margin-top:8px">
-      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-retorno')">Cancelar</button>
-      <button class="btn btn-primary" style="flex:1" onclick="salvarRetorno()">Atualizar</button>
-    </div>
-  </div>
-</div>
 
 <div id="toast"></div>
+
 
 <script>
 // ══════════════════════════════════════
