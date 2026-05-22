@@ -393,6 +393,14 @@
   .risk-green{background:var(--green-bg);color:var(--green);border:1px solid rgba(34,197,94,.25);}
   .risk-yellow{background:var(--yellow-bg);color:var(--yellow);border:1px solid rgba(245,158,11,.25);}
   .risk-red{background:var(--red-bg);color:var(--red);border:1px solid rgba(239,68,68,.25);}
+  
+  /* TOGGLE SWITCH */
+  .switch{position:relative;display:inline-block;width:48px;height:26px;}
+  .switch input{opacity:0;width:0;height:0;}
+  .slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background-color:var(--border2);border-radius:26px;transition:.3s;}
+  .slider:before{position:absolute;content:"";height:20px;width:20px;left:3px;bottom:3px;background-color:var(--bg);border-radius:50%;transition:.3s;}
+  input:checked + .slider{background-color:var(--accent);}
+  input:checked + .slider:before{transform:translateX(22px);}
 </style>
   <style>
   .caixa-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px 24px;margin-bottom:16px;}
@@ -699,6 +707,18 @@
             <div class="pst-label" id="pst-label">Aguardando entrada</div>
             <div class="pst-since" id="pst-since"></div>
           </div>
+          <div id="ponto-em-curso-card" style="display:none;background:var(--surface2);border-radius:10px;padding:14px;margin-bottom:16px">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <div>
+                <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:4px">📚 Em Curso</div>
+                <div style="font-size:12px;color:var(--text3)">Libera registro de ponto fora do horário</div>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="toggle-em-curso" onchange="toggleEmCurso(this.checked)">
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
           <div class="ponto-btns">
             <div class="ponto-btn pb-active" id="pbtn-entrada" onclick="registrarPonto('entrada')">
               <span class="pb-ico">🟢</span>
@@ -893,12 +913,17 @@
 </div>
 <!-- MODAL: NOVO COLABORADOR -->
 <div class="modal-overlay" id="modal-collab">
-  <div class="modal">
+  <div class="modal" style="max-width:520px">
     <div class="modal-header"><div class="modal-title">Novo Colaborador</div><button class="close-btn" onclick="closeModal('modal-collab')">✕</button></div>
     <div class="form-group"><label class="form-label">Nome Completo</label><input class="form-input" id="nc-name" placeholder="Ex: João Silva"></div>
     <div class="form-group"><label class="form-label">E-mail</label><input class="form-input" id="nc-email" type="email" placeholder="joao@empresa.com"></div>
     <div class="form-group"><label class="form-label">Senha de Acesso</label><input class="form-input" id="nc-pass" type="password" placeholder="Mínimo 4 caracteres"></div>
     <div class="form-group"><label class="form-label">Cargo / Função</label><input class="form-input" id="nc-role" placeholder="Ex: Designer, Analista..."></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="form-group"><label class="form-label">Horário Início</label><input class="form-input" id="nc-horario-inicio" type="time" value="08:00"></div>
+      <div class="form-group"><label class="form-label">Horário Fim</label><input class="form-input" id="nc-horario-fim" type="time" value="17:00"></div>
+    </div>
+    <input type="hidden" id="nc-user-id">
     <div style="display:flex;gap:10px;margin-top:8px">
       <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-collab')">Cancelar</button>
       <button class="btn btn-primary" style="flex:1" onclick="saveCollab()">Salvar</button>
@@ -1201,6 +1226,68 @@
 </div>
 
 <!-- MODAL: RETORNO COLABORADOR -->
+
+
+<!-- MODAL: JUSTIFICAR ATRASO -->
+<div class="modal-overlay" id="modal-justificar-atraso">
+  <div class="modal" style="max-width:450px">
+    <div class="modal-header"><div class="modal-title">⏰ Atraso Detectado</div><button class="close-btn" onclick="closeModal('modal-justificar-atraso')">✕</button></div>
+    <div style="background:var(--yellow-bg);border-left:3px solid var(--yellow);border-radius:8px;padding:12px;margin-bottom:16px">
+      <div style="font-size:13px;color:var(--text2)">Você está <strong id="just-minutos"></strong> minutos atrasado.</div>
+      <div style="font-size:12px;color:var(--text3);margin-top:4px">Justifique o atraso para registro.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Motivo do atraso</label>
+      <textarea class="form-textarea" id="just-motivo" placeholder="Ex: Trânsito, consulta médica, etc..." rows="3"></textarea>
+    </div>
+    <input type="hidden" id="just-tipo">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="registrarSemJustificativa()">Registrar Sem Justificar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="enviarJustificativaAtraso()">Enviar Justificativa</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ADM APROVAR JUSTIFICATIVA -->
+<div class="modal-overlay" id="modal-aprovar-justificativa">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-header"><div class="modal-title">Justificativa de Atraso</div><button class="close-btn" onclick="closeModal('modal-aprovar-justificativa')">✕</button></div>
+    <div id="aj-info" style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px"></div>
+    <div class="form-group">
+      <label class="form-label">Observação (opcional)</label>
+      <textarea class="form-textarea" id="aj-obs" placeholder="Comentário sobre a decisão..." rows="2"></textarea>
+    </div>
+    <input type="hidden" id="aj-ponto-id">
+    <input type="hidden" id="aj-tipo">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-danger" style="flex:1" onclick="decidirJustificativa('recusado')">❌ Recusar</button>
+      <button class="btn btn-primary" style="flex:1;background:var(--green)" onclick="decidirJustificativa('aprovado')">✅ Aprovar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ADM ABONAR FALTA -->
+<div class="modal-overlay" id="modal-abonar-falta">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header"><div class="modal-title">Abonar Falta</div><button class="close-btn" onclick="closeModal('modal-abonar-falta')">✕</button></div>
+    <div class="form-group">
+      <label class="form-label">Colaborador</label>
+      <select class="form-select" id="ab-colaborador"></select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Data da falta</label>
+      <input class="form-input" type="date" id="ab-data">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Motivo do abono</label>
+      <textarea class="form-textarea" id="ab-motivo" placeholder="Ex: Atestado médico, curso obrigatório, etc..." rows="3"></textarea>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-abonar-falta')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="confirmarAbonoFalta()">Abonar Falta</button>
+    </div>
+  </div>
+</div>
 
 <div id="toast"></div>
 
@@ -1575,6 +1662,9 @@ function closeModal(id) { document.getElementById(id).classList.remove('open'); 
 
 function openCreateCollab() {
   ['nc-name','nc-email','nc-pass','nc-role'].forEach(i => document.getElementById(i).value = '');
+  document.getElementById('nc-horario-inicio').value = '08:00';
+  document.getElementById('nc-horario-fim').value = '17:00';
+  document.getElementById('nc-user-id').value = '';
   document.getElementById('modal-collab').classList.add('open');
 }
 
@@ -1583,11 +1673,19 @@ async function saveCollab() {
   const email = document.getElementById('nc-email').value.trim();
   const pass = document.getElementById('nc-pass').value;
   const cargo = document.getElementById('nc-role').value.trim();
+  const horarioInicio = document.getElementById('nc-horario-inicio').value;
+  const horarioFim = document.getElementById('nc-horario-fim').value;
   if (!name || !email || !pass) { toast('Preencha todos os campos', 'err'); return; }
   if (allUsers.find(u => u.email === email)) { toast('E-mail já cadastrado', 'err'); return; }
   try {
     const ref = db.collection('users').doc();
-    await ref.set({ id: ref.id, name, email, password: pass, role: 'collaborator', cargo, createdAt: new Date().toISOString() });
+    await ref.set({ 
+      id: ref.id, name, email, password: pass, role: 'collaborator', cargo, 
+      horarioInicio: horarioInicio || '08:00', 
+      horarioFim: horarioFim || '17:00',
+      emCurso: false,
+      createdAt: new Date().toISOString() 
+    });
     closeModal('modal-collab');
     toast('Colaborador cadastrado!', 'ok');
   } catch(e) { toast('Erro ao salvar', 'err'); }
@@ -1814,6 +1912,42 @@ function nomeMes(num) {
   return ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][num];
 }
 
+function validarHorarioPonto(tipo) {
+  if (!currentUser.horarioInicio || !currentUser.horarioFim) return { valido: true }; // Se não tem horário definido, libera
+  if (currentUser.emCurso) return { valido: true }; // Se está em curso, libera
+  
+  const now = new Date();
+  const horaAtual = now.getHours() * 60 + now.getMinutes(); // minutos desde meia-noite
+  
+  const [hInicio, mInicio] = currentUser.horarioInicio.split(':').map(Number);
+  const [hFim, mFim] = currentUser.horarioFim.split(':').map(Number);
+  
+  const inicioMin = hInicio * 60 + mInicio;
+  const fimMin = hFim * 60 + mFim;
+  
+  // Janela: 1h antes do início até 1h depois do fim
+  const janelaInicio = inicioMin - 60;
+  const janelaFim = fimMin + 60;
+  
+  if (tipo === 'entrada') {
+    // Entrada: pode bater de 1h antes até o horário de início + 1h
+    if (horaAtual < janelaInicio || horaAtual > inicioMin + 60) {
+      return { valido: false, mensagem: 'Fora do horário permitido para entrada' };
+    }
+    // Verifica tolerância de 5 minutos
+    if (horaAtual > inicioMin + 5) {
+      return { valido: true, atrasado: true, minutos: horaAtual - inicioMin };
+    }
+  } else if (tipo === 'saida') {
+    // Saída: pode bater do horário de fim - 1h até 1h depois
+    if (horaAtual < fimMin - 60 || horaAtual > janelaFim) {
+      return { valido: false, mensagem: 'Fora do horário permitido para saída' };
+    }
+  }
+  
+  return { valido: true };
+}
+
 async function initPonto() {
   if (unsubPontos) unsubPontos();
   unsubPontos = db.collection('pontos').onSnapshot(snap => {
@@ -1890,6 +2024,18 @@ async function renderColPonto() {
   else if (reg.saida) { dot.className='pst-dot done'; lbl.textContent='Jornada encerrada'; since.textContent='Saída: '+fmtHHMM(reg.saida); }
   else if (reg.saida_almoco && !reg.retorno_almoco) { dot.className='pst-dot lunch'; lbl.textContent='Em almoço'; since.textContent='Saiu: '+fmtHHMM(reg.saida_almoco); }
   else { dot.className='pst-dot working'; lbl.textContent='Trabalhando'; since.textContent='Desde: '+fmtHHMM(reg.entrada); }
+  
+  // Toggle "Em Curso" - só aparece para Jovens Aprendizes
+  const emCursoCard = document.getElementById('ponto-em-curso-card');
+  const toggleEmCursoEl = document.getElementById('toggle-em-curso');
+  const isJovemAprendiz = currentUser.cargo && currentUser.cargo.toLowerCase().includes('jovem aprendiz');
+  
+  if (emCursoCard && isJovemAprendiz) {
+    emCursoCard.style.display = 'block';
+    if (toggleEmCursoEl) toggleEmCursoEl.checked = currentUser.emCurso || false;
+  } else if (emCursoCard) {
+    emCursoCard.style.display = 'none';
+  }
 }
 
 function startPontoClock() {
@@ -1915,15 +2061,42 @@ function startPontoClock() {
 async function registrarPonto(tipo) {
   const btn = document.getElementById('pbtn-' + tipo.replace(/_/g,'-'));
   if (!btn || btn.classList.contains('pb-locked') || btn.classList.contains('pb-done')) return;
+  
+  // Validar horário permitido
+  const validacao = validarHorarioPonto(tipo);
+  if (!validacao.valido) {
+    toast(validacao.mensagem || 'Fora do expediente', 'err');
+    return;
+  }
+  
   const today = todayKey();
   const existing = allPontos.find(p => p.userId === currentUser.id && p.data === today);
+  
+  // Se detectou atraso, pede justificativa
+  if (validacao.atrasado && tipo === 'entrada') {
+    document.getElementById('just-tipo').value = tipo;
+    document.getElementById('just-minutos').textContent = validacao.minutos;
+    document.getElementById('modal-justificar-atraso').classList.add('open');
+    return;
+  }
+  
   try {
     const now = new Date().toISOString();
     if (existing) {
       await db.collection('pontos').doc(existing.id).update({ [tipo]: now, updatedAt: now });
     } else {
       const ref = db.collection('pontos').doc();
-      await ref.set({ id: ref.id, userId: currentUser.id, userName: currentUser.name, cargo: currentUser.cargo||'', local: currentUser.local||'', data: today, [tipo]: now, createdAt: now, updatedAt: now });
+      await ref.set({ 
+        id: ref.id, 
+        userId: currentUser.id, 
+        userName: currentUser.name, 
+        cargo: currentUser.cargo||'', 
+        local: currentUser.local||'', 
+        data: today, 
+        [tipo]: now, 
+        createdAt: now, 
+        updatedAt: now 
+      });
     }
     toast('Ponto registrado! ' + fmtHHMM(now), 'ok');
   } catch(e) { toast('Erro ao registrar ponto', 'err'); }
@@ -1939,6 +2112,234 @@ async function solicitarAutorizacao() {
     const adm = allUsers.find(u=>u.role==='admin');
     if (adm) await criarNotif(adm.id,'maquina',`💻 Autorização de máquina`,`${currentUser.name} solicita autorização de dispositivo para o Ponto Eletrônico.`);
   } catch(e) { toast('Erro ao solicitar', 'err'); }
+}
+
+async function registrarSemJustificativa() {
+  const tipo = document.getElementById('just-tipo').value;
+  closeModal('modal-justificar-atraso');
+  
+  const today = todayKey();
+  const existing = allPontos.find(p => p.userId === currentUser.id && p.data === today);
+  
+  try {
+    const now = new Date().toISOString();
+    const updateData = { [tipo]: now, updatedAt: now };
+    
+    if (existing) {
+      await db.collection('pontos').doc(existing.id).update(updateData);
+    } else {
+      const ref = db.collection('pontos').doc();
+      await ref.set({ 
+        id: ref.id, 
+        userId: currentUser.id, 
+        userName: currentUser.name, 
+        cargo: currentUser.cargo||'', 
+        local: currentUser.local||'', 
+        data: today, 
+        ...updateData,
+        createdAt: now 
+      });
+    }
+    toast('Ponto registrado sem justificativa', 'ok');
+  } catch(e) { toast('Erro ao registrar', 'err'); }
+}
+
+async function enviarJustificativaAtraso() {
+  const tipo = document.getElementById('just-tipo').value;
+  const motivo = document.getElementById('just-motivo').value.trim();
+  
+  if (!motivo) {
+    toast('Digite o motivo do atraso', 'err');
+    return;
+  }
+  
+  const today = todayKey();
+  const existing = allPontos.find(p => p.userId === currentUser.id && p.data === today);
+  
+  try {
+    const now = new Date().toISOString();
+    const justificativaAtraso = existing?.justificativaAtraso || {};
+    const statusJustificativa = existing?.statusJustificativa || {};
+    
+    justificativaAtraso[tipo] = motivo;
+    statusJustificativa[tipo] = 'pendente';
+    
+    const updateData = { 
+      [tipo]: now, 
+      justificativaAtraso,
+      statusJustificativa,
+      updatedAt: now 
+    };
+    
+    if (existing) {
+      await db.collection('pontos').doc(existing.id).update(updateData);
+    } else {
+      const ref = db.collection('pontos').doc();
+      await ref.set({ 
+        id: ref.id, 
+        userId: currentUser.id, 
+        userName: currentUser.name, 
+        cargo: currentUser.cargo||'', 
+        local: currentUser.local||'', 
+        data: today, 
+        ...updateData,
+        createdAt: now 
+      });
+    }
+    
+    // Notificar ADM
+    const admins = allUsers.filter(u => u.role === 'admin');
+    for (const adm of admins) {
+      await addNotificacao(adm.email, 'Justificativa de Atraso', `${currentUser.name} justificou atraso no ponto`, '⏰', 'yellow');
+    }
+    
+    closeModal('modal-justificar-atraso');
+    document.getElementById('just-motivo').value = '';
+    toast('Justificativa enviada para aprovação!', 'ok');
+  } catch(e) { 
+    console.error(e);
+    toast('Erro ao enviar justificativa', 'err'); 
+  }
+}
+
+async function decidirJustificativa(decisao) {
+  const pontoId = document.getElementById('aj-ponto-id').value;
+  const tipo = document.getElementById('aj-tipo').value;
+  const obs = document.getElementById('aj-obs').value.trim();
+  
+  const ponto = allPontos.find(p => p.id === pontoId);
+  if (!ponto) return;
+  
+  try {
+    const statusJustificativa = ponto.statusJustificativa || {};
+    statusJustificativa[tipo] = decisao;
+    
+    await db.collection('pontos').doc(pontoId).update({ 
+      statusJustificativa,
+      [`obsAdm_${tipo}`]: obs || ''
+    });
+    
+    // Notificar colaborador
+    const user = allUsers.find(u => u.id === ponto.userId);
+    if (user) {
+      await addNotificacao(
+        user.email, 
+        decisao === 'aprovado' ? 'Justificativa Aprovada' : 'Justificativa Recusada',
+        decisao === 'aprovado' 
+          ? `Sua justificativa de atraso foi aprovada. ${obs}` 
+          : `Sua justificativa de atraso foi recusada. ${obs}`,
+        decisao === 'aprovado' ? '✅' : '❌',
+        decisao === 'aprovado' ? 'green' : 'red'
+      );
+    }
+    
+    closeModal('modal-aprovar-justificativa');
+    document.getElementById('aj-obs').value = '';
+    toast(decisao === 'aprovado' ? 'Justificativa aprovada!' : 'Justificativa recusada', 'ok');
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao processar decisão', 'err');
+  }
+}
+
+function abrirAprovarJustif(pontoId, tipo, recusar = false) {
+  const ponto = allPontos.find(p => p.id === pontoId);
+  if (!ponto) return;
+  
+  const user = allUsers.find(u => u.id === ponto.userId);
+  const tipoLabel = tipo === 'entrada' ? 'Entrada' : tipo === 'saida' ? 'Saída' : tipo;
+  
+  document.getElementById('aj-ponto-id').value = pontoId;
+  document.getElementById('aj-tipo').value = tipo;
+  document.getElementById('aj-obs').value = '';
+  document.getElementById('aj-info').innerHTML = `
+    <strong>${user?.name || 'Colaborador'}</strong><br>
+    Tipo: ${tipoLabel}<br>
+    Data: ${ponto.data.split('-').reverse().join('/')}<br>
+    Horário registrado: ${fmtHHMM(ponto[tipo])}<br>
+    Motivo: ${ponto.justificativaAtraso?.[tipo] || 'Sem motivo'}
+  `;
+  
+  if (recusar) {
+    // Se clicou em recusar, já executa direto
+    decidirJustificativa('recusado');
+  } else {
+    document.getElementById('modal-aprovar-justificativa').classList.add('open');
+  }
+}
+
+async function abrirModalAbonarFalta() {
+  const sel = document.getElementById('ab-colaborador');
+  const collabs = allUsers.filter(u => u.role !== 'admin' && u.role !== 'posto');
+  sel.innerHTML = '<option value="">Selecione...</option>' + collabs.map(c => 
+    `<option value="${c.id}">${c.name}</option>`
+  ).join('');
+  
+  const hoje = new Date();
+  document.getElementById('ab-data').value = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`;
+  document.getElementById('ab-motivo').value = '';
+  
+  document.getElementById('modal-abonar-falta').classList.add('open');
+}
+
+async function confirmarAbonoFalta() {
+  const userId = document.getElementById('ab-colaborador').value;
+  const data = document.getElementById('ab-data').value;
+  const motivo = document.getElementById('ab-motivo').value.trim();
+  
+  if (!userId || !data || !motivo) {
+    toast('Preencha todos os campos', 'err');
+    return;
+  }
+  
+  const user = allUsers.find(u => u.id === userId);
+  if (!user) return;
+  
+  try {
+    const existing = allPontos.find(p => p.userId === userId && p.data === data);
+    
+    if (existing) {
+      await db.collection('pontos').doc(existing.id).update({ 
+        faltaAbonada: true,
+        motivoAbono: motivo,
+        updatedAt: new Date().toISOString()
+      });
+    } else {
+      const ref = db.collection('pontos').doc();
+      await ref.set({
+        id: ref.id,
+        userId,
+        userName: user.name,
+        cargo: user.cargo || '',
+        local: user.local || '',
+        data,
+        faltaAbonada: true,
+        motivoAbono: motivo,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+    }
+    
+    // Notificar colaborador
+    await addNotificacao(user.email, 'Falta Abonada', `Sua falta do dia ${data.split('-').reverse().join('/')} foi abonada. Motivo: ${motivo}`, '✅', 'green');
+    
+    closeModal('modal-abonar-falta');
+    toast('Falta abonada com sucesso!', 'ok');
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao abonar falta', 'err');
+  }
+}
+
+async function toggleEmCurso(checked) {
+  try {
+    await db.collection('users').doc(currentUser.id).update({ emCurso: checked });
+    currentUser.emCurso = checked;
+    toast(checked ? 'Modo "Em Curso" ativado' : 'Modo "Em Curso" desativado', 'ok');
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao atualizar', 'err');
+  }
 }
 
 async function renderAdmPonto() {
@@ -1979,6 +2380,50 @@ async function renderAdmPonto() {
   if (pendDevs.length) {
     drWrap.innerHTML = `<div style="margin-bottom:14px"><div style="font-size:12px;color:var(--yellow);text-transform:uppercase;letter-spacing:.8px;font-weight:700;margin-bottom:10px">⚠ ${pendDevs.length} dispositivo(s) aguardando autorização</div>${pendDevs.map(d=>`<div class="device-req-card"><div style="font-size:22px">💻</div><div class="dr-info"><div class="dr-title">${d.userName||'Colaborador'}</div><div class="dr-sub">ID: ${d.id}</div></div><div class="dr-actions"><button class="btn btn-sm btn-success" onclick="autorizarDevice('${d.id}')">✓ Autorizar</button><button class="btn btn-sm btn-danger" onclick="negarDevice('${d.id}')">✕ Negar</button></div></div>`).join('')}</div>`;
   } else { drWrap.innerHTML = ''; }
+  
+  // Justificativas pendentes
+  const justifPendentes = allPontos.filter(p => {
+    if (!p.statusJustificativa) return false;
+    return Object.values(p.statusJustificativa).some(s => s === 'pendente');
+  });
+  
+  const justifWrap = document.getElementById('justificativas-pendentes-wrap');
+  if (!justifWrap) {
+    const jw = document.createElement('div');
+    jw.id = 'justificativas-pendentes-wrap';
+    drWrap.parentElement.insertBefore(jw, drWrap.nextSibling);
+  }
+  
+  if (justifPendentes.length > 0) {
+    document.getElementById('justificativas-pendentes-wrap').innerHTML = `
+      <div style="margin-bottom:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:12px;color:var(--yellow);text-transform:uppercase;letter-spacing:.8px;font-weight:700">⏰ ${justifPendentes.length} justificativa(s) pendente(s)</div>
+          <button class="btn btn-sm btn-primary" onclick="abrirModalAbonarFalta()">+ Abonar Falta</button>
+        </div>
+        ${justifPendentes.map(p => {
+          const user = allUsers.find(u => u.id === p.userId);
+          const tipos = Object.keys(p.statusJustificativa || {}).filter(t => p.statusJustificativa[t] === 'pendente');
+          return tipos.map(tipo => `
+            <div class="device-req-card" style="background:var(--yellow-bg);border-left:3px solid var(--yellow)">
+              <div style="font-size:22px">⏰</div>
+              <div class="dr-info">
+                <div class="dr-title">${user?.name || 'Colaborador'} - ${tipo === 'entrada' ? 'Entrada' : tipo === 'saida' ? 'Saída' : tipo}</div>
+                <div class="dr-sub">${p.data.split('-').reverse().join('/')} - ${p.justificativaAtraso?.[tipo] || 'Sem motivo'}</div>
+              </div>
+              <div class="dr-actions">
+                <button class="btn btn-sm btn-success" onclick="abrirAprovarJustif('${p.id}', '${tipo}')">✓ Aprovar</button>
+                <button class="btn btn-sm btn-danger" onclick="abrirAprovarJustif('${p.id}', '${tipo}', true)">✕ Recusar</button>
+              </div>
+            </div>
+          `).join('');
+        }).join('')}
+      </div>
+    `;
+  } else {
+    const jw = document.getElementById('justificativas-pendentes-wrap');
+    if (jw) jw.innerHTML = `<div style="margin-bottom:14px"><button class="btn btn-primary" onclick="abrirModalAbonarFalta()">+ Abonar Falta</button></div>`;
+  }
 
   // Tabela do dia
   const rows = collabs.map(c => {
