@@ -566,6 +566,7 @@
         <div class="sidebar-item" id="nav-team" onclick="showView('adm-team',this)"><span class="icon">◉</span> Time</div>
         <div class="sidebar-item" id="nav-ponto-adm" onclick="showView('adm-ponto',this)"><span class="icon">⏱</span> Ponto Eletrônico</div>
         <div class="sidebar-item" id="nav-postos-adm" onclick="showView('adm-postos',this)"><span class="icon">🏪</span> Postos</div>
+        <div class="sidebar-item" id="nav-inc-adm" onclick="showView('adm-incidencias',this)"><span class="icon">📋</span> Incidências <span id="inc-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
         <div class="sidebar-item" id="nav-caixas-adm" onclick="showView('adm-caixas',this)"><span class="icon">💰</span> Caixas Rotativos <span id="caixa-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
         <div class="sidebar-item" id="nav-comb-adm" onclick="showView('adm-combustivel',this)"><span class="icon">⛽</span> Combustível <span id="comb-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
         <div class="sidebar-item" id="nav-relatorio-comb" onclick="showView('adm-relatorio-comb',this)"><span class="icon">📊</span> Relatório Combustível</div>
@@ -576,6 +577,7 @@
         <div class="sidebar-section-label">Meu Painel</div>
         <div class="sidebar-item active" onclick="showView('col-tasks',this)"><span class="icon">◈</span> Minhas Tarefas</div>
         <div class="sidebar-item" onclick="showView('col-ponto',this)"><span class="icon">⏱</span> Meu Ponto</div>
+        <div class="sidebar-item" onclick="showView('col-incidencias',this)"><span class="icon">📋</span> Incidências</div>
       </div>
     </div>
     <div id="nav-posto" style="display:none">
@@ -591,6 +593,7 @@
         <div class="sidebar-item" onclick="showView('col-tasks',this)"><span class="icon">◈</span> Minhas Tarefas</div>
         <div class="sidebar-item" onclick="showView('sup-demandas-equipe',this)"><span class="icon">◈</span> Demandas da Equipe</div>
         <div class="sidebar-item" onclick="showView('col-ponto',this)"><span class="icon">⏱</span> Meu Ponto</div>
+        <div class="sidebar-item" onclick="showView('col-incidencias',this)"><span class="icon">📋</span> Incidências</div>
         <div class="sidebar-item" onclick="showView('sup-caixa',this)"><span class="icon">💰</span> Caixa Rotativo</div>
         <div class="sidebar-item" onclick="showView('sup-combustivel',this)"><span class="icon">⛽</span> Recarga Combustível</div>
       </div>
@@ -776,6 +779,37 @@
           <button class="eb-btn red" onclick="exportarPontoPDF()">📄 PDF</button>
         </div>
       </div>
+    </div>
+
+    <!-- INCIDÊNCIAS - COLABORADOR -->
+    <div id="view-col-incidencias" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Minhas Incidências</h1><p>Gerencie problemas dos postos</p></div>
+        <button class="btn btn-primary" onclick="abrirModalNovaIncidencia()">+ Nova Incidência</button>
+      </div>
+      <div id="incidencias-col-wrap"></div>
+    </div>
+
+    <!-- INCIDÊNCIAS - DASHBOARD ADM/SUPERVISOR -->
+    <div id="view-adm-incidencias" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Dashboard Incidências</h1><p>Visão geral em tempo real</p></div>
+        <div class="topbar-actions">
+          <select class="form-select" id="inc-filtro-status" onchange="renderDashboardIncidencias()" style="width:140px">
+            <option value="todas">Todas</option>
+            <option value="aberta">Abertas</option>
+            <option value="normalizada">Normalizadas</option>
+          </select>
+          <select class="form-select" id="inc-filtro-periodo" onchange="renderDashboardIncidencias()" style="width:140px;margin-left:8px">
+            <option value="hoje">Hoje</option>
+            <option value="semana">Esta Semana</option>
+            <option value="mes">Este Mês</option>
+            <option value="todos">Todos</option>
+          </select>
+        </div>
+      </div>
+      <div id="inc-dash-stats" class="ponto-adm-stats"></div>
+      <div id="inc-dash-content"></div>
     </div>
 
     <!-- POSTOS ADM -->
@@ -1289,6 +1323,83 @@
   </div>
 </div>
 
+<!-- MODAL: NOVA INCIDÊNCIA -->
+<div class="modal-overlay" id="modal-nova-incidencia">
+  <div class="modal" style="max-width:550px">
+    <div class="modal-header"><div class="modal-title">📋 Nova Incidência</div><button class="close-btn" onclick="closeModal('modal-nova-incidencia')">✕</button></div>
+    <div class="form-group">
+      <label class="form-label">Posto afetado</label>
+      <select class="form-select" id="inc-posto"></select>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="form-group">
+        <label class="form-label">Tipo de incidência</label>
+        <select class="form-select" id="inc-tipo">
+          <option value="">Selecione...</option>
+          <option value="Queda Link">🔴 Queda Link</option>
+          <option value="Falta de Luz">⚡ Falta de Luz</option>
+          <option value="BR Bloqueado">🚧 BR Bloqueado</option>
+          <option value="Erro Salesforce">💻 Erro Salesforce</option>
+          <option value="Erro SAP">📊 Erro SAP</option>
+          <option value="Quenda Inoperante">⚙️ Quenda Inoperante</option>
+          <option value="Outro">❓ Outro</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Prioridade</label>
+        <select class="form-select" id="inc-prioridade">
+          <option value="baixa">🟢 Baixa</option>
+          <option value="media" selected>🟡 Média</option>
+          <option value="alta">🟠 Alta</option>
+          <option value="critica">🔴 Crítica</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Descrição do problema</label>
+      <textarea class="form-textarea" id="inc-descricao" placeholder="Descreva o problema em detalhes..." rows="4"></textarea>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-nova-incidencia')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="confirmarNovaIncidencia()">Abrir Incidência</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ATUALIZAR INCIDÊNCIA -->
+<div class="modal-overlay" id="modal-atualizar-incidencia">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-header"><div class="modal-title">💬 Atualizar Incidência</div><button class="close-btn" onclick="closeModal('modal-atualizar-incidencia')">✕</button></div>
+    <div id="upd-inc-info" style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px"></div>
+    <div class="form-group">
+      <label class="form-label">Nova atualização</label>
+      <textarea class="form-textarea" id="upd-inc-texto" placeholder="Ex: Técnico chegou no local, aguardando peças..." rows="3"></textarea>
+    </div>
+    <input type="hidden" id="upd-inc-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-atualizar-incidencia')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="confirmarAtualizacaoIncidencia()">Adicionar Atualização</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: FECHAR INCIDÊNCIA -->
+<div class="modal-overlay" id="modal-fechar-incidencia">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-header"><div class="modal-title">✅ Normalizar Incidência</div><button class="close-btn" onclick="closeModal('modal-fechar-incidencia')">✕</button></div>
+    <div id="fec-inc-info" style="background:var(--green-bg);border-left:3px solid var(--green);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px"></div>
+    <div class="form-group">
+      <label class="form-label">Solução aplicada</label>
+      <textarea class="form-textarea" id="fec-inc-solucao" placeholder="Descreva como o problema foi resolvido..." rows="4"></textarea>
+    </div>
+    <input type="hidden" id="fec-inc-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-fechar-incidencia')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1;background:var(--green)" onclick="confirmarFecharIncidencia()">Marcar como Normalizada</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 
@@ -1382,6 +1493,364 @@ function validarSenha(senha) {
   if (!/[a-zA-Z]/.test(senha)) return 'A senha deve conter pelo menos uma letra.';
   if (!/[0-9]/.test(senha)) return 'A senha deve conter pelo menos um número.';
   return null;
+}
+
+// ══════════════════════════════════════
+// INCIDÊNCIAS
+// ══════════════════════════════════════
+let allIncidencias = [];
+let unsubIncidencias = null;
+
+const TIPOS_INCIDENCIA = ['Queda Link', 'Falta de Luz', 'BR Bloqueado', 'Erro Salesforce', 'Erro SAP', 'Quenda Inoperante', 'Outro'];
+const PRIORIDADES = {baixa: '🟢', media: '🟡', alta: '🟠', critica: '🔴'};
+
+async function initIncidencias() {
+  if (unsubIncidencias) unsubIncidencias();
+  unsubIncidencias = db.collection('incidencias').onSnapshot(snap => {
+    allIncidencias = snap.docs.map(d => ({id: d.id, ...d.data()}));
+    const active = document.querySelector('.view.active');
+    if (active && active.id === 'view-col-incidencias') renderColIncidencias();
+    if (active && active.id === 'view-adm-incidencias') renderDashboardIncidencias();
+    updateIncBadge();
+  });
+}
+
+function updateIncBadge() {
+  const badge = document.getElementById('inc-badge');
+  if (!badge) return;
+  const abertas = allIncidencias.filter(inc => inc.status === 'aberta').length;
+  if (abertas > 0) {
+    badge.textContent = abertas;
+    badge.style.display = 'inline';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function abrirModalNovaIncidencia() {
+  const sel = document.getElementById('inc-posto');
+  const postos = allUsers.filter(u => u.role === 'posto').sort((a,b) => a.name.localeCompare(b.name));
+  sel.innerHTML = '<option value="">Selecione o posto...</option>' + postos.map(p => 
+    `<option value="${p.id}">${p.name}</option>`
+  ).join('');
+  document.getElementById('inc-tipo').value = '';
+  document.getElementById('inc-prioridade').value = 'media';
+  document.getElementById('inc-descricao').value = '';
+  document.getElementById('modal-nova-incidencia').classList.add('open');
+}
+
+async function confirmarNovaIncidencia() {
+  const postoId = document.getElementById('inc-posto').value;
+  const tipo = document.getElementById('inc-tipo').value;
+  const prioridade = document.getElementById('inc-prioridade').value;
+  const descricao = document.getElementById('inc-descricao').value.trim();
+  
+  if (!postoId || !tipo || !descricao) {
+    toast('Preencha todos os campos', 'err');
+    return;
+  }
+  
+  const posto = allUsers.find(u => u.id === postoId);
+  if (!posto) return;
+  
+  try {
+    const ref = db.collection('incidencias').doc();
+    await ref.set({
+      id: ref.id,
+      posto: posto.name,
+      postoId,
+      tipo,
+      prioridade,
+      status: 'aberta',
+      descricaoInicial: descricao,
+      abertoEm: new Date().toISOString(),
+      abertoBy: currentUser.id,
+      abertoByName: currentUser.name,
+      updates: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+    
+    // Notificar supervisores e ADMs
+    const supervisores = allUsers.filter(u => u.role === 'admin' || isSupervisor(u.email));
+    for (const sup of supervisores) {
+      await addNotificacao(sup.email, 'Nova Incidência', `${tipo} em ${posto.name}`, '📋', 'red');
+    }
+    
+    closeModal('modal-nova-incidencia');
+    toast('Incidência aberta com sucesso!', 'ok');
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao abrir incidência', 'err');
+  }
+}
+
+function abrirModalAtualizarIncidencia(incId) {
+  const inc = allIncidencias.find(i => i.id === incId);
+  if (!inc) return;
+  
+  document.getElementById('upd-inc-id').value = incId;
+  document.getElementById('upd-inc-texto').value = '';
+  document.getElementById('upd-inc-info').innerHTML = `
+    <strong>${inc.posto}</strong> - ${inc.tipo}<br>
+    Aberta: ${fmtD(inc.abertoEm.split('T')[0])} às ${inc.abertoEm.split('T')[1].substring(0,5)}<br>
+    Por: ${inc.abertoByName}
+  `;
+  document.getElementById('modal-atualizar-incidencia').classList.add('open');
+}
+
+async function confirmarAtualizacaoIncidencia() {
+  const incId = document.getElementById('upd-inc-id').value;
+  const texto = document.getElementById('upd-inc-texto').value.trim();
+  
+  if (!texto) {
+    toast('Digite uma atualização', 'err');
+    return;
+  }
+  
+  const inc = allIncidencias.find(i => i.id === incId);
+  if (!inc) return;
+  
+  try {
+    const updates = inc.updates || [];
+    updates.push({
+      texto,
+      userName: currentUser.name,
+      timestamp: new Date().toISOString()
+    });
+    
+    await db.collection('incidencias').doc(incId).update({
+      updates,
+      updatedAt: new Date().toISOString()
+    });
+    
+    closeModal('modal-atualizar-incidencia');
+    toast('Atualização adicionada!', 'ok');
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao atualizar', 'err');
+  }
+}
+
+function abrirModalFecharIncidencia(incId) {
+  const inc = allIncidencias.find(i => i.id === incId);
+  if (!inc) return;
+  
+  const now = new Date();
+  const abertura = new Date(inc.abertoEm);
+  const diffMs = now - abertura;
+  const diffHoras = Math.floor(diffMs / 3600000);
+  const diffDias = Math.floor(diffHoras / 24);
+  const horasRestantes = diffHoras % 24;
+  
+  let tempoDecorrido;
+  if (diffDias > 0) {
+    tempoDecorrido = `${diffDias} dia(s) e ${horasRestantes} hora(s)`;
+  } else {
+    tempoDecorrido = `${diffHoras} hora(s)`;
+  }
+  
+  document.getElementById('fec-inc-id').value = incId;
+  document.getElementById('fec-inc-solucao').value = '';
+  document.getElementById('fec-inc-info').innerHTML = `
+    <strong>${inc.posto}</strong> - ${inc.tipo}<br>
+    Tempo decorrido: ${tempoDecorrido}<br>
+    Prioridade: ${PRIORIDADES[inc.prioridade] || ''} ${inc.prioridade}
+  `;
+  document.getElementById('modal-fechar-incidencia').classList.add('open');
+}
+
+async function confirmarFecharIncidencia() {
+  const incId = document.getElementById('fec-inc-id').value;
+  const solucao = document.getElementById('fec-inc-solucao').value.trim();
+  
+  if (!solucao) {
+    toast('Descreva a solução aplicada', 'err');
+    return;
+  }
+  
+  const inc = allIncidencias.find(i => i.id === incId);
+  if (!inc) return;
+  
+  try {
+    const now = new Date();
+    const abertura = new Date(inc.abertoEm);
+    const diffMinutos = Math.floor((now - abertura) / 60000);
+    
+    await db.collection('incidencias').doc(incId).update({
+      status: 'normalizada',
+      normalizadoEm: now.toISOString(),
+      normalizadoBy: currentUser.id,
+      normalizadoByName: currentUser.name,
+      solucao,
+      tempoResolucaoMinutos: diffMinutos,
+      updatedAt: now.toISOString()
+    });
+    
+    // Notificar quem abriu
+    const abertoBy = allUsers.find(u => u.id === inc.abertoBy);
+    if (abertoBy) {
+      await addNotificacao(abertoBy.email, 'Incidência Normalizada', `${inc.tipo} em ${inc.posto} foi resolvida`, '✅', 'green');
+    }
+    
+    closeModal('modal-fechar-incidencia');
+    toast('Incidência normalizada!', 'ok');
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao normalizar', 'err');
+  }
+}
+
+function renderColIncidencias() {
+  const wrap = document.getElementById('incidencias-col-wrap');
+  if (!wrap) return;
+  
+  const minhas = allIncidencias.filter(inc => inc.abertoBy === currentUser.id);
+  
+  if (minhas.length === 0) {
+    wrap.innerHTML = `<div class="empty" style="margin-top:40px"><p>Você ainda não abriu nenhuma incidência</p></div>`;
+    return;
+  }
+  
+  const abertas = minhas.filter(i => i.status === 'aberta');
+  const normalizadas = minhas.filter(i => i.status === 'normalizada');
+  
+  let html = '';
+  
+  if (abertas.length > 0) {
+    html += `<div style="margin-bottom:24px"><div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px">🔴 Abertas (${abertas.length})</div>`;
+    html += abertas.map(inc => renderIncCard(inc)).join('');
+    html += `</div>`;
+  }
+  
+  if (normalizadas.length > 0) {
+    html += `<div><div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px">✅ Normalizadas (${normalizadas.length})</div>`;
+    html += normalizadas.map(inc => renderIncCard(inc)).join('');
+    html += `</div>`;
+  }
+  
+  wrap.innerHTML = html;
+}
+
+function renderIncCard(inc) {
+  const prioIcon = PRIORIDADES[inc.prioridade] || '';
+  const isAberta = inc.status === 'aberta';
+  const now = new Date();
+  const abertura = new Date(inc.abertoEm);
+  const diffHoras = Math.floor((now - abertura) / 3600000);
+  
+  let tempoDisplay;
+  let tempoBadgeClass = '';
+  if (diffHoras < 2) {
+    tempoDisplay = `há ${diffHoras}h`;
+    tempoBadgeClass = 'psb-ok';
+  } else if (diffHoras < 8) {
+    tempoDisplay = `há ${diffHoras}h`;
+    tempoBadgeClass = 'psb-wait';
+  } else {
+    const dias = Math.floor(diffHoras / 24);
+    tempoDisplay = `há ${dias}d ${diffHoras % 24}h`;
+    tempoBadgeClass = 'psb-wait';
+  }
+  
+  return `
+    <div class="task-card" style="border-left:4px solid ${isAberta ? 'var(--red)' : 'var(--green)'}">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px">
+        <div>
+          <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:4px">${prioIcon} ${inc.tipo}</div>
+          <div style="font-size:13px;color:var(--text2)">📍 ${inc.posto}</div>
+        </div>
+        <span class="ps-badge ${tempoBadgeClass}">${tempoDisplay}</span>
+      </div>
+      <div style="font-size:13px;color:var(--text3);margin-bottom:8px">${inc.descricaoInicial}</div>
+      ${inc.updates && inc.updates.length > 0 ? `
+        <div style="background:var(--surface2);border-radius:6px;padding:8px;margin-bottom:8px;font-size:12px">
+          <strong>Última atualização:</strong><br>
+          ${inc.updates[inc.updates.length-1].texto}
+        </div>
+      ` : ''}
+      ${isAberta ? `
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="btn btn-sm btn-secondary" onclick="abrirModalAtualizarIncidencia('${inc.id}')">💬 Atualizar</button>
+          <button class="btn btn-sm btn-primary" style="background:var(--green)" onclick="abrirModalFecharIncidencia('${inc.id}')">✅ Normalizar</button>
+        </div>
+      ` : `
+        <div style="font-size:12px;color:var(--green);margin-top:8px">✅ Normalizada em ${fmtD(inc.normalizadoEm.split('T')[0])}</div>
+      `}
+    </div>
+  `;
+}
+
+function renderDashboardIncidencias() {
+  const stats = document.getElementById('inc-dash-stats');
+  const content = document.getElementById('inc-dash-content');
+  if (!stats || !content) return;
+  
+  // Filtros
+  const filtroStatus = document.getElementById('inc-filtro-status')?.value || 'todas';
+  const filtroPeriodo = document.getElementById('inc-filtro-periodo')?.value || 'todos';
+  
+  let filtered = [...allIncidencias];
+  
+  // Filtrar por status
+  if (filtroStatus !== 'todas') {
+    filtered = filtered.filter(inc => inc.status === filtroStatus);
+  }
+  
+  // Filtrar por período
+  const now = new Date();
+  if (filtroPeriodo === 'hoje') {
+    const hoje = now.toISOString().split('T')[0];
+    filtered = filtered.filter(inc => inc.abertoEm.startsWith(hoje));
+  } else if (filtroPeriodo === 'semana') {
+    const semanaAtras = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    filtered = filtered.filter(inc => new Date(inc.abertoEm) >= semanaAtras);
+  } else if (filtroPeriodo === 'mes') {
+    const mesAtras = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    filtered = filtered.filter(inc => new Date(inc.abertoEm) >= mesAtras);
+  }
+  
+  // Métricas
+  const abertas = filtered.filter(inc => inc.status === 'aberta');
+  const normalizadas = filtered.filter(inc => inc.status === 'normalizada');
+  const tempoMedio = normalizadas.length > 0 
+    ? Math.round(normalizadas.reduce((acc, inc) => acc + (inc.tempoResolucaoMinutos || 0), 0) / normalizadas.length / 60)
+    : 0;
+  
+  stats.innerHTML = `
+    <div class="pas-card">
+      <div class="pas-lbl">Abertas</div>
+      <div class="pas-val" style="color:var(--red)">${abertas.length}</div>
+      <div class="pas-sub">ativas</div>
+    </div>
+    <div class="pas-card">
+      <div class="pas-lbl">Normalizadas</div>
+      <div class="pas-val" style="color:var(--green)">${normalizadas.length}</div>
+      <div class="pas-sub">resolvidas</div>
+    </div>
+    <div class="pas-card">
+      <div class="pas-lbl">Tempo Médio</div>
+      <div class="pas-val" style="color:var(--accent)">${tempoMedio}h</div>
+      <div class="pas-sub">resolução</div>
+    </div>
+    <div class="pas-card">
+      <div class="pas-lbl">Total</div>
+      <div class="pas-val">${filtered.length}</div>
+      <div class="pas-sub">registros</div>
+    </div>
+  `;
+  
+  // Lista de abertas
+  if (abertas.length > 0) {
+    content.innerHTML = `
+      <div style="margin-bottom:16px">
+        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px">🔴 Incidências Abertas</div>
+        ${abertas.map(inc => renderIncCard(inc)).join('')}
+      </div>
+    `;
+  } else {
+    content.innerHTML = `<div class="empty"><p>Nenhuma incidência aberta no momento</p></div>`;
+  }
 }
 
 // ══════════════════════════════════════
@@ -1563,6 +2032,7 @@ function startApp() {
   else if (isSupervisor) showView('supervisor-postos');
   else showView('col-tasks');
   if (!isPosto) initPonto();
+  if (!isPosto) initIncidencias();
   initCaixas();
   initCombustivel();
   initNotificacoes();
