@@ -1527,12 +1527,22 @@ function updateIncBadge() {
   }
 }
 
-function abrirModalNovaIncidencia() {
+async function abrirModalNovaIncidencia() {
   const sel = document.getElementById('inc-posto');
-  const postos = allUsers.filter(u => u.role === 'posto').sort((a,b) => a.name.localeCompare(b.name));
-  sel.innerHTML = '<option value="">Selecione o posto...</option>' + postos.map(p => 
-    `<option value="${p.id}">${p.name}</option>`
-  ).join('');
+  sel.innerHTML = '<option value="">Carregando postos...</option>';
+  
+  // Buscar postos da collection 'postos'
+  const postosSnap = await db.collection('postos').get();
+  const postos = postosSnap.docs.map(d => ({id: d.id, ...d.data()})).sort((a,b) => a.nome.localeCompare(b.nome));
+  
+  if (postos.length === 0) {
+    sel.innerHTML = '<option value="">Nenhum posto cadastrado</option>';
+  } else {
+    sel.innerHTML = '<option value="">Selecione o posto...</option>' + postos.map(p => 
+      `<option value="${p.id}">${p.nome}</option>`
+    ).join('');
+  }
+  
   document.getElementById('inc-tipo').value = '';
   document.getElementById('inc-prioridade').value = 'media';
   document.getElementById('inc-descricao').value = '';
@@ -1550,14 +1560,19 @@ async function confirmarNovaIncidencia() {
     return;
   }
   
-  const posto = allUsers.find(u => u.id === postoId);
-  if (!posto) return;
+  // Buscar posto da collection 'postos'
+  const postoDoc = await db.collection('postos').doc(postoId).get();
+  if (!postoDoc.exists) {
+    toast('Posto não encontrado', 'err');
+    return;
+  }
+  const posto = postoDoc.data();
   
   try {
     const ref = db.collection('incidencias').doc();
     await ref.set({
       id: ref.id,
-      posto: posto.name,
+      posto: posto.nome,
       postoId,
       tipo,
       prioridade,
