@@ -1355,6 +1355,16 @@
         </select>
       </div>
     </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="form-group">
+        <label class="form-label">Data de abertura</label>
+        <input class="form-input" type="date" id="inc-data-abertura">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Horário de abertura</label>
+        <input class="form-input" type="time" id="inc-hora-abertura">
+      </div>
+    </div>
     <div class="form-group">
       <label class="form-label">Descrição do problema</label>
       <textarea class="form-textarea" id="inc-descricao" placeholder="Descreva o problema em detalhes..." rows="4"></textarea>
@@ -1388,6 +1398,16 @@
   <div class="modal" style="max-width:500px">
     <div class="modal-header"><div class="modal-title">✅ Normalizar Incidência</div><button class="close-btn" onclick="closeModal('modal-fechar-incidencia')">✕</button></div>
     <div id="fec-inc-info" style="background:var(--green-bg);border-left:3px solid var(--green);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="form-group">
+        <label class="form-label">Data normalização</label>
+        <input class="form-input" type="date" id="fec-inc-data">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Horário normalização</label>
+        <input class="form-input" type="time" id="fec-inc-hora">
+      </div>
+    </div>
     <div class="form-group">
       <label class="form-label">Solução aplicada</label>
       <textarea class="form-textarea" id="fec-inc-solucao" placeholder="Descreva como o problema foi resolvido..." rows="4"></textarea>
@@ -1546,6 +1566,14 @@ async function abrirModalNovaIncidencia() {
   document.getElementById('inc-tipo').value = '';
   document.getElementById('inc-prioridade').value = 'media';
   document.getElementById('inc-descricao').value = '';
+  
+  // Preencher data e hora atuais
+  const now = new Date();
+  const dataHoje = now.toISOString().split('T')[0];
+  const horaAgora = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+  document.getElementById('inc-data-abertura').value = dataHoje;
+  document.getElementById('inc-hora-abertura').value = horaAgora;
+  
   document.getElementById('modal-nova-incidencia').classList.add('open');
 }
 
@@ -1554,8 +1582,10 @@ async function confirmarNovaIncidencia() {
   const tipo = document.getElementById('inc-tipo').value;
   const prioridade = document.getElementById('inc-prioridade').value;
   const descricao = document.getElementById('inc-descricao').value.trim();
+  const dataAbertura = document.getElementById('inc-data-abertura').value;
+  const horaAbertura = document.getElementById('inc-hora-abertura').value;
   
-  if (!postoId || !tipo || !descricao) {
+  if (!postoId || !tipo || !descricao || !dataAbertura || !horaAbertura) {
     toast('Preencha todos os campos', 'err');
     return;
   }
@@ -1568,6 +1598,9 @@ async function confirmarNovaIncidencia() {
   }
   const posto = postoDoc.data();
   
+  // Montar ISO string com data/hora informados
+  const abertoEm = `${dataAbertura}T${horaAbertura}:00`;
+  
   try {
     const ref = db.collection('incidencias').doc();
     await ref.set({
@@ -1578,7 +1611,7 @@ async function confirmarNovaIncidencia() {
       prioridade,
       status: 'aberta',
       descricaoInicial: descricao,
-      abertoEm: new Date().toISOString(),
+      abertoEm,
       abertoBy: currentUser.id,
       abertoByName: currentUser.name,
       updates: [],
@@ -1667,6 +1700,13 @@ function abrirModalFecharIncidencia(incId) {
   
   document.getElementById('fec-inc-id').value = incId;
   document.getElementById('fec-inc-solucao').value = '';
+  
+  // Preencher data e hora atuais
+  const dataHoje = now.toISOString().split('T')[0];
+  const horaAgora = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+  document.getElementById('fec-inc-data').value = dataHoje;
+  document.getElementById('fec-inc-hora').value = horaAgora;
+  
   document.getElementById('fec-inc-info').innerHTML = `
     <strong>${inc.posto}</strong> - ${inc.tipo}<br>
     Tempo decorrido: ${tempoDecorrido}<br>
@@ -1678,9 +1718,11 @@ function abrirModalFecharIncidencia(incId) {
 async function confirmarFecharIncidencia() {
   const incId = document.getElementById('fec-inc-id').value;
   const solucao = document.getElementById('fec-inc-solucao').value.trim();
+  const dataNorm = document.getElementById('fec-inc-data').value;
+  const horaNorm = document.getElementById('fec-inc-hora').value;
   
-  if (!solucao) {
-    toast('Descreva a solução aplicada', 'err');
+  if (!solucao || !dataNorm || !horaNorm) {
+    toast('Preencha todos os campos', 'err');
     return;
   }
   
@@ -1688,18 +1730,22 @@ async function confirmarFecharIncidencia() {
   if (!inc) return;
   
   try {
-    const now = new Date();
+    // Montar ISO string com data/hora informados
+    const normalizadoEm = `${dataNorm}T${horaNorm}:00`;
+    
+    // Calcular diferença de tempo
     const abertura = new Date(inc.abertoEm);
-    const diffMinutos = Math.floor((now - abertura) / 60000);
+    const fechamento = new Date(normalizadoEm);
+    const diffMinutos = Math.floor((fechamento - abertura) / 60000);
     
     await db.collection('incidencias').doc(incId).update({
       status: 'normalizada',
-      normalizadoEm: now.toISOString(),
+      normalizadoEm,
       normalizadoBy: currentUser.id,
       normalizadoByName: currentUser.name,
       solucao,
       tempoResolucaoMinutos: diffMinutos,
-      updatedAt: now.toISOString()
+      updatedAt: new Date().toISOString()
     });
     
     // Notificar quem abriu
