@@ -1860,8 +1860,10 @@ function renderDashboardIncidencias() {
   
   // Filtrar por período
   const now = new Date();
+  const hoje = now.toISOString().split('T')[0];
+  const ontem = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  
   if (filtroPeriodo === 'hoje') {
-    const hoje = now.toISOString().split('T')[0];
     filtered = filtered.filter(inc => inc.abertoEm.startsWith(hoje));
   } else if (filtroPeriodo === 'semana') {
     const semanaAtras = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -1878,16 +1880,23 @@ function renderDashboardIncidencias() {
     ? Math.round(normalizadas.reduce((acc, inc) => acc + (inc.tempoResolucaoMinutos || 0), 0) / normalizadas.length / 60)
     : 0;
   
+  // Comparativo hoje vs ontem
+  const abertasHoje = allIncidencias.filter(inc => inc.abertoEm.startsWith(hoje) && inc.status === 'aberta').length;
+  const abertasOntem = allIncidencias.filter(inc => inc.abertoEm.startsWith(ontem) && inc.status === 'aberta').length;
+  const diffOntem = abertasHoje - abertasOntem;
+  const trendIcon = diffOntem > 0 ? '📈' : diffOntem < 0 ? '📉' : '➡️';
+  const trendColor = diffOntem > 0 ? 'var(--red)' : diffOntem < 0 ? 'var(--green)' : 'var(--text3)';
+  
   stats.innerHTML = `
     <div class="pas-card">
-      <div class="pas-lbl">Abertas</div>
+      <div class="pas-lbl">Abertas Agora</div>
       <div class="pas-val" style="color:var(--red)">${abertas.length}</div>
-      <div class="pas-sub">ativas</div>
+      <div class="pas-sub" style="color:${trendColor}">${trendIcon} ${diffOntem >= 0 ? '+' : ''}${diffOntem} vs ontem</div>
     </div>
     <div class="pas-card">
       <div class="pas-lbl">Normalizadas</div>
       <div class="pas-val" style="color:var(--green)">${normalizadas.length}</div>
-      <div class="pas-sub">resolvidas</div>
+      <div class="pas-sub">${filtroPeriodo === 'todos' ? 'total' : filtroPeriodo}</div>
     </div>
     <div class="pas-card">
       <div class="pas-lbl">Tempo Médio</div>
@@ -1895,23 +1904,180 @@ function renderDashboardIncidencias() {
       <div class="pas-sub">resolução</div>
     </div>
     <div class="pas-card">
-      <div class="pas-lbl">Total</div>
+      <div class="pas-lbl">Total Registros</div>
       <div class="pas-val">${filtered.length}</div>
-      <div class="pas-sub">registros</div>
+      <div class="pas-sub">${filtroPeriodo}</div>
+    </div>
+  `;
+  
+  // Calcular rankings
+  const rankingPostos = calcularRankingPostos(filtered);
+  const rankingTipos = calcularRankingTipos(filtered);
+  const postosMaiorTempo = calcularPostosMaiorTempo(filtered);
+  const mapaCalor = renderMapaCalorPostos();
+  
+  // Montar conteúdo
+  let html = '';
+  
+  // Mapa de calor
+  html += `
+    <div style="background:var(--surface);border-radius:12px;padding:16px;margin-bottom:20px">
+      <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:12px">🗺️ Mapa de Calor - Status dos Postos</div>
+      ${mapaCalor}
+    </div>
+  `;
+  
+  // Rankings em grid
+  html += `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-bottom:20px">
+      <div style="background:var(--surface);border-radius:12px;padding:16px">
+        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px">🏆 Top 5 Postos</div>
+        ${rankingPostos.slice(0,5).map((item, idx) => `
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px;background:${idx === 0 ? 'var(--yellow-bg)' : 'var(--surface2)'};border-radius:6px;margin-bottom:6px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:16px;font-weight:700;color:${idx === 0 ? 'var(--yellow)' : 'var(--text3)'}">${idx + 1}º</span>
+              <span style="font-size:13px;color:var(--text)">${item.posto}</span>
+            </div>
+            <span style="font-size:14px;font-weight:700;color:var(--red)">${item.count}</span>
+          </div>
+        `).join('') || '<div style="font-size:12px;color:var(--text3)">Sem dados</div>'}
+      </div>
+      
+      <div style="background:var(--surface);border-radius:12px;padding:16px">
+        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px">📊 Top 5 Tipos</div>
+        ${rankingTipos.slice(0,5).map((item, idx) => `
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px;background:${idx === 0 ? 'var(--red-bg)' : 'var(--surface2)'};border-radius:6px;margin-bottom:6px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:16px;font-weight:700;color:${idx === 0 ? 'var(--red)' : 'var(--text3)'}">${idx + 1}º</span>
+              <span style="font-size:13px;color:var(--text)">${item.tipo}</span>
+            </div>
+            <span style="font-size:14px;font-weight:700;color:var(--red)">${item.count}</span>
+          </div>
+        `).join('') || '<div style="font-size:12px;color:var(--text3)">Sem dados</div>'}
+      </div>
+      
+      <div style="background:var(--surface);border-radius:12px;padding:16px">
+        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px">⏱️ Maior Tempo Resolução</div>
+        ${postosMaiorTempo.slice(0,5).map((item, idx) => `
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px;background:var(--surface2);border-radius:6px;margin-bottom:6px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:16px;font-weight:700;color:var(--text3)">${idx + 1}º</span>
+              <span style="font-size:13px;color:var(--text)">${item.posto}</span>
+            </div>
+            <span style="font-size:14px;font-weight:700;color:var(--yellow)">${item.tempoMedio}h</span>
+          </div>
+        `).join('') || '<div style="font-size:12px;color:var(--text3)">Sem dados</div>'}
+      </div>
     </div>
   `;
   
   // Lista de abertas
   if (abertas.length > 0) {
-    content.innerHTML = `
-      <div style="margin-bottom:16px">
-        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px">🔴 Incidências Abertas</div>
-        ${abertas.map(inc => renderIncCard(inc)).join('')}
+    html += `
+      <div style="background:var(--surface);border-radius:12px;padding:16px">
+        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px">🔴 Incidências Abertas (${abertas.length})</div>
+        ${abertas.slice(0, 10).map(inc => renderIncCard(inc)).join('')}
+        ${abertas.length > 10 ? `<div style="text-align:center;margin-top:12px;font-size:13px;color:var(--text3)">+ ${abertas.length - 10} incidências</div>` : ''}
       </div>
     `;
   } else {
-    content.innerHTML = `<div class="empty"><p>Nenhuma incidência aberta no momento</p></div>`;
+    html += `<div class="empty"><p>✅ Nenhuma incidência aberta no momento</p></div>`;
   }
+  
+  content.innerHTML = html;
+}
+
+function calcularRankingPostos(incidencias) {
+  const contagem = {};
+  incidencias.forEach(inc => {
+    contagem[inc.posto] = (contagem[inc.posto] || 0) + 1;
+  });
+  return Object.entries(contagem)
+    .map(([posto, count]) => ({posto, count}))
+    .sort((a, b) => b.count - a.count);
+}
+
+function calcularRankingTipos(incidencias) {
+  const contagem = {};
+  incidencias.forEach(inc => {
+    contagem[inc.tipo] = (contagem[inc.tipo] || 0) + 1;
+  });
+  return Object.entries(contagem)
+    .map(([tipo, count]) => ({tipo, count}))
+    .sort((a, b) => b.count - a.count);
+}
+
+function calcularPostosMaiorTempo(incidencias) {
+  const normalizadas = incidencias.filter(inc => inc.status === 'normalizada' && inc.tempoResolucaoMinutos);
+  const agrupado = {};
+  
+  normalizadas.forEach(inc => {
+    if (!agrupado[inc.posto]) {
+      agrupado[inc.posto] = {total: 0, count: 0};
+    }
+    agrupado[inc.posto].total += inc.tempoResolucaoMinutos;
+    agrupado[inc.posto].count += 1;
+  });
+  
+  return Object.entries(agrupado)
+    .map(([posto, data]) => ({
+      posto,
+      tempoMedio: Math.round(data.total / data.count / 60)
+    }))
+    .sort((a, b) => b.tempoMedio - a.tempoMedio);
+}
+
+function renderMapaCalorPostos() {
+  const abertas = allIncidencias.filter(inc => inc.status === 'aberta');
+  const postosComIncidencias = {};
+  
+  abertas.forEach(inc => {
+    postosComIncidencias[inc.posto] = (postosComIncidencias[inc.posto] || 0) + 1;
+  });
+  
+  // Pegar todos postos do Firebase
+  const todosPostos = [...new Set(allIncidencias.map(inc => inc.posto))].sort();
+  
+  if (todosPostos.length === 0) {
+    return '<div style="font-size:13px;color:var(--text3);text-align:center;padding:20px">Nenhum posto com registro</div>';
+  }
+  
+  const grid = todosPostos.map(posto => {
+    const count = postosComIncidencias[posto] || 0;
+    let bgColor, textColor, status;
+    
+    if (count === 0) {
+      bgColor = 'var(--green-bg)';
+      textColor = 'var(--green)';
+      status = '✓';
+    } else if (count === 1) {
+      bgColor = 'var(--yellow-bg)';
+      textColor = 'var(--yellow)';
+      status = '1';
+    } else {
+      bgColor = 'var(--red-bg)';
+      textColor = 'var(--red)';
+      status = count;
+    }
+    
+    return `
+      <div style="background:${bgColor};border-radius:8px;padding:8px;text-align:center;border:2px solid ${count > 0 ? textColor : 'transparent'}">
+        <div style="font-size:18px;font-weight:700;color:${textColor}">${status}</div>
+        <div style="font-size:10px;color:var(--text2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${posto}">${posto}</div>
+      </div>
+    `;
+  }).join('');
+  
+  return `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px">
+      ${grid}
+    </div>
+    <div style="display:flex;align-items:center;justify-content:center;gap:16px;margin-top:12px;font-size:12px;color:var(--text3)">
+      <span>✓ = OK</span>
+      <span style="color:var(--yellow)">● = 1 incidência</span>
+      <span style="color:var(--red)">● = 2+ incidências</span>
+    </div>
+  `;
 }
 
 // ══════════════════════════════════════
