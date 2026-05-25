@@ -795,6 +795,7 @@
       <div class="topbar">
         <div class="page-header" style="margin:0"><h1>Dashboard Incidências</h1><p>Visão geral em tempo real</p></div>
         <div class="topbar-actions">
+          <button class="btn btn-sm btn-secondary" onclick="exportarIncidenciasExcel()" style="margin-right:8px">📊 Exportar Excel</button>
           <select class="form-select" id="inc-filtro-status" onchange="renderDashboardIncidencias()" style="width:140px">
             <option value="todas">Todas</option>
             <option value="aberta">Abertas</option>
@@ -1971,6 +1972,27 @@ function renderDashboardIncidencias() {
     </div>
   `;
   
+  // Gráficos visuais
+  html += `
+    <div style="background:var(--surface);border-radius:12px;padding:16px;margin-bottom:20px">
+      <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:16px">📊 Análise Visual</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:8px">Evolução no Tempo</div>
+          <canvas id="chart-linha" style="max-height:200px"></canvas>
+        </div>
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:8px">Distribuição por Tipo</div>
+          <canvas id="chart-pizza" style="max-height:200px"></canvas>
+        </div>
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:8px">Top 10 Postos</div>
+          <canvas id="chart-barras" style="max-height:200px"></canvas>
+        </div>
+      </div>
+    </div>
+  `;
+  
   // Lista de abertas
   if (abertas.length > 0) {
     html += `
@@ -1985,6 +2007,9 @@ function renderDashboardIncidencias() {
   }
   
   content.innerHTML = html;
+  
+  // Renderizar gráficos após DOM atualizar
+  setTimeout(() => renderChartsIncidencias(filtered), 100);
 }
 
 function calcularRankingPostos(incidencias) {
@@ -2078,6 +2103,175 @@ function renderMapaCalorPostos() {
       <span style="color:var(--red)">● = 2+ incidências</span>
     </div>
   `;
+}
+
+let chartInstances = {linha: null, pizza: null, barras: null};
+
+function renderChartsIncidencias(incidencias) {
+  // Destruir gráficos anteriores
+  Object.values(chartInstances).forEach(chart => {
+    if (chart) chart.destroy();
+  });
+  
+  // Gráfico de Linha - Evolução no tempo
+  const canvasLinha = document.getElementById('chart-linha');
+  if (canvasLinha) {
+    const ultimos7Dias = [];
+    const now = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+      ultimos7Dias.push(d.toISOString().split('T')[0]);
+    }
+    
+    const dadosLinha = ultimos7Dias.map(data => ({
+      data,
+      abertas: incidencias.filter(inc => inc.abertoEm.startsWith(data)).length,
+      normalizadas: incidencias.filter(inc => inc.normalizadoEm && inc.normalizadoEm.startsWith(data)).length
+    }));
+    
+    chartInstances.linha = new Chart(canvasLinha, {
+      type: 'line',
+      data: {
+        labels: dadosLinha.map(d => {
+          const [y,m,day] = d.data.split('-');
+          return `${day}/${m}`;
+        }),
+        datasets: [
+          {
+            label: 'Abertas',
+            data: dadosLinha.map(d => d.abertas),
+            borderColor: 'rgb(239, 68, 68)',
+            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+            tension: 0.3
+          },
+          {
+            label: 'Normalizadas',
+            data: dadosLinha.map(d => d.normalizadas),
+            borderColor: 'rgb(34, 197, 94)',
+            backgroundColor: 'rgba(34, 197, 94, 0.1)',
+            tension: 0.3
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {legend: {display: true, position: 'top'}},
+        scales: {y: {beginAtZero: true, ticks: {stepSize: 1}}}
+      }
+    });
+  }
+  
+  // Gráfico de Pizza - Por tipo
+  const canvasPizza = document.getElementById('chart-pizza');
+  if (canvasPizza) {
+    const contagemTipos = {};
+    incidencias.forEach(inc => {
+      contagemTipos[inc.tipo] = (contagemTipos[inc.tipo] || 0) + 1;
+    });
+    
+    const cores = [
+      'rgb(239, 68, 68)', 'rgb(245, 158, 11)', 'rgb(34, 197, 94)',
+      'rgb(59, 130, 246)', 'rgb(168, 85, 247)', 'rgb(236, 72, 153)',
+      'rgb(20, 184, 166)'
+    ];
+    
+    chartInstances.pizza = new Chart(canvasPizza, {
+      type: 'pie',
+      data: {
+        labels: Object.keys(contagemTipos),
+        datasets: [{
+          data: Object.values(contagemTipos),
+          backgroundColor: cores.slice(0, Object.keys(contagemTipos).length)
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {legend: {display: true, position: 'right'}}
+      }
+    });
+  }
+  
+  // Gráfico de Barras - Top 10 postos
+  const canvasBarras = document.getElementById('chart-barras');
+  if (canvasBarras) {
+    const contagemPostos = {};
+    incidencias.forEach(inc => {
+      contagemPostos[inc.posto] = (contagemPostos[inc.posto] || 0) + 1;
+    });
+    
+    const top10 = Object.entries(contagemPostos)
+      .sort((a,b) => b[1] - a[1])
+      .slice(0, 10);
+    
+    chartInstances.barras = new Chart(canvasBarras, {
+      type: 'bar',
+      data: {
+        labels: top10.map(([posto]) => posto),
+        datasets: [{
+          label: 'Incidências',
+          data: top10.map(([,count]) => count),
+          backgroundColor: 'rgba(99, 102, 241, 0.7)',
+          borderColor: 'rgb(99, 102, 241)',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {legend: {display: false}},
+        scales: {
+          y: {beginAtZero: true, ticks: {stepSize: 1}},
+          x: {ticks: {maxRotation: 45, minRotation: 45}}
+        }
+      }
+    });
+  }
+}
+
+function exportarIncidenciasExcel() {
+  if (allIncidencias.length === 0) {
+    toast('Nenhuma incidência para exportar', 'err');
+    return;
+  }
+  
+  try {
+    const dados = allIncidencias.map(inc => ({
+      'Posto': inc.posto,
+      'Tipo': inc.tipo,
+      'Prioridade': inc.prioridade.toUpperCase(),
+      'Status': inc.status === 'aberta' ? 'ABERTA' : 'NORMALIZADA',
+      'Descrição': inc.descricaoInicial,
+      'Aberto Em': new Date(inc.abertoEm).toLocaleString('pt-BR'),
+      'Aberto Por': inc.abertoByName,
+      'Normalizado Em': inc.normalizadoEm ? new Date(inc.normalizadoEm).toLocaleString('pt-BR') : '-',
+      'Normalizado Por': inc.normalizadoByName || '-',
+      'Tempo (horas)': inc.tempoResolucaoMinutos ? Math.round(inc.tempoResolucaoMinutos / 60) : '-',
+      'Solução': inc.solucao || '-',
+      'Atualizações': inc.updates && inc.updates.length > 0 ? inc.updates.length : 0
+    }));
+    
+    const ws = XLSX.utils.json_to_sheet(dados);
+    
+    // Largura das colunas
+    ws['!cols'] = [
+      {wch: 20}, {wch: 18}, {wch: 12}, {wch: 12}, {wch: 40},
+      {wch: 18}, {wch: 20}, {wch: 18}, {wch: 20}, {wch: 12},
+      {wch: 40}, {wch: 12}
+    ];
+    
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Incidências');
+    
+    const hoje = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, `Incidencias_${hoje}.xlsx`);
+    
+    toast('Relatório exportado com sucesso!', 'ok');
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao exportar relatório', 'err');
+  }
 }
 
 // ══════════════════════════════════════
