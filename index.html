@@ -5153,15 +5153,15 @@ function renderCollabTasks() {
   const stats = document.getElementById('col-task-stats');
   if (!el) return;
   const minhas = allTasks.filter(t=>t.assignedTo===currentUser.id);
-  const ativas = minhas.filter(t=>t.status!=='concluida').length;
-  const concluidas = minhas.filter(t=>t.status==='concluida').length;
-  const atrasadas = minhas.filter(t=>t.status!=='concluida'&&new Date(t.deadline)<new Date()).length;
+  const numAtivas = minhas.filter(t=>t.status!=='concluida').length;
+  const numConcluidas = minhas.filter(t=>t.status==='concluida').length;
+  const numAtrasadas = minhas.filter(t=>t.status!=='concluida'&&new Date(t.deadline)<new Date()).length;
   const pendPrazo = minhas.filter(t=>t.prazoPendente).length;
 
   if (stats) stats.innerHTML = `
-    <div class="stat-card"><div class="label">Em Andamento</div><div class="value" style="color:var(--accent)">${ativas}</div></div>
-    <div class="stat-card"><div class="label">Concluídas</div><div class="value" style="color:var(--green)">${concluidas}</div></div>
-    <div class="stat-card"><div class="label">Atrasadas</div><div class="value" style="color:var(--red)">${atrasadas}</div></div>`;
+    <div class="stat-card"><div class="label">Em Andamento</div><div class="value" style="color:var(--accent)">${numAtivas}</div></div>
+    <div class="stat-card"><div class="label">Concluídas</div><div class="value" style="color:var(--green)">${numConcluidas}</div></div>
+    <div class="stat-card"><div class="label">Atrasadas</div><div class="value" style="color:var(--red)">${numAtrasadas}</div></div>`;
 
   if (!minhas.length) { el.innerHTML=`<div class="empty"><div class="icon">◈</div><p>Nenhuma demanda atribuída.</p></div>`; return; }
 
