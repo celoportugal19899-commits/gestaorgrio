@@ -31,6 +31,16 @@
   .page{display:none;}
   .page.active{display:flex;}
 
+  /* ── ACCORDION ── */
+  .acc-hdr{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;background:var(--surface2);border-radius:10px;cursor:pointer;user-select:none;margin-bottom:4px;border:1px solid var(--border);transition:background .15s;}
+  .acc-hdr:hover{background:var(--surface3);}
+  .acc-hdr .acc-title{font-size:14px;font-weight:600;}
+  .acc-hdr .acc-count{font-size:12px;color:var(--text3);font-weight:400;margin-left:6px;}
+  .acc-hdr .acc-arrow{font-size:14px;color:var(--text3);transition:transform .2s;display:inline-block;margin-left:8px;}
+  .acc-hdr.acc-closed .acc-arrow{transform:rotate(-90deg);}
+  .acc-body{margin-bottom:18px;}
+  .acc-body.acc-closed{display:none;}
+
   /* ── RH MODULE ── */
   .rh-drop-zone{border:2px dashed var(--border2);border-radius:12px;padding:40px 24px;text-align:center;cursor:pointer;transition:.2s;background:var(--surface2);}
   .rh-drop-zone:hover,.rh-drop-zone.drag-over{border-color:var(--accent);background:rgba(108,108,255,.08);}
@@ -1918,21 +1928,11 @@ function renderColIncidencias() {
   
   const abertas = minhas.filter(i => i.status === 'aberta');
   const normalizadas = minhas.filter(i => i.status === 'normalizada');
-  
+
   let html = '';
-  
-  if (abertas.length > 0) {
-    html += `<div style="margin-bottom:24px"><div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px">🔴 Abertas (${abertas.length})</div>`;
-    html += abertas.map(inc => renderIncCard(inc)).join('');
-    html += `</div>`;
-  }
-  
-  if (normalizadas.length > 0) {
-    html += `<div><div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px">✅ Normalizadas (${normalizadas.length})</div>`;
-    html += normalizadas.map(inc => renderIncCard(inc)).join('');
-    html += `</div>`;
-  }
-  
+  if (abertas.length)      html += secAcc('🔴 Abertas', abertas.length, abertas.map(inc => renderIncCard(inc)).join(''), true, 'var(--red)');
+  if (normalizadas.length) html += secAcc('✅ Normalizadas', normalizadas.length, normalizadas.map(inc => renderIncCard(inc)).join(''), false, 'var(--green)');
+  if (!html) html = `<div class="empty" style="margin-top:40px"><p>Você ainda não abriu nenhuma incidência</p></div>`;
   wrap.innerHTML = html;
 }
 
@@ -2879,7 +2879,8 @@ function renderDashboard() {
 function renderAllTasks() {
   const el = document.getElementById('all-tasks-list');
   if (!allTasks.length) { el.innerHTML=`<div class="empty"><div class="icon">◈</div><p>Nenhuma demanda criada ainda.</p></div>`; return; }
-  el.innerHTML = allTasks.map(t => {
+
+  function cardTask(t) {
     const assignee = allUsers.find(u=>u.id===t.assignedTo);
     const sc = getSem(t);
     const uc = (t.updates||[]).length;
@@ -2893,7 +2894,7 @@ function renderAllTasks() {
         <span style="color:${t.priority==='urgente'?'var(--red)':t.priority==='alta'?'var(--yellow)':'var(--text3)'}">⚑ ${t.priority||'normal'}</span>
         <span>${stIco(t.status)} ${stLbl(t.status)}</span>
       </div>
-      ${prazoPend?`<div style="background:var(--yellow);background:rgba(245,158,11,0.1);border-left:3px solid var(--yellow);border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12px"><div style="font-weight:700;color:var(--yellow);margin-bottom:4px">⏰ Solicitação de Novo Prazo</div><div style="color:var(--text2)">Novo prazo: <strong>${fmtDate(t.prazoPendente.novoPrazo)}</strong></div><div style="color:var(--text3);margin-top:2px">Motivo: ${t.prazoPendente.motivo}</div></div>`:''}
+      ${prazoPend?`<div style="background:rgba(245,158,11,0.1);border-left:3px solid var(--yellow);border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12px"><div style="font-weight:700;color:var(--yellow);margin-bottom:4px">⏰ Solicitação de Novo Prazo</div><div style="color:var(--text2)">Novo prazo: <strong>${fmtDate(t.prazoPendente.novoPrazo)}</strong></div><div style="color:var(--text3);margin-top:2px">Motivo: ${t.prazoPendente.motivo}</div></div>`:''}
       <div class="task-progress-row"><div class="task-progress-label">${t.progress||0}%</div><div class="progress-wrap" style="flex:1"><div class="progress-bar ${pbCls(sc)}" style="width:${t.progress||0}%"></div></div></div>
       <div class="task-actions">
         <button class="btn btn-sm btn-secondary" onclick="openCreateTask('${t.id}')">✎ Editar</button>
@@ -2905,7 +2906,24 @@ function renderAllTasks() {
         ${(t.updates||[]).slice().reverse().map(u=>`<div class="update-item"><div class="upd-header"><span>${u.userName||'—'}</span><span>${fmtDT(u.timestamp)}</span></div><div class="upd-text">${u.text}</div></div>`).join('')}
       </div>
     </div>`;
-  }).join('');
+  }
+
+  const urgentes   = allTasks.filter(t=>t.status!=='concluida'&&t.priority==='urgente');
+  const altas      = allTasks.filter(t=>t.status!=='concluida'&&t.priority==='alta');
+  const normais    = allTasks.filter(t=>t.status!=='concluida'&&t.priority==='normal');
+  const bloqueadas = allTasks.filter(t=>t.status==='bloqueada');
+  const pausadas   = allTasks.filter(t=>t.status==='pausada');
+  const concluidas = allTasks.filter(t=>t.status==='concluida');
+
+  let html = '';
+  if (urgentes.length)   html += secAcc('🔴 Urgentes',   urgentes.length,   urgentes.map(cardTask).join(''),   true,  'var(--red)');
+  if (altas.length)      html += secAcc('🟡 Alta Prioridade', altas.length,  altas.map(cardTask).join(''),      true,  'var(--yellow)');
+  if (normais.length)    html += secAcc('Em Andamento',   normais.length,    normais.map(cardTask).join(''),    true);
+  if (bloqueadas.length) html += secAcc('⛔ Bloqueadas',  bloqueadas.length, bloqueadas.map(cardTask).join(''), true,  'var(--red)');
+  if (pausadas.length)   html += secAcc('⏸ Pausadas',    pausadas.length,   pausadas.map(cardTask).join(''),   false);
+  if (concluidas.length) html += secAcc('✅ Concluídas',  concluidas.length, concluidas.map(cardTask).join(''), false, 'var(--green)');
+
+  el.innerHTML = html || `<div class="empty"><div class="icon">◈</div><p>Nenhuma demanda.</p></div>`;
 }
 // ══════════════════════════════════════
 // HELPERS
@@ -5147,16 +5165,11 @@ function renderCollabTasks() {
 
   if (!minhas.length) { el.innerHTML=`<div class="empty"><div class="icon">◈</div><p>Nenhuma demanda atribuída.</p></div>`; return; }
 
-  el.innerHTML = minhas.sort((a,b)=>{
-    if (a.status==='concluida'&&b.status!=='concluida') return 1;
-    if (b.status==='concluida'&&a.status!=='concluida') return -1;
-    return new Date(a.deadline)-new Date(b.deadline);
-  }).map(t=>{
+  function cardCollab(t) {
     const atrasada = t.status!=='concluida'&&new Date(t.deadline)<new Date();
     const diasRestantes = Math.ceil((new Date(t.deadline)-new Date())/(1000*60*60*24));
     const ultRetorno = t.retornos?.slice(-1)[0];
     const prazoPend = t.prazoPendente;
-
     return `<div class="task-card ${atrasada?'border-red':''}">
       <div class="task-header">
         <div class="task-title">${t.title}</div>
@@ -5181,7 +5194,19 @@ function renderCollabTasks() {
         <button class="btn btn-primary btn-sm" style="flex:1" onclick="abrirModalRetorno('${t.id}','${t.title.replace(/'/g,"\\'")}',${t.progress||0})">💬 Atualizar</button>
       </div>`:''}
     </div>`;
-  }).join('');
+  }
+
+  const urgentes  = minhas.filter(t=>t.status!=='concluida'&&t.priority==='urgente');
+  const atrasadas = minhas.filter(t=>t.status!=='concluida'&&t.priority!=='urgente'&&new Date(t.deadline)<new Date());
+  const ativas    = minhas.filter(t=>t.status!=='concluida'&&t.priority!=='urgente'&&new Date(t.deadline)>=new Date());
+  const concluidas= minhas.filter(t=>t.status==='concluida');
+
+  let html = '';
+  if (urgentes.length)  html += secAcc('🔴 Urgentes', urgentes.length, urgentes.map(cardCollab).join(''), true, 'var(--red)');
+  if (atrasadas.length) html += secAcc('⚠ Atrasadas', atrasadas.length, atrasadas.map(cardCollab).join(''), true, 'var(--yellow)');
+  if (ativas.length)    html += secAcc('Em Andamento', ativas.length, ativas.map(cardCollab).join(''), true);
+  if (concluidas.length)html += secAcc('✅ Concluídas', concluidas.length, concluidas.map(cardCollab).join(''), false, 'var(--green)');
+  el.innerHTML = html;
 }
 
 function abrirModalRetorno(id, titulo, progress) {
@@ -5942,9 +5967,12 @@ function renderHistoricoHolerites() {
   if (filtroStatus) filtrados = filtrados.filter(h => h.status === filtroStatus);
   
   if (!filtrados.length) { lista.innerHTML = `<div class="empty"><p>Nenhum holerite encontrado</p></div>`; return; }
-  
-  lista.innerHTML = filtrados.map(h => `
-    <div class="holerite-card">
+
+  const pendentes = filtrados.filter(h => h.status === 'pendente');
+  const assinados = filtrados.filter(h => h.status === 'assinado');
+
+  function cardHolerite(h) {
+    return `<div class="holerite-card">
       <div class="hc-avatar">${(h.colaboradorNome||'?')[0]}</div>
       <div class="hc-info">
         <div class="hc-name">${h.colaboradorNome}</div>
@@ -5957,8 +5985,13 @@ function renderHistoricoHolerites() {
         <button class="btn btn-sm btn-secondary" onclick="downloadHoleritePdf('${h.id}')">⬇ PDF</button>
         ${h.status === 'assinado' ? `<button class="btn btn-sm btn-primary" onclick="abrirVerAssinado('${h.id}')">📄 Ver Assinado</button>` : ''}
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  }
+
+  let html = '';
+  if (pendentes.length) html += secAcc('⏳ Pendentes de assinatura', pendentes.length, pendentes.map(cardHolerite).join(''), true, 'var(--yellow)');
+  if (assinados.length) html += secAcc('✅ Assinados', assinados.length, assinados.map(cardHolerite).join(''), false, 'var(--green)');
+  lista.innerHTML = html;
 }
 
 function downloadHoleritePdf(holeritreId) {
@@ -6183,15 +6216,11 @@ function renderAdmRhAtestado() {
   if (!lista) return;
   
   if (!allAtestados.length) { lista.innerHTML = `<div class="empty"><p>Nenhum atestado enviado ainda</p></div>`; return; }
-  
-  lista.innerHTML = allAtestados.map(a => {
+
+  function cardAtestado(a) {
     const afastadoHoje = a.dataInicio <= hoje && a.dataFim >= hoje;
-    // Cruzar com ponto: dias cobertos pelo atestado
-    const diasCobertos = contarDias(a.dataInicio, a.dataFim);
-    // Marcar como visto
     if (!a.vistoAdm) db.collection('atestados').doc(a.id).update({vistoAdm: true}).catch(()=>{});
-    return `
-    <div class="atestado-card" style="${afastadoHoje ? 'border-color:var(--yellow);background:var(--yellow-bg)' : ''}">
+    return `<div class="atestado-card" style="${afastadoHoje ? 'border-color:var(--yellow);background:var(--yellow-bg)' : ''}">
       <div class="at-header">
         <div class="hc-avatar" style="background:var(--surface3);color:var(--text)">${(a.colaboradorNome||'?')[0]}</div>
         <div style="flex:1">
@@ -6201,7 +6230,7 @@ function renderAdmRhAtestado() {
         ${afastadoHoje ? `<span class="status-pill sp-pendente">⚠️ Afastado hoje</span>` : `<span class="status-pill sp-enviado">✅ Enviado</span>`}
       </div>
       <div class="at-dates" style="margin-bottom:8px">
-        <span>📅 ${fmtD(a.dataInicio)} até ${fmtD(a.dataFim)} (${diasCobertos} dia(s))</span>
+        <span>📅 ${fmtD(a.dataInicio)} até ${fmtD(a.dataFim)} (${contarDias(a.dataInicio, a.dataFim)} dia(s))</span>
         ${a.observacao ? `<span>· ${a.observacao}</span>` : ''}
       </div>
       <div style="display:flex;gap:8px;align-items:center">
@@ -6209,7 +6238,15 @@ function renderAdmRhAtestado() {
         <button class="btn btn-sm btn-secondary" style="margin-left:auto" onclick="abrirVerAtestado('${a.id}')">🏥 Ver Atestado</button>
       </div>
     </div>`;
-  }).join('');
+  }
+
+  const afastadosHoje = allAtestados.filter(a => a.dataInicio <= hoje && a.dataFim >= hoje);
+  const historico     = allAtestados.filter(a => !(a.dataInicio <= hoje && a.dataFim >= hoje));
+
+  let html = '';
+  if (afastadosHoje.length) html += secAcc('⚠️ Afastados Hoje', afastadosHoje.length, afastadosHoje.map(cardAtestado).join(''), true, 'var(--yellow)');
+  if (historico.length)     html += secAcc('📋 Histórico', historico.length, historico.map(cardAtestado).join(''), false);
+  lista.innerHTML = html;
 }
 
 function contarDias(inicio, fim) {
@@ -6258,7 +6295,26 @@ function downloadAtestadoById(id) {
 }
 
 // ══════════════════════════════════════
-// START
+// ACCORDION UTILITY
+// ══════════════════════════════════════
+function toggleAcc(el) {
+  el.classList.toggle('acc-closed');
+  const body = el.nextElementSibling;
+  if (body && body.classList.contains('acc-body')) body.classList.toggle('acc-closed');
+}
+
+function secAcc(titulo, count, conteudo, aberto=true, corTitulo='') {
+  const cls = aberto ? '' : ' acc-closed';
+  const corStyle = corTitulo ? `style="color:${corTitulo}"` : '';
+  return `<div class="acc-hdr${cls}" onclick="toggleAcc(this)">
+    <span class="acc-title" ${corStyle}>${titulo}<span class="acc-count">(${count})</span></span>
+    <span class="acc-arrow">▾</span>
+  </div>
+  <div class="acc-body${cls}">${conteudo || '<div class="empty" style="padding:14px 0"><p>Nenhum item</p></div>'}</div>`;
+}
+
+// ══════════════════════════════════════
+// INIT
 // ══════════════════════════════════════
 initSystem();
 </script>
