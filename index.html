@@ -5777,15 +5777,18 @@ async function handleHoleriteFile(file) {
 
   try {
     const arrayBuffer = await file.arrayBuffer();
+    // Cópias independentes — PDF.js consome/detacha o buffer original
+    const bufParaPdfjs  = arrayBuffer.slice(0);
+    const bufParaPdflib = arrayBuffer.slice(0);
 
     if (typeof pdfjsLib === 'undefined') throw new Error('PDF.js não carregou — recarregue a página.');
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-    const pdfDoc = await pdfjsLib.getDocument({data: new Uint8Array(arrayBuffer)}).promise;
+    const pdfDoc = await pdfjsLib.getDocument({data: new Uint8Array(bufParaPdfjs)}).promise;
     const numPages = pdfDoc.numPages;
 
     const { PDFDocument } = PDFLib;
-    const sourcePdf = await PDFDocument.load(arrayBuffer.slice(0));
+    const sourcePdf = await PDFDocument.load(bufParaPdflib);
 
     for (let i = 0; i < numPages; i++) {
       const page = await pdfDoc.getPage(i + 1);
