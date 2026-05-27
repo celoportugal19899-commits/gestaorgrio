@@ -5768,26 +5768,106 @@ function handleHoleriteDrop(e) {
   else toast('Selecione um arquivo PDF', 'err');
 }
 
-// ── Extrai nomes diretamente dos bytes do PDF (sem depender do PDF.js) ──
-function extrairNomesRaw(buffer) {
-  const arr = new Uint8Array(buffer);
-  // Ler apenas bytes ASCII imprimíveis, substituir resto por espaço
-  let raw = '';
-  for (let i = 0; i < arr.length; i++) {
-    const c = arr[i];
-    raw += (c >= 32 && c < 127) ? String.fromCharCode(c) : ' ';
-  }
-  raw = raw.replace(/\s+/g, ' ');
+// ── Parser nativo de PDF — sem depender do PDF.js para texto ──
+async function extrairNomesNativo(arrayBuffer) {
+  const bytes = new Uint8Array(arrayBuffer);
 
-  const resultados = [];
-  // Padrão: código 6 dígitos + nome maiúsculo + cargo
-  const re = /(\d{6})\s+([A-Z][A-Z\s]{4,70}?)\s+(?:JOVEM\s+APRENDIZ|ATENDENTE(?:\s+BACKUP)?|BACKOFFICE(?:\s+DE(?:\s+OPERACOES)?)?|SUPERVISOR(?:\s*\([A-Z]\))?(?:\s+REGIONAL(?:\s+II)?)?|GERENTE(?:\s+REGIONAL)?|ASSISTENTE(?:\s+TREINAMENTO)?)/g;
-  let m;
-  while ((m = re.exec(raw)) !== null) {
-    const nome = m[2].trim().replace(/\s+/g, ' ');
-    if (nome.split(' ').length >= 2) resultados.push({ codigo: m[1], nome });
+  // Descomprimir zlib usando DecompressionStream nativo do browser
+  async function decompress(data) {
+    for (const fmt of ['deflate', 'deflate-raw']) {
+      try {
+        const ds = new DecompressionStream(fmt);
+        const writer = ds.writable.getWriter();
+        const reader = ds.readable.getReader();
+        // escrever em chunks pra evitar pressão de backpressure
+        writer.write(data);
+        writer.close();
+        const chunks = [];
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+        }
+        const total = chunks.reduce((a, c) => a + c.length, 0);
+        const out = new Uint8Array(total);
+        let off = 0;
+        for (const c of chunks) { out.set(c, off); off += c.length; }
+        return out;
+      } catch (e) {}
+    }
+    return null;
   }
-  return resultados;
+
+  // Parser de operadores TJ/Tj — reconstrói texto com kerning
+  function parseTJ(text) {
+    const tokens = [];
+    const tjRe = /\[([^\]]*)\]\s*TJ|\(([^)]*)\)\s*Tj/g;
+    const charRe = /\(([^)]*)\)|(-?\d+\.?\d*)/g;
+    let m;
+    while ((m = tjRe.exec(text)) !== null) {
+      if (m[1]) {
+        let w = '';
+        charRe.lastIndex = 0;
+        let cr;
+        while ((cr = charRe.exec(m[1])) !== null) {
+          if (cr[1] !== undefined) {
+            w += cr[1];
+          } else if (Math.abs(parseFloat(cr[2])) > 100) {
+            if (w) tokens.push(w);
+            w = '';
+          }
+        }
+        if (w) tokens.push(w);
+      } else if (m[2]) {
+        tokens.push(m[2]);
+      }
+    }
+    return tokens.join(' ').replace(/\s+/g, ' ');
+  }
+
+  // Localizar streams zlib pelos magic bytes 0x78 0x9C depois de 'stream\n'
+  const pdfStr = new TextDecoder('latin1').decode(bytes);
+  const nomes = [];
+  const seenCodes = new Set();
+  let pos = 0;
+
+  while (true) {
+    const streamIdx = pdfStr.indexOf('stream\n', pos);
+    if (streamIdx === -1) break;
+    const dataStart = streamIdx + 7;
+
+    // Verificar magic bytes do zlib: 0x78 seguido de 0x9C, 0x9D, 0xDA ou 0x01
+    const b0 = bytes[dataStart], b1 = bytes[dataStart + 1];
+    const isZlib = b0 === 0x78 && (b1 === 0x9C || b1 === 0x9D || b1 === 0xDA || b1 === 0x01);
+
+    if (isZlib) {
+      const endIdx = pdfStr.indexOf('\nendstream', dataStart);
+      if (endIdx > dataStart) {
+        const compressed = bytes.slice(dataStart, endIdx);
+        try {
+          const decompressed = await decompress(compressed);
+          if (decompressed) {
+            const text = new TextDecoder('latin1').decode(decompressed);
+            const fullText = parseTJ(text);
+
+            // Padrão: NOME CARGO [- qualquer coisa] CODIGO6DIGITOS
+            const re = /([A-Z][A-Z ]{4,70}?)\s+(?:JOVEM APRENDIZ|ATENDENTE(?: BACKUP)?|BACKOFFICE(?:\s+DE OPERACOES)?|SUPERVISOR(?:\s*\([A-Z]\))?(?:\s+REGIONAL(?:\s+II)?)?|GERENTE(?:\s+REGIONAL)?|ASSISTENTE(?:\s+TREINAMENTO)?)[^0-9]*(\d{6})/;
+            const nm = fullText.match(re);
+            if (nm) {
+              const cod = nm[2];
+              const nome = nm[1].replace(/\s+/g, ' ').trim();
+              if (!seenCodes.has(cod) && nome.split(' ').length >= 2) {
+                seenCodes.add(cod);
+                nomes.push(nome);
+              }
+            }
+          }
+        } catch (e) {}
+      }
+    }
+    pos = streamIdx + 7;
+  }
+  return nomes;
 }
 
 async function handleHoleriteFile(file) {
@@ -5799,73 +5879,51 @@ async function handleHoleriteFile(file) {
 
   try {
     const arrayBuffer = await file.arrayBuffer();
-    // Três cópias independentes do buffer
-    const bufParaPdfjs  = arrayBuffer.slice(0);
-    const bufParaPdflib = arrayBuffer.slice(0);
     const bufParaNomes  = arrayBuffer.slice(0);
+    const bufParaPdflib = arrayBuffer.slice(0);
 
-    // ── 1. Extrair nomes pelos bytes brutos do PDF ──
-    const nomesRaw = extrairNomesRaw(bufParaNomes);
-    // Cada nome aparece 2× por página (via do func + via da empresa); deduplica mantendo ordem
-    const nomesPorPagina = [];
-    const seenNomes = new Set();
-    for (const item of nomesRaw) {
-      if (!seenNomes.has(item.nome)) {
-        seenNomes.add(item.nome);
-        nomesPorPagina.push(item.nome);
-      }
-    }
+    // ── 1. Extrair nomes via parser nativo ──
+    const nomesDetectados = await extrairNomesNativo(bufParaNomes);
 
     // ── 2. pdf-lib para dividir páginas ──
     const { PDFDocument } = PDFLib;
     const sourcePdf = await PDFDocument.load(bufParaPdflib);
+    const numPages = sourcePdf.getPageCount();
 
-    // ── 3. PDF.js apenas para contar páginas ──
-    let numPages = sourcePdf.getPageCount();
-    try {
-      if (typeof pdfjsLib !== 'undefined') {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-        const pdfDoc = await pdfjsLib.getDocument({data: new Uint8Array(bufParaPdfjs)}).promise;
-        numPages = pdfDoc.numPages;
-      }
-    } catch(e) { /* usa contagem do pdf-lib */ }
+    // ── 3. Match nome → usuário (2 palavras em comum, mín 3 chars) ──
+    function matchUser(nome) {
+      if (!nome) return null;
+      const normPdf = normalizarNome(nome);
+      const palavPdf = normPdf.split(' ').filter(p => p.length >= 3);
+      return allUsers.find(u => {
+        const normU = normalizarNome(u.name);
+        if (normPdf === normU) return true;
+        const palavU = normU.split(' ').filter(p => p.length >= 3);
+        return palavPdf.filter(p => palavU.includes(p)).length >= 2;
+      }) || null;
+    }
 
     // ── 4. Montar dados por página ──
     for (let i = 0; i < numPages; i++) {
-      const nomeDetectado = nomesPorPagina[i] || '';
+      const nomeDetectado = nomesDetectados[i] || '';
+      const userMatch = matchUser(nomeDetectado);
 
-      // Match com usuários cadastrados (mínimo 2 palavras em comum)
-      let userMatch = null;
-      if (nomeDetectado) {
-        const nomePdfNorm = normalizarNome(nomeDetectado);
-        const palavrasPdf = nomePdfNorm.split(' ').filter(p => p.length >= 3);
-        userMatch = allUsers.find(u => {
-          const nomeUserNorm = normalizarNome(u.name);
-          if (nomePdfNorm === nomeUserNorm) return true;
-          const palavrasUser = nomeUserNorm.split(' ').filter(p => p.length >= 3);
-          const emComum = palavrasPdf.filter(p => palavrasUser.includes(p)).length;
-          return emComum >= 2;
-        });
-      }
-
-      // Extrair página individual com pdf-lib
       const novoDoc = await PDFDocument.create();
-      const [paginaCopada] = await novoDoc.copyPages(sourcePdf, [i]);
-      novoDoc.addPage(paginaCopada);
+      const [pg] = await novoDoc.copyPages(sourcePdf, [i]);
+      novoDoc.addPage(pg);
       const pdfBytes = await novoDoc.save();
-      const base64 = arrayBufferToBase64(pdfBytes);
 
       holeritesPdfData.push({
         pageIndex: i,
         nomeDetectado,
         userId: userMatch ? userMatch.id : '',
         userName: userMatch ? userMatch.name : '',
-        pdfBase64: base64
+        pdfBase64: arrayBufferToBase64(pdfBytes)
       });
     }
 
     renderMapeamentoHolerites();
-  } catch(e) {
+  } catch (e) {
     console.error('Erro handleHoleriteFile:', e);
     toast('Erro ao processar PDF: ' + e.message, 'err');
     cancelarHolerite();
