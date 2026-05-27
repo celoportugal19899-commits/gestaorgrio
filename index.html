@@ -10,6 +10,8 @@
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
   :root {
     --bg:#0a0a0f; --surface:#111118; --surface2:#18181f; --surface3:#20202a;
@@ -29,7 +31,34 @@
   .page{display:none;}
   .page.active{display:flex;}
 
-  /* LOADING */
+  /* ── RH MODULE ── */
+  .rh-drop-zone{border:2px dashed var(--border2);border-radius:12px;padding:40px 24px;text-align:center;cursor:pointer;transition:.2s;background:var(--surface2);}
+  .rh-drop-zone:hover,.rh-drop-zone.drag-over{border-color:var(--accent);background:rgba(108,108,255,.08);}
+  .rh-drop-zone .dz-ico{font-size:36px;margin-bottom:10px;}
+  .rh-drop-zone .dz-title{font-size:15px;font-weight:700;margin-bottom:4px;}
+  .rh-drop-zone .dz-sub{font-size:12px;color:var(--text3);}
+  .holerite-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-bottom:10px;display:flex;align-items:center;gap:14px;}
+  .holerite-card .hc-avatar{width:40px;height:40px;border-radius:50%;background:var(--surface3);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;flex-shrink:0;color:var(--accent);}
+  .holerite-card .hc-info{flex:1;}
+  .holerite-card .hc-name{font-size:14px;font-weight:700;}
+  .holerite-card .hc-meta{font-size:12px;color:var(--text3);margin-top:2px;}
+  .holerite-card .hc-actions{display:flex;gap:8px;flex-shrink:0;}
+  .status-pill{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;}
+  .sp-pendente{background:var(--yellow-bg);color:var(--yellow);}
+  .sp-assinado{background:var(--green-bg);color:var(--green);}
+  .sp-enviado{background:rgba(108,108,255,.15);color:var(--accent);}
+  .atestado-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-bottom:10px;}
+  .atestado-card .at-header{display:flex;align-items:center;gap:12px;margin-bottom:10px;}
+  .atestado-card .at-dates{display:flex;gap:10px;font-size:12px;color:var(--text3);}
+  .rh-match-row{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--surface2);border-radius:8px;margin-bottom:8px;}
+  .rh-match-row .mr-page{width:28px;height:28px;background:var(--accent);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;}
+  .rh-match-row .mr-info{flex:1;}
+  .rh-match-row select{width:220px;}
+  .rh-section-title{font-size:13px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.8px;margin:20px 0 12px;}
+  .rh-tabs{display:flex;gap:4px;background:var(--surface2);border-radius:10px;padding:4px;margin-bottom:20px;}
+  .rh-tab{flex:1;padding:8px;text-align:center;border-radius:7px;cursor:pointer;font-size:13px;font-weight:600;color:var(--text3);transition:.15s;}
+  .rh-tab.active{background:var(--surface);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.3);}
+
   #page-loading{min-height:100vh;align-items:center;justify-content:center;flex-direction:column;gap:16px;}
   .spinner{width:40px;height:40px;border:3px solid rgba(201,162,39,0.2);border-top-color:#c9a227;border-radius:50%;animation:spin .8s linear infinite;}
   @keyframes spin{to{transform:rotate(360deg)}}
@@ -571,6 +600,11 @@
         <div class="sidebar-item" id="nav-comb-adm" onclick="showView('adm-combustivel',this)"><span class="icon">⛽</span> Combustível <span id="comb-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
         <div class="sidebar-item" id="nav-relatorio-comb" onclick="showView('adm-relatorio-comb',this)"><span class="icon">📊</span> Relatório Combustível</div>
       </div>
+      <div class="sidebar-section">
+        <div class="sidebar-section-label">Recursos Humanos</div>
+        <div class="sidebar-item" id="nav-rh-holerite-adm" onclick="showView('adm-rh-holerite',this)"><span class="icon">💼</span> Holerite <span id="holerite-badge-adm" style="display:none;background:var(--yellow);color:#000;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
+        <div class="sidebar-item" id="nav-rh-atestado-adm" onclick="showView('adm-rh-atestado',this)"><span class="icon">🏥</span> Atestados <span id="atestado-badge-adm" style="display:none;background:var(--accent);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
+      </div>
     </div>
     <div id="nav-collab" style="display:none">
       <div class="sidebar-section">
@@ -578,6 +612,11 @@
         <div class="sidebar-item active" onclick="showView('col-tasks',this)"><span class="icon">◈</span> Minhas Tarefas</div>
         <div class="sidebar-item" onclick="showView('col-ponto',this)"><span class="icon">⏱</span> Meu Ponto</div>
         <div class="sidebar-item" onclick="showView('col-incidencias',this)"><span class="icon">📋</span> Incidências</div>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-section-label">Recursos Humanos</div>
+        <div class="sidebar-item" onclick="showView('col-rh-holerite',this)"><span class="icon">💼</span> Meu Holerite <span id="holerite-badge-col" style="display:none;background:var(--yellow);color:#000;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">!</span></div>
+        <div class="sidebar-item" onclick="showView('col-rh-atestado',this)"><span class="icon">🏥</span> Atestado</div>
       </div>
     </div>
     <div id="nav-posto" style="display:none">
@@ -596,6 +635,11 @@
         <div class="sidebar-item" onclick="showView('col-incidencias',this)"><span class="icon">📋</span> Incidências</div>
         <div class="sidebar-item" onclick="showView('sup-caixa',this)"><span class="icon">💰</span> Caixa Rotativo</div>
         <div class="sidebar-item" onclick="showView('sup-combustivel',this)"><span class="icon">⛽</span> Recarga Combustível</div>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-section-label">Recursos Humanos</div>
+        <div class="sidebar-item" onclick="showView('col-rh-holerite',this)"><span class="icon">💼</span> Meu Holerite</div>
+        <div class="sidebar-item" onclick="showView('col-rh-atestado',this)"><span class="icon">🏥</span> Atestado</div>
       </div>
     </div>
     <div class="sidebar-footer">
@@ -944,9 +988,107 @@
       <div id="rel-comb-body"></div>
     </div>
 
+    <!-- ADM — HOLERITE -->
+    <div id="view-adm-rh-holerite" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Holerites</h1><p>Distribuição e controle de recibos de pagamento</p></div>
+      </div>
+      <div class="rh-tabs">
+        <div class="rh-tab active" id="rh-tab-enviar" onclick="switchRhTab('enviar')">📤 Enviar Holerites</div>
+        <div class="rh-tab" id="rh-tab-historico" onclick="switchRhTab('historico')">📋 Histórico</div>
+      </div>
+      <div id="rh-painel-enviar">
+        <div class="rh-drop-zone" id="holerite-drop-zone" onclick="document.getElementById('holerite-file-input').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="handleHoleriteDrop(event)">
+          <div class="dz-ico">📄</div>
+          <div class="dz-title">Arraste o PDF do holerite aqui</div>
+          <div class="dz-sub">ou clique para selecionar — PDF com todos os colaboradores</div>
+          <input type="file" id="holerite-file-input" accept=".pdf" style="display:none" onchange="handleHoleriteFile(this.files[0])">
+        </div>
+        <div id="holerite-processando" style="display:none;text-align:center;padding:30px;color:var(--text3)">
+          <div class="spinner" style="margin:0 auto 12px"></div>
+          Processando PDF e identificando colaboradores...
+        </div>
+        <div id="holerite-mapeamento" style="display:none">
+          <div class="rh-section-title">✅ Colaboradores Identificados — Confirme o mapeamento</div>
+          <div id="holerite-match-lista"></div>
+          <div style="display:flex;gap:10px;margin-top:16px">
+            <button class="btn btn-secondary" style="flex:1" onclick="cancelarHolerite()">Cancelar</button>
+            <button class="btn btn-primary" style="flex:1" onclick="dispararHolerites()">🚀 Disparar Holerites</button>
+          </div>
+        </div>
+      </div>
+      <div id="rh-painel-historico" style="display:none">
+        <div class="rh-section-title">Holerites enviados</div>
+        <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+          <select class="form-select" id="holerite-filtro-mes" style="width:160px" onchange="renderHistoricoHolerites()">
+            <option value="">Todos os meses</option>
+          </select>
+          <select class="form-select" id="holerite-filtro-status" style="width:160px" onchange="renderHistoricoHolerites()">
+            <option value="">Todos os status</option>
+            <option value="pendente">Pendentes</option>
+            <option value="assinado">Assinados</option>
+          </select>
+        </div>
+        <div id="holerite-historico-lista"></div>
+      </div>
+    </div>
+
+    <!-- ADM — ATESTADOS -->
+    <div id="view-adm-rh-atestado" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Atestados Médicos</h1><p>Atestados enviados pelos colaboradores</p></div>
+      </div>
+      <div id="adm-atestados-stats" class="grid-3" style="margin-bottom:20px"></div>
+      <div id="adm-atestados-lista"></div>
+    </div>
+
+    <!-- COLABORADOR — HOLERITE -->
+    <div id="view-col-rh-holerite" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Meu Holerite</h1><p>Recibos de pagamento</p></div>
+      </div>
+      <div id="col-holerite-wrap"></div>
+    </div>
+
+    <!-- COLABORADOR — ATESTADO -->
+    <div id="view-col-rh-atestado" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Atestado Médico</h1><p>Envie e acompanhe seus atestados</p></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+        <div class="card">
+          <div style="font-size:15px;font-weight:700;margin-bottom:16px">📎 Enviar Novo Atestado</div>
+          <div class="form-group">
+            <label class="form-label">Data de início do afastamento</label>
+            <input class="form-input" type="date" id="at-data-inicio">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Data de retorno (inclusive)</label>
+            <input class="form-input" type="date" id="at-data-fim">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Observação (opcional)</label>
+            <textarea class="form-textarea" id="at-obs" placeholder="Ex: Laringite, consulta de rotina..." rows="2"></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Arquivo PDF do atestado</label>
+            <div class="rh-drop-zone" style="padding:20px" onclick="document.getElementById('at-file-input').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="handleAtestadoDrop(event)">
+              <div class="dz-ico" style="font-size:24px">📄</div>
+              <div class="dz-title" style="font-size:13px" id="at-file-label">Selecionar PDF</div>
+              <input type="file" id="at-file-input" accept=".pdf" style="display:none" onchange="handleAtestadoFile(this.files[0])">
+            </div>
+          </div>
+          <button class="btn btn-primary btn-block" onclick="confirmarAtestado()">📤 Enviar Atestado</button>
+        </div>
+        <div>
+          <div class="rh-section-title">Meus Atestados</div>
+          <div id="col-atestados-lista"></div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
-<!-- MODAL: NOVO COLABORADOR -->
 <div class="modal-overlay" id="modal-collab">
   <div class="modal" style="max-width:520px">
     <div class="modal-header"><div class="modal-title">Novo Colaborador</div><button class="close-btn" onclick="closeModal('modal-collab')">✕</button></div>
@@ -1266,14 +1408,14 @@
 <!-- MODAL: JUSTIFICAR ATRASO -->
 <div class="modal-overlay" id="modal-justificar-atraso">
   <div class="modal" style="max-width:450px">
-    <div class="modal-header"><div class="modal-title">⏰ Atraso Detectado</div><button class="close-btn" onclick="closeModal('modal-justificar-atraso')">✕</button></div>
+    <div class="modal-header"><div class="modal-title" id="just-modal-title">⏰ Registro Fora do Horário</div><button class="close-btn" onclick="closeModal('modal-justificar-atraso')">✕</button></div>
     <div style="background:var(--yellow-bg);border-left:3px solid var(--yellow);border-radius:8px;padding:12px;margin-bottom:16px">
-      <div style="font-size:13px;color:var(--text2)">Você está <strong id="just-minutos"></strong> minutos atrasado.</div>
-      <div style="font-size:12px;color:var(--text3);margin-top:4px">Justifique o atraso para registro.</div>
+      <div style="font-size:13px;color:var(--text2)" id="just-msg-detalhe">Você está registrando fora do horário esperado.</div>
+      <div style="font-size:12px;color:var(--text3);margin-top:4px">Adicione uma justificativa para o registro.</div>
     </div>
     <div class="form-group">
-      <label class="form-label">Motivo do atraso</label>
-      <textarea class="form-textarea" id="just-motivo" placeholder="Ex: Trânsito, consulta médica, etc..." rows="3"></textarea>
+      <label class="form-label">Justificativa</label>
+      <textarea class="form-textarea" id="just-motivo" placeholder="Ex: Trânsito, consulta médica, problema técnico..." rows="3"></textarea>
     </div>
     <input type="hidden" id="just-tipo">
     <div style="display:flex;gap:10px;margin-top:8px">
@@ -2454,6 +2596,7 @@ function startApp() {
   else showView('col-tasks');
   if (!isPosto) initPonto();
   if (!isPosto) initIncidencias();
+  if (!isPosto) initRH();
   initCaixas();
   initCombustivel();
   initNotificacoes();
@@ -2489,6 +2632,10 @@ function refreshCurrentView() {
   if (id === 'adm-combustivel') renderAdmCombustivel();
   if (id === 'adm-relatorio-comb') renderRelatorioComb();
   if (id === 'sup-demandas-equipe') renderSupDemandasEquipe();
+  if (id === 'adm-rh-holerite') renderAdmRhHolerite();
+  if (id === 'adm-rh-atestado') renderAdmRhAtestado();
+  if (id === 'col-rh-holerite') renderColRhHolerite();
+  if (id === 'col-rh-atestado') renderColRhAtestado();
 }
 
 function showView(name, el) {
@@ -2511,6 +2658,10 @@ function showView(name, el) {
   if (name === 'adm-combustivel') renderAdmCombustivel();
   if (name === 'adm-relatorio-comb') renderRelatorioComb();
   if (name === 'sup-demandas-equipe') renderSupDemandasEquipe();
+  if (name === 'adm-rh-holerite') renderAdmRhHolerite();
+  if (name === 'adm-rh-atestado') renderAdmRhAtestado();
+  if (name === 'col-rh-holerite') renderColRhHolerite();
+  if (name === 'col-rh-atestado') renderColRhAtestado();
 }
 
 // ══════════════════════════════════════
@@ -2963,18 +3114,55 @@ async function registrarPonto(tipo) {
   const today = todayKey();
   const existing = allPontos.find(p => p.userId === currentUser.id && p.data === today);
   
-  // Se detectou atraso, pede justificativa
-  if (validacao.atrasado && tipo === 'entrada') {
+  // Verificar se está fora do horário esperado para qualquer tipo
+  const tipoLabels = {entrada:'Entrada',saida_almoco:'Saída p/ Almoço',retorno_almoco:'Retorno do Almoço',saida:'Saída'};
+  const now = new Date();
+  const horaAtual = now.getHours() * 60 + now.getMinutes();
+  let deveJustificar = false;
+  let msgDetalhe = '';
+  let tituloModal = '⏰ Registro Fora do Horário';
+  
+  if (currentUser.horarioInicio && currentUser.horarioFim && !currentUser.emCurso) {
+    const [hI, mI] = currentUser.horarioInicio.split(':').map(Number);
+    const [hF, mF] = currentUser.horarioFim.split(':').map(Number);
+    const inicioMin = hI * 60 + mI;
+    const fimMin = hF * 60 + mF;
+    
+    if (tipo === 'entrada' && validacao.atrasado) {
+      const mins = validacao.minutos;
+      deveJustificar = true;
+      tituloModal = '⏰ Entrada com Atraso';
+      msgDetalhe = `Você está <strong>${mins} minuto(s)</strong> atrasado. Horário esperado: ${currentUser.horarioInicio}.`;
+    } else if (tipo === 'saida' && horaAtual < fimMin - 10) {
+      deveJustificar = true;
+      tituloModal = '⏰ Saída Antecipada';
+      msgDetalhe = `Você está saindo antes do horário previsto (${currentUser.horarioFim}).`;
+    } else if (tipo === 'retorno_almoco' && existing?.saida_almoco) {
+      const saidaAlmoco = new Date(existing.saida_almoco);
+      const diffAlmoco = Math.floor((now - saidaAlmoco) / 60000);
+      if (diffAlmoco > 75) { // mais de 1h15 de almoço
+        deveJustificar = true;
+        tituloModal = '⏰ Retorno do Almoço Tardio';
+        msgDetalhe = `Você está retornando após <strong>${diffAlmoco} minutos</strong> de almoço.`;
+      }
+    } else if (tipo === 'saida_almoco' && horaAtual > inicioMin + 240) { // mais de 4h de trabalho antes
+      // não obrigatório mas registra a hora
+    }
+  }
+  
+  if (deveJustificar) {
     document.getElementById('just-tipo').value = tipo;
-    document.getElementById('just-minutos').textContent = validacao.minutos;
+    document.getElementById('just-modal-title').textContent = tituloModal;
+    document.getElementById('just-msg-detalhe').innerHTML = msgDetalhe;
+    document.getElementById('just-motivo').value = '';
     document.getElementById('modal-justificar-atraso').classList.add('open');
     return;
   }
   
   try {
-    const now = new Date().toISOString();
+    const nowIso = new Date().toISOString();
     if (existing) {
-      await db.collection('pontos').doc(existing.id).update({ [tipo]: now, updatedAt: now });
+      await db.collection('pontos').doc(existing.id).update({ [tipo]: nowIso, updatedAt: nowIso });
     } else {
       const ref = db.collection('pontos').doc();
       await ref.set({ 
@@ -2984,12 +3172,12 @@ async function registrarPonto(tipo) {
         cargo: currentUser.cargo||'', 
         local: currentUser.local||'', 
         data: today, 
-        [tipo]: now, 
-        createdAt: now, 
-        updatedAt: now 
+        [tipo]: nowIso, 
+        createdAt: nowIso, 
+        updatedAt: nowIso 
       });
     }
-    toast('Ponto registrado! ' + fmtHHMM(now), 'ok');
+    toast('Ponto registrado! ' + fmtHHMM(nowIso), 'ok');
   } catch(e) { toast('Erro ao registrar ponto', 'err'); }
 }
 
@@ -3319,14 +3507,19 @@ async function renderAdmPonto() {
   // Tabela do dia
   const rows = collabs.map(c => {
     const reg = todayPontos.find(p => p.userId === c.id);
+    // Verificar atestado ativo hoje
+    const atestadoHoje = allAtestados.find(a => a.colaboradorId === c.id && a.dataInicio <= today && a.dataFim >= today);
     let statusHtml, avClass;
-    if (!reg || !reg.entrada) { statusHtml = `<span class="semaforo sem-red"><span class="sem-dot"></span>Ausente</span>`; avClass = 'av-absent'; }
+    if (atestadoHoje) {
+      statusHtml = `<span class="semaforo" style="background:rgba(245,158,11,0.12);color:var(--yellow);border:1px solid rgba(245,158,11,0.25)"><span class="sem-dot" style="background:var(--yellow)"></span>Atestado</span>`;
+      avClass = 'av-lunch';
+    } else if (!reg || !reg.entrada) { statusHtml = `<span class="semaforo sem-red"><span class="sem-dot"></span>Ausente</span>`; avClass = 'av-absent'; }
     else if (reg.saida) { statusHtml = `<span class="semaforo" style="background:rgba(108,108,255,0.12);color:var(--accent);border:1px solid rgba(108,108,255,0.25)"><span class="sem-dot" style="background:var(--accent)"></span>Encerrado</span>`; avClass = 'av-done'; }
     else if (reg.saida_almoco && !reg.retorno_almoco) { statusHtml = `<span class="semaforo sem-yellow"><span class="sem-dot"></span>Almoço</span>`; avClass = 'av-lunch'; }
     else { statusHtml = `<span class="semaforo sem-green"><span class="sem-dot"></span>No Posto</span>`; avClass = 'av-work'; }
     return `<div class="ptt-row">
       <div class="ptt-name"><div class="ptt-av ${avClass}">${c.name[0]}</div><div><div style="font-size:13px;font-weight:600">${c.name}</div><div style="font-size:11px;color:var(--text3)">${c.cargo||''}</div></div></div>
-      <div class="ptt-mono ${reg?.entrada?'':'empty'}">${reg?.entrada?fmtHHMM(reg.entrada):'—'}</div>
+      <div class="ptt-mono ${reg?.entrada?'':'empty'}">${atestadoHoje ? '🏥' : reg?.entrada?fmtHHMM(reg.entrada):'—'}</div>
       <div class="ptt-mono ${reg?.saida_almoco?'':'empty'}">${reg?.saida_almoco?fmtHHMM(reg.saida_almoco):'—'}</div>
       <div class="ptt-mono ${reg?.retorno_almoco?'':'empty'}">${reg?.retorno_almoco?fmtHHMM(reg.retorno_almoco):'—'}</div>
       <div class="ptt-mono ${reg?.saida?'':'empty'}">${reg?.saida?fmtHHMM(reg.saida):'—'}</div>
@@ -3351,10 +3544,26 @@ function exportarPontoExcel() {
   const sel = document.getElementById('ponto-mes-filtro');
   const mes = sel ? sel.value : todayKey().substr(0,7);
   const registros = allPontos.filter(p => p.data && p.data.startsWith(mes));
-  if (!registros.length) { toast('Nenhum registro neste mês', 'err'); return; }
-  const header = ['Nome','Cargo','Local','Data','Entrada','Saída Almoço','Retorno Almoço','Saída'];
-  const rows = registros.map(r => [r.userName||'',r.cargo||'',r.local||'',r.data,fmtHHMM(r.entrada),fmtHHMM(r.saida_almoco),fmtHHMM(r.retorno_almoco),fmtHHMM(r.saida)]);
-  let csv = header.join(';') + '\n' + rows.map(r=>r.join(';')).join('\n');
+  const collabs = allUsers.filter(u => u.role !== 'admin');
+  
+  // Coletar todos os dias do mês
+  const [ano, mesNum] = mes.split('-').map(Number);
+  const diasNoMes = new Date(ano, mesNum, 0).getDate();
+  const todasLinhas = [];
+  
+  collabs.forEach(c => {
+    for (let d = 1; d <= diasNoMes; d++) {
+      const data = `${mes}-${String(d).padStart(2,'0')}`;
+      const reg = registros.find(r => r.userId === c.id && r.data === data);
+      const atestado = allAtestados.find(a => a.colaboradorId === c.id && a.dataInicio <= data && a.dataFim >= data);
+      const statusDia = atestado ? 'ATESTADO' : reg?.faltaAbonada ? 'ABONADO' : reg?.entrada ? 'Presente' : 'Ausente';
+      todasLinhas.push([c.name, c.cargo||'', data, fmtHHMM(reg?.entrada), fmtHHMM(reg?.saida_almoco), fmtHHMM(reg?.retorno_almoco), fmtHHMM(reg?.saida), statusDia]);
+    }
+  });
+  
+  if (!todasLinhas.length) { toast('Nenhum registro neste mês', 'err'); return; }
+  const header = ['Nome','Cargo','Data','Entrada','Saída Almoço','Retorno Almoço','Saída','Status'];
+  let csv = header.join(';') + '\n' + todasLinhas.map(r=>r.join(';')).join('\n');
   const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8'});
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
   a.download = `ponto_${mes}.csv`; a.click();
@@ -5402,9 +5611,641 @@ function renderSupDemandasEquipe() {
 }
 
 // ══════════════════════════════════════
+// MÓDULO: RECURSOS HUMANOS
+// ══════════════════════════════════════
+let allHolerites = [];
+let allAtestados = [];
+let unsubHolerites = null;
+let unsubAtestados = null;
+let holeritesPdfData = []; // [{pageIndex, nomeDetectado, userId, userName, pdfBase64}]
+let atestadoFileBase64 = null;
+let assinadoFileBase64 = null;
+
+async function initRH() {
+  if (unsubHolerites) unsubHolerites();
+  if (unsubAtestados) unsubAtestados();
+  unsubHolerites = db.collection('holerites').orderBy('enviadoEm','desc').onSnapshot(snap => {
+    allHolerites = snap.docs.map(d => ({id: d.id, ...d.data()}));
+    updateHoleriteBadges();
+    const active = document.querySelector('.view.active');
+    if (active && active.id === 'view-adm-rh-holerite') renderAdmRhHolerite();
+    if (active && active.id === 'view-col-rh-holerite') renderColRhHolerite();
+  });
+  unsubAtestados = db.collection('atestados').orderBy('enviadoEm','desc').onSnapshot(snap => {
+    allAtestados = snap.docs.map(d => ({id: d.id, ...d.data()}));
+    updateAtestadoBadge();
+    const active = document.querySelector('.view.active');
+    if (active && active.id === 'view-adm-rh-atestado') renderAdmRhAtestado();
+    if (active && active.id === 'view-col-rh-atestado') renderColRhAtestado();
+  });
+}
+
+function updateHoleriteBadges() {
+  // Badge ADM: holerites assinados pendentes de visualização
+  const assinados = allHolerites.filter(h => h.status === 'assinado' && !h.vistoAdm).length;
+  const badgeAdm = document.getElementById('holerite-badge-adm');
+  if (badgeAdm) { badgeAdm.textContent = assinados; badgeAdm.style.display = assinados > 0 ? 'inline' : 'none'; }
+  // Badge colaborador: holerites novos não vistos
+  if (currentUser && currentUser.role !== 'admin') {
+    const meus = allHolerites.filter(h => h.colaboradorId === currentUser.id && !h.vistoColaborador).length;
+    const badgeCol = document.getElementById('holerite-badge-col');
+    if (badgeCol) { badgeCol.style.display = meus > 0 ? 'inline' : 'none'; }
+  }
+}
+
+function updateAtestadoBadge() {
+  if (currentUser && currentUser.role === 'admin') {
+    const novos = allAtestados.filter(a => !a.vistoAdm).length;
+    const badge = document.getElementById('atestado-badge-adm');
+    if (badge) { badge.textContent = novos; badge.style.display = novos > 0 ? 'inline' : 'none'; }
+  }
+}
+
+// ── TAB switch ──
+function switchRhTab(tab) {
+  document.getElementById('rh-tab-enviar').classList.toggle('active', tab === 'enviar');
+  document.getElementById('rh-tab-historico').classList.toggle('active', tab === 'historico');
+  document.getElementById('rh-painel-enviar').style.display = tab === 'enviar' ? 'block' : 'none';
+  document.getElementById('rh-painel-historico').style.display = tab === 'historico' ? 'block' : 'none';
+  if (tab === 'historico') renderHistoricoHolerites();
+}
+
+// ── PROCESSAR PDF ──
+function handleHoleriteDrop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type === 'application/pdf') handleHoleriteFile(file);
+  else toast('Selecione um arquivo PDF', 'err');
+}
+
+async function handleHoleriteFile(file) {
+  if (!file) return;
+  document.getElementById('holerite-drop-zone').style.display = 'none';
+  document.getElementById('holerite-processando').style.display = 'block';
+  document.getElementById('holerite-mapeamento').style.display = 'none';
+  holeritesPdfData = [];
+
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    // Configurar PDF.js worker
+    if (typeof pdfjsLib !== 'undefined') {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+    
+    // Carregar PDF com PDF.js para extração de texto
+    const pdfDoc = await pdfjsLib.getDocument({data: arrayBuffer.slice(0)}).promise;
+    const numPages = pdfDoc.numPages;
+    
+    // Carregar com pdf-lib para extrair páginas individuais
+    const { PDFDocument } = PDFLib;
+    const sourcePdf = await PDFDocument.load(arrayBuffer);
+    
+    for (let i = 0; i < numPages; i++) {
+      // Extrair texto da página via PDF.js
+      const page = await pdfDoc.getPage(i + 1);
+      const textContent = await page.getTextContent();
+      const texto = textContent.items.map(item => item.str).join(' ');
+      
+      // Detectar nome do colaborador — padrão: XXXXXX NOME COMPLETO CARGO
+      const match = texto.match(/\d{6}\s+([A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇÑ][A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇÑ\s]+?)\s+(JOVEM APRENDIZ|ATENDENTE|BACKOFFICE|SUPERVISOR|GERENTE|ASSISTENTE)/i);
+      const nomeDetectado = match ? match[1].trim() : '';
+      
+      // Tentar match com usuários cadastrados
+      const userMatch = allUsers.find(u => {
+        const nomePdf = normalizarNome(nomeDetectado);
+        const nomeUser = normalizarNome(u.name);
+        return nomePdf === nomeUser || nomeUser.includes(nomePdf) || nomePdf.includes(nomeUser);
+      });
+      
+      // Criar PDF individual da página
+      const novoDoc = await PDFDocument.create();
+      const [paginaCopada] = await novoDoc.copyPages(sourcePdf, [i]);
+      novoDoc.addPage(paginaCopada);
+      const pdfBytes = await novoDoc.save();
+      const base64 = arrayBufferToBase64(pdfBytes);
+      
+      holeritesPdfData.push({
+        pageIndex: i,
+        nomeDetectado,
+        userId: userMatch ? userMatch.id : '',
+        userName: userMatch ? userMatch.name : '',
+        pdfBase64: base64
+      });
+    }
+    
+    renderMapeamentoHolerites();
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao processar PDF: ' + e.message, 'err');
+    cancelarHolerite();
+  }
+}
+
+function normalizarNome(nome) {
+  return (nome || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ').trim();
+}
+
+function arrayBufferToBase64(buffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+function base64ToArrayBuffer(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+}
+
+function renderMapeamentoHolerites() {
+  document.getElementById('holerite-processando').style.display = 'none';
+  document.getElementById('holerite-mapeamento').style.display = 'block';
+  
+  const colabs = allUsers.filter(u => u.role !== 'admin').sort((a,b) => a.name.localeCompare(b.name));
+  const opcoes = `<option value="">-- Não enviar --</option>` + colabs.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
+  
+  const lista = document.getElementById('holerite-match-lista');
+  lista.innerHTML = holeritesPdfData.map((item, idx) => `
+    <div class="rh-match-row">
+      <div class="mr-page">${idx + 1}</div>
+      <div class="mr-info">
+        <div style="font-size:13px;font-weight:600">${item.nomeDetectado || 'Nome não detectado'}</div>
+        <div style="font-size:11px;color:var(--text3)">Página ${idx + 1} do PDF</div>
+      </div>
+      <select class="form-select" id="match-user-${idx}" style="width:220px">
+        ${opcoes}
+      </select>
+    </div>
+  `).join('');
+  
+  // Pré-selecionar matches detectados
+  holeritesPdfData.forEach((item, idx) => {
+    const sel = document.getElementById(`match-user-${idx}`);
+    if (sel && item.userId) sel.value = item.userId;
+  });
+}
+
+async function dispararHolerites() {
+  const now = new Date();
+  const mes = now.getMonth() + 1;
+  const ano = now.getFullYear();
+  const mesAno = `${String(mes).padStart(2,'0')}/${ano}`;
+  
+  let enviados = 0;
+  const batch = [];
+  
+  for (let idx = 0; idx < holeritesPdfData.length; idx++) {
+    const item = holeritesPdfData[idx];
+    const userId = document.getElementById(`match-user-${idx}`)?.value;
+    if (!userId) continue;
+    
+    const user = allUsers.find(u => u.id === userId);
+    if (!user) continue;
+    
+    batch.push({
+      colaboradorId: userId,
+      colaboradorEmail: user.email,
+      colaboradorNome: user.name,
+      mes: mesAno,
+      mesNum: mes,
+      ano,
+      pdfBase64: item.pdfBase64,
+      status: 'pendente',
+      enviadoEm: now.toISOString(),
+      enviadoPor: currentUser.name,
+      vistoColaborador: false,
+      vistoAdm: false
+    });
+    enviados++;
+  }
+  
+  if (!enviados) { toast('Nenhum colaborador selecionado', 'err'); return; }
+  
+  try {
+    for (const doc of batch) {
+      const ref = db.collection('holerites').doc();
+      await ref.set({id: ref.id, ...doc});
+      // Notificar colaborador
+      await addNotificacao(doc.colaboradorEmail, '💼 Holerite Disponível', `Seu holerite de ${doc.mes} está disponível. Acesse RH > Meu Holerite para visualizar.`, '💼', 'accent');
+    }
+    toast(`✅ ${enviados} holerite(s) disparado(s) com sucesso!`, 'ok');
+    cancelarHolerite();
+    switchRhTab('historico');
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao salvar holerites: ' + e.message, 'err');
+  }
+}
+
+function cancelarHolerite() {
+  holeritesPdfData = [];
+  document.getElementById('holerite-drop-zone').style.display = 'block';
+  document.getElementById('holerite-processando').style.display = 'none';
+  document.getElementById('holerite-mapeamento').style.display = 'none';
+  document.getElementById('holerite-file-input').value = '';
+}
+
+// ── RENDER ADM HOLERITE ──
+function renderAdmRhHolerite() {
+  // Só renderiza historico se aba ativa
+  const tabHistorico = document.getElementById('rh-tab-historico');
+  if (tabHistorico && tabHistorico.classList.contains('active')) renderHistoricoHolerites();
+}
+
+function renderHistoricoHolerites() {
+  const lista = document.getElementById('holerite-historico-lista');
+  if (!lista) return;
+  
+  const filtroMes = document.getElementById('holerite-filtro-mes')?.value || '';
+  const filtroStatus = document.getElementById('holerite-filtro-status')?.value || '';
+  
+  // Popular select de meses
+  const meses = [...new Set(allHolerites.map(h => h.mes))].sort().reverse();
+  const selMes = document.getElementById('holerite-filtro-mes');
+  if (selMes && selMes.children.length <= 1) {
+    meses.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m; opt.textContent = m;
+      selMes.appendChild(opt);
+    });
+  }
+  
+  let filtrados = allHolerites;
+  if (filtroMes) filtrados = filtrados.filter(h => h.mes === filtroMes);
+  if (filtroStatus) filtrados = filtrados.filter(h => h.status === filtroStatus);
+  
+  if (!filtrados.length) { lista.innerHTML = `<div class="empty"><p>Nenhum holerite encontrado</p></div>`; return; }
+  
+  lista.innerHTML = filtrados.map(h => `
+    <div class="holerite-card">
+      <div class="hc-avatar">${(h.colaboradorNome||'?')[0]}</div>
+      <div class="hc-info">
+        <div class="hc-name">${h.colaboradorNome}</div>
+        <div class="hc-meta">📅 ${h.mes} · Enviado em ${fmtDT(h.enviadoEm)} por ${h.enviadoPor}</div>
+      </div>
+      <span class="status-pill ${h.status === 'assinado' ? 'sp-assinado' : 'sp-pendente'}">
+        ${h.status === 'assinado' ? '✅ Assinado' : '⏳ Pendente'}
+      </span>
+      <div class="hc-actions">
+        <button class="btn btn-sm btn-secondary" onclick="downloadHoleritePdf('${h.id}')">⬇ PDF</button>
+        ${h.status === 'assinado' ? `<button class="btn btn-sm btn-primary" onclick="abrirVerAssinado('${h.id}')">📄 Ver Assinado</button>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+function downloadHoleritePdf(holeritreId) {
+  const h = allHolerites.find(x => x.id === holeritreId);
+  if (!h || !h.pdfBase64) { toast('PDF não encontrado', 'err'); return; }
+  const bytes = base64ToArrayBuffer(h.pdfBase64);
+  const blob = new Blob([bytes], {type: 'application/pdf'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `holerite_${h.colaboradorNome.replace(/ /g,'_')}_${h.mes.replace('/','_')}.pdf`;
+  a.click(); URL.revokeObjectURL(url);
+}
+
+function abrirVerAssinado(holeritreId) {
+  const h = allHolerites.find(x => x.id === holeritreId);
+  if (!h) return;
+  document.getElementById('ver-assinado-id').value = holeritreId;
+  document.getElementById('ver-assinado-info').innerHTML = `
+    <strong>${h.colaboradorNome}</strong><br>
+    Competência: ${h.mes}<br>
+    Assinado em: ${fmtDT(h.assinadoEm || '')}
+  `;
+  document.getElementById('ver-assinado-preview').innerHTML = `
+    <p style="color:var(--text3);font-size:13px">Clique em "Baixar Assinado" para visualizar o PDF assinado.</p>
+  `;
+  // Marcar como visto
+  db.collection('holerites').doc(holeritreId).update({vistoAdm: true}).catch(()=>{});
+  document.getElementById('modal-ver-assinado').classList.add('open');
+}
+
+function downloadAssinado() {
+  const id = document.getElementById('ver-assinado-id').value;
+  const h = allHolerites.find(x => x.id === id);
+  if (!h || !h.assinadoBase64) { toast('PDF assinado não encontrado', 'err'); return; }
+  const bytes = base64ToArrayBuffer(h.assinadoBase64);
+  const blob = new Blob([bytes], {type: 'application/pdf'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `holerite_assinado_${h.colaboradorNome.replace(/ /g,'_')}_${h.mes.replace('/','_')}.pdf`;
+  a.click(); URL.revokeObjectURL(url);
+  closeModal('modal-ver-assinado');
+}
+
+// ── RENDER COLABORADOR HOLERITE ──
+function renderColRhHolerite() {
+  const wrap = document.getElementById('col-holerite-wrap');
+  if (!wrap) return;
+  
+  const meus = allHolerites.filter(h => h.colaboradorId === currentUser.id);
+  
+  // Marcar como visto
+  meus.filter(h => !h.vistoColaborador).forEach(h => {
+    db.collection('holerites').doc(h.id).update({vistoColaborador: true}).catch(()=>{});
+  });
+  
+  if (!meus.length) {
+    wrap.innerHTML = `<div class="empty" style="margin-top:60px"><div class="icon">💼</div><p>Nenhum holerite disponível ainda</p></div>`;
+    return;
+  }
+  
+  wrap.innerHTML = meus.map(h => `
+    <div class="holerite-card" style="margin-bottom:12px">
+      <div style="font-size:28px">💼</div>
+      <div class="hc-info">
+        <div class="hc-name">Holerite — ${h.mes}</div>
+        <div class="hc-meta">Disponibilizado em ${fmtDT(h.enviadoEm)}</div>
+        ${h.status === 'assinado' ? `<div style="font-size:12px;color:var(--green);margin-top:4px">✅ Assinado e enviado em ${fmtDT(h.assinadoEm||'')}</div>` : ''}
+      </div>
+      <span class="status-pill ${h.status === 'assinado' ? 'sp-assinado' : 'sp-pendente'}">
+        ${h.status === 'assinado' ? '✅ Assinado' : '⏳ Pendente'}
+      </span>
+      <div class="hc-actions">
+        <button class="btn btn-sm btn-secondary" onclick="downloadHoleritePdf('${h.id}')">⬇ Baixar</button>
+        ${h.status !== 'assinado' ? `<button class="btn btn-sm btn-primary" onclick="abrirEnviarAssinado('${h.id}')">✍️ Enviar Assinado</button>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+function abrirEnviarAssinado(holeritreId) {
+  const h = allHolerites.find(x => x.id === holeritreId);
+  if (!h) return;
+  assinadoFileBase64 = null;
+  document.getElementById('enviar-assinado-id').value = holeritreId;
+  document.getElementById('assinado-file-label').textContent = 'Selecionar PDF assinado';
+  document.getElementById('assinado-file-input').value = '';
+  document.getElementById('enviar-assinado-info').innerHTML = `
+    <strong>Holerite ${h.mes}</strong><br>
+    Imprima, assine, escaneie como PDF e faça o upload abaixo.
+  `;
+  document.getElementById('modal-enviar-assinado').classList.add('open');
+}
+
+function handleAssinadoDrop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type === 'application/pdf') handleAssinadoFile(file);
+  else toast('Selecione um arquivo PDF', 'err');
+}
+
+function handleAssinadoFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    assinadoFileBase64 = e.target.result.split(',')[1];
+    document.getElementById('assinado-file-label').textContent = `✅ ${file.name}`;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function confirmarEnvioAssinado() {
+  const id = document.getElementById('enviar-assinado-id').value;
+  if (!assinadoFileBase64) { toast('Selecione o PDF assinado', 'err'); return; }
+  try {
+    await db.collection('holerites').doc(id).update({
+      status: 'assinado',
+      assinadoBase64: assinadoFileBase64,
+      assinadoEm: new Date().toISOString(),
+      vistoAdm: false
+    });
+    // Notificar ADM
+    const adm = allUsers.find(u => u.role === 'admin');
+    if (adm) await addNotificacao(adm.email, '✍️ Holerite Assinado', `${currentUser.name} enviou o holerite assinado.`, '✍️', 'green');
+    closeModal('modal-enviar-assinado');
+    assinadoFileBase64 = null;
+    toast('✅ Holerite assinado enviado com sucesso!', 'ok');
+  } catch(e) { toast('Erro ao enviar: ' + e.message, 'err'); }
+}
+
+// ── ATESTADO ──
+function handleAtestadoDrop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type === 'application/pdf') handleAtestadoFile(file);
+  else toast('Selecione um arquivo PDF', 'err');
+}
+
+function handleAtestadoFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    atestadoFileBase64 = e.target.result.split(',')[1];
+    document.getElementById('at-file-label').textContent = `✅ ${file.name}`;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function confirmarAtestado() {
+  const dataInicio = document.getElementById('at-data-inicio').value;
+  const dataFim = document.getElementById('at-data-fim').value;
+  const obs = document.getElementById('at-obs').value.trim();
+  
+  if (!dataInicio || !dataFim) { toast('Informe as datas do afastamento', 'err'); return; }
+  if (!atestadoFileBase64) { toast('Anexe o PDF do atestado', 'err'); return; }
+  if (dataFim < dataInicio) { toast('Data de retorno não pode ser anterior ao início', 'err'); return; }
+  
+  try {
+    const ref = db.collection('atestados').doc();
+    await ref.set({
+      id: ref.id,
+      colaboradorId: currentUser.id,
+      colaboradorEmail: currentUser.email,
+      colaboradorNome: currentUser.name,
+      dataInicio,
+      dataFim,
+      observacao: obs,
+      pdfBase64: atestadoFileBase64,
+      enviadoEm: new Date().toISOString(),
+      vistoAdm: false
+    });
+    // Notificar ADM
+    const adm = allUsers.find(u => u.role === 'admin');
+    if (adm) await addNotificacao(adm.email, '🏥 Novo Atestado', `${currentUser.name} enviou atestado de ${fmtD(dataInicio)} a ${fmtD(dataFim)}.`, '🏥', 'yellow');
+    // Limpar form
+    document.getElementById('at-data-inicio').value = '';
+    document.getElementById('at-data-fim').value = '';
+    document.getElementById('at-obs').value = '';
+    document.getElementById('at-file-label').textContent = 'Selecionar PDF';
+    document.getElementById('at-file-input').value = '';
+    atestadoFileBase64 = null;
+    toast('✅ Atestado enviado com sucesso!', 'ok');
+  } catch(e) { toast('Erro ao enviar atestado: ' + e.message, 'err'); }
+}
+
+function renderColRhAtestado() {
+  const lista = document.getElementById('col-atestados-lista');
+  if (!lista) return;
+  const meus = allAtestados.filter(a => a.colaboradorId === currentUser.id);
+  if (!meus.length) { lista.innerHTML = `<div style="color:var(--text3);font-size:13px;text-align:center;padding:20px">Nenhum atestado enviado</div>`; return; }
+  lista.innerHTML = meus.map(a => `
+    <div class="atestado-card">
+      <div class="at-header">
+        <span style="font-size:24px">🏥</span>
+        <div>
+          <div style="font-size:14px;font-weight:700">${fmtD(a.dataInicio)} → ${fmtD(a.dataFim)}</div>
+          ${a.observacao ? `<div style="font-size:12px;color:var(--text3)">${a.observacao}</div>` : ''}
+        </div>
+        <span class="status-pill sp-enviado" style="margin-left:auto">✅ Enviado</span>
+      </div>
+      <div class="at-dates">
+        <span>📅 Enviado em ${fmtDT(a.enviadoEm)}</span>
+        <button class="btn btn-sm btn-secondary" style="padding:2px 8px;font-size:11px" onclick="downloadAtestadoById('${a.id}')">⬇ PDF</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderAdmRhAtestado() {
+  // Stats
+  const statsEl = document.getElementById('adm-atestados-stats');
+  const hoje = todayKey();
+  const ativos = allAtestados.filter(a => a.dataInicio <= hoje && a.dataFim >= hoje).length;
+  if (statsEl) statsEl.innerHTML = `
+    <div class="stat-card"><div class="sc-value">${allAtestados.length}</div><div class="sc-label">Total enviados</div></div>
+    <div class="stat-card"><div class="sc-value" style="color:var(--yellow)">${ativos}</div><div class="sc-label">Afastados hoje</div></div>
+    <div class="stat-card"><div class="sc-value" style="color:var(--accent)">${allAtestados.filter(a=>!a.vistoAdm).length}</div><div class="sc-label">Não vistos</div></div>
+  `;
+  
+  const lista = document.getElementById('adm-atestados-lista');
+  if (!lista) return;
+  
+  if (!allAtestados.length) { lista.innerHTML = `<div class="empty"><p>Nenhum atestado enviado ainda</p></div>`; return; }
+  
+  lista.innerHTML = allAtestados.map(a => {
+    const afastadoHoje = a.dataInicio <= hoje && a.dataFim >= hoje;
+    // Cruzar com ponto: dias cobertos pelo atestado
+    const diasCobertos = contarDias(a.dataInicio, a.dataFim);
+    // Marcar como visto
+    if (!a.vistoAdm) db.collection('atestados').doc(a.id).update({vistoAdm: true}).catch(()=>{});
+    return `
+    <div class="atestado-card" style="${afastadoHoje ? 'border-color:var(--yellow);background:var(--yellow-bg)' : ''}">
+      <div class="at-header">
+        <div class="hc-avatar" style="background:var(--surface3);color:var(--text)">${(a.colaboradorNome||'?')[0]}</div>
+        <div style="flex:1">
+          <div style="font-size:14px;font-weight:700">${a.colaboradorNome}</div>
+          <div style="font-size:12px;color:var(--text3)">${a.colaboradorEmail}</div>
+        </div>
+        ${afastadoHoje ? `<span class="status-pill sp-pendente">⚠️ Afastado hoje</span>` : `<span class="status-pill sp-enviado">✅ Enviado</span>`}
+      </div>
+      <div class="at-dates" style="margin-bottom:8px">
+        <span>📅 ${fmtD(a.dataInicio)} até ${fmtD(a.dataFim)} (${diasCobertos} dia(s))</span>
+        ${a.observacao ? `<span>· ${a.observacao}</span>` : ''}
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span style="font-size:11px;color:var(--text3)">Enviado em ${fmtDT(a.enviadoEm)}</span>
+        <button class="btn btn-sm btn-secondary" style="margin-left:auto" onclick="abrirVerAtestado('${a.id}')">🏥 Ver Atestado</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function contarDias(inicio, fim) {
+  const d1 = new Date(inicio + 'T00:00:00');
+  const d2 = new Date(fim + 'T00:00:00');
+  return Math.floor((d2 - d1) / 86400000) + 1;
+}
+
+function abrirVerAtestado(id) {
+  const a = allAtestados.find(x => x.id === id);
+  if (!a) return;
+  document.getElementById('ver-atestado-id').value = id;
+  document.getElementById('ver-atestado-info').innerHTML = `
+    <div style="font-size:16px;font-weight:700;margin-bottom:8px">🏥 ${a.colaboradorNome}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">
+      <div><span style="color:var(--text3)">Início:</span> <strong>${fmtD(a.dataInicio)}</strong></div>
+      <div><span style="color:var(--text3)">Retorno:</span> <strong>${fmtD(a.dataFim)}</strong></div>
+      <div><span style="color:var(--text3)">Duração:</span> <strong>${contarDias(a.dataInicio, a.dataFim)} dia(s)</strong></div>
+      <div><span style="color:var(--text3)">Enviado em:</span> <strong>${fmtDT(a.enviadoEm)}</strong></div>
+    </div>
+    ${a.observacao ? `<div style="margin-top:10px;padding:8px;background:var(--surface3);border-radius:6px;font-size:13px;color:var(--text2)">📝 ${a.observacao}</div>` : ''}
+    <div style="margin-top:10px;font-size:12px;color:var(--text3)">
+      ⚠️ Os dias ${fmtD(a.dataInicio)}–${fmtD(a.dataFim)} aparecerão como <strong>Atestado</strong> no relatório de ponto.
+    </div>
+  `;
+  document.getElementById('modal-ver-atestado').classList.add('open');
+}
+
+function downloadAtestadoPdf() {
+  const id = document.getElementById('ver-atestado-id').value;
+  const a = allAtestados.find(x => x.id === id);
+  if (!a || !a.pdfBase64) { toast('PDF não encontrado', 'err'); return; }
+  downloadAtestadoById(id);
+  closeModal('modal-ver-atestado');
+}
+
+function downloadAtestadoById(id) {
+  const a = allAtestados.find(x => x.id === id);
+  if (!a || !a.pdfBase64) { toast('PDF não disponível', 'err'); return; }
+  const bytes = base64ToArrayBuffer(a.pdfBase64);
+  const blob = new Blob([bytes], {type: 'application/pdf'});
+  const url = URL.createObjectURL(blob);
+  const el = document.createElement('a');
+  el.href = url; el.download = `atestado_${a.colaboradorNome.replace(/ /g,'_')}_${a.dataInicio}.pdf`;
+  el.click(); URL.revokeObjectURL(url);
+}
+
+// ══════════════════════════════════════
 // START
 // ══════════════════════════════════════
 initSystem();
 </script>
+<!-- MODAL: HOLERITE — VER ASSINADO (ADM) -->
+<div class="modal-overlay" id="modal-ver-assinado">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header"><div class="modal-title">📄 Holerite Assinado</div><button class="close-btn" onclick="closeModal('modal-ver-assinado')">✕</button></div>
+    <div id="ver-assinado-info" style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px"></div>
+    <div id="ver-assinado-preview" style="text-align:center;margin-bottom:16px"></div>
+    <input type="hidden" id="ver-assinado-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-ver-assinado')">Fechar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="downloadAssinado()">⬇ Baixar Assinado</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: HOLERITE — ENVIAR ASSINADO (COLABORADOR) -->
+<div class="modal-overlay" id="modal-enviar-assinado">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header"><div class="modal-title">✍️ Enviar Holerite Assinado</div><button class="close-btn" onclick="closeModal('modal-enviar-assinado')">✕</button></div>
+    <div id="enviar-assinado-info" style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px"></div>
+    <div class="form-group">
+      <label class="form-label">PDF do holerite assinado</label>
+      <div class="rh-drop-zone" style="padding:24px" onclick="document.getElementById('assinado-file-input').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="handleAssinadoDrop(event)">
+        <div class="dz-ico" style="font-size:28px">✍️</div>
+        <div class="dz-title" style="font-size:13px" id="assinado-file-label">Selecionar PDF assinado</div>
+        <div class="dz-sub">Imprima, assine e escaneie/fotografe como PDF</div>
+        <input type="file" id="assinado-file-input" accept=".pdf" style="display:none" onchange="handleAssinadoFile(this.files[0])">
+      </div>
+    </div>
+    <input type="hidden" id="enviar-assinado-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-enviar-assinado')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="confirmarEnvioAssinado()">📤 Enviar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ATESTADO — VER PDF (ADM) -->
+<div class="modal-overlay" id="modal-ver-atestado">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header"><div class="modal-title">🏥 Atestado Médico</div><button class="close-btn" onclick="closeModal('modal-ver-atestado')">✕</button></div>
+    <div id="ver-atestado-info" style="background:var(--surface2);border-radius:8px;padding:14px;margin-bottom:16px;font-size:13px"></div>
+    <input type="hidden" id="ver-atestado-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-ver-atestado')">Fechar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="downloadAtestadoPdf()">⬇ Baixar PDF</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
