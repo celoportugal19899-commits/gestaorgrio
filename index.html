@@ -5777,55 +5777,90 @@ async function handleHoleriteFile(file) {
 
   try {
     const arrayBuffer = await file.arrayBuffer();
-    // Configurar PDF.js worker
-    if (typeof pdfjsLib !== 'undefined') {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-    }
-    
-    // Carregar PDF com PDF.js para extração de texto
-    const pdfDoc = await pdfjsLib.getDocument({data: arrayBuffer.slice(0)}).promise;
+
+    if (typeof pdfjsLib === 'undefined') throw new Error('PDF.js não carregou — recarregue a página.');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    const pdfDoc = await pdfjsLib.getDocument({data: new Uint8Array(arrayBuffer)}).promise;
     const numPages = pdfDoc.numPages;
-    
-    // Carregar com pdf-lib para extrair páginas individuais
+
     const { PDFDocument } = PDFLib;
-    const sourcePdf = await PDFDocument.load(arrayBuffer);
-    
+    const sourcePdf = await PDFDocument.load(arrayBuffer.slice(0));
+
     for (let i = 0; i < numPages; i++) {
-      // Extrair texto da página via PDF.js
       const page = await pdfDoc.getPage(i + 1);
       const textContent = await page.getTextContent();
-      const texto = textContent.items.map(item => item.str).join(' ');
-      
-      // Detectar nome do colaborador — padrão: XXXXXX NOME COMPLETO CARGO
-      const match = texto.match(/\d{6}\s+([A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇÑ][A-ZÁÉÍÓÚÂÊÎÔÛÀÈÌÒÙÃÕÇÑ\s]+?)\s+(JOVEM APRENDIZ|ATENDENTE|BACKOFFICE|SUPERVISOR|GERENTE|ASSISTENTE)/i);
-      const nomeDetectado = match ? match[1].trim() : '';
-      
-      // Tentar match com usuários cadastrados
-      const userMatch = allUsers.find(u => {
-        const nomePdf = normalizarNome(nomeDetectado);
-        const nomeUser = normalizarNome(u.name);
-        return nomePdf === nomeUser || nomeUser.includes(nomePdf) || nomePdf.includes(nomeUser);
-      });
-      
-      // Criar PDF individual da página
+
+      // Normalizar texto: juntar itens e colapsar espaços múltiplos
+      const texto = textContent.items
+        .map(item => item.str || '')
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      let nomeDetectado = '';
+
+      // ── Estratégia 1: código 6 dígitos + nome + cargo ──
+      // Cargos presentes no PDF (com variações de espaço)
+      const cargos = 'JOVEM\\s+APRENDIZ|ATENDENTE(?:\\s+BACKUP)?|BACKOFFICE(?:\\s+DE\\s+OPERACOES)?|SUPERVISOR(?:\\s*\\([A-Z]\\))?(?:\\s+REGIONAL)?|GERENTE(?:\\s+REGIONAL)?|ASSISTENTE(?:\\s+TREINAMENTO)?';
+      const re1 = new RegExp(`\\b(\\d{6})\\s+([A-Z][A-Z\\s]{4,80}?)\\s+(?:${cargos})`, 'i');
+      const m1 = texto.match(re1);
+      if (m1 && m1[2] && m1[2].trim().length > 3) {
+        nomeDetectado = m1[2].trim().replace(/\s+/g, ' ');
+      }
+
+      // ── Estratégia 2: código + nome até "- AUX" ou "- RJ" ──
+      if (!nomeDetectado) {
+        const re2 = /\b(\d{6})\s+([A-Z][A-Z\s]{4,80}?)\s+-\s+(?:AUX|RJ|ADM)/i;
+        const m2 = texto.match(re2);
+        if (m2 && m2[2] && m2[2].trim().length > 3) {
+          nomeDetectado = m2[2].trim().replace(/\s+/g, ' ');
+        }
+      }
+
+      // ── Estratégia 3: código + sequência de palavras maiúsculas ──
+      if (!nomeDetectado) {
+        const re3 = /\b(\d{6})\s+((?:[A-Z]{2,}\s+){2,7}[A-Z]{2,})/;
+        const m3 = texto.match(re3);
+        if (m3 && m3[2] && m3[2].trim().length > 3) {
+          nomeDetectado = m3[2].trim().replace(/\s+/g, ' ');
+        }
+      }
+
+      // ── Match com usuários (apenas se nome foi detectado) ──
+      let userMatch = null;
+      if (nomeDetectado) {
+        const nomePdfNorm = normalizarNome(nomeDetectado);
+        const palavrasPdf = nomePdfNorm.split(' ').filter(p => p.length >= 3);
+
+        userMatch = allUsers.find(u => {
+          const nomeUserNorm = normalizarNome(u.name);
+          if (nomePdfNorm === nomeUserNorm) return true;
+          const palavrasUser = nomeUserNorm.split(' ').filter(p => p.length >= 3);
+          const emComum = palavrasPdf.filter(p => palavrasUser.includes(p)).length;
+          return emComum >= 2;
+        });
+      }
+
+      // ── Extrair página individual com pdf-lib ──
       const novoDoc = await PDFDocument.create();
       const [paginaCopada] = await novoDoc.copyPages(sourcePdf, [i]);
       novoDoc.addPage(paginaCopada);
       const pdfBytes = await novoDoc.save();
       const base64 = arrayBufferToBase64(pdfBytes);
-      
+
       holeritesPdfData.push({
         pageIndex: i,
-        nomeDetectado,
+        nomeDetectado: nomeDetectado || '',
         userId: userMatch ? userMatch.id : '',
         userName: userMatch ? userMatch.name : '',
         pdfBase64: base64
       });
     }
-    
+
     renderMapeamentoHolerites();
   } catch(e) {
-    console.error(e);
+    console.error('Erro handleHoleriteFile:', e);
     toast('Erro ao processar PDF: ' + e.message, 'err');
     cancelarHolerite();
   }
@@ -5852,24 +5887,33 @@ function base64ToArrayBuffer(base64) {
 function renderMapeamentoHolerites() {
   document.getElementById('holerite-processando').style.display = 'none';
   document.getElementById('holerite-mapeamento').style.display = 'block';
-  
+
   const colabs = allUsers.filter(u => u.role !== 'admin').sort((a,b) => a.name.localeCompare(b.name));
   const opcoes = `<option value="">-- Não enviar --</option>` + colabs.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
-  
+
+  const detectados = holeritesPdfData.filter(item => item.userId).length;
+  const total = holeritesPdfData.length;
+
   const lista = document.getElementById('holerite-match-lista');
-  lista.innerHTML = holeritesPdfData.map((item, idx) => `
-    <div class="rh-match-row">
-      <div class="mr-page">${idx + 1}</div>
+  lista.innerHTML = `
+    <div style="padding:10px 14px;margin-bottom:12px;border-radius:8px;font-size:13px;${detectados===total?'background:var(--green-bg);color:var(--green)':'background:var(--yellow-bg);color:var(--yellow)'}">
+      ${detectados===total ? `✅ ${detectados} de ${total} colaboradores detectados automaticamente.` : `⚠️ ${detectados} de ${total} detectados — corrija os não identificados abaixo.`}
+    </div>
+    ${holeritesPdfData.map((item, idx) => `
+    <div class="rh-match-row" style="${item.userId ? '' : 'border:1px solid rgba(245,158,11,.3);background:var(--yellow-bg)'}">
+      <div class="mr-page" style="${item.userId ? '' : 'background:var(--yellow)'}">${idx + 1}</div>
       <div class="mr-info">
-        <div style="font-size:13px;font-weight:600">${item.nomeDetectado || 'Nome não detectado'}</div>
+        <div style="font-size:13px;font-weight:600;color:${item.nomeDetectado ? 'var(--text)' : 'var(--yellow)'}">
+          ${item.nomeDetectado || '⚠ Nome não detectado'}
+        </div>
         <div style="font-size:11px;color:var(--text3)">Página ${idx + 1} do PDF</div>
       </div>
-      <select class="form-select" id="match-user-${idx}" style="width:220px">
+      <select class="form-select" id="match-user-${idx}" style="width:240px">
         ${opcoes}
       </select>
     </div>
-  `).join('');
-  
+  `).join('')}`;
+
   // Pré-selecionar matches detectados
   holeritesPdfData.forEach((item, idx) => {
     const sel = document.getElementById(`match-user-${idx}`);
