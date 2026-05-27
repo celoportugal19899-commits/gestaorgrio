@@ -5768,6 +5768,28 @@ function handleHoleriteDrop(e) {
   else toast('Selecione um arquivo PDF', 'err');
 }
 
+// ── Extrai nomes diretamente dos bytes do PDF (sem depender do PDF.js) ──
+function extrairNomesRaw(buffer) {
+  const arr = new Uint8Array(buffer);
+  // Ler apenas bytes ASCII imprimíveis, substituir resto por espaço
+  let raw = '';
+  for (let i = 0; i < arr.length; i++) {
+    const c = arr[i];
+    raw += (c >= 32 && c < 127) ? String.fromCharCode(c) : ' ';
+  }
+  raw = raw.replace(/\s+/g, ' ');
+
+  const resultados = [];
+  // Padrão: código 6 dígitos + nome maiúsculo + cargo
+  const re = /(\d{6})\s+([A-Z][A-Z\s]{4,70}?)\s+(?:JOVEM\s+APRENDIZ|ATENDENTE(?:\s+BACKUP)?|BACKOFFICE(?:\s+DE(?:\s+OPERACOES)?)?|SUPERVISOR(?:\s*\([A-Z]\))?(?:\s+REGIONAL(?:\s+II)?)?|GERENTE(?:\s+REGIONAL)?|ASSISTENTE(?:\s+TREINAMENTO)?)/g;
+  let m;
+  while ((m = re.exec(raw)) !== null) {
+    const nome = m[2].trim().replace(/\s+/g, ' ');
+    if (nome.split(' ').length >= 2) resultados.push({ codigo: m[1], nome });
+  }
+  return resultados;
+}
+
 async function handleHoleriteFile(file) {
   if (!file) return;
   document.getElementById('holerite-drop-zone').style.display = 'none';
@@ -5777,65 +5799,46 @@ async function handleHoleriteFile(file) {
 
   try {
     const arrayBuffer = await file.arrayBuffer();
-    // Cópias independentes — PDF.js consome/detacha o buffer original
+    // Três cópias independentes do buffer
     const bufParaPdfjs  = arrayBuffer.slice(0);
     const bufParaPdflib = arrayBuffer.slice(0);
+    const bufParaNomes  = arrayBuffer.slice(0);
 
-    if (typeof pdfjsLib === 'undefined') throw new Error('PDF.js não carregou — recarregue a página.');
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    // ── 1. Extrair nomes pelos bytes brutos do PDF ──
+    const nomesRaw = extrairNomesRaw(bufParaNomes);
+    // Cada nome aparece 2× por página (via do func + via da empresa); deduplica mantendo ordem
+    const nomesPorPagina = [];
+    const seenNomes = new Set();
+    for (const item of nomesRaw) {
+      if (!seenNomes.has(item.nome)) {
+        seenNomes.add(item.nome);
+        nomesPorPagina.push(item.nome);
+      }
+    }
 
-    const pdfDoc = await pdfjsLib.getDocument({data: new Uint8Array(bufParaPdfjs)}).promise;
-    const numPages = pdfDoc.numPages;
-
+    // ── 2. pdf-lib para dividir páginas ──
     const { PDFDocument } = PDFLib;
     const sourcePdf = await PDFDocument.load(bufParaPdflib);
 
+    // ── 3. PDF.js apenas para contar páginas ──
+    let numPages = sourcePdf.getPageCount();
+    try {
+      if (typeof pdfjsLib !== 'undefined') {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        const pdfDoc = await pdfjsLib.getDocument({data: new Uint8Array(bufParaPdfjs)}).promise;
+        numPages = pdfDoc.numPages;
+      }
+    } catch(e) { /* usa contagem do pdf-lib */ }
+
+    // ── 4. Montar dados por página ──
     for (let i = 0; i < numPages; i++) {
-      const page = await pdfDoc.getPage(i + 1);
-      const textContent = await page.getTextContent();
+      const nomeDetectado = nomesPorPagina[i] || '';
 
-      // Normalizar texto: juntar itens e colapsar espaços múltiplos
-      const texto = textContent.items
-        .map(item => item.str || '')
-        .join(' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-      let nomeDetectado = '';
-
-      // ── Estratégia 1: código 6 dígitos + nome + cargo ──
-      // Cargos presentes no PDF (com variações de espaço)
-      const cargos = 'JOVEM\\s+APRENDIZ|ATENDENTE(?:\\s+BACKUP)?|BACKOFFICE(?:\\s+DE\\s+OPERACOES)?|SUPERVISOR(?:\\s*\\([A-Z]\\))?(?:\\s+REGIONAL)?|GERENTE(?:\\s+REGIONAL)?|ASSISTENTE(?:\\s+TREINAMENTO)?';
-      const re1 = new RegExp(`\\b(\\d{6})\\s+([A-Z][A-Z\\s]{4,80}?)\\s+(?:${cargos})`, 'i');
-      const m1 = texto.match(re1);
-      if (m1 && m1[2] && m1[2].trim().length > 3) {
-        nomeDetectado = m1[2].trim().replace(/\s+/g, ' ');
-      }
-
-      // ── Estratégia 2: código + nome até "- AUX" ou "- RJ" ──
-      if (!nomeDetectado) {
-        const re2 = /\b(\d{6})\s+([A-Z][A-Z\s]{4,80}?)\s+-\s+(?:AUX|RJ|ADM)/i;
-        const m2 = texto.match(re2);
-        if (m2 && m2[2] && m2[2].trim().length > 3) {
-          nomeDetectado = m2[2].trim().replace(/\s+/g, ' ');
-        }
-      }
-
-      // ── Estratégia 3: código + sequência de palavras maiúsculas ──
-      if (!nomeDetectado) {
-        const re3 = /\b(\d{6})\s+((?:[A-Z]{2,}\s+){2,7}[A-Z]{2,})/;
-        const m3 = texto.match(re3);
-        if (m3 && m3[2] && m3[2].trim().length > 3) {
-          nomeDetectado = m3[2].trim().replace(/\s+/g, ' ');
-        }
-      }
-
-      // ── Match com usuários (apenas se nome foi detectado) ──
+      // Match com usuários cadastrados (mínimo 2 palavras em comum)
       let userMatch = null;
       if (nomeDetectado) {
         const nomePdfNorm = normalizarNome(nomeDetectado);
         const palavrasPdf = nomePdfNorm.split(' ').filter(p => p.length >= 3);
-
         userMatch = allUsers.find(u => {
           const nomeUserNorm = normalizarNome(u.name);
           if (nomePdfNorm === nomeUserNorm) return true;
@@ -5845,7 +5848,7 @@ async function handleHoleriteFile(file) {
         });
       }
 
-      // ── Extrair página individual com pdf-lib ──
+      // Extrair página individual com pdf-lib
       const novoDoc = await PDFDocument.create();
       const [paginaCopada] = await novoDoc.copyPages(sourcePdf, [i]);
       novoDoc.addPage(paginaCopada);
@@ -5854,7 +5857,7 @@ async function handleHoleriteFile(file) {
 
       holeritesPdfData.push({
         pageIndex: i,
-        nomeDetectado: nomeDetectado || '',
+        nomeDetectado,
         userId: userMatch ? userMatch.id : '',
         userName: userMatch ? userMatch.name : '',
         pdfBase64: base64
