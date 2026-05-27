@@ -3140,13 +3140,16 @@ async function registrarPonto(tipo) {
     } else if (tipo === 'retorno_almoco' && existing?.saida_almoco) {
       const saidaAlmoco = new Date(existing.saida_almoco);
       const diffAlmoco = Math.floor((now - saidaAlmoco) / 60000);
-      if (diffAlmoco > 75) { // mais de 1h15 de almoço
+      const isJovem = (currentUser.cargo || '').toLowerCase().includes('jovem aprendiz');
+      const limiteAlmoco = isJovem ? 20 : 60; // minutos de almoço permitidos
+      const toleranciaAlmoco = 5; // minutos de tolerância
+      const limiteComTolerancia = limiteAlmoco + toleranciaAlmoco;
+      if (diffAlmoco > limiteComTolerancia) {
         deveJustificar = true;
         tituloModal = '⏰ Retorno do Almoço Tardio';
-        msgDetalhe = `Você está retornando após <strong>${diffAlmoco} minutos</strong> de almoço.`;
+        const atraso = diffAlmoco - limiteAlmoco;
+        msgDetalhe = `Você está retornando <strong>${atraso} minuto(s)</strong> após o permitido. Almoço: ${limiteAlmoco} min (tolerância: ${toleranciaAlmoco} min).`;
       }
-    } else if (tipo === 'saida_almoco' && horaAtual > inicioMin + 240) { // mais de 4h de trabalho antes
-      // não obrigatório mas registra a hora
     }
   }
   
@@ -3545,25 +3548,86 @@ function exportarPontoExcel() {
   const mes = sel ? sel.value : todayKey().substr(0,7);
   const registros = allPontos.filter(p => p.data && p.data.startsWith(mes));
   const collabs = allUsers.filter(u => u.role !== 'admin');
-  
-  // Coletar todos os dias do mês
+
   const [ano, mesNum] = mes.split('-').map(Number);
   const diasNoMes = new Date(ano, mesNum, 0).getDate();
   const todasLinhas = [];
-  
+
+  const statusJustifLabel = s => s === 'aprovado' ? 'Aprovado' : s === 'recusado' ? 'Recusado' : s === 'pendente' ? 'Pendente' : '—';
+
   collabs.forEach(c => {
+    const isJovem = (c.cargo || '').toLowerCase().includes('jovem aprendiz');
+    const limiteAlmoco = isJovem ? 20 : 60;
+
     for (let d = 1; d <= diasNoMes; d++) {
       const data = `${mes}-${String(d).padStart(2,'0')}`;
       const reg = registros.find(r => r.userId === c.id && r.data === data);
       const atestado = allAtestados.find(a => a.colaboradorId === c.id && a.dataInicio <= data && a.dataFim >= data);
+
+      // Status do dia
       const statusDia = atestado ? 'ATESTADO' : reg?.faltaAbonada ? 'ABONADO' : reg?.entrada ? 'Presente' : 'Ausente';
-      todasLinhas.push([c.name, c.cargo||'', data, fmtHHMM(reg?.entrada), fmtHHMM(reg?.saida_almoco), fmtHHMM(reg?.retorno_almoco), fmtHHMM(reg?.saida), statusDia]);
+
+      // Atraso entrada (minutos)
+      let atrasoEntrada = '—';
+      if (reg?.entrada && c.horarioInicio) {
+        const [hI, mI] = c.horarioInicio.split(':').map(Number);
+        const prevMin = hI * 60 + mI;
+        const regDate = new Date(reg.entrada);
+        const regMin = regDate.getHours() * 60 + regDate.getMinutes();
+        const diff = regMin - prevMin - TOLERANCIA_MIN;
+        if (diff > 0) atrasoEntrada = diff + ' min';
+      }
+
+      // Atraso retorno almoço
+      let atrasoRetorno = '—';
+      if (reg?.saida_almoco && reg?.retorno_almoco) {
+        const saida = new Date(reg.saida_almoco);
+        const retorno = new Date(reg.retorno_almoco);
+        const diffMin = Math.floor((retorno - saida) / 60000);
+        const atraso = diffMin - limiteAlmoco - TOLERANCIA_MIN;
+        if (atraso > 0) atrasoRetorno = atraso + ' min';
+      }
+
+      // Saída antecipada
+      let saidaAntecipada = '—';
+      if (reg?.saida && c.horarioFim) {
+        const [hF, mF] = c.horarioFim.split(':').map(Number);
+        const prevMin = hF * 60 + mF;
+        const regDate = new Date(reg.saida);
+        const regMin = regDate.getHours() * 60 + regDate.getMinutes();
+        const diff = prevMin - regMin - TOLERANCIA_MIN;
+        if (diff > 0) saidaAntecipada = diff + ' min';
+      }
+
+      // Justificativas
+      const justEntrada = reg?.justificativaAtraso?.entrada || '—';
+      const justRetorno = reg?.justificativaAtraso?.retorno_almoco || '—';
+      const justSaida = reg?.justificativaAtraso?.saida || '—';
+      const stJustEntrada = statusJustifLabel(reg?.statusJustificativa?.entrada);
+      const stJustRetorno = statusJustifLabel(reg?.statusJustificativa?.retorno_almoco);
+      const stJustSaida = statusJustifLabel(reg?.statusJustificativa?.saida);
+
+      todasLinhas.push([
+        c.name, c.cargo||'', data,
+        fmtHHMM(reg?.entrada), fmtHHMM(reg?.saida_almoco), fmtHHMM(reg?.retorno_almoco), fmtHHMM(reg?.saida),
+        statusDia,
+        atrasoEntrada, justEntrada, stJustEntrada,
+        atrasoRetorno, justRetorno, stJustRetorno,
+        saidaAntecipada, justSaida, stJustSaida
+      ]);
     }
   });
-  
+
   if (!todasLinhas.length) { toast('Nenhum registro neste mês', 'err'); return; }
-  const header = ['Nome','Cargo','Data','Entrada','Saída Almoço','Retorno Almoço','Saída','Status'];
-  let csv = header.join(';') + '\n' + todasLinhas.map(r=>r.join(';')).join('\n');
+  const header = [
+    'Nome','Cargo','Data',
+    'Entrada','Saída Almoço','Retorno Almoço','Saída',
+    'Status Dia',
+    'Atraso Entrada','Justif. Entrada','Sit. Justif. Entrada',
+    'Atraso Retorno Almoço','Justif. Retorno','Sit. Justif. Retorno',
+    'Saída Antecipada','Justif. Saída','Sit. Justif. Saída'
+  ];
+  const csv = header.join(';') + '\n' + todasLinhas.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(';')).join('\n');
   const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8'});
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
   a.download = `ponto_${mes}.csv`; a.click();
