@@ -5772,16 +5772,13 @@ function handleHoleriteDrop(e) {
 async function extrairNomesNativo(arrayBuffer) {
   const bytes = new Uint8Array(arrayBuffer);
 
-  // Descomprimir zlib usando DecompressionStream nativo do browser
+  // Descomprimir zlib usando DecompressionStream nativo — pipeThrough evita deadlock
   async function decompress(data) {
     for (const fmt of ['deflate', 'deflate-raw']) {
       try {
         const ds = new DecompressionStream(fmt);
-        const writer = ds.writable.getWriter();
-        const reader = ds.readable.getReader();
-        // escrever em chunks pra evitar pressão de backpressure
-        writer.write(data);
-        writer.close();
+        const inputStream = new Blob([data]).stream().pipeThrough(ds);
+        const reader = inputStream.getReader();
         const chunks = [];
         while (true) {
           const { done, value } = await reader.read();
