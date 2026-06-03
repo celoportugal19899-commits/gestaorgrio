@@ -5868,11 +5868,7 @@ async function handleHoleriteFile(file) {
     if (typeof pako === 'undefined') throw new Error('pako.js não carregou — recarregue a página.');
 
     const arrayBuffer = await file.arrayBuffer();
-    const bufParaNomes  = arrayBuffer.slice(0);
     const bufParaPdflib = arrayBuffer.slice(0);
-
-    // ── 1. Extrair nomes (síncrono com pako) ──
-    const nomesDetectados = extrairNomesNativo(bufParaNomes);
 
     // ── 2. Dividir páginas com pdf-lib ──
     const { PDFDocument } = PDFLib;
@@ -5894,15 +5890,16 @@ async function handleHoleriteFile(file) {
       }) || null;
     }
 
-    // ── 4. Montar dados por página ──
+    // ── 4. Montar dados por página — extrai nome do PDF individual ──
     for (let i = 0; i < numPages; i++) {
-      const nomeDetectado = nomesDetectados[i] || '';
-      const userMatch = matchUser(nomeDetectado);
-
       const novoDoc = await PDFDocument.create();
       const [pg] = await novoDoc.copyPages(sourcePdf, [i]);
       novoDoc.addPage(pg);
       const pdfBytes = await novoDoc.save();
+
+      // Extrair nome do PDF de 1 página (elimina falsos positivos do PDF completo)
+      const nomeDetectado = extrairNomesNativo(pdfBytes.buffer)[0] || '';
+      const userMatch = matchUser(nomeDetectado);
 
       holeritesPdfData.push({
         pageIndex: i,
