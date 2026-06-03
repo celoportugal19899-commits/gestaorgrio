@@ -5835,8 +5835,10 @@ function extrairNomesNativo(arrayBuffer) {
           let text = '';
           for (let i = 0; i < decompressed.length; i++) text += String.fromCharCode(decompressed[i]);
           const full = parseTJ(text);
-          const re = /([A-Z][A-Z ]{4,70}?)\s+(?:JOVEM APRENDIZ|ATENDENTE(?: BACKUP)?|BACKOFFICE(?:\s+DE OPERACOES)?|SUPERVISOR(?:\s*\([A-Z]\))?(?:\s+REGIONAL(?:\s+II)?)?|GERENTE(?:\s+REGIONAL)?|ASSISTENTE(?:\s+TREINAMENTO)?)[^0-9]*(\d{6})/;
-          const nm = full.match(re);
+          const re = /([A-Z][A-Z ]{4,70}?)\s+(?:JOVEM APRENDIZ|ATENDENTE(?: BACKUP)?|BACKOFFICE(?:\s+DE OPERACOES)?|SUPERVISOR(?:\s*\(?[A-Z]\)?)?(?:\s+REGIONAL(?:\s+II)?)?|GERENTE(?:\s+REGIONAL)?|ASSISTENTE(?:\s+TREINAMENTO)?)[^0-9]*(\d{6})/;
+          const reFallback = /([A-Z][A-Z ]{4,70}?)\s+(\d{6})\s+(?:C\u00f3d|RG\s+ADM)/;
+          let nm = full.match(re);
+          if (!nm) nm = full.match(reFallback);
           if (nm) {
             const cod = nm[2], nome = nm[1].replace(/\s+/g,' ').trim();
             if (!seen.has(cod) && nome.split(' ').length >= 2) {
