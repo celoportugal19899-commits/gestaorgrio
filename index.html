@@ -5778,9 +5778,9 @@ function handleHoleriteDrop(e) {
   else toast('Selecione um arquivo PDF', 'err');
 }
 
-// ── Extrai nomes do PDF usando pako.inflate (zlib JS confiável) ──
 function extrairNomesNativo(arrayBuffer) {
   const bytes = new Uint8Array(arrayBuffer);
+  const diag = { pakoOk: typeof pako !== 'undefined', streamsFound: 0, decomprOk: 0, decomprFail: 0, nomesFnd: 0, err1: '' };
 
   function parseTJ(text) {
     const tokens = [];
@@ -5802,44 +5802,58 @@ function extrairNomesNativo(arrayBuffer) {
     return tokens.join(' ');
   }
 
-  function latin1Decode(arr) {
-    let s = '';
-    for (let i = 0; i < arr.length; i++) s += String.fromCharCode(arr[i]);
-    return s;
+  // Busca por bytes diretamente (evita qualquer problema de encoding de string)
+  function findSeq(arr, seq, from) {
+    outer: for (let i = from; i <= arr.length - seq.length; i++) {
+      for (let j = 0; j < seq.length; j++) if (arr[i+j] !== seq[j]) continue outer;
+      return i;
+    }
+    return -1;
   }
 
-  const pdfStr = latin1Decode(bytes);
+  const STREAM_NL  = [115,116,114,101,97,109,10]; // 'stream\n'
+  const NL_ENDSTR  = [10,101,110,100,115,116,114,101,97,109]; // '\nendstream'
+
   const nomes = [];
   const seen = new Set();
   let pos = 0;
 
   while (true) {
-    const idx = pdfStr.indexOf('stream\n', pos);
+    const idx = findSeq(bytes, STREAM_NL, pos);
     if (idx === -1) break;
     const ds = idx + 7;
     const b0 = bytes[ds], b1 = bytes[ds + 1];
+
     if (b0 === 0x78 && (b1 === 0x9C || b1 === 0x9D || b1 === 0xDA || b1 === 0x01)) {
-      const end = pdfStr.indexOf('\nendstream', ds);
+      diag.streamsFound++;
+      const end = findSeq(bytes, NL_ENDSTR, ds);
       if (end > ds) {
+        const compressed = bytes.slice(ds, end);
         try {
-          const compressed = bytes.slice(ds, end);
-          const decompressed = pako.inflate(compressed); // síncrono, confiável
-          const text = latin1Decode(decompressed);
+          const decompressed = pako.inflate(compressed);
+          diag.decomprOk++;
+          let text = '';
+          for (let i = 0; i < decompressed.length; i++) text += String.fromCharCode(decompressed[i]);
           const full = parseTJ(text);
           const re = /([A-Z][A-Z ]{4,70}?)\s+(?:JOVEM APRENDIZ|ATENDENTE(?: BACKUP)?|BACKOFFICE(?:\s+DE OPERACOES)?|SUPERVISOR(?:\s*\([A-Z]\))?(?:\s+REGIONAL(?:\s+II)?)?|GERENTE(?:\s+REGIONAL)?|ASSISTENTE(?:\s+TREINAMENTO)?)[^0-9]*(\d{6})/;
           const nm = full.match(re);
           if (nm) {
-            const cod = nm[2], nome = nm[1].replace(/\s+/g, ' ').trim();
+            const cod = nm[2], nome = nm[1].replace(/\s+/g,' ').trim();
             if (!seen.has(cod) && nome.split(' ').length >= 2) {
-              seen.add(cod);
-              nomes.push(nome);
+              seen.add(cod); nomes.push(nome); diag.nomesFnd++;
             }
           }
-        } catch (e) {}
+        } catch (e) {
+          diag.decomprFail++;
+          if (!diag.err1) diag.err1 = String(e);
+        }
       }
     }
     pos = idx + 7;
   }
+
+  // Guardar diagnóstico global para exibir na UI
+  window._holerDiag = diag;
   return nomes;
 }
 
@@ -5937,9 +5951,12 @@ function renderMapeamentoHolerites() {
   const pakoOk = typeof pako !== 'undefined';
 
   const lista = document.getElementById('holerite-match-lista');
+  const d = window._holerDiag || {};
+  const diagTxt = `pako=${d.pakoOk?'✅':'❌'} | streams=${d.streamsFound??'?'} | decomp_ok=${d.decomprOk??'?'} | decomp_fail=${d.decomprFail??'?'} | nomes=${d.nomesFnd??'?'} | err=${d.err1||'nenhum'}`;
+
   lista.innerHTML = `
-    <div style="padding:10px 14px;margin-bottom:8px;border-radius:8px;font-size:12px;background:var(--surface2);color:var(--text3)">
-      🔍 Diagnóstico: pako=${pakoOk?'✅':'❌'} | páginas=${total} | detectados=${detectados}/${total}
+    <div style="padding:8px 12px;margin-bottom:8px;border-radius:6px;font-size:11px;font-family:monospace;background:#0d0d0d;color:#00ff88;border:1px solid #1a1a1a;word-break:break-all">
+      🔍 ${diagTxt}
     </div>
     <div style="padding:10px 14px;margin-bottom:12px;border-radius:8px;font-size:13px;${detectados===total&&total>0?'background:var(--green-bg);color:var(--green)':'background:var(--yellow-bg);color:var(--yellow)'}">
       ${detectados===total&&total>0 ? `✅ ${detectados} colaboradores identificados automaticamente.` : `⚠️ ${detectados} de ${total} detectados — confira o nome do PDF antes de atribuir.`}
