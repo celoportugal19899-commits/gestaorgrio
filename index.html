@@ -6144,26 +6144,32 @@ function downloadAssinado() {
 function renderColRhHolerite() {
   const wrap = document.getElementById('col-holerite-wrap');
   if (!wrap) return;
-  
-  const meus = allHolerites.filter(h => h.colaboradorId === currentUser.id);
-  
+
+  const meus = allHolerites
+    .filter(h => h.colaboradorId === currentUser.id)
+    .sort((a, b) => (b.ano - a.ano) || (b.mesNum - a.mesNum));
+
   // Marcar como visto
   meus.filter(h => !h.vistoColaborador).forEach(h => {
     db.collection('holerites').doc(h.id).update({vistoColaborador: true}).catch(()=>{});
   });
-  
+
   if (!meus.length) {
     wrap.innerHTML = `<div class="empty" style="margin-top:60px"><div class="icon">💼</div><p>Nenhum holerite disponível ainda</p></div>`;
     return;
   }
-  
-  wrap.innerHTML = meus.map(h => `
-    <div class="holerite-card" style="margin-bottom:12px">
+
+  // Agrupar por mês
+  const porMes = {};
+  meus.forEach(h => { (porMes[h.mes] = porMes[h.mes] || []).push(h); });
+
+  function cardHoleriteCol(h) {
+    return `<div class="holerite-card" style="margin-bottom:10px">
       <div style="font-size:28px">💼</div>
       <div class="hc-info">
         <div class="hc-name">Holerite — ${h.mes}</div>
         <div class="hc-meta">Disponibilizado em ${fmtDT(h.enviadoEm)}</div>
-        ${h.status === 'assinado' ? `<div style="font-size:12px;color:var(--green);margin-top:4px">✅ Assinado e enviado em ${fmtDT(h.assinadoEm||'')}</div>` : ''}
+        ${h.status === 'assinado' ? `<div style="font-size:12px;color:var(--green);margin-top:4px">✅ Assinado em ${fmtDT(h.assinadoEm||'')}</div>` : ''}
       </div>
       <span class="status-pill ${h.status === 'assinado' ? 'sp-assinado' : 'sp-pendente'}">
         ${h.status === 'assinado' ? '✅ Assinado' : '⏳ Pendente'}
@@ -6172,8 +6178,21 @@ function renderColRhHolerite() {
         <button class="btn btn-sm btn-secondary" onclick="downloadHoleritePdf('${h.id}')">⬇ Baixar</button>
         ${h.status !== 'assinado' ? `<button class="btn btn-sm btn-primary" onclick="abrirEnviarAssinado('${h.id}')">✍️ Enviar Assinado</button>` : ''}
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  }
+
+  let html = '';
+  Object.keys(porMes).forEach((mes, idx) => {
+    const lista = porMes[mes];
+    const pendentes = lista.filter(h => h.status !== 'assinado').length;
+    const label = pendentes > 0
+      ? `💼 ${mes} <span style="color:var(--yellow);font-weight:400;font-size:12px">· assinatura pendente</span>`
+      : `💼 ${mes}`;
+    // Mês mais recente abre, os demais fecham
+    html += secAcc(label, lista.length, lista.map(cardHoleriteCol).join(''), idx === 0, pendentes > 0 ? 'var(--yellow)' : '');
+  });
+
+  wrap.innerHTML = html;
 }
 
 function abrirEnviarAssinado(holeritreId) {
