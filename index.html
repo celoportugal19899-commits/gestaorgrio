@@ -1014,6 +1014,13 @@
           <div class="dz-sub">ou clique para selecionar — PDF com todos os colaboradores</div>
           <input type="file" id="holerite-file-input" accept=".pdf" style="display:none" onchange="handleHoleriteFile(this.files[0])">
         </div>
+        <div style="display:flex;gap:10px;margin-top:12px;align-items:center">
+          <div style="flex:1">
+            <label class="form-label">Competência (mês/ano do holerite)</label>
+            <input class="form-input" type="text" id="holerite-competencia" placeholder="04/2026" maxlength="7" style="width:140px">
+          </div>
+          <div style="font-size:12px;color:var(--text3);padding-top:18px">Informe antes de arrastar o PDF</div>
+        </div>
         <div id="holerite-processando" style="display:none;text-align:center;padding:30px;color:var(--text3)">
           <div class="spinner" style="margin:0 auto 12px"></div>
           Processando PDF e identificando colaboradores...
@@ -5983,55 +5990,69 @@ function renderMapeamentoHolerites() {
 }
 
 async function dispararHolerites() {
-  const now = new Date();
-  const mes = now.getMonth() + 1;
-  const ano = now.getFullYear();
-  const mesAno = `${String(mes).padStart(2,'0')}/${ano}`;
-  
-  let enviados = 0;
+  // ── Validar competência ──
+  const competencia = (document.getElementById('holerite-competencia')?.value || '').trim();
+  if (!competencia || !/^\d{2}\/\d{4}$/.test(competencia)) {
+    toast('Informe a competência no formato 04/2026', 'err'); return;
+  }
+  const [mesStr, anoStr] = competencia.split('/');
+  const mesNum = parseInt(mesStr);
+  const ano = parseInt(anoStr);
+
+  // ── Montar lote lendo selects AGORA ──
   const batch = [];
-  
   for (let idx = 0; idx < holeritesPdfData.length; idx++) {
-    const item = holeritesPdfData[idx];
-    const userId = document.getElementById(`match-user-${idx}`)?.value;
+    const sel = document.getElementById(`match-user-${idx}`);
+    const userId = sel?.value || '';
     if (!userId) continue;
-    
     const user = allUsers.find(u => u.id === userId);
     if (!user) continue;
-    
+    const item = holeritesPdfData[idx];
+    if (!item?.pdfBase64) { toast(`Página ${idx+1} sem PDF — recarregue o arquivo`, 'err'); return; }
     batch.push({
       colaboradorId: userId,
       colaboradorEmail: user.email,
       colaboradorNome: user.name,
-      mes: mesAno,
-      mesNum: mes,
+      pagina: idx + 1,
+      mes: competencia,
+      mesNum,
       ano,
       pdfBase64: item.pdfBase64,
       status: 'pendente',
-      enviadoEm: now.toISOString(),
+      enviadoEm: new Date().toISOString(),
       enviadoPor: currentUser.name,
       vistoColaborador: false,
       vistoAdm: false
     });
-    enviados++;
   }
-  
-  if (!enviados) { toast('Nenhum colaborador selecionado', 'err'); return; }
-  
+
+  if (!batch.length) { toast('Selecione pelo menos um colaborador', 'err'); return; }
+
+  // ── Confirmar antes de disparar ──
+  const lista = batch.map(b => `• Pág. ${b.pagina} → ${b.colaboradorNome}`).join('\n');
+  if (!confirm(`Disparar ${batch.length} holerite(s) de ${competencia}?\n\n${lista}`)) return;
+
   try {
     for (const doc of batch) {
       const ref = db.collection('holerites').doc();
       await ref.set({id: ref.id, ...doc});
-      // Notificar colaborador
-      await addNotificacao(doc.colaboradorEmail, '💼 Holerite Disponível', `Seu holerite de ${doc.mes} está disponível. Acesse RH > Meu Holerite para visualizar.`, '💼', 'accent');
+      await addNotificacao(doc.colaboradorEmail, '💼 Holerite Disponível', `Seu holerite de ${doc.mes} está disponível. Acesse RH > Meu Holerite.`, '💼', 'accent');
     }
-    toast(`✅ ${enviados} holerite(s) disparado(s) com sucesso!`, 'ok');
+    toast(`✅ ${batch.length} holerite(s) de ${competencia} disparado(s)!`, 'ok');
     cancelarHolerite();
     switchRhTab('historico');
   } catch(e) {
     console.error(e);
-    toast('Erro ao salvar holerites: ' + e.message, 'err');
+    toast('Erro ao salvar: ' + e.message, 'err');
   }
+}
+
+async function deletarHolerite(id, nome, mes) {
+  if (!confirm(`Excluir holerite de ${mes} de ${nome}?\nEsta ação não pode ser desfeita.`)) return;
+  try {
+    await db.collection('holerites').doc(id).delete();
+    toast('Holerite excluído.', 'ok');
+  } catch(e) { toast('Erro ao excluir: ' + e.message, 'err'); }
 }
 
 function cancelarHolerite() {
@@ -6089,6 +6110,7 @@ function renderHistoricoHolerites() {
       <div class="hc-actions">
         <button class="btn btn-sm btn-secondary" onclick="downloadHoleritePdf('${h.id}')">⬇ PDF</button>
         ${h.status === 'assinado' ? `<button class="btn btn-sm btn-primary" onclick="abrirVerAssinado('${h.id}')">📄 Ver Assinado</button>` : ''}
+        <button class="btn btn-sm btn-danger" onclick="deletarHolerite('${h.id}','${(h.colaboradorNome||'').replace(/'/g,"\\'")}','${h.mes}')">🗑</button>
       </div>
     </div>`;
   }
