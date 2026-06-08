@@ -999,11 +999,17 @@
 
       <!-- ABA MULTAS -->
       <div id="ind-view-multas" style="display:none">
+        <div style="margin-bottom:14px">
+          <button class="btn btn-secondary btn-sm" onclick="switchIndTab('painel')">← Voltar ao Painel</button>
+        </div>
         <div id="ind-multas-body"></div>
       </div>
 
       <!-- ABA IMPORTAR -->
       <div id="ind-view-importar" style="display:none">
+        <div style="margin-bottom:14px">
+          <button class="btn btn-secondary btn-sm" onclick="switchIndTab('painel')">← Voltar ao Painel</button>
+        </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;margin-bottom:20px">
           <div style="background:var(--surface2);border-radius:12px;border:1px solid var(--border);padding:20px">
             <div style="font-size:14px;font-weight:700;color:var(--text1);margin-bottom:6px">📥 Importar Excel da Neobpo</div>
@@ -4206,17 +4212,16 @@ async function carregarTodosIndicadores() {
 async function initIndicadoresMesFiltro() {
   if(!indicadoresCarregados) await carregarTodosIndicadores();
 
+  // Se Firestore vazio, importar histórico automaticamente
+  if(!allIndicadores.length) {
+    const kpiGrid = document.getElementById('ind-kpi-grid');
+    if(kpiGrid) kpiGrid.innerHTML='<div style="padding:20px;color:var(--text3);font-size:13px">⏳ Carregando histórico inicial...</div>';
+    await importarHistoricoSilencioso();
+  }
+
   // Pegar meses disponíveis no Firestore
   const mesesDisp = [...new Set(allIndicadores.map(d=>d.mesRef))].sort();
-
-  // Fallback se vazio
-  const hoje = new Date();
-  const mesesFallback = [];
-  for(let i=0;i<6;i++) {
-    const d=new Date(hoje.getFullYear(),hoje.getMonth()-i,1);
-    mesesFallback.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
-  }
-  const meses = mesesDisp.length ? mesesDisp : mesesFallback.reverse();
+  const meses = mesesDisp.length ? mesesDisp : [];
 
   // Render botões de mês
   const wrap = document.getElementById('ind-meses-btns');
@@ -4261,7 +4266,7 @@ function switchIndTab(tab) {
   document.getElementById('indTab-'+tab)?.classList.add('active');
   // Mostrar/esconder filtros de mês (não relevante em importar)
   document.getElementById('ind-meses-wrap').style.display = tab==='importar'?'none':'flex';
-  document.getElementById('ind-posto-filtro').parentElement.style.display = tab==='importar'?'none':'block';
+  const pf=document.getElementById('ind-posto-filtro'); if(pf) pf.style.display=tab==='importar'?'none':'block';
   renderIndicadores();
 }
 
@@ -4655,6 +4660,19 @@ async function importarExcelIndicadores() {
     }
   };
   reader.readAsArrayBuffer(fileInput.files[0]);
+}
+
+async function importarHistoricoSilencioso() {
+  try {
+    const batch=db.batch();
+    DADOS_HISTORICOS_INICIAIS.forEach(doc=>{
+      const {id,...data}=doc;
+      batch.set(db.collection('indicadores').doc(id),data,{merge:true});
+    });
+    await batch.commit();
+    indicadoresCarregados=false;
+    await carregarTodosIndicadores();
+  } catch(e) { console.error('Erro histórico silencioso:',e); }
 }
 
 async function importarHistorico() {
