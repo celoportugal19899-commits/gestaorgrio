@@ -4164,11 +4164,24 @@ const META_TMA   = 288;     // 00:04:48 em segundos
 const META_TME   = 569;     // 00:09:29 em segundos
 
 // ── Helpers ──
-function diasUteisMes(anoMes) {
+function diasUteisMes(anoMes, dataCorte) {
+  // dataCorte: string 'YYYY-MM-DD' — se informado, conta só até essa data
   const [ano,mes]=anoMes.split('-').map(Number);
-  const dim=new Date(ano,mes,0).getDate(); let c=0;
-  for(let d=1;d<=dim;d++){const w=new Date(ano,mes-1,d).getDay();if(w!==0&&w!==6)c++;}
-  return c;
+  const dim=new Date(ano,mes,0).getDate();
+  const limDia = dataCorte ? new Date(dataCorte).getDate() : dim;
+  const limMes = dataCorte ? new Date(dataCorte).getMonth()+1 : mes;
+  const limAno = dataCorte ? new Date(dataCorte).getFullYear() : ano;
+  // Só aplica o corte se a data for do mesmo mês/ano
+  const diaFim = (limAno===ano && limMes===mes) ? Math.min(limDia, dim) : dim;
+  let c=0;
+  for(let d=1;d<=diaFim;d++){const w=new Date(ano,mes-1,d).getDay();if(w!==0&&w!==6)c++;}
+  return Math.max(c, 1); // mínimo 1 para não dividir por zero
+}
+
+function diasUteisMesComDados(anoMes, dadosMes) {
+  // Pega a dataReferencia do primeiro doc do mês que tiver, senão usa mês cheio
+  const dataRef = dadosMes?.find(d=>d.dataReferencia)?.dataReferencia || null;
+  return diasUteisMes(anoMes, dataRef);
 }
 function horasPosto(posto) {
   if(!posto||!posto.abre||!posto.fecha) return 8;
@@ -4299,7 +4312,10 @@ async function renderPainelIndicadores() {
   }
   let dados=allIndicadores.filter(d=>mesesSelecionados.includes(d.mesRef));
   if(postoFiltro) dados=dados.filter(d=>d.postoNome===postoFiltro);
-  const totalDiasUteis=mesesSelecionados.reduce((a,m)=>a+diasUteisMes(m),0);
+  const totalDiasUteis=mesesSelecionados.reduce((a,m)=>{
+    const dadosMes=allIndicadores.filter(d=>d.mesRef===m);
+    return a+diasUteisMesComDados(m, dadosMes);
+  },0);
   const periodoLabel=mesesSelecionados.length===1?mesLabel(mesesSelecionados[0]):`${mesLabel(mesesSelecionados[0])} – ${mesLabel(mesesSelecionados[mesesSelecionados.length-1])}`;
   document.getElementById('ind-subtitle').textContent=`Postos de Atendimento — ${periodoLabel}`;
 
@@ -4315,7 +4331,10 @@ async function renderPainelIndicadores() {
     if(!porPostoHoras[d.postoNome]) porPostoHoras[d.postoNome]=0;
     const p=postos.find(x=>x.nome===d.postoNome);
     const mesesDoPosto=[...new Set(dados.filter(x=>x.postoNome===d.postoNome).map(x=>x.mesRef))];
-    porPostoHoras[d.postoNome]=horasPosto(p)*mesesDoPosto.reduce((a,m)=>a+diasUteisMes(m),0);
+    porPostoHoras[d.postoNome]=horasPosto(p)*mesesDoPosto.reduce((a,m)=>{
+      const dadosMes=allIndicadores.filter(dd=>dd.mesRef===m);
+      return a+diasUteisMesComDados(m,dadosMes);
+    },0);
   });
   const totalHoras=Object.values(porPostoHoras).reduce((a,b)=>a+b,0);
   const senhasHora=totalHoras>0?(totalAtendidas/totalHoras).toFixed(1):'—';
@@ -4389,7 +4408,10 @@ function renderAnalisesCompletas(dados,postos,totalDiasUteis) {
       const cor=delta>=0?'green':'red'; const s=delta>=0?'▲':'▼';
 
       // Tabela limpa: posto | mês ant | atual | delta
-      const duAtual=diasUteisMes(mesAtual); const duAnt=diasUteisMes(mesAnt);
+      const dadosMesAtual=allIndicadores.filter(d=>d.mesRef===mesAtual);
+      const dadosMesAnt=allIndicadores.filter(d=>d.mesRef===mesAnt);
+      const duAtual=diasUteisMesComDados(mesAtual, dadosMesAtual);
+      const duAnt=diasUteisMesComDados(mesAnt, dadosMesAnt);
       const postosList=[...new Set([...dados,...indAnt].map(d=>d.postoNome))].sort();
       const linhas=postosList.map(nome=>{
         const vA=(dados.find(x=>x.postoNome===nome)?.senhasAtendidas)||0;
@@ -4484,7 +4506,10 @@ function renderAnalisesCompletas(dados,postos,totalDiasUteis) {
   });
   const alertas=Object.entries(agrupAlerta).map(([nome,g])=>{
     const mesesDoPosto=[...new Set(g.meses)];
-    const duPosto=mesesDoPosto.reduce((a,m)=>a+diasUteisMes(m),0);
+    const duPosto=mesesDoPosto.reduce((a,m)=>{
+      const dadosMes=allIndicadores.filter(dd=>dd.mesRef===m&&dd.postoNome===nome);
+      return a+diasUteisMesComDados(m,dadosMes);
+    },0);
     const mediaDia=duPosto>0?g.atend/duPosto:0;
     return{nome,mediaDia:Math.round(mediaDia),baixoVol:mediaDia<mediaVolPosto};
   }).filter(a=>a.baixoVol).sort((a,b)=>a.mediaDia-b.mediaDia);
@@ -4550,7 +4575,10 @@ function renderTabelaDetalhada(dados,postos,totalDiasUteis,postoFiltro) {
   tbody.innerHTML=Object.entries(agrup).sort((a,b)=>b[1].atend-a[1].atend).map(([nome,g],i)=>{
     const p=postos.find(x=>x.nome===nome);
     const mesesUnicos=[...new Set(g.meses)];
-    const duTotal=mesesUnicos.reduce((a,m)=>a+diasUteisMes(m),0);
+    const duTotal=mesesUnicos.reduce((a,m)=>{
+      const dadosMes=allIndicadores.filter(dd=>dd.mesRef===m&&dd.postoNome===nome);
+      return a+diasUteisMesComDados(m,dadosMes);
+    },0);
     const mediaDia=duTotal>0?Math.round(g.atend/duTotal):0;
     const hTotal=horasPosto(p)*duTotal;
     const senhaH=hTotal>0?(g.atend/hTotal).toFixed(1):'—';
