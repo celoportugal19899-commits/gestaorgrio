@@ -4250,7 +4250,7 @@ async function initIndicadoresMesFiltro() {
   // 5. Filtro de posto
   const selP = document.getElementById('ind-posto-filtro');
   if(selP && selP.options.length <= 1) {
-    const postos = POSTOS_DATA.filter(p=>p.nome!=='Posto Teste');
+    const postos = POSTOS_INICIAIS.filter(p=>p.nome!=='Posto Teste');
     selP.innerHTML = '<option value="">Todos os postos</option>' + postos.map(p=>`<option value="${p.nome}">${p.nome}</option>`).join('');
   }
 }
@@ -4293,7 +4293,7 @@ async function renderIndicadores() {
 // ── PAINEL ──
 async function renderPainelIndicadores() {
   const postoFiltro = document.getElementById('ind-posto-filtro')?.value||'';
-  const postos = POSTOS_DATA.filter(p=>p.nome!=='Posto Teste');
+  const postos = POSTOS_INICIAIS.filter(p=>p.nome!=='Posto Teste');
 
   if(!mesesSelecionados.length) {
     document.getElementById('ind-kpi-grid').innerHTML='';
