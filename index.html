@@ -26,7 +26,7 @@
     --radius:10px; --shadow:0 4px 24px rgba(0,0,0,0.4);
   }
   *{box-sizing:border-box;margin:0;padding:0;}
-  body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
+  body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:auto;}
   .mono{font-family:'IBM Plex Mono',monospace;}
   ::-webkit-scrollbar{width:5px;}
   ::-webkit-scrollbar-track{background:var(--surface);}
@@ -175,7 +175,7 @@
 
   /* APP SHELL */
   #page-app{min-height:100vh;flex-direction:row;}
-  .sidebar{width:220px;min-height:100vh;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:24px 0;position:fixed;top:0;left:0;height:100vh;z-index:100;overflow-y:auto;}
+  .sidebar{width:220px;min-height:100vh;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:24px 0;position:fixed;top:0;left:0;height:100vh;z-index:100;overflow-y:auto;;flex-shrink:0;min-width:220px;}
   .sidebar-logo{font-size:18px;font-weight:800;letter-spacing:-0.5px;padding:0 20px 20px;border-bottom:1px solid var(--border);margin-bottom:14px;background:linear-gradient(135deg,#fff 0%,#a0a0ff 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;line-height:1.3;}
   .sidebar-section{padding:0 12px;margin-bottom:4px;}
   .sidebar-section-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1.2px;font-weight:700;padding:6px 8px;}
@@ -248,7 +248,7 @@
   .avatar-collab{background:rgba(34,197,94,0.2);color:var(--green);}
   .user-info .name{font-size:13px;font-weight:600;}
   .user-info .role{font-size:11px;color:var(--text3);font-family:'IBM Plex Mono',monospace;}
-  .main{margin-left:220px;flex:1;padding:32px 36px;min-height:100vh;}
+  .main{margin-left:220px;flex:1;padding:32px 36px;min-height:100vh;min-width:700px;}
   .view{display:none;}
   .view.active{display:block;}
 
@@ -4389,19 +4389,24 @@ function renderAnalisesCompletas(dados,postos,totalDiasUteis) {
       const cor=delta>=0?'green':'red'; const s=delta>=0?'▲':'▼';
 
       // Tabela limpa: posto | mês ant | atual | delta
+      const duAtual=diasUteisMes(mesAtual); const duAnt=diasUteisMes(mesAnt);
       const postosList=[...new Set([...dados,...indAnt].map(d=>d.postoNome))].sort();
       const linhas=postosList.map(nome=>{
         const vA=(dados.find(x=>x.postoNome===nome)?.senhasAtendidas)||0;
         const vB=(indAnt.find(x=>x.postoNome===nome)?.senhasAtendidas)||0;
-        const dlt=vA-vB; const dpp=vB>0?((dlt/vB)*100).toFixed(1):null;
+        const mdA=duAtual>0?Math.round(vA/duAtual):0;
+        const mdB=duAnt>0?Math.round(vB/duAnt):0;
+        const dlt=mdA-mdB; const dpp=mdB>0?((dlt/mdB)*100).toFixed(1):null;
         const c=dlt>=0?'green':'red'; const sv=dlt>=0?'▲':'▼';
         return `<tr style="border-bottom:1px solid var(--border)">
           <td style="padding:7px 8px;font-size:12px;white-space:nowrap">${nome}</td>
-          <td style="padding:7px 8px;text-align:right;font-size:12px;color:var(--text3)">${vB.toLocaleString('pt-BR')}</td>
-          <td style="padding:7px 8px;text-align:right;font-size:12px;font-weight:700">${vA.toLocaleString('pt-BR')}</td>
+          <td style="padding:7px 8px;text-align:right;font-size:12px;color:var(--text3)">${mdB}</td>
+          <td style="padding:7px 8px;text-align:right;font-size:12px;font-weight:700">${mdA}</td>
           <td style="padding:7px 8px;text-align:right;font-size:12px;font-weight:700;color:var(--${c})">${dpp?sv+' '+Math.abs(dpp)+'%':'—'}</td>
         </tr>`;
       }).join('');
+      const mediaDiaAnt=duAnt>0?Math.round(totAnt/(postosList.length*duAnt)):0;
+      const mediaDiaAtual=duAtual>0?Math.round(totAtual/(postosList.length*duAtual)):0;
 
       compMesAntHTML=`
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
@@ -4412,15 +4417,15 @@ function renderAnalisesCompletas(dados,postos,totalDiasUteis) {
         <table style="width:100%;border-collapse:collapse">
           <thead><tr style="border-bottom:2px solid var(--border)">
             <th style="padding:6px 8px;text-align:left;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.6px">Posto</th>
-            <th style="padding:6px 8px;text-align:right;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">${mesLabel(mesAnt)}</th>
-            <th style="padding:6px 8px;text-align:right;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">${mesLabel(mesAtual)}</th>
+            <th style="padding:6px 8px;text-align:right;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">${mesLabel(mesAnt)}<br><span style="font-weight:400;font-size:10px">méd/dia útil</span></th>
+            <th style="padding:6px 8px;text-align:right;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">${mesLabel(mesAtual)}<br><span style="font-weight:400;font-size:10px">méd/dia útil</span></th>
             <th style="padding:6px 8px;text-align:right;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">Δ</th>
           </tr></thead>
           <tbody>${linhas}</tbody>
           <tfoot><tr style="border-top:2px solid var(--border);background:var(--surface)">
-            <td style="padding:8px;font-size:12px;font-weight:700">Total</td>
-            <td style="padding:8px;text-align:right;font-size:12px;font-weight:700;color:var(--text3)">${totAnt.toLocaleString('pt-BR')}</td>
-            <td style="padding:8px;text-align:right;font-size:12px;font-weight:700">${totAtual.toLocaleString('pt-BR')}</td>
+            <td style="padding:8px;font-size:12px;font-weight:700">Média geral</td>
+            <td style="padding:8px;text-align:right;font-size:12px;font-weight:700;color:var(--text3)">${mediaDiaAnt}</td>
+            <td style="padding:8px;text-align:right;font-size:12px;font-weight:700">${mediaDiaAtual}</td>
             <td style="padding:8px;text-align:right;font-size:13px;font-weight:700;color:var(--${cor})">${s} ${Math.abs(dp||0)}%</td>
           </tr></tfoot>
         </table></div>`;
@@ -4520,7 +4525,7 @@ function renderAnalisesCompletas(dados,postos,totalDiasUteis) {
       </div>
       ${mediaCompHTML}
     </div>
-    <div class="ind-analise-card"><h3>🔴 Postos em Alerta <span style="font-size:11px;font-weight:400;color:var(--text3)">(baixo volume E/OU TME elevado)</span></h3>${alertaHTML}</div>
+    <div class="ind-analise-card"><h3>🔴 Postos em Alerta <span style="font-size:11px;font-weight:400;color:var(--text3)">(abaixo da média de volume)</span></h3>${alertaHTML}</div>
     <div class="ind-analise-card"><h3>⏱ NS30 por Posto</h3>${nsHTML||'<div class="ind-empty">Sem dados.</div>'}</div>
   `;
 }
