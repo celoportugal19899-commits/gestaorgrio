@@ -3018,8 +3018,10 @@ let allPontos = [];
 let unsubPontos = null;
 
 function getDeviceId() {
-  let did = localStorage.getItem('rg_device_id');
-  if (!did) { did = 'DEV-' + Math.random().toString(36).substr(2,9).toUpperCase(); localStorage.setItem('rg_device_id', did); }
+  const uid = currentUser && currentUser.id ? currentUser.id : 'anon';
+  const key = 'rg_device_id_' + uid;
+  let did = localStorage.getItem(key);
+  if (!did) { did = 'DEV-' + Math.random().toString(36).substr(2,9).toUpperCase(); localStorage.setItem(key, did); }
   return did;
 }
 
@@ -3099,20 +3101,26 @@ async function renderColPonto() {
     return;
   }
 
-  const devSnap = await db.collection('devices').doc(did).get();
-  if (!devSnap.exists) {
-    document.getElementById('ponto-blocked-card').style.display = 'none';
-    document.getElementById('ponto-auth-request').style.display = 'flex';
-    document.getElementById('ponto-main').style.display = 'none';
-    return;
-  }
-  const dev = devSnap.data();
-  if (!dev.authorized) {
-    document.getElementById('ponto-blocked-card').style.display = 'none';
-    document.getElementById('ponto-auth-request').style.display = 'flex';
-    document.getElementById('ponto-auth-request').querySelector('.dr-title').textContent = 'Autorização pendente — aguarde o administrador';
-    document.getElementById('ponto-main').style.display = 'none';
-    return;
+  // Verifica autorização: primeiro no doc do usuário (persiste mesmo após limpeza de cache),
+  // depois na coleção devices (fallback para usuários ainda não migrados)
+  let autorizado = currentUser.deviceAuthorized === true;
+  if (!autorizado) {
+    const devSnap = await db.collection('devices').doc(did).get();
+    if (!devSnap.exists) {
+      document.getElementById('ponto-blocked-card').style.display = 'none';
+      document.getElementById('ponto-auth-request').style.display = 'flex';
+      document.getElementById('ponto-main').style.display = 'none';
+      return;
+    }
+    const dev = devSnap.data();
+    if (!dev.authorized) {
+      document.getElementById('ponto-blocked-card').style.display = 'none';
+      document.getElementById('ponto-auth-request').style.display = 'flex';
+      document.getElementById('ponto-auth-request').querySelector('.dr-title').textContent = 'Autorização pendente — aguarde o administrador';
+      document.getElementById('ponto-main').style.display = 'none';
+      return;
+    }
+    autorizado = true;
   }
 
   document.getElementById('ponto-blocked-card').style.display = 'none';
@@ -3622,6 +3630,12 @@ async function renderAdmPonto() {
 
 async function autorizarDevice(did) {
   await db.collection('devices').doc(did).update({ authorized: true, authorizedAt: new Date().toISOString() });
+  // Persiste autorização no doc do usuário — resiste a limpeza de cache do browser
+  const devSnap = await db.collection('devices').doc(did).get();
+  if (devSnap.exists) {
+    const userId = devSnap.data().userId;
+    if (userId) await db.collection('users').doc(userId).update({ deviceAuthorized: true });
+  }
   toast('Dispositivo autorizado!', 'ok');
   renderAdmPonto();
 }
