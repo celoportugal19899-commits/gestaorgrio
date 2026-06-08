@@ -4374,49 +4374,61 @@ function renderAnalisesCompletas(dados,postos,totalDiasUteis) {
   // ── 2. Comparativo mês anterior ──
   const todosMeses=[...new Set(allIndicadores.map(d=>d.mesRef))].sort();
   let compMesAntHTML='';
-  if(mesesSelecionados.length===1) {
-    const mesAtual=mesesSelecionados[0];
-    const idxMes=todosMeses.indexOf(mesAtual);
+  {
+    // Funciona com 1 ou múltiplos meses — compara soma do selecionado vs período anterior equivalente
+    const mesAtual=mesesSelecionados.length===1?mesesSelecionados[0]:null;
+    const idxMes=mesAtual?todosMeses.indexOf(mesAtual):-1;
     const mesAnt=idxMes>0?todosMeses[idxMes-1]:null;
     const indAnt=mesAnt?allIndicadores.filter(d=>d.mesRef===mesAnt&&(!postoFiltro||d.postoNome===postoFiltro)):[];
-    if(indAnt.length) {
+
+    if(mesAtual&&indAnt.length) {
       const totAtual=dados.reduce((a,d)=>a+(parseInt(d.senhasAtendidas)||0),0);
       const totAnt=indAnt.reduce((a,d)=>a+(parseInt(d.senhasAtendidas)||0),0);
       const delta=totAtual-totAnt;
       const dp=totAnt>0?((delta/totAnt)*100).toFixed(1):null;
-      const cor=delta>=0?'up':'down'; const s=delta>=0?'▲':'▼';
-      compMesAntHTML=`
-        <div class="ind-comp-row" style="font-weight:700;border-bottom:2px solid var(--border);margin-bottom:4px">
-          <span class="ind-comp-label">Total geral</span>
-          <div class="ind-comp-vals">
-            <span class="ind-comp-val" style="color:var(--text3)">${mesLabel(mesAnt)}: ${totAnt.toLocaleString('pt-BR')}</span>
-            <span class="ind-comp-val">${mesLabel(mesAtual)}: ${totAtual.toLocaleString('pt-BR')}</span>
-            ${dp?`<span class="ind-comp-delta ${cor}">${s} ${Math.abs(dp)}%</span>`:''}
-          </div>
-        </div>`;
-      // Por posto
-      rankSorted.slice(0,8).forEach(([nome])=>{
-        const dAtual=dados.find(x=>x.postoNome===nome);
-        const dAnt=indAnt.find(x=>x.postoNome===nome);
-        if(!dAtual||!dAnt) return;
-        const vA=parseInt(dAtual.senhasAtendidas)||0;
-        const vB=parseInt(dAnt.senhasAtendidas)||0;
+      const cor=delta>=0?'green':'red'; const s=delta>=0?'▲':'▼';
+
+      // Tabela limpa: posto | mês ant | atual | delta
+      const postosList=[...new Set([...dados,...indAnt].map(d=>d.postoNome))].sort();
+      const linhas=postosList.map(nome=>{
+        const vA=(dados.find(x=>x.postoNome===nome)?.senhasAtendidas)||0;
+        const vB=(indAnt.find(x=>x.postoNome===nome)?.senhasAtendidas)||0;
         const dlt=vA-vB; const dpp=vB>0?((dlt/vB)*100).toFixed(1):null;
-        const c=dlt>=0?'up':'down'; const sv=dlt>=0?'▲':'▼';
-        compMesAntHTML+=`<div class="ind-comp-row">
-          <span class="ind-comp-label">${nome}</span>
-          <div class="ind-comp-vals">
-            <span class="ind-comp-val" style="color:var(--text3)">${vB.toLocaleString('pt-BR')}</span>
-            <span class="ind-comp-val">${vA.toLocaleString('pt-BR')}</span>
-            ${dpp?`<span class="ind-comp-delta ${c}">${sv} ${Math.abs(dpp)}%</span>`:''}
-          </div>
-        </div>`;
-      });
+        const c=dlt>=0?'green':'red'; const sv=dlt>=0?'▲':'▼';
+        return `<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:7px 8px;font-size:12px;white-space:nowrap">${nome}</td>
+          <td style="padding:7px 8px;text-align:right;font-size:12px;color:var(--text3)">${vB.toLocaleString('pt-BR')}</td>
+          <td style="padding:7px 8px;text-align:right;font-size:12px;font-weight:700">${vA.toLocaleString('pt-BR')}</td>
+          <td style="padding:7px 8px;text-align:right;font-size:12px;font-weight:700;color:var(--${c})">${dpp?sv+' '+Math.abs(dpp)+'%':'—'}</td>
+        </tr>`;
+      }).join('');
+
+      compMesAntHTML=`
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <span style="font-size:12px;color:var(--text3)">${mesLabel(mesAnt)} → ${mesLabel(mesAtual)}</span>
+          <span style="font-size:14px;font-weight:700;color:var(--${cor})">${s} ${Math.abs(dp||0)}% total</span>
+        </div>
+        <div style="overflow-x:auto;max-height:320px;overflow-y:auto">
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="border-bottom:2px solid var(--border)">
+            <th style="padding:6px 8px;text-align:left;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.6px">Posto</th>
+            <th style="padding:6px 8px;text-align:right;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">${mesLabel(mesAnt)}</th>
+            <th style="padding:6px 8px;text-align:right;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">${mesLabel(mesAtual)}</th>
+            <th style="padding:6px 8px;text-align:right;font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase">Δ</th>
+          </tr></thead>
+          <tbody>${linhas}</tbody>
+          <tfoot><tr style="border-top:2px solid var(--border);background:var(--surface)">
+            <td style="padding:8px;font-size:12px;font-weight:700">Total</td>
+            <td style="padding:8px;text-align:right;font-size:12px;font-weight:700;color:var(--text3)">${totAnt.toLocaleString('pt-BR')}</td>
+            <td style="padding:8px;text-align:right;font-size:12px;font-weight:700">${totAtual.toLocaleString('pt-BR')}</td>
+            <td style="padding:8px;text-align:right;font-size:13px;font-weight:700;color:var(--${cor})">${s} ${Math.abs(dp||0)}%</td>
+          </tr></tfoot>
+        </table></div>`;
+    } else if(mesesSelecionados.length>1) {
+      compMesAntHTML=`<div class="ind-empty" style="padding:20px">Selecione apenas 1 mês para ver o comparativo.</div>`;
     } else {
-      compMesAntHTML=`<div class="ind-empty" style="padding:16px">Sem dados de ${mesAnt?mesLabel(mesAnt):'mês anterior'}.</div>`;
+      compMesAntHTML=`<div class="ind-empty" style="padding:20px">Sem dados do mês anterior.</div>`;
     }
-  } else {
-    compMesAntHTML=`<div class="ind-empty" style="padding:16px">Selecione apenas 1 mês para ver o comparativo.</div>`;
   }
 
   // ── 3. Comparativo média do ano (todos meses disponíveis) ──
@@ -4455,43 +4467,31 @@ function renderAnalisesCompletas(dados,postos,totalDiasUteis) {
       </div>`;
     }).join('')}`;
 
-  // ── 4. Postos em alerta (abaixo da média de volume E TME alto) ──
-  const mediaVolPosto=dados.length>0?totalDiasUteis>0?Math.round(Object.values(porPosto).reduce((a,b)=>a+b,0)/(Object.keys(porPosto).length||1)/totalDiasUteis):0:0;
-  // TME médio geral
-  let somaTMEg=0,cTMEg=0;
-  dados.forEach(d=>{const t=parseTempo(d.tme);if(t!==null){somaTMEg+=t;cTMEg++;}});
-  const mediaTMEgeral=cTMEg>0?somaTMEg/cTMEg:0;
+  // ── 4. Postos em alerta (abaixo da média de volume) ──
+  const mediaVolPosto=Object.keys(porPosto).length>0&&totalDiasUteis>0
+    ?Object.values(porPosto).reduce((a,b)=>a+b,0)/(Object.keys(porPosto).length*totalDiasUteis):0;
 
-  // Agrupa por posto
   const agrupAlerta={};
   dados.forEach(d=>{
-    if(!agrupAlerta[d.postoNome]) agrupAlerta[d.postoNome]={atend:0,tmes:[],meses:[]};
+    if(!agrupAlerta[d.postoNome]) agrupAlerta[d.postoNome]={atend:0,meses:[]};
     agrupAlerta[d.postoNome].atend+=parseInt(d.senhasAtendidas)||0;
-    const t=parseTempo(d.tme); if(t!==null) agrupAlerta[d.postoNome].tmes.push(t);
     agrupAlerta[d.postoNome].meses.push(d.mesRef);
   });
   const alertas=Object.entries(agrupAlerta).map(([nome,g])=>{
     const mesesDoPosto=[...new Set(g.meses)];
     const duPosto=mesesDoPosto.reduce((a,m)=>a+diasUteisMes(m),0);
     const mediaDia=duPosto>0?g.atend/duPosto:0;
-    const mediaTME=g.tmes.length>0?g.tmes.reduce((a,b)=>a+b,0)/g.tmes.length:0;
-    const baixoVol=mediaDia<mediaVolPosto;
-    const altoTME=mediaTME>mediaTMEgeral;
-    return{nome,mediaDia:Math.round(mediaDia),mediaTME,baixoVol,altoTME,score:(baixoVol?1:0)+(altoTME?1:0)};
-  }).filter(a=>a.score>0).sort((a,b)=>b.score-a.score||b.mediaTME-a.mediaTME);
+    return{nome,mediaDia:Math.round(mediaDia),baixoVol:mediaDia<mediaVolPosto};
+  }).filter(a=>a.baixoVol).sort((a,b)=>a.mediaDia-b.mediaDia);
 
   const alertaHTML=alertas.length?alertas.map(a=>`
-    <div style="background:var(--surface);border-radius:8px;padding:10px 12px;margin-bottom:8px;border-left:3px solid ${a.score===2?'var(--red)':'var(--yellow)'};display:flex;align-items:center;justify-content:space-between;gap:8px">
-      <div>
-        <div style="font-size:13px;font-weight:700;color:var(--text1)">${a.nome}</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px">
-          ${a.baixoVol?`<span style="color:var(--red)">↓ Vol: ${a.mediaDia}/dia (média ${mediaVolPosto}/dia)</span>`:''}
-          ${a.altoTME&&a.baixoVol?' • ':''}
-          ${a.altoTME?`<span style="color:var(--yellow)">↑ TME: ${fmtTempo(Math.round(a.mediaTME))} (média ${fmtTempo(Math.round(mediaTMEgeral))})</span>`:''}
-        </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid var(--border)">
+      <span style="font-size:12px;font-weight:600;color:var(--text1)">${a.nome}</span>
+      <div style="text-align:right">
+        <span style="font-size:12px;color:var(--red);font-weight:700">${a.mediaDia}/dia</span>
+        <span style="font-size:11px;color:var(--text3);margin-left:6px">média: ${Math.round(mediaVolPosto)}/dia</span>
       </div>
-      <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;background:${a.score===2?'rgba(239,68,68,.15)':'rgba(234,179,8,.15)'};color:${a.score===2?'var(--red)':'var(--yellow)'}">${a.score===2?'⚠ CRÍTICO':'↓ ATENÇÃO'}</span>
-    </div>`).join(''):`<div class="ind-empty" style="padding:16px">✅ Nenhum posto em alerta no período.</div>`;
+    </div>`).join(''):`<div class="ind-empty" style="padding:16px">✅ Todos os postos acima da média.</div>`;
 
   // ── 5. NS30 por posto ──
   const nsAgrup={};
@@ -4646,7 +4646,7 @@ async function importarExcelIndicadores() {
   reader.onload=async function(e){
     try{
       const data=new Uint8Array(e.target.result);
-      const wb=XLSX.read(data,{type:'array',cellDates:true});
+      const wb=XLSX.read(data,{type:'array'});
       const sheet=wb.Sheets[wb.SheetNames[0]];
       const rows=XLSX.utils.sheet_to_json(sheet);
       const nomeMap={
@@ -4665,10 +4665,14 @@ async function importarExcelIndicadores() {
         'POSTO TRAJANO DE MORAES':'Trajano de Moraes','POSTO VARRE-SAI':'Varre-Sai',
       };
       function timeToStr(val){
-        if(!val) return '';
-        if(val instanceof Date) return `${String(val.getHours()).padStart(2,'0')}:${String(val.getMinutes()).padStart(2,'0')}:${String(val.getSeconds()).padStart(2,'0')}`;
-        if(typeof val==='number'){const seg=Math.round(val*86400);return `${String(Math.floor(seg/3600)).padStart(2,'0')}:${String(Math.floor((seg%3600)/60)).padStart(2,'0')}:${String(seg%60).padStart(2,'0')}`;}
-        return String(val);
+        if(!val && val!==0) return '';
+        // Número serial do Excel (fração de dia, ex: 0.003 = ~4min)
+        if(typeof val==='number'){
+          const seg=Math.round(val*86400);
+          return `${String(Math.floor(seg/3600)).padStart(2,'0')}:${String(Math.floor((seg%3600)/60)).padStart(2,'0')}:${String(seg%60).padStart(2,'0')}`;
+        }
+        if(typeof val==='string') return val;
+        return '';
       }
       const postosRows=rows.filter(r=>r['para']&&String(r['para']).startsWith('POSTO'));
       if(!postosRows.length){toast('Nenhum dado de posto encontrado','err');btn.disabled=false;btn.textContent='📥 Importar';return;}
@@ -4680,18 +4684,18 @@ async function importarExcelIndicadores() {
         batch.set(db.collection('indicadores').doc(docId),{
           mesRef, postoNome:nomeSistema,
           dataReferencia:dataRef||null,
-          senhasAtendidas:parseInt(row['Atendidas']||0)||0,
-          senhasCanceladas:parseInt(row['Canceladas']||0)||0,
-          senhasPerdidas:parseInt(row['Senhas perdidas']||0)||0,
-          volumeReal:parseInt(row['Volume Real']||0)||0,
+          senhasAtendidas:Math.round(parseFloat(row['Atendidas'])||0),
+          senhasCanceladas:Math.round(parseFloat(row['Canceladas'])||0),
+          senhasPerdidas:Math.round(parseFloat(row['Senhas perdidas'])||0),
+          volumeReal:Math.round(parseFloat(row['Volume Real'])||0),
           tma:timeToStr(row['TMA Real']), tme:timeToStr(row['TME Real']),
-          ns10:!isNaN(parseFloat(row['NS 10']))?Math.round(parseFloat(row['NS 10'])*10000)/100:null,
-          ns15:!isNaN(parseFloat(row['NS 15']))?Math.round(parseFloat(row['NS 15'])*10000)/100:null,
-          ns30:!isNaN(parseFloat(row['NS 30']))?Math.round(parseFloat(row['NS 30'])*10000)/100:null,
-          atendidas30min:parseInt(row['Atendidas até 30 minutos']||0)||0,
-          apos30min:parseInt(row['Atendidas após 30 minutos']||0)||0,
-          atendidas45min:parseInt(row['Atendidas até 45 minutos']||0)||0,
-          apos45min:parseInt(row['Atendidas após 45 minutos']||0)||0,
+          ns10:(row['NS 10']!=null&&!isNaN(parseFloat(row['NS 10'])))?Math.round(parseFloat(row['NS 10'])*10000)/100:null,
+          ns15:(row['NS 15']!=null&&!isNaN(parseFloat(row['NS 15'])))?Math.round(parseFloat(row['NS 15'])*10000)/100:null,
+          ns30:(row['NS 30']!=null&&!isNaN(parseFloat(row['NS 30'])))?Math.round(parseFloat(row['NS 30'])*10000)/100:null,
+          atendidas30min:Math.round(parseFloat(row['Atendidas até 30 minutos'])||0),
+          apos30min:Math.round(parseFloat(row['Atendidas após 30 minutos'])||0),
+          atendidas45min:Math.round(parseFloat(row['Atendidas até 45 minutos'])||0),
+          apos45min:Math.round(parseFloat(row['Atendidas após 45 minutos'])||0),
           updatedAt:new Date().toISOString()
         },{merge:true}); count++;
       });
