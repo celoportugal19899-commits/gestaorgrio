@@ -4164,6 +4164,20 @@ const META_TMA   = 288;     // 00:04:48 em segundos
 const META_TME   = 569;     // 00:09:29 em segundos
 
 // ── Helpers ──
+// Feriados nacionais fixos (MM-DD) + móveis por ano
+const FERIADOS_FIXOS = ['01-01','04-21','05-01','09-07','10-12','11-02','11-15','11-20','12-25'];
+const FERIADOS_MOVEIS = {
+  2026: ['2026-02-16','2026-02-17','2026-04-03','2026-04-05','2026-06-04','2026-10-28'],
+  2025: ['2025-03-03','2025-03-04','2025-04-18','2025-04-20','2025-06-19','2025-10-28'],
+};
+function isFeriado(ano, mes, dia) {
+  const mmdd = `${String(mes).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
+  if(FERIADOS_FIXOS.includes(mmdd)) return true;
+  const yyyy_mm_dd = `${ano}-${String(mes).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
+  const moveis = FERIADOS_MOVEIS[ano] || [];
+  return moveis.includes(yyyy_mm_dd);
+}
+
 function diasUteisMes(anoMes, dataCorte) {
   // dataCorte: string 'YYYY-MM-DD' — se informado, conta só até essa data
   const [ano,mes]=anoMes.split('-').map(Number);
@@ -4171,11 +4185,13 @@ function diasUteisMes(anoMes, dataCorte) {
   const limDia = dataCorte ? new Date(dataCorte).getDate() : dim;
   const limMes = dataCorte ? new Date(dataCorte).getMonth()+1 : mes;
   const limAno = dataCorte ? new Date(dataCorte).getFullYear() : ano;
-  // Só aplica o corte se a data for do mesmo mês/ano
   const diaFim = (limAno===ano && limMes===mes) ? Math.min(limDia, dim) : dim;
   let c=0;
-  for(let d=1;d<=diaFim;d++){const w=new Date(ano,mes-1,d).getDay();if(w!==0&&w!==6)c++;}
-  return Math.max(c, 1); // mínimo 1 para não dividir por zero
+  for(let d=1;d<=diaFim;d++){
+    const w=new Date(ano,mes-1,d).getDay();
+    if(w!==0 && w!==6 && !isFeriado(ano,mes,d)) c++;
+  }
+  return Math.max(c, 1);
 }
 
 function diasUteisMesComDados(anoMes, dadosMes) {
@@ -4339,7 +4355,7 @@ async function renderPainelIndicadores() {
   const totalHoras=Object.values(porPostoHoras).reduce((a,b)=>a+b,0);
   const senhasHora=totalHoras>0?(totalAtendidas/totalHoras).toFixed(1):'—';
   const nPostos=Object.keys(porPostoHoras).length||1;
-  const mediaGeral=totalDiasUteis>0?Math.round(totalAtendidas/(nPostos*totalDiasUteis)):0;
+  const mediaGeral=totalDiasUteis>0?Math.round(totalAtendidas/totalDiasUteis):0;
 
   let somaTMA=0,cTMA=0,somaTME=0,cTME=0,somaS10=0,somaS15=0,somaS30=0,cNS=0;
   dados.forEach(d=>{
@@ -4358,7 +4374,7 @@ async function renderPainelIndicadores() {
   document.getElementById('ind-kpi-grid').innerHTML=`
     <div class="ind-kpi-card"><div class="ind-kpi-label">Senhas Atendidas</div><div class="ind-kpi-val">${totalAtendidas.toLocaleString('pt-BR')}</div><div class="ind-kpi-sub">${nPostos} posto(s)</div></div>
     <div class="ind-kpi-card"><div class="ind-kpi-label">Canceladas</div><div class="ind-kpi-val">${totalCanceladas.toLocaleString('pt-BR')}</div><div class="ind-kpi-sub">${totalAtendidas>0?((totalCanceladas/totalAtendidas)*100).toFixed(1)+'% do total':'—'}</div></div>
-    <div class="ind-kpi-card"><div class="ind-kpi-label">Méd/Dia Útil p/ Posto</div><div class="ind-kpi-val">${mediaGeral.toLocaleString('pt-BR')}</div><div class="ind-kpi-sub">${totalDiasUteis} dias úteis</div></div>
+    <div class="ind-kpi-card"><div class="ind-kpi-label">Méd/Dia Útil</div><div class="ind-kpi-val">${mediaGeral.toLocaleString('pt-BR')}</div><div class="ind-kpi-sub">${totalDiasUteis} dias úteis</div></div>
     <div class="ind-kpi-card"><div class="ind-kpi-label">Senhas / Hora</div><div class="ind-kpi-val">${senhasHora}</div><div class="ind-kpi-sub">média geral</div></div>
     <div class="ind-kpi-card"><div class="ind-kpi-label">TMA Médio</div><div class="ind-kpi-val" style="font-size:18px">${fmtTempo(mediaTMA)}</div><div class="ind-kpi-sub">tempo médio atend.</div></div>
     <div class="ind-kpi-card"><div class="ind-kpi-label">TME Médio</div><div class="ind-kpi-val" style="font-size:18px">${fmtTempo(mediaTME)}</div><div class="ind-kpi-sub">tempo médio espera</div></div>
