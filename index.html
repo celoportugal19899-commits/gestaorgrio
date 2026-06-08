@@ -181,6 +181,52 @@
   .sidebar-section-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1.2px;font-weight:700;padding:6px 8px;}
   .sidebar-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;font-size:13.5px;font-weight:500;cursor:pointer;color:var(--text2);transition:all .15s;margin-bottom:2px;}
   .sidebar-item:hover{background:var(--surface3);color:var(--text);}
+  .sidebar-group-toggle{justify-content:space-between;}
+  .group-arrow{font-size:11px;color:var(--text3);transition:transform .2s;margin-left:auto;}
+  .group-arrow.open{transform:rotate(90deg);}
+  .sidebar-sub{padding-left:28px;font-size:13px;}
+  .sidebar-group{padding-left:0;border-left:2px solid var(--border);margin-left:10px;margin-bottom:4px;}
+  .ind-topbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:20px;}
+  .ind-filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+  .ind-kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:24px;}
+  .ind-kpi-card{background:var(--surface2);border-radius:10px;padding:14px 16px;border:1px solid var(--border);}
+  .ind-kpi-label{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;font-weight:700;margin-bottom:6px;}
+  .ind-kpi-val{font-size:24px;font-weight:800;color:var(--text1);line-height:1;}
+  .ind-kpi-sub{font-size:11px;color:var(--text3);margin-top:4px;}
+  .ind-kpi-card.green{border-color:var(--green);} .ind-kpi-card.red{border-color:var(--red);} .ind-kpi-card.yellow{border-color:var(--yellow);}
+  .ind-section-title{font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;font-weight:700;margin:0 0 12px;}
+  .ind-table{width:100%;border-collapse:collapse;font-size:13px;}
+  .ind-table th{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-weight:700;padding:8px 10px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap;}
+  .ind-table td{padding:9px 10px;border-bottom:1px solid var(--border);color:var(--text1);}
+  .ind-table tr:hover td{background:var(--surface2);}
+  .ind-table .rank{font-weight:700;color:var(--accent);width:32px;}
+  .ind-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;}
+  .ind-badge.green{background:rgba(34,197,94,.15);color:var(--green);}
+  .ind-badge.red{background:rgba(239,68,68,.15);color:var(--red);}
+  .ind-badge.yellow{background:rgba(234,179,8,.15);color:var(--yellow);}
+  .ind-analise-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin-bottom:24px;}
+  .ind-analise-card{background:var(--surface2);border-radius:10px;padding:16px;border:1px solid var(--border);}
+  .ind-analise-card h3{font-size:13px;font-weight:700;color:var(--text1);margin:0 0 12px;}
+  .ind-bar-row{display:flex;align-items:center;gap:8px;margin-bottom:7px;font-size:12px;}
+  .ind-bar-wrap{flex:1;background:var(--border);border-radius:4px;height:8px;overflow:hidden;}
+  .ind-bar-fill{height:100%;border-radius:4px;background:var(--accent);transition:width .4s;}
+  .ind-bar-fill.green{background:var(--green);} .ind-bar-fill.red{background:var(--red);}
+  .ind-posto-name{width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text2);}
+  .ind-posto-val{width:55px;text-align:right;font-weight:700;color:var(--text1);}
+  .ind-lanc-table{width:100%;border-collapse:collapse;font-size:13px;}
+  .ind-lanc-table th{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-weight:700;padding:8px 6px;border-bottom:1px solid var(--border);text-align:center;white-space:nowrap;}
+  .ind-lanc-table td{padding:6px 4px;border-bottom:1px solid var(--border);}
+  .ind-lanc-table input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 6px;color:var(--text1);font-size:12px;text-align:center;}
+  .ind-lanc-table input:focus{outline:none;border-color:var(--accent);}
+  .ind-lanc-nome{font-size:12px;font-weight:600;color:var(--text1);white-space:nowrap;padding-left:8px!important;}
+  .ind-comp-row{display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px;}
+  .ind-comp-row:last-child{border-bottom:none;}
+  .ind-comp-label{color:var(--text2);flex:1;}
+  .ind-comp-vals{display:flex;gap:16px;}
+  .ind-comp-val{font-weight:700;color:var(--text1);}
+  .ind-comp-delta{font-size:11px;font-weight:700;}
+  .ind-comp-delta.up{color:var(--green);} .ind-comp-delta.down{color:var(--red);}
+  .ind-empty{text-align:center;padding:40px;color:var(--text3);font-size:13px;}
   .sidebar-item.active{background:rgba(108,108,255,0.15);color:var(--accent);}
   .sidebar-item .icon{font-size:16px;width:20px;text-align:center;}
   .sidebar-footer{margin-top:auto;padding:16px 20px;border-top:1px solid var(--border);}
@@ -607,7 +653,11 @@
         <div class="sidebar-item" id="nav-tasks" onclick="showView('adm-tasks',this)"><span class="icon">◈</span> Demandas</div>
         <div class="sidebar-item" id="nav-team" onclick="showView('adm-team',this)"><span class="icon">◉</span> Time</div>
         <div class="sidebar-item" id="nav-ponto-adm" onclick="showView('adm-ponto',this)"><span class="icon">⏱</span> Ponto Eletrônico</div>
-        <div class="sidebar-item" id="nav-postos-adm" onclick="showView('adm-postos',this)"><span class="icon">🏪</span> Postos</div>
+        <div class="sidebar-item sidebar-group-toggle" id="nav-postos-group" onclick="toggleSidebarGroup('postos-group',this)"><span class="icon">🏪</span> Postos de Atendimento <span class="group-arrow" id="arrow-postos-group">▸</span></div>
+        <div class="sidebar-group" id="postos-group" style="display:none">
+          <div class="sidebar-item sidebar-sub" id="nav-postos-adm" onclick="showView('adm-postos',this)"><span class="icon">📡</span> Horários Postos</div>
+          <div class="sidebar-item sidebar-sub" id="nav-indicadores-adm" onclick="showView('adm-indicadores',this)"><span class="icon">📊</span> Indicadores</div>
+        </div>
         <div class="sidebar-item" id="nav-inc-adm" onclick="showView('adm-incidencias',this)"><span class="icon">📋</span> Incidências <span id="inc-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
         <div class="sidebar-item" id="nav-caixas-adm" onclick="showView('adm-caixas',this)"><span class="icon">💰</span> Caixas Rotativos <span id="caixa-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
         <div class="sidebar-item" id="nav-comb-adm" onclick="showView('adm-combustivel',this)"><span class="icon">⛽</span> Combustível <span id="comb-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
@@ -888,6 +938,82 @@
         <div class="eb-btns">
           <button class="eb-btn green" onclick="exportarPostosExcel()">📊 Excel</button>
           <button class="eb-btn red" onclick="exportarPostosPDF()">📄 PDF</button>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- INDICADORES POSTOS -->
+    <div id="view-adm-indicadores" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Indicadores</h1><p>Postos de Atendimento — acumulado mensal D-1</p></div>
+        <div class="topbar-actions" style="gap:8px;display:flex;flex-wrap:wrap;align-items:center;">
+          <select class="form-select" id="ind-tab-sel" style="width:150px" onchange="renderIndicadores()">
+            <option value="painel">📊 Painel</option>
+            <option value="multas">⚠ Multas NS30</option>
+            <option value="importar">📥 Importar</option>
+          </select>
+          <select class="form-select" id="ind-mes-filtro" style="width:160px" onchange="renderIndicadores()"></select>
+          <select class="form-select" id="ind-posto-filtro" style="width:180px" onchange="renderIndicadores()">
+            <option value="">Todos os postos</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- ABA PAINEL -->
+      <div id="ind-view-painel">
+        <div id="ind-kpi-grid" class="ind-kpi-grid"></div>
+        <div id="ind-analises" class="ind-analise-grid"></div>
+        <div style="background:var(--surface);border-radius:12px;border:1px solid var(--border);padding:16px;">
+          <div class="ind-section-title" id="ind-table-title">Detalhamento por Posto</div>
+          <div style="overflow-x:auto"><table class="ind-table">
+            <thead><tr>
+              <th>#</th><th>Posto</th><th>Atendidas</th><th>Canceladas</th>
+              <th>Méd/Dia Útil</th><th>Sen/Hora</th>
+              <th>TMA</th><th>TME</th>
+              <th>NS10</th><th>NS15</th><th>NS30</th><th>Após 30min</th>
+            </tr></thead>
+            <tbody id="ind-detail-body"><tr><td colspan="12" class="ind-empty">Selecione um mês para ver os dados.</td></tr></tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <!-- ABA MULTAS -->
+      <div id="ind-view-multas" style="display:none">
+        <div id="ind-multas-body"></div>
+      </div>
+
+      <!-- ABA IMPORTAR -->
+      <div id="ind-view-importar" style="display:none">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;margin-bottom:20px">
+          <!-- Card importar Excel -->
+          <div style="background:var(--surface2);border-radius:12px;border:1px solid var(--border);padding:20px">
+            <div style="font-size:14px;font-weight:700;color:var(--text1);margin-bottom:6px">📥 Importar Excel da Neobpo</div>
+            <div style="font-size:12px;color:var(--text3);margin-bottom:16px">Faça o upload do arquivo exportado do sistema Neobpo. Informe o mês de referência dos dados.</div>
+            <div style="margin-bottom:12px">
+              <label class="form-label">Mês de referência</label>
+              <input type="month" class="form-input" id="ind-import-mes" style="width:100%">
+            </div>
+            <div style="margin-bottom:16px">
+              <label class="form-label">Arquivo Excel (.xlsx)</label>
+              <input type="file" class="form-input" id="ind-import-file" accept=".xlsx" style="padding:6px">
+            </div>
+            <button class="btn btn-primary btn-block" id="ind-import-btn" onclick="importarExcelIndicadores()">📥 Importar</button>
+          </div>
+          <!-- Card histórico inicial -->
+          <div style="background:var(--surface2);border-radius:12px;border:1px solid var(--border);padding:20px">
+            <div style="font-size:14px;font-weight:700;color:var(--text1);margin-bottom:6px">📦 Carga Histórica</div>
+            <div style="font-size:12px;color:var(--text3);margin-bottom:16px">Importa os dados de <strong>Janeiro a Maio de 2026</strong> diretamente para o Firestore. Execute uma única vez para popular o histórico inicial.</div>
+            <div style="background:var(--surface);border-radius:8px;padding:12px;margin-bottom:16px;font-size:12px">
+              <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--text3)">Registros</span><span style="font-weight:700">145 (29 postos × 5 meses)</span></div>
+              <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--text3)">Período</span><span style="font-weight:700">Jan–Mai 2026</span></div>
+              <div style="display:flex;justify-content:space-between"><span style="color:var(--text3)">Ofensores NS30</span><span style="font-weight:700;color:var(--red)">24 senhas após 30min</span></div>
+            </div>
+            <button class="btn btn-secondary btn-block" id="ind-hist-btn" onclick="importarHistorico()">📦 Importar Histórico (Jan–Mai 2026)</button>
+          </div>
+        </div>
+        <div style="background:var(--surface2);border-radius:10px;padding:14px;font-size:12px;color:var(--text3);border:1px solid var(--border)">
+          <strong style="color:var(--text2)">Como usar:</strong> Exporte o relatório mensal no sistema da Neobpo (mesmo formato dos arquivos históricos), selecione o mês de referência acima e faça o upload. Os dados são importados automaticamente para todos os postos de uma vez.
         </div>
       </div>
     </div>
@@ -2690,6 +2816,7 @@ function refreshCurrentView() {
   if (id === 'adm-ponto') renderAdmPonto();
   if (id === 'col-ponto') renderColPonto();
   if (id === 'adm-postos') renderAdmPostos();
+  if (id === 'adm-indicadores') { initIndicadoresMesFiltro(); renderIndicadores(); }
   if (id === 'posto-registro') renderPostoRegistro();
   if (id === 'supervisor-postos') renderSupervisorPostos();
   if (id === 'sup-caixa') renderSupCaixa();
@@ -2711,6 +2838,12 @@ function showView(name, el) {
   document.getElementById('view-' + name).classList.add('active');
   document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
   if (el) el.classList.add('active');
+  if (name === 'adm-postos' || name === 'adm-indicadores') {
+    const grp = document.getElementById('postos-group');
+    const arr = document.getElementById('arrow-postos-group');
+    if (grp) grp.style.display = 'block';
+    if (arr) arr.classList.add('open');
+  }
   if (name === 'adm-dashboard') renderDashboard();
   if (name === 'adm-tasks') { renderAllTasks(); renderPendingDemandasAdm(); }
   if (name === 'adm-team') renderTeam();
@@ -2718,6 +2851,7 @@ function showView(name, el) {
   if (name === 'adm-ponto') renderAdmPonto();
   if (name === 'col-ponto') renderColPonto();
   if (name === 'adm-postos') renderAdmPostos();
+  if (name === 'adm-indicadores') { initIndicadoresMesFiltro(); renderIndicadores(); }
   if (name === 'posto-registro') renderPostoRegistro();
   if (name === 'supervisor-postos') renderSupervisorPostos();
   if (name === 'sup-caixa') renderSupCaixa();
@@ -3978,6 +4112,489 @@ function farolHtml(status, minAtraso) {
   if (status === 'aguardando') return `<span class="semaforo sem-yellow"><span class="sem-dot"></span>Aguardando</span>`;
   return `<span class="semaforo" style="background:var(--surface3);color:var(--text3);border:1px solid var(--border)"><span class="sem-dot" style="background:var(--text3)"></span>Fora Horário</span>`;
 }
+
+
+// ══════════════════════════════════════
+// INDICADORES POSTOS
+// ══════════════════════════════════════
+
+const DADOS_HISTORICOS_INICIAIS = [{"id":"2026-01_Aperibe","mesRef":"2026-01","postoNome":"Aperibé","senhasAtendidas":621,"senhasCanceladas":4,"senhasPerdidas":0,"volumeReal":625,"tma":"00:04:19","tme":"00:02:18","ns10":94.04,"ns15":98.23,"ns30":100.0,"atendidas30min":621,"apos30min":0,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-01_Areal","mesRef":"2026-01","postoNome":"Areal","senhasAtendidas":856,"senhasCanceladas":15,"senhasPerdidas":0,"volumeReal":871,"tma":"00:03:57","tme":"00:07:05","ns10":74.18,"ns15":89.72,"ns30":100.0,"atendidas30min":856,"apos30min":0,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-01_Bom_Jardim","mesRef":"2026-01","postoNome":"Bom Jardim","senhasAtendidas":656,"senhasCanceladas":3,"senhasPerdidas":1,"volumeReal":659,"tma":"00:01:52","tme":"00:09:28","ns10":58.08,"ns15":72.41,"ns30":99.85,"atendidas30min":655,"apos30min":1,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-01_Bom_Jesus_do_Itabapoana","mesRef":"2026-01","postoNome":"Bom Jesus do Itabapoana","senhasAtendidas":1437,"senhasCanceladas":28,"senhasPerdidas":0,"volumeReal":1465,"tma":"00:04:43","tme":"00:05:30","ns10":82.53,"ns15":95.27,"ns30":100.0,"atendidas30min":1437,"apos30min":0,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-01_Cambuci","mesRef":"2026-01","postoNome":"Cambuci","senhasAtendidas":291,"senhasCanceladas":7,"senhasPerdidas":0,"volumeReal":298,"tma":"00:04:30","tme":"00:05:01","ns10":79.04,"ns15":95.19,"ns30":100.0,"atendidas30min":291,"apos30min":0,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-01_Cantagalo","mesRef":"2026-01","postoNome":"Cantagalo","senhasAtendidas":491,"senhasCanceladas":5,"senhasPerdidas":0,"volumeReal":496,"tma":"00:05:07","tme":"00:05:10","ns10":80.04,"ns15":98.37,"ns30":100.0,"atendidas30min":491,"apos30min":0,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-01_Carapebus","mesRef":"2026-01","postoNome":"Carapebus","senhasAtendidas":478,"senhasCanceladas":6,"senhasPerdidas":0,"volumeReal":484,"tma":"00:05:18","tme":"00:08:41","ns10":54.81,"ns15":79.08,"ns30":100.0,"atendidas30min":478,"apos30min":0,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-01_Cardoso_Moreira","mesRef":"2026-01","postoNome":"Cardoso Moreira","senhasAtendidas":452,"senhasCanceladas":14,"senhasPerdidas":0,"volumeReal":466,"tma":"00:05:36","tme":"00:06:52","ns10":69.25,"ns15":90.04,"ns30":100.0,"atendidas30min":452,"apos30min":0,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-01_Conceicao_de_Macabu","mesRef":"2026-01","postoNome":"Conceição de Macabu","senhasAtendidas":716,"senhasCanceladas":4,"senhasPerdidas":0,"volumeReal":720,"tma":"00:05:34","tme":"00:03:18","ns10":86.17,"ns15":97.35,"ns30":100.0,"atendidas30min":716,"apos30min":0,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-01_Duas_Barras","mesRef":"2026-01","postoNome":"Duas Barras","senhasAtendidas":190,"senhasCanceladas":6,"senhasPerdidas":0,"volumeReal":196,"tma":"00:05:54","tme":"00:06:29","ns10":76.32,"ns15":86.32,"ns30":100.0,"atendidas30min":190,"apos30min":0,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-01_Guarus","mesRef":"2026-01","postoNome":"Guarus","senhasAtendidas":260,"senhasCanceladas":0,"senhasPerdidas":0,"volumeReal":260,"tma":"00:03:57","tme":"00:00:24","ns10":99.62,"ns15":99.62,"ns30":100.0,"atendidas30min":260,"apos30min":0,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-01_Italva","mesRef":"2026-01","postoNome":"Italva","senhasAtendidas":667,"senhasCanceladas":7,"senhasPerdidas":0,"volumeReal":674,"tma":"00:05:00","tme":"00:06:47","ns10":70.31,"ns15":86.51,"ns30":100.0,"atendidas30min":667,"apos30min":0,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-01_Laje_de_Muriae","mesRef":"2026-01","postoNome":"Laje de Muriaé","senhasAtendidas":244,"senhasCanceladas":12,"senhasPerdidas":0,"volumeReal":256,"tma":"00:03:06","tme":"00:01:00","ns10":99.18,"ns15":100.0,"ns30":100.0,"atendidas30min":244,"apos30min":0,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-01_Macuco","mesRef":"2026-01","postoNome":"Macuco","senhasAtendidas":378,"senhasCanceladas":30,"senhasPerdidas":0,"volumeReal":408,"tma":"00:03:27","tme":"00:04:23","ns10":87.3,"ns15":92.86,"ns30":100.0,"atendidas30min":378,"apos30min":0,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-01_Miracema","mesRef":"2026-01","postoNome":"Miracema","senhasAtendidas":654,"senhasCanceladas":5,"senhasPerdidas":0,"volumeReal":659,"tma":"00:05:09","tme":"00:04:59","ns10":79.51,"ns15":88.38,"ns30":100.0,"atendidas30min":654,"apos30min":0,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-01_Natividade","mesRef":"2026-01","postoNome":"Natividade","senhasAtendidas":794,"senhasCanceladas":0,"senhasPerdidas":0,"volumeReal":794,"tma":"00:04:42","tme":"00:01:50","ns10":94.58,"ns15":96.85,"ns30":100.0,"atendidas30min":794,"apos30min":0,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-01_Nova_Friburgo","mesRef":"2026-01","postoNome":"Nova Friburgo","senhasAtendidas":110,"senhasCanceladas":0,"senhasPerdidas":0,"volumeReal":110,"tma":"00:04:33","tme":"00:00:28","ns10":100.0,"ns15":100.0,"ns30":100.0,"atendidas30min":110,"apos30min":0,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-01_Porciuncula","mesRef":"2026-01","postoNome":"Porciúncula","senhasAtendidas":616,"senhasCanceladas":3,"senhasPerdidas":1,"volumeReal":619,"tma":"00:05:23","tme":"00:02:19","ns10":97.24,"ns15":99.51,"ns30":99.84,"atendidas30min":615,"apos30min":1,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-01_Porto_Real","mesRef":"2026-01","postoNome":"Porto Real","senhasAtendidas":665,"senhasCanceladas":5,"senhasPerdidas":0,"volumeReal":670,"tma":"00:03:58","tme":"00:06:00","ns10":76.99,"ns15":92.03,"ns30":100.0,"atendidas30min":665,"apos30min":0,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-01_Quissama","mesRef":"2026-01","postoNome":"Quissamã","senhasAtendidas":657,"senhasCanceladas":7,"senhasPerdidas":0,"volumeReal":664,"tma":"00:02:32","tme":"00:05:15","ns10":82.19,"ns15":91.93,"ns30":100.0,"atendidas30min":657,"apos30min":0,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-01_Santa_Maria_Madalena","mesRef":"2026-01","postoNome":"Santa Maria Madalena","senhasAtendidas":428,"senhasCanceladas":1,"senhasPerdidas":0,"volumeReal":429,"tma":"00:04:55","tme":"00:00:09","ns10":100.0,"ns15":100.0,"ns30":100.0,"atendidas30min":428,"apos30min":0,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-01_Sao_Jose_de_Ubá","mesRef":"2026-01","postoNome":"São José de Ubá","senhasAtendidas":575,"senhasCanceladas":0,"senhasPerdidas":0,"volumeReal":575,"tma":"00:05:49","tme":"00:04:12","ns10":87.83,"ns15":99.48,"ns30":100.0,"atendidas30min":575,"apos30min":0,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-01_Sao_Jose_do_Vale_do_Rio_Preto","mesRef":"2026-01","postoNome":"São José do Vale do Rio Preto","senhasAtendidas":1032,"senhasCanceladas":3,"senhasPerdidas":0,"volumeReal":1035,"tma":"00:04:35","tme":"00:07:05","ns10":72.0,"ns15":86.34,"ns30":100.0,"atendidas30min":1032,"apos30min":0,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-01_Sao_Sebastiao_do_Alto","mesRef":"2026-01","postoNome":"São Sebastião do Alto","senhasAtendidas":104,"senhasCanceladas":0,"senhasPerdidas":0,"volumeReal":104,"tma":"00:05:34","tme":"00:00:55","ns10":100.0,"ns15":100.0,"ns30":100.0,"atendidas30min":104,"apos30min":0,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-01_Silva_Jardim","mesRef":"2026-01","postoNome":"Silva Jardim","senhasAtendidas":908,"senhasCanceladas":6,"senhasPerdidas":0,"volumeReal":914,"tma":"00:04:50","tme":"00:03:45","ns10":97.58,"ns15":99.67,"ns30":100.0,"atendidas30min":908,"apos30min":0,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-01_Sumidouro","mesRef":"2026-01","postoNome":"Sumidouro","senhasAtendidas":128,"senhasCanceladas":6,"senhasPerdidas":0,"volumeReal":134,"tma":"00:07:20","tme":"00:04:44","ns10":84.38,"ns15":94.53,"ns30":100.0,"atendidas30min":128,"apos30min":0,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-01_Tanguá","mesRef":"2026-01","postoNome":"Tanguá","senhasAtendidas":1180,"senhasCanceladas":39,"senhasPerdidas":2,"volumeReal":1219,"tma":"00:03:53","tme":"00:05:47","ns10":80.93,"ns15":95.93,"ns30":99.83,"atendidas30min":1178,"apos30min":2,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-01_Trajano_de_Moraes","mesRef":"2026-01","postoNome":"Trajano de Moraes","senhasAtendidas":239,"senhasCanceladas":2,"senhasPerdidas":0,"volumeReal":241,"tma":"00:03:04","tme":"00:03:30","ns10":92.05,"ns15":98.74,"ns30":100.0,"atendidas30min":239,"apos30min":0,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-01_Varre-Sai","mesRef":"2026-01","postoNome":"Varre-Sai","senhasAtendidas":554,"senhasCanceladas":1,"senhasPerdidas":0,"volumeReal":555,"tma":"00:04:49","tme":"00:04:38","ns10":87.91,"ns15":98.01,"ns30":100.0,"atendidas30min":554,"apos30min":0,"updatedAt":"2026-01-28T00:00:00.000Z"},{"id":"2026-02_Aperibe","mesRef":"2026-02","postoNome":"Aperibé","senhasAtendidas":454,"senhasCanceladas":0,"senhasPerdidas":0,"volumeReal":454,"tma":"00:04:18","tme":"00:02:49","ns10":92.95,"ns15":98.02,"ns30":100.0,"atendidas30min":454,"apos30min":0,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-02_Areal","mesRef":"2026-02","postoNome":"Areal","senhasAtendidas":508,"senhasCanceladas":49,"senhasPerdidas":0,"volumeReal":557,"tma":"00:05:27","tme":"00:06:27","ns10":78.35,"ns15":90.75,"ns30":100.0,"atendidas30min":508,"apos30min":0,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-02_Bom_Jardim","mesRef":"2026-02","postoNome":"Bom Jardim","senhasAtendidas":352,"senhasCanceladas":2,"senhasPerdidas":4,"volumeReal":354,"tma":"00:03:24","tme":"00:09:36","ns10":57.95,"ns15":75.0,"ns30":98.86,"atendidas30min":348,"apos30min":4,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-02_Bom_Jesus_do_Itabapoana","mesRef":"2026-02","postoNome":"Bom Jesus do Itabapoana","senhasAtendidas":1176,"senhasCanceladas":17,"senhasPerdidas":0,"volumeReal":1193,"tma":"00:04:24","tme":"00:05:00","ns10":87.16,"ns15":97.19,"ns30":100.0,"atendidas30min":1176,"apos30min":0,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-02_Cambuci","mesRef":"2026-02","postoNome":"Cambuci","senhasAtendidas":193,"senhasCanceladas":0,"senhasPerdidas":0,"volumeReal":193,"tma":"00:04:15","tme":"00:06:00","ns10":71.5,"ns15":90.67,"ns30":100.0,"atendidas30min":193,"apos30min":0,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-02_Cantagalo","mesRef":"2026-02","postoNome":"Cantagalo","senhasAtendidas":340,"senhasCanceladas":0,"senhasPerdidas":0,"volumeReal":340,"tma":"00:05:14","tme":"00:05:16","ns10":77.65,"ns15":99.12,"ns30":100.0,"atendidas30min":340,"apos30min":0,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-02_Carapebus","mesRef":"2026-02","postoNome":"Carapebus","senhasAtendidas":384,"senhasCanceladas":11,"senhasPerdidas":0,"volumeReal":395,"tma":"00:06:35","tme":"00:04:13","ns10":81.25,"ns15":89.84,"ns30":100.0,"atendidas30min":384,"apos30min":0,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-02_Cardoso_Moreira","mesRef":"2026-02","postoNome":"Cardoso Moreira","senhasAtendidas":445,"senhasCanceladas":22,"senhasPerdidas":0,"volumeReal":467,"tma":"00:05:15","tme":"00:06:48","ns10":73.03,"ns15":85.39,"ns30":100.0,"atendidas30min":445,"apos30min":0,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-02_Conceicao_de_Macabu","mesRef":"2026-02","postoNome":"Conceição de Macabu","senhasAtendidas":626,"senhasCanceladas":3,"senhasPerdidas":0,"volumeReal":629,"tma":"00:05:14","tme":"00:03:41","ns10":85.46,"ns15":97.44,"ns30":100.0,"atendidas30min":626,"apos30min":0,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-02_Duas_Barras","mesRef":"2026-02","postoNome":"Duas Barras","senhasAtendidas":190,"senhasCanceladas":19,"senhasPerdidas":0,"volumeReal":209,"tma":"00:04:44","tme":"00:07:48","ns10":64.21,"ns15":83.16,"ns30":100.0,"atendidas30min":190,"apos30min":0,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-02_Guarus","mesRef":"2026-02","postoNome":"Guarus","senhasAtendidas":137,"senhasCanceladas":1,"senhasPerdidas":0,"volumeReal":138,"tma":"00:04:48","tme":"00:00:33","ns10":99.27,"ns15":100.0,"ns30":100.0,"atendidas30min":137,"apos30min":0,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-02_Italva","mesRef":"2026-02","postoNome":"Italva","senhasAtendidas":416,"senhasCanceladas":3,"senhasPerdidas":0,"volumeReal":419,"tma":"00:05:22","tme":"00:05:42","ns10":78.85,"ns15":92.07,"ns30":100.0,"atendidas30min":416,"apos30min":0,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-02_Laje_de_Muriae","mesRef":"2026-02","postoNome":"Laje de Muriaé","senhasAtendidas":183,"senhasCanceladas":1,"senhasPerdidas":0,"volumeReal":184,"tma":"00:04:14","tme":"00:01:09","ns10":98.91,"ns15":99.45,"ns30":100.0,"atendidas30min":183,"apos30min":0,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-02_Macuco","mesRef":"2026-02","postoNome":"Macuco","senhasAtendidas":277,"senhasCanceladas":12,"senhasPerdidas":0,"volumeReal":289,"tma":"00:03:19","tme":"00:03:16","ns10":89.89,"ns15":97.47,"ns30":100.0,"atendidas30min":277,"apos30min":0,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-02_Miracema","mesRef":"2026-02","postoNome":"Miracema","senhasAtendidas":419,"senhasCanceladas":10,"senhasPerdidas":0,"volumeReal":429,"tma":"00:05:25","tme":"00:06:30","ns10":72.08,"ns15":83.29,"ns30":100.0,"atendidas30min":419,"apos30min":0,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-02_Natividade","mesRef":"2026-02","postoNome":"Natividade","senhasAtendidas":284,"senhasCanceladas":1,"senhasPerdidas":1,"volumeReal":285,"tma":"00:06:23","tme":"00:03:08","ns10":91.9,"ns15":97.18,"ns30":99.65,"atendidas30min":283,"apos30min":0,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-02_Nova_Friburgo","mesRef":"2026-02","postoNome":"Nova Friburgo","senhasAtendidas":145,"senhasCanceladas":0,"senhasPerdidas":1,"volumeReal":145,"tma":"00:04:31","tme":"00:01:57","ns10":98.62,"ns15":99.31,"ns30":99.31,"atendidas30min":144,"apos30min":0,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-02_Porciuncula","mesRef":"2026-02","postoNome":"Porciúncula","senhasAtendidas":610,"senhasCanceladas":3,"senhasPerdidas":0,"volumeReal":613,"tma":"00:05:18","tme":"00:03:08","ns10":94.59,"ns15":99.84,"ns30":100.0,"atendidas30min":610,"apos30min":0,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-02_Porto_Real","mesRef":"2026-02","postoNome":"Porto Real","senhasAtendidas":341,"senhasCanceladas":4,"senhasPerdidas":0,"volumeReal":345,"tma":"00:06:22","tme":"00:06:20","ns10":72.14,"ns15":93.26,"ns30":100.0,"atendidas30min":341,"apos30min":0,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-02_Quissama","mesRef":"2026-02","postoNome":"Quissamã","senhasAtendidas":366,"senhasCanceladas":4,"senhasPerdidas":0,"volumeReal":370,"tma":"00:06:13","tme":"00:05:06","ns10":83.61,"ns15":94.26,"ns30":100.0,"atendidas30min":366,"apos30min":0,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-02_Santa_Maria_Madalena","mesRef":"2026-02","postoNome":"Santa Maria Madalena","senhasAtendidas":175,"senhasCanceladas":3,"senhasPerdidas":0,"volumeReal":178,"tma":"00:04:27","tme":"00:00:10","ns10":100.0,"ns15":100.0,"ns30":100.0,"atendidas30min":175,"apos30min":0,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-02_Sao_Jose_de_Ubá","mesRef":"2026-02","postoNome":"São José de Ubá","senhasAtendidas":468,"senhasCanceladas":0,"senhasPerdidas":0,"volumeReal":468,"tma":"00:05:48","tme":"00:04:26","ns10":84.83,"ns15":99.36,"ns30":100.0,"atendidas30min":468,"apos30min":0,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-02_Sao_Jose_do_Vale_do_Rio_Preto","mesRef":"2026-02","postoNome":"São José do Vale do Rio Preto","senhasAtendidas":658,"senhasCanceladas":5,"senhasPerdidas":3,"volumeReal":663,"tma":"00:05:02","tme":"00:06:45","ns10":73.56,"ns15":87.08,"ns30":99.54,"atendidas30min":655,"apos30min":3,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-02_Sao_Sebastiao_do_Alto","mesRef":"2026-02","postoNome":"São Sebastião do Alto","senhasAtendidas":69,"senhasCanceladas":3,"senhasPerdidas":0,"volumeReal":72,"tma":"00:07:35","tme":"00:04:28","ns10":82.61,"ns15":94.2,"ns30":100.0,"atendidas30min":69,"apos30min":0,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-02_Silva_Jardim","mesRef":"2026-02","postoNome":"Silva Jardim","senhasAtendidas":610,"senhasCanceladas":3,"senhasPerdidas":0,"volumeReal":613,"tma":"00:05:04","tme":"00:03:55","ns10":96.23,"ns15":99.18,"ns30":100.0,"atendidas30min":610,"apos30min":0,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-02_Sumidouro","mesRef":"2026-02","postoNome":"Sumidouro","senhasAtendidas":90,"senhasCanceladas":7,"senhasPerdidas":0,"volumeReal":97,"tma":"00:09:01","tme":"00:04:24","ns10":84.44,"ns15":91.11,"ns30":100.0,"atendidas30min":90,"apos30min":0,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-02_Tanguá","mesRef":"2026-02","postoNome":"Tanguá","senhasAtendidas":794,"senhasCanceladas":6,"senhasPerdidas":0,"volumeReal":800,"tma":"00:04:26","tme":"00:06:07","ns10":75.94,"ns15":94.46,"ns30":100.0,"atendidas30min":794,"apos30min":0,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-02_Trajano_de_Moraes","mesRef":"2026-02","postoNome":"Trajano de Moraes","senhasAtendidas":216,"senhasCanceladas":5,"senhasPerdidas":0,"volumeReal":221,"tma":"00:04:22","tme":"00:03:35","ns10":91.67,"ns15":99.07,"ns30":100.0,"atendidas30min":216,"apos30min":0,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-02_Varre-Sai","mesRef":"2026-02","postoNome":"Varre-Sai","senhasAtendidas":396,"senhasCanceladas":5,"senhasPerdidas":0,"volumeReal":401,"tma":"00:05:07","tme":"00:05:11","ns10":82.83,"ns15":95.45,"ns30":100.0,"atendidas30min":396,"apos30min":0,"updatedAt":"2026-02-28T00:00:00.000Z"},{"id":"2026-03_Aperibe","mesRef":"2026-03","postoNome":"Aperibé","senhasAtendidas":591,"senhasCanceladas":1,"senhasPerdidas":0,"volumeReal":592,"tma":"00:03:31","tme":"00:02:38","ns10":93.06,"ns15":98.14,"ns30":100.0,"atendidas30min":591,"apos30min":0,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-03_Areal","mesRef":"2026-03","postoNome":"Areal","senhasAtendidas":553,"senhasCanceladas":25,"senhasPerdidas":0,"volumeReal":578,"tma":"00:04:32","tme":"00:08:35","ns10":62.21,"ns15":80.83,"ns30":100.0,"atendidas30min":553,"apos30min":0,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-03_Bom_Jardim","mesRef":"2026-03","postoNome":"Bom Jardim","senhasAtendidas":759,"senhasCanceladas":2,"senhasPerdidas":1,"volumeReal":761,"tma":"00:05:38","tme":"00:09:25","ns10":58.89,"ns15":75.89,"ns30":99.87,"atendidas30min":758,"apos30min":0,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-03_Bom_Jesus_do_Itabapoana","mesRef":"2026-03","postoNome":"Bom Jesus do Itabapoana","senhasAtendidas":1142,"senhasCanceladas":88,"senhasPerdidas":4,"volumeReal":1230,"tma":"00:04:37","tme":"00:09:56","ns10":56.13,"ns15":75.04,"ns30":99.65,"atendidas30min":1138,"apos30min":3,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-03_Cambuci","mesRef":"2026-03","postoNome":"Cambuci","senhasAtendidas":264,"senhasCanceladas":0,"senhasPerdidas":0,"volumeReal":264,"tma":"00:04:25","tme":"00:05:41","ns10":75.38,"ns15":92.42,"ns30":100.0,"atendidas30min":264,"apos30min":0,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-03_Cantagalo","mesRef":"2026-03","postoNome":"Cantagalo","senhasAtendidas":486,"senhasCanceladas":7,"senhasPerdidas":0,"volumeReal":493,"tma":"00:05:12","tme":"00:04:58","ns10":79.84,"ns15":99.59,"ns30":100.0,"atendidas30min":486,"apos30min":0,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-03_Carapebus","mesRef":"2026-03","postoNome":"Carapebus","senhasAtendidas":553,"senhasCanceladas":0,"senhasPerdidas":0,"volumeReal":553,"tma":"00:05:29","tme":"00:07:39","ns10":60.76,"ns15":82.46,"ns30":100.0,"atendidas30min":553,"apos30min":0,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-03_Cardoso_Moreira","mesRef":"2026-03","postoNome":"Cardoso Moreira","senhasAtendidas":290,"senhasCanceladas":36,"senhasPerdidas":0,"volumeReal":326,"tma":"00:05:58","tme":"00:02:45","ns10":93.1,"ns15":97.59,"ns30":100.0,"atendidas30min":290,"apos30min":0,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-03_Conceicao_de_Macabu","mesRef":"2026-03","postoNome":"Conceição de Macabu","senhasAtendidas":831,"senhasCanceladas":4,"senhasPerdidas":0,"volumeReal":835,"tma":"00:05:27","tme":"00:03:35","ns10":86.28,"ns15":97.11,"ns30":100.0,"atendidas30min":831,"apos30min":0,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-03_Duas_Barras","mesRef":"2026-03","postoNome":"Duas Barras","senhasAtendidas":222,"senhasCanceladas":18,"senhasPerdidas":0,"volumeReal":240,"tma":"00:04:38","tme":"00:06:27","ns10":72.52,"ns15":88.74,"ns30":100.0,"atendidas30min":222,"apos30min":0,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-03_Guarus","mesRef":"2026-03","postoNome":"Guarus","senhasAtendidas":263,"senhasCanceladas":0,"senhasPerdidas":0,"volumeReal":263,"tma":"00:04:35","tme":"00:00:24","ns10":99.62,"ns15":100.0,"ns30":100.0,"atendidas30min":263,"apos30min":0,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-03_Italva","mesRef":"2026-03","postoNome":"Italva","senhasAtendidas":404,"senhasCanceladas":3,"senhasPerdidas":0,"volumeReal":407,"tma":"00:04:14","tme":"00:06:59","ns10":73.02,"ns15":88.12,"ns30":100.0,"atendidas30min":404,"apos30min":0,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-03_Laje_de_Muriae","mesRef":"2026-03","postoNome":"Laje de Muriaé","senhasAtendidas":189,"senhasCanceladas":1,"senhasPerdidas":0,"volumeReal":190,"tma":"00:04:37","tme":"00:01:00","ns10":97.88,"ns15":98.94,"ns30":100.0,"atendidas30min":189,"apos30min":0,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-03_Macuco","mesRef":"2026-03","postoNome":"Macuco","senhasAtendidas":279,"senhasCanceladas":7,"senhasPerdidas":0,"volumeReal":286,"tma":"00:04:21","tme":"00:02:03","ns10":95.34,"ns15":96.77,"ns30":100.0,"atendidas30min":279,"apos30min":0,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-03_Miracema","mesRef":"2026-03","postoNome":"Miracema","senhasAtendidas":698,"senhasCanceladas":4,"senhasPerdidas":0,"volumeReal":702,"tma":"00:05:34","tme":"00:05:12","ns10":77.51,"ns15":86.96,"ns30":100.0,"atendidas30min":698,"apos30min":0,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-03_Natividade","mesRef":"2026-03","postoNome":"Natividade","senhasAtendidas":475,"senhasCanceladas":5,"senhasPerdidas":0,"volumeReal":480,"tma":"00:06:23","tme":"00:04:08","ns10":83.37,"ns15":94.53,"ns30":100.0,"atendidas30min":475,"apos30min":0,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-03_Nova_Friburgo","mesRef":"2026-03","postoNome":"Nova Friburgo","senhasAtendidas":129,"senhasCanceladas":1,"senhasPerdidas":0,"volumeReal":130,"tma":"00:05:06","tme":"00:00:37","ns10":100.0,"ns15":100.0,"ns30":100.0,"atendidas30min":129,"apos30min":0,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-03_Porciuncula","mesRef":"2026-03","postoNome":"Porciúncula","senhasAtendidas":727,"senhasCanceladas":0,"senhasPerdidas":0,"volumeReal":727,"tma":"00:05:35","tme":"00:02:54","ns10":95.6,"ns15":99.59,"ns30":100.0,"atendidas30min":727,"apos30min":0,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-03_Porto_Real","mesRef":"2026-03","postoNome":"Porto Real","senhasAtendidas":805,"senhasCanceladas":3,"senhasPerdidas":0,"volumeReal":808,"tma":"00:06:30","tme":"00:05:55","ns10":72.92,"ns15":95.65,"ns30":100.0,"atendidas30min":805,"apos30min":0,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-03_Quissama","mesRef":"2026-03","postoNome":"Quissamã","senhasAtendidas":621,"senhasCanceladas":5,"senhasPerdidas":1,"volumeReal":626,"tma":"00:06:12","tme":"00:03:34","ns10":94.04,"ns15":97.26,"ns30":99.84,"atendidas30min":620,"apos30min":0,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-03_Santa_Maria_Madalena","mesRef":"2026-03","postoNome":"Santa Maria Madalena","senhasAtendidas":149,"senhasCanceladas":4,"senhasPerdidas":0,"volumeReal":153,"tma":"00:05:28","tme":"00:00:15","ns10":100.0,"ns15":100.0,"ns30":100.0,"atendidas30min":149,"apos30min":0,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-03_Sao_Jose_de_Ubá","mesRef":"2026-03","postoNome":"São José de Ubá","senhasAtendidas":577,"senhasCanceladas":0,"senhasPerdidas":0,"volumeReal":577,"tma":"00:05:18","tme":"00:02:00","ns10":95.67,"ns15":99.48,"ns30":100.0,"atendidas30min":577,"apos30min":0,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-03_Sao_Jose_do_Vale_do_Rio_Preto","mesRef":"2026-03","postoNome":"São José do Vale do Rio Preto","senhasAtendidas":869,"senhasCanceladas":10,"senhasPerdidas":0,"volumeReal":879,"tma":"00:04:37","tme":"00:06:55","ns10":71.81,"ns15":86.31,"ns30":100.0,"atendidas30min":869,"apos30min":0,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-03_Sao_Sebastiao_do_Alto","mesRef":"2026-03","postoNome":"São Sebastião do Alto","senhasAtendidas":86,"senhasCanceladas":6,"senhasPerdidas":0,"volumeReal":92,"tma":"00:09:18","tme":"00:01:52","ns10":95.35,"ns15":97.67,"ns30":100.0,"atendidas30min":86,"apos30min":0,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-03_Silva_Jardim","mesRef":"2026-03","postoNome":"Silva Jardim","senhasAtendidas":745,"senhasCanceladas":5,"senhasPerdidas":0,"volumeReal":750,"tma":"00:05:02","tme":"00:03:50","ns10":95.84,"ns15":99.6,"ns30":100.0,"atendidas30min":745,"apos30min":0,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-03_Sumidouro","mesRef":"2026-03","postoNome":"Sumidouro","senhasAtendidas":112,"senhasCanceladas":1,"senhasPerdidas":0,"volumeReal":113,"tma":"00:07:41","tme":"00:03:21","ns10":91.96,"ns15":95.54,"ns30":100.0,"atendidas30min":112,"apos30min":0,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-03_Tanguá","mesRef":"2026-03","postoNome":"Tanguá","senhasAtendidas":1003,"senhasCanceladas":2,"senhasPerdidas":1,"volumeReal":1005,"tma":"00:04:40","tme":"00:06:06","ns10":76.17,"ns15":94.12,"ns30":99.9,"atendidas30min":1002,"apos30min":0,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-03_Trajano_de_Moraes","mesRef":"2026-03","postoNome":"Trajano de Moraes","senhasAtendidas":160,"senhasCanceladas":4,"senhasPerdidas":0,"volumeReal":164,"tma":"00:04:28","tme":"00:01:37","ns10":96.88,"ns15":98.75,"ns30":100.0,"atendidas30min":160,"apos30min":0,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-03_Varre-Sai","mesRef":"2026-03","postoNome":"Varre-Sai","senhasAtendidas":463,"senhasCanceladas":5,"senhasPerdidas":0,"volumeReal":468,"tma":"00:05:15","tme":"00:03:11","ns10":91.79,"ns15":97.84,"ns30":100.0,"atendidas30min":463,"apos30min":0,"updatedAt":"2026-03-28T00:00:00.000Z"},{"id":"2026-04_Aperibe","mesRef":"2026-04","postoNome":"Aperibé","senhasAtendidas":517,"senhasCanceladas":0,"senhasPerdidas":0,"volumeReal":517,"tma":"00:03:56","tme":"00:02:26","ns10":94.39,"ns15":97.68,"ns30":100.0,"atendidas30min":517,"apos30min":0,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-04_Areal","mesRef":"2026-04","postoNome":"Areal","senhasAtendidas":557,"senhasCanceladas":21,"senhasPerdidas":4,"volumeReal":578,"tma":"00:04:11","tme":"00:09:57","ns10":55.66,"ns15":75.58,"ns30":99.28,"atendidas30min":553,"apos30min":4,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-04_Bom_Jardim","mesRef":"2026-04","postoNome":"Bom Jardim","senhasAtendidas":577,"senhasCanceladas":7,"senhasPerdidas":1,"volumeReal":584,"tma":"00:05:18","tme":"00:08:53","ns10":60.83,"ns15":78.51,"ns30":99.83,"atendidas30min":576,"apos30min":1,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-04_Bom_Jesus_do_Itabapoana","mesRef":"2026-04","postoNome":"Bom Jesus do Itabapoana","senhasAtendidas":602,"senhasCanceladas":79,"senhasPerdidas":1,"volumeReal":681,"tma":"00:04:56","tme":"00:08:22","ns10":65.28,"ns15":83.06,"ns30":99.83,"atendidas30min":601,"apos30min":1,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-04_Cambuci","mesRef":"2026-04","postoNome":"Cambuci","senhasAtendidas":232,"senhasCanceladas":4,"senhasPerdidas":0,"volumeReal":236,"tma":"00:03:52","tme":"00:05:34","ns10":76.29,"ns15":91.38,"ns30":100.0,"atendidas30min":232,"apos30min":0,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-04_Cantagalo","mesRef":"2026-04","postoNome":"Cantagalo","senhasAtendidas":435,"senhasCanceladas":4,"senhasPerdidas":0,"volumeReal":439,"tma":"00:04:57","tme":"00:04:51","ns10":84.37,"ns15":98.39,"ns30":100.0,"atendidas30min":435,"apos30min":0,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-04_Carapebus","mesRef":"2026-04","postoNome":"Carapebus","senhasAtendidas":559,"senhasCanceladas":4,"senhasPerdidas":0,"volumeReal":563,"tma":"00:05:01","tme":"00:06:30","ns10":70.84,"ns15":91.77,"ns30":100.0,"atendidas30min":559,"apos30min":0,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-04_Cardoso_Moreira","mesRef":"2026-04","postoNome":"Cardoso Moreira","senhasAtendidas":254,"senhasCanceladas":10,"senhasPerdidas":0,"volumeReal":264,"tma":"00:06:09","tme":"00:01:05","ns10":96.46,"ns15":98.03,"ns30":100.0,"atendidas30min":254,"apos30min":0,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-04_Conceicao_de_Macabu","mesRef":"2026-04","postoNome":"Conceição de Macabu","senhasAtendidas":791,"senhasCanceladas":2,"senhasPerdidas":0,"volumeReal":793,"tma":"00:05:29","tme":"00:03:49","ns10":84.7,"ns15":96.97,"ns30":100.0,"atendidas30min":791,"apos30min":0,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-04_Duas_Barras","mesRef":"2026-04","postoNome":"Duas Barras","senhasAtendidas":237,"senhasCanceladas":7,"senhasPerdidas":0,"volumeReal":244,"tma":"00:05:23","tme":"00:07:45","ns10":67.93,"ns15":81.86,"ns30":100.0,"atendidas30min":237,"apos30min":0,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-04_Guarus","mesRef":"2026-04","postoNome":"Guarus","senhasAtendidas":371,"senhasCanceladas":2,"senhasPerdidas":0,"volumeReal":373,"tma":"00:05:25","tme":"00:00:21","ns10":99.46,"ns15":99.73,"ns30":100.0,"atendidas30min":371,"apos30min":0,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-04_Italva","mesRef":"2026-04","postoNome":"Italva","senhasAtendidas":322,"senhasCanceladas":4,"senhasPerdidas":1,"volumeReal":326,"tma":"00:04:13","tme":"00:08:47","ns10":64.29,"ns15":83.23,"ns30":99.69,"atendidas30min":321,"apos30min":1,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-04_Laje_de_Muriae","mesRef":"2026-04","postoNome":"Laje de Muriaé","senhasAtendidas":150,"senhasCanceladas":1,"senhasPerdidas":0,"volumeReal":151,"tma":"00:04:09","tme":"00:01:28","ns10":97.33,"ns15":99.33,"ns30":100.0,"atendidas30min":150,"apos30min":0,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-04_Macuco","mesRef":"2026-04","postoNome":"Macuco","senhasAtendidas":229,"senhasCanceladas":1,"senhasPerdidas":0,"volumeReal":230,"tma":"00:03:48","tme":"00:02:28","ns10":94.32,"ns15":96.94,"ns30":100.0,"atendidas30min":229,"apos30min":0,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-04_Miracema","mesRef":"2026-04","postoNome":"Miracema","senhasAtendidas":548,"senhasCanceladas":14,"senhasPerdidas":0,"volumeReal":562,"tma":"00:06:01","tme":"00:06:01","ns10":73.54,"ns15":83.76,"ns30":100.0,"atendidas30min":548,"apos30min":0,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-04_Natividade","mesRef":"2026-04","postoNome":"Natividade","senhasAtendidas":391,"senhasCanceladas":18,"senhasPerdidas":0,"volumeReal":409,"tma":"00:05:54","tme":"00:04:03","ns10":86.19,"ns15":94.88,"ns30":100.0,"atendidas30min":391,"apos30min":0,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-04_Nova_Friburgo","mesRef":"2026-04","postoNome":"Nova Friburgo","senhasAtendidas":95,"senhasCanceladas":0,"senhasPerdidas":0,"volumeReal":95,"tma":"00:05:28","tme":"00:00:44","ns10":98.95,"ns15":100.0,"ns30":100.0,"atendidas30min":95,"apos30min":0,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-04_Porciuncula","mesRef":"2026-04","postoNome":"Porciúncula","senhasAtendidas":482,"senhasCanceladas":0,"senhasPerdidas":0,"volumeReal":482,"tma":"00:06:02","tme":"00:03:06","ns10":94.4,"ns15":99.59,"ns30":100.0,"atendidas30min":482,"apos30min":0,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-04_Porto_Real","mesRef":"2026-04","postoNome":"Porto Real","senhasAtendidas":849,"senhasCanceladas":1,"senhasPerdidas":0,"volumeReal":850,"tma":"00:06:09","tme":"00:06:58","ns10":67.37,"ns15":90.93,"ns30":100.0,"atendidas30min":849,"apos30min":0,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-04_Quissama","mesRef":"2026-04","postoNome":"Quissamã","senhasAtendidas":452,"senhasCanceladas":1,"senhasPerdidas":1,"volumeReal":453,"tma":"00:06:08","tme":"00:02:19","ns10":97.12,"ns15":98.89,"ns30":99.78,"atendidas30min":451,"apos30min":1,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-04_Santa_Maria_Madalena","mesRef":"2026-04","postoNome":"Santa Maria Madalena","senhasAtendidas":206,"senhasCanceladas":0,"senhasPerdidas":0,"volumeReal":206,"tma":"00:05:57","tme":"00:00:10","ns10":100.0,"ns15":100.0,"ns30":100.0,"atendidas30min":206,"apos30min":0,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-04_Sao_Jose_de_Ubá","mesRef":"2026-04","postoNome":"São José de Ubá","senhasAtendidas":629,"senhasCanceladas":0,"senhasPerdidas":0,"volumeReal":629,"tma":"00:04:33","tme":"00:01:04","ns10":96.34,"ns15":98.73,"ns30":100.0,"atendidas30min":629,"apos30min":0,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-04_Sao_Jose_do_Vale_do_Rio_Preto","mesRef":"2026-04","postoNome":"São José do Vale do Rio Preto","senhasAtendidas":512,"senhasCanceladas":8,"senhasPerdidas":0,"volumeReal":520,"tma":"00:04:10","tme":"00:08:58","ns10":59.77,"ns15":77.34,"ns30":100.0,"atendidas30min":512,"apos30min":0,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-04_Sao_Sebastiao_do_Alto","mesRef":"2026-04","postoNome":"São Sebastião do Alto","senhasAtendidas":78,"senhasCanceladas":2,"senhasPerdidas":0,"volumeReal":80,"tma":"00:08:43","tme":"00:01:59","ns10":96.15,"ns15":97.44,"ns30":100.0,"atendidas30min":78,"apos30min":0,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-04_Silva_Jardim","mesRef":"2026-04","postoNome":"Silva Jardim","senhasAtendidas":620,"senhasCanceladas":4,"senhasPerdidas":0,"volumeReal":624,"tma":"00:05:07","tme":"00:03:53","ns10":95.81,"ns15":99.19,"ns30":100.0,"atendidas30min":620,"apos30min":0,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-04_Sumidouro","mesRef":"2026-04","postoNome":"Sumidouro","senhasAtendidas":130,"senhasCanceladas":5,"senhasPerdidas":0,"volumeReal":135,"tma":"00:06:11","tme":"00:04:08","ns10":89.23,"ns15":96.15,"ns30":100.0,"atendidas30min":130,"apos30min":0,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-04_Tanguá","mesRef":"2026-04","postoNome":"Tanguá","senhasAtendidas":892,"senhasCanceladas":5,"senhasPerdidas":0,"volumeReal":897,"tma":"00:03:28","tme":"00:06:22","ns10":74.44,"ns15":94.28,"ns30":100.0,"atendidas30min":892,"apos30min":0,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-04_Trajano_de_Moraes","mesRef":"2026-04","postoNome":"Trajano de Moraes","senhasAtendidas":195,"senhasCanceladas":2,"senhasPerdidas":0,"volumeReal":197,"tma":"00:03:48","tme":"00:02:26","ns10":95.38,"ns15":97.44,"ns30":100.0,"atendidas30min":195,"apos30min":0,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-04_Varre-Sai","mesRef":"2026-04","postoNome":"Varre-Sai","senhasAtendidas":340,"senhasCanceladas":1,"senhasPerdidas":0,"volumeReal":341,"tma":"00:05:38","tme":"00:03:00","ns10":92.06,"ns15":97.94,"ns30":100.0,"atendidas30min":340,"apos30min":0,"updatedAt":"2026-04-28T00:00:00.000Z"},{"id":"2026-05_Aperibe","mesRef":"2026-05","postoNome":"Aperibé","senhasAtendidas":514,"senhasCanceladas":2,"senhasPerdidas":0,"volumeReal":516,"tma":"00:04:13","tme":"00:02:23","ns10":94.94,"ns15":99.22,"ns30":100.0,"atendidas30min":514,"apos30min":0,"updatedAt":"2026-05-28T00:00:00.000Z"},{"id":"2026-05_Areal","mesRef":"2026-05","postoNome":"Areal","senhasAtendidas":905,"senhasCanceladas":1,"senhasPerdidas":0,"volumeReal":906,"tma":"00:03:05","tme":"00:04:42","ns10":88.84,"ns15":97.02,"ns30":100.0,"atendidas30min":905,"apos30min":0,"updatedAt":"2026-05-28T00:00:00.000Z"},{"id":"2026-05_Bom_Jardim","mesRef":"2026-05","postoNome":"Bom Jardim","senhasAtendidas":598,"senhasCanceladas":1,"senhasPerdidas":0,"volumeReal":599,"tma":"00:06:11","tme":"00:07:40","ns10":67.22,"ns15":84.62,"ns30":100.0,"atendidas30min":598,"apos30min":0,"updatedAt":"2026-05-28T00:00:00.000Z"},{"id":"2026-05_Bom_Jesus_do_Itabapoana","mesRef":"2026-05","postoNome":"Bom Jesus do Itabapoana","senhasAtendidas":517,"senhasCanceladas":26,"senhasPerdidas":0,"volumeReal":543,"tma":"00:04:45","tme":"00:07:18","ns10":69.05,"ns15":86.27,"ns30":100.0,"atendidas30min":517,"apos30min":0,"updatedAt":"2026-05-28T00:00:00.000Z"},{"id":"2026-05_Cambuci","mesRef":"2026-05","postoNome":"Cambuci","senhasAtendidas":216,"senhasCanceladas":3,"senhasPerdidas":0,"volumeReal":219,"tma":"00:03:45","tme":"00:05:20","ns10":77.78,"ns15":92.13,"ns30":100.0,"atendidas30min":216,"apos30min":0,"updatedAt":"2026-05-28T00:00:00.000Z"},{"id":"2026-05_Cantagalo","mesRef":"2026-05","postoNome":"Cantagalo","senhasAtendidas":444,"senhasCanceladas":0,"senhasPerdidas":0,"volumeReal":444,"tma":"00:05:00","tme":"00:05:08","ns10":79.05,"ns15":98.65,"ns30":100.0,"atendidas30min":444,"apos30min":0,"updatedAt":"2026-05-28T00:00:00.000Z"},{"id":"2026-05_Carapebus","mesRef":"2026-05","postoNome":"Carapebus","senhasAtendidas":680,"senhasCanceladas":1,"senhasPerdidas":0,"volumeReal":681,"tma":"00:05:17","tme":"00:07:02","ns10":66.76,"ns15":88.24,"ns30":100.0,"atendidas30min":680,"apos30min":0,"updatedAt":"2026-05-28T00:00:00.000Z"},{"id":"2026-05_Cardoso_Moreira","mesRef":"2026-05","postoNome":"Cardoso Moreira","senhasAtendidas":340,"senhasCanceladas":11,"senhasPerdidas":0,"volumeReal":351,"tma":"00:05:23","tme":"00:01:04","ns10":97.35,"ns15":99.41,"ns30":100.0,"atendidas30min":340,"apos30min":0,"updatedAt":"2026-05-28T00:00:00.000Z"},{"id":"2026-05_Conceicao_de_Macabu","mesRef":"2026-05","postoNome":"Conceição de Macabu","senhasAtendidas":571,"senhasCanceladas":3,"senhasPerdidas":0,"volumeReal":574,"tma":"00:05:45","tme":"00:03:31","ns10":83.89,"ns15":97.72,"ns30":100.0,"atendidas30min":571,"apos30min":0,"updatedAt":"2026-05-28T00:00:00.000Z"},{"id":"2026-05_Duas_Barras","mesRef":"2026-05","postoNome":"Duas Barras","senhasAtendidas":188,"senhasCanceladas":28,"senhasPerdidas":0,"volumeReal":216,"tma":"00:04:50","tme":"00:06:48","ns10":72.87,"ns15":87.23,"ns30":100.0,"atendidas30min":188,"apos30min":0,"updatedAt":"2026-05-28T00:00:00.000Z"},{"id":"2026-05_Guarus","mesRef":"2026-05","postoNome":"Guarus","senhasAtendidas":425,"senhasCanceladas":0,"senhasPerdidas":0,"volumeReal":425,"tma":"00:05:03","tme":"00:00:17","ns10":100.0,"ns15":100.0,"ns30":100.0,"atendidas30min":425,"apos30min":0,"updatedAt":"2026-05-28T00:00:00.000Z"},{"id":"2026-05_Italva","mesRef":"2026-05","postoNome":"Italva","senhasAtendidas":396,"senhasCanceladas":3,"senhasPerdidas":0,"volumeReal":399,"tma":"00:03:58","tme":"00:07:40","ns10":67.42,"ns15":84.34,"ns30":100.0,"atendidas30min":396,"apos30min":0,"updatedAt":"2026-05-28T00:00:00.000Z"},{"id":"2026-05_Laje_de_Muriae","mesRef":"2026-05","postoNome":"Laje de Muriaé","senhasAtendidas":206,"senhasCanceladas":3,"senhasPerdidas":0,"volumeReal":209,"tma":"00:04:04","tme":"00:02:02","ns10":96.6,"ns15":99.51,"ns30":100.0,"atendidas30min":206,"apos30min":0,"updatedAt":"2026-05-28T00:00:00.000Z"},{"id":"2026-05_Macuco","mesRef":"2026-05","postoNome":"Macuco","senhasAtendidas":184,"senhasCanceladas":0,"senhasPerdidas":0,"volumeReal":184,"tma":"00:04:12","tme":"00:02:25","ns10":95.11,"ns15":98.37,"ns30":100.0,"atendidas30min":184,"apos30min":0,"updatedAt":"2026-05-28T00:00:00.000Z"},{"id":"2026-05_Miracema","mesRef":"2026-05","postoNome":"Miracema","senhasAtendidas":440,"senhasCanceladas":5,"senhasPerdidas":4,"volumeReal":445,"tma":"00:05:11","tme":"00:07:52","ns10":64.09,"ns15":77.73,"ns30":99.09,"atendidas30min":436,"apos30min":2,"updatedAt":"2026-05-28T00:00:00.000Z"},{"id":"2026-05_Natividade","mesRef":"2026-05","postoNome":"Natividade","senhasAtendidas":358,"senhasCanceladas":13,"senhasPerdidas":0,"volumeReal":371,"tma":"00:06:24","tme":"00:05:13","ns10":79.61,"ns15":92.46,"ns30":100.0,"atendidas30min":358,"apos30min":0,"updatedAt":"2026-05-28T00:00:00.000Z"},{"id":"2026-05_Nova_Friburgo","mesRef":"2026-05","postoNome":"Nova Friburgo","senhasAtendidas":55,"senhasCanceladas":2,"senhasPerdidas":0,"volumeReal":57,"tma":"00:09:09","tme":"00:03:45","ns10":89.09,"ns15":94.55,"ns30":100.0,"atendidas30min":55,"apos30min":0,"updatedAt":"2026-05-28T00:00:00.000Z"},{"id":"2026-05_Porciuncula","mesRef":"2026-05","postoNome":"Porciúncula","senhasAtendidas":479,"senhasCanceladas":3,"senhasPerdidas":0,"volumeReal":482,"tma":"00:05:41","tme":"00:02:32","ns10":98.12,"ns15":99.58,"ns30":100.0,"atendidas30min":479,"apos30min":0,"updatedAt":"2026-05-28T00:00:00.000Z"},{"id":"2026-05_Porto_Real","mesRef":"2026-05","postoNome":"Porto Real","senhasAtendidas":349,"senhasCanceladas":3,"senhasPerdidas":0,"volumeReal":352,"tma":"00:05:14","tme":"00:06:59","ns10":72.49,"ns15":90.83,"ns30":100.0,"atendidas30min":349,"apos30min":0,"updatedAt":"2026-05-28T00:00:00.000Z"},{"id":"2026-05_Quissama","mesRef":"2026-05","postoNome":"Quissamã","senhasAtendidas":720,"senhasCanceladas":2,"senhasPerdidas":0,"volumeReal":722,"tma":"00:06:05","tme":"00:03:15","ns10":94.72,"ns15":99.31,"ns30":100.0,"atendidas30min":720,"apos30min":0,"updatedAt":"2026-05-28T00:00:00.000Z"},{"id":"2026-05_Santa_Maria_Madalena","mesRef":"2026-05","postoNome":"Santa Maria Madalena","senhasAtendidas":259,"senhasCanceladas":4,"senhasPerdidas":0,"volumeReal":263,"tma":"00:06:52","tme":"00:00:14","ns10":100.0,"ns15":100.0,"ns30":100.0,"atendidas30min":259,"apos30min":0,"updatedAt":"2026-05-28T00:00:00.000Z"},{"id":"2026-05_Sao_Jose_de_Ubá","mesRef":"2026-05","postoNome":"São José de Ubá","senhasAtendidas":454,"senhasCanceladas":0,"senhasPerdidas":0,"volumeReal":454,"tma":"00:05:08","tme":"00:01:24","ns10":97.36,"ns15":99.34,"ns30":100.0,"atendidas30min":454,"apos30min":0,"updatedAt":"2026-05-28T00:00:00.000Z"},{"id":"2026-05_Sao_Jose_do_Vale_do_Rio_Preto","mesRef":"2026-05","postoNome":"São José do Vale do Rio Preto","senhasAtendidas":639,"senhasCanceladas":5,"senhasPerdidas":0,"volumeReal":644,"tma":"00:03:49","tme":"00:09:45","ns10":52.74,"ns15":74.49,"ns30":100.0,"atendidas30min":639,"apos30min":0,"updatedAt":"2026-05-28T00:00:00.000Z"},{"id":"2026-05_Sao_Sebastiao_do_Alto","mesRef":"2026-05","postoNome":"São Sebastião do Alto","senhasAtendidas":94,"senhasCanceladas":1,"senhasPerdidas":0,"volumeReal":95,"tma":"00:07:54","tme":"00:02:33","ns10":90.43,"ns15":97.87,"ns30":100.0,"atendidas30min":94,"apos30min":0,"updatedAt":"2026-05-28T00:00:00.000Z"},{"id":"2026-05_Silva_Jardim","mesRef":"2026-05","postoNome":"Silva Jardim","senhasAtendidas":637,"senhasCanceladas":8,"senhasPerdidas":0,"volumeReal":645,"tma":"00:05:02","tme":"00:03:51","ns10":95.6,"ns15":98.9,"ns30":100.0,"atendidas30min":637,"apos30min":0,"updatedAt":"2026-05-28T00:00:00.000Z"},{"id":"2026-05_Sumidouro","mesRef":"2026-05","postoNome":"Sumidouro","senhasAtendidas":117,"senhasCanceladas":7,"senhasPerdidas":0,"volumeReal":124,"tma":"00:06:02","tme":"00:04:23","ns10":86.32,"ns15":95.73,"ns30":100.0,"atendidas30min":117,"apos30min":0,"updatedAt":"2026-05-28T00:00:00.000Z"},{"id":"2026-05_Tanguá","mesRef":"2026-05","postoNome":"Tanguá","senhasAtendidas":843,"senhasCanceladas":7,"senhasPerdidas":0,"volumeReal":850,"tma":"00:03:00","tme":"00:06:05","ns10":77.11,"ns15":92.53,"ns30":100.0,"atendidas30min":843,"apos30min":0,"updatedAt":"2026-05-28T00:00:00.000Z"},{"id":"2026-05_Trajano_de_Moraes","mesRef":"2026-05","postoNome":"Trajano de Moraes","senhasAtendidas":170,"senhasCanceladas":2,"senhasPerdidas":0,"volumeReal":172,"tma":"00:04:08","tme":"00:03:01","ns10":93.53,"ns15":98.24,"ns30":100.0,"atendidas30min":170,"apos30min":0,"updatedAt":"2026-05-28T00:00:00.000Z"},{"id":"2026-05_Varre-Sai","mesRef":"2026-05","postoNome":"Varre-Sai","senhasAtendidas":238,"senhasCanceladas":2,"senhasPerdidas":0,"volumeReal":240,"tma":"00:05:26","tme":"00:02:21","ns10":93.7,"ns15":99.16,"ns30":100.0,"atendidas30min":238,"apos30min":0,"updatedAt":"2026-05-28T00:00:00.000Z"}];
+
+let allIndicadores = [];
+let indicadoresCarregados = false;
+
+function diasUteisMes(anoMes) {
+  const [ano, mes] = anoMes.split('-').map(Number);
+  const diasNoMes = new Date(ano, mes, 0).getDate();
+  let count = 0;
+  for (let d = 1; d <= diasNoMes; d++) {
+    const dow = new Date(ano, mes - 1, d).getDay();
+    if (dow !== 0 && dow !== 6) count++;
+  }
+  return count;
+}
+
+function horasPosto(posto) {
+  if (!posto || !posto.abre || !posto.fecha) return 8;
+  const [ha, ma] = posto.abre.split(':').map(Number);
+  const [hf, mf] = posto.fecha.split(':').map(Number);
+  return ((hf * 60 + mf) - (ha * 60 + ma)) / 60;
+}
+
+function parseTempo(str) {
+  if (!str) return null;
+  const p = str.split(':').map(Number);
+  if (p.length === 3) return p[0] * 3600 + p[1] * 60 + p[2];
+  if (p.length === 2) return p[0] * 60 + p[1];
+  return null;
+}
+
+function fmtTempo(seg) {
+  if (seg === null || isNaN(seg)) return '—';
+  const h = Math.floor(seg / 3600);
+  const m = Math.floor((seg % 3600) / 60);
+  const s = seg % 60;
+  if (h > 0) return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+function fmtNS(val) {
+  if (val === null || val === undefined || val === '') return '—';
+  const n = parseFloat(val);
+  if (isNaN(n)) return '—';
+  return n.toFixed(1) + '%';
+}
+
+function nsClass(val) {
+  const n = parseFloat(val);
+  if (isNaN(n)) return '';
+  if (n >= 99) return 'green';
+  if (n >= 95) return 'yellow';
+  return 'red';
+}
+
+function toggleSidebarGroup(groupId, el) {
+  const group = document.getElementById(groupId);
+  const arrow = document.getElementById('arrow-' + groupId);
+  const isOpen = group.style.display !== 'none';
+  group.style.display = isOpen ? 'none' : 'block';
+  if (arrow) arrow.classList.toggle('open', !isOpen);
+}
+
+async function carregarTodosIndicadores() {
+  const snap = await db.collection('indicadores').get();
+  allIndicadores = snap.docs.map(d => ({id: d.id, ...d.data()}));
+  indicadoresCarregados = true;
+}
+
+function initIndicadoresMesFiltro() {
+  const sel = document.getElementById('ind-mes-filtro');
+  if (!sel) return;
+  const hoje = new Date();
+  sel.innerHTML = '';
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
+    const val = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    const label = d.toLocaleDateString('pt-BR', {month:'long', year:'numeric'});
+    sel.innerHTML += `<option value="${val}">${label}</option>`;
+  }
+  const selP = document.getElementById('ind-posto-filtro');
+  if (selP) {
+    const postos = POSTOS_DATA.filter(p => p.nome !== 'Posto Teste');
+    selP.innerHTML = '<option value="">Todos os postos</option>' + postos.map(p => `<option value="${p.nome}">${p.nome}</option>`).join('');
+  }
+  const selTab = document.getElementById('ind-tab-sel');
+  if (selTab) selTab.value = 'painel';
+}
+
+async function renderIndicadores() {
+  if (!indicadoresCarregados) await carregarTodosIndicadores();
+  const tabSel = document.getElementById('ind-tab-sel')?.value || 'painel';
+  document.getElementById('ind-view-painel').style.display = tabSel === 'painel' ? 'block' : 'none';
+  document.getElementById('ind-view-multas').style.display = tabSel === 'multas' ? 'block' : 'none';
+  document.getElementById('ind-view-importar').style.display = tabSel === 'importar' ? 'block' : 'none';
+  if (tabSel === 'painel') renderPainelIndicadores();
+  if (tabSel === 'multas') renderMultasIndicadores();
+  if (tabSel === 'importar') renderImportarIndicadores();
+}
+
+async function renderPainelIndicadores() {
+  const mes = document.getElementById('ind-mes-filtro')?.value;
+  const postoFiltro = document.getElementById('ind-posto-filtro')?.value || '';
+  if (!mes) return;
+
+  let dados = allIndicadores.filter(d => d.mesRef === mes);
+  if (postoFiltro) dados = dados.filter(d => d.postoNome === postoFiltro);
+  const postos = POSTOS_DATA.filter(p => p.nome !== 'Posto Teste');
+  const diasUteis = diasUteisMes(mes);
+
+  const totalAtendidas = dados.reduce((a,d) => a + (parseInt(d.senhasAtendidas)||0), 0);
+  const totalCanceladas = dados.reduce((a,d) => a + (parseInt(d.senhasCanceladas)||0), 0);
+  const totalApos30 = dados.reduce((a,d) => a + (parseInt(d.apos30min)||0), 0);
+  const mediaGeral = dados.length > 0 && diasUteis > 0 ? Math.round(totalAtendidas / (dados.length > 0 ? diasUteis : 1)) : 0;
+
+  let somaTMA=0,cTMA=0,somaTME=0,cTME=0,somaNS10=0,somaNS15=0,somaNS30=0,cNS=0;
+  dados.forEach(d => {
+    const tma=parseTempo(d.tma); if(tma!==null){somaTMA+=tma;cTMA++;}
+    const tme=parseTempo(d.tme); if(tme!==null){somaTME+=tme;cTME++;}
+    const n10=parseFloat(d.ns10); if(!isNaN(n10)){somaNS10+=n10;cNS++;}
+    const n15=parseFloat(d.ns15); if(!isNaN(n15)) somaNS15+=n15;
+    const n30=parseFloat(d.ns30); if(!isNaN(n30)) somaNS30+=n30;
+  });
+  const mediaTMA = cTMA>0 ? Math.round(somaTMA/cTMA) : null;
+  const mediaTME = cTME>0 ? Math.round(somaTME/cTME) : null;
+  const mediaNS10 = cNS>0 ? (somaNS10/cNS).toFixed(1) : null;
+  const mediaNS15 = cNS>0 ? (somaNS15/cNS).toFixed(1) : null;
+  const mediaNS30 = cNS>0 ? (somaNS30/cNS).toFixed(1) : null;
+
+  let totalHoras=0;
+  dados.forEach(d => {
+    const p = postos.find(x=>x.nome===d.postoNome);
+    totalHoras += horasPosto(p) * diasUteis;
+  });
+  const senhasHora = totalHoras > 0 ? (totalAtendidas/totalHoras).toFixed(1) : '—';
+
+  const apos30Color = totalApos30 > 0 ? 'red' : 'green';
+  document.getElementById('ind-kpi-grid').innerHTML = `
+    <div class="ind-kpi-card"><div class="ind-kpi-label">Senhas Atendidas</div><div class="ind-kpi-val">${totalAtendidas.toLocaleString('pt-BR')}</div><div class="ind-kpi-sub">${dados.length} posto(s) com dado</div></div>
+    <div class="ind-kpi-card"><div class="ind-kpi-label">Canceladas</div><div class="ind-kpi-val">${totalCanceladas.toLocaleString('pt-BR')}</div><div class="ind-kpi-sub">${totalAtendidas>0?((totalCanceladas/totalAtendidas)*100).toFixed(1)+'% do total':'—'}</div></div>
+    <div class="ind-kpi-card"><div class="ind-kpi-label">Méd. Dia Útil</div><div class="ind-kpi-val">${mediaGeral.toLocaleString('pt-BR')}</div><div class="ind-kpi-sub">${diasUteis} dias úteis</div></div>
+    <div class="ind-kpi-card"><div class="ind-kpi-label">Senhas / Hora</div><div class="ind-kpi-val">${senhasHora}</div><div class="ind-kpi-sub">média geral</div></div>
+    <div class="ind-kpi-card"><div class="ind-kpi-label">TMA Médio</div><div class="ind-kpi-val" style="font-size:18px">${fmtTempo(mediaTMA)}</div><div class="ind-kpi-sub">tempo médio atend.</div></div>
+    <div class="ind-kpi-card"><div class="ind-kpi-label">TME Médio</div><div class="ind-kpi-val" style="font-size:18px">${fmtTempo(mediaTME)}</div><div class="ind-kpi-sub">tempo médio espera</div></div>
+    <div class="ind-kpi-card ${nsClass(mediaNS10)}"><div class="ind-kpi-label">NS10 Médio</div><div class="ind-kpi-val">${mediaNS10!==null?mediaNS10+'%':'—'}</div><div class="ind-kpi-sub">nível serviço 10min</div></div>
+    <div class="ind-kpi-card ${nsClass(mediaNS15)}"><div class="ind-kpi-label">NS15 Médio</div><div class="ind-kpi-val">${mediaNS15!==null?mediaNS15+'%':'—'}</div><div class="ind-kpi-sub">nível serviço 15min</div></div>
+    <div class="ind-kpi-card ${nsClass(mediaNS30)}"><div class="ind-kpi-label">NS30 Médio</div><div class="ind-kpi-val">${mediaNS30!==null?mediaNS30+'%':'—'}</div><div class="ind-kpi-sub">nível serviço 30min</div></div>
+    <div class="ind-kpi-card ${apos30Color}"><div class="ind-kpi-label">⚠ Após 30min</div><div class="ind-kpi-val" style="color:var(--${apos30Color})">${totalApos30}</div><div class="ind-kpi-sub">senhas c/ risco de multa</div></div>
+  `;
+
+  renderAnalisesPainel(dados, postos, diasUteis, mes);
+  renderTabelaDetalhada(dados, postos, diasUteis, postoFiltro);
+}
+
+function renderAnalisesPainel(dados, postos, diasUteis, mesAtual) {
+  const el = document.getElementById('ind-analises');
+  if (!dados.length) { el.innerHTML=''; return; }
+
+  const sorted = [...dados].sort((a,b)=>(parseInt(b.senhasAtendidas)||0)-(parseInt(a.senhasAtendidas)||0));
+  const maxVol = parseInt(sorted[0]?.senhasAtendidas)||1;
+  const rankingHTML = sorted.slice(0,10).map((d,i) => {
+    const val = parseInt(d.senhasAtendidas)||0;
+    const pct = Math.round((val/maxVol)*100);
+    return `<div class="ind-bar-row">
+      <span style="width:18px;font-weight:700;color:var(--accent);font-size:11px">${i+1}</span>
+      <span class="ind-posto-name">${d.postoNome}</span>
+      <div class="ind-bar-wrap"><div class="ind-bar-fill ${i<3?'green':''}" style="width:${pct}%"></div></div>
+      <span class="ind-posto-val">${val.toLocaleString('pt-BR')}</span>
+    </div>`;
+  }).join('');
+
+  // Comparativo mês anterior
+  const [ano, mes] = mesAtual.split('-').map(Number);
+  const mesAntD = new Date(ano, mes-2, 1);
+  const mesAntKey = `${mesAntD.getFullYear()}-${String(mesAntD.getMonth()+1).padStart(2,'0')}`;
+  const indAnt = allIndicadores.filter(x => x.mesRef === mesAntKey);
+  let compHTML = '';
+  if (indAnt.length) {
+    const totAtual = dados.reduce((a,d)=>a+(parseInt(d.senhasAtendidas)||0),0);
+    const totAnt = indAnt.reduce((a,d)=>a+(parseInt(d.senhasAtendidas)||0),0);
+    const delta = totAtual - totAnt;
+    const deltaPct = totAnt > 0 ? ((delta/totAnt)*100).toFixed(1) : null;
+    const cor = delta >= 0 ? 'up' : 'down';
+    const sinal = delta >= 0 ? '▲' : '▼';
+    compHTML = `<div class="ind-comp-row" style="font-weight:700">
+      <span class="ind-comp-label">Total geral</span>
+      <div class="ind-comp-vals">
+        <span class="ind-comp-val" style="color:var(--text3)">${totAnt.toLocaleString('pt-BR')}</span>
+        <span class="ind-comp-val">${totAtual.toLocaleString('pt-BR')}</span>
+        ${deltaPct!==null?`<span class="ind-comp-delta ${cor}">${sinal} ${Math.abs(deltaPct)}%</span>`:''}
+      </div></div>`;
+    sorted.slice(0,8).forEach(d => {
+      const ant = indAnt.find(x=>x.postoNome===d.postoNome);
+      if (!ant) return;
+      const vA = parseInt(d.senhasAtendidas)||0;
+      const vB = parseInt(ant.senhasAtendidas)||0;
+      const dlt = vA - vB;
+      const dp = vB>0?((dlt/vB)*100).toFixed(1):null;
+      const c = dlt>=0?'up':'down'; const s = dlt>=0?'▲':'▼';
+      compHTML += `<div class="ind-comp-row">
+        <span class="ind-comp-label">${d.postoNome}</span>
+        <div class="ind-comp-vals">
+          <span class="ind-comp-val" style="color:var(--text3)">${vB.toLocaleString('pt-BR')}</span>
+          <span class="ind-comp-val">${vA.toLocaleString('pt-BR')}</span>
+          ${dp!==null?`<span class="ind-comp-delta ${c}">${s} ${Math.abs(dp)}%</span>`:''}
+        </div></div>`;
+    });
+  } else {
+    compHTML = `<div class="ind-empty" style="padding:16px">Sem dados do mês anterior.</div>`;
+  }
+
+  // NS30 ranking
+  const nsData = dados.filter(d=>d.ns30!==null&&d.ns30!==undefined&&d.ns30!=='').sort((a,b)=>parseFloat(a.ns30)-parseFloat(b.ns30));
+  const nsHTML = nsData.map(d => {
+    const v = parseFloat(d.ns30)||0;
+    const pct = v; const cor = v>=99?'green':v>=95?'':'red';
+    return `<div class="ind-bar-row">
+      <span class="ind-posto-name">${d.postoNome}</span>
+      <div class="ind-bar-wrap"><div class="ind-bar-fill ${cor}" style="width:${pct}%"></div></div>
+      <span class="ind-posto-val">${v.toFixed(1)}%</span>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="ind-analise-card"><h3>🏆 Ranking — Volume de Senhas</h3>${rankingHTML}</div>
+    <div class="ind-analise-card">
+      <h3>📅 Comparativo Mês Anterior</h3>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border)">
+        <span>Posto</span><div style="display:flex;gap:16px"><span>Mês ant.</span><span>Atual</span><span>Δ</span></div>
+      </div>${compHTML}
+    </div>
+    <div class="ind-analise-card"><h3>⏱ NS30 por Posto (menor → maior)</h3>${nsHTML||'<div class="ind-empty" style="padding:16px">Sem dados.</div>'}</div>
+  `;
+}
+
+function renderTabelaDetalhada(dados, postos, diasUteis, postoFiltro) {
+  document.getElementById('ind-table-title').textContent = postoFiltro ? `Detalhamento — ${postoFiltro}` : 'Detalhamento por Posto';
+  const tbody = document.getElementById('ind-detail-body');
+  if (!dados.length) { tbody.innerHTML='<tr><td colspan="12" class="ind-empty">Nenhum dado para este período.</td></tr>'; return; }
+  const sorted = [...dados].sort((a,b)=>(parseInt(b.senhasAtendidas)||0)-(parseInt(a.senhasAtendidas)||0));
+  tbody.innerHTML = sorted.map((d,i) => {
+    const p = postos.find(x=>x.nome===d.postoNome);
+    const atend = parseInt(d.senhasAtendidas)||0;
+    const mediaDia = diasUteis>0 ? Math.round(atend/diasUteis) : 0;
+    const hrs = horasPosto(p);
+    const senhaH = (hrs*diasUteis)>0 ? (atend/(hrs*diasUteis)).toFixed(1) : '—';
+    const apos30 = parseInt(d.apos30min)||0;
+    const apos30Td = apos30>0 ? `<td style="text-align:center;color:var(--red);font-weight:700">${apos30} ⚠</td>` : `<td style="text-align:center;color:var(--text3)">0</td>`;
+    return `<tr>
+      <td class="rank">${i+1}</td>
+      <td style="font-weight:600;white-space:nowrap">${d.postoNome}</td>
+      <td style="text-align:right;font-weight:700">${atend.toLocaleString('pt-BR')}</td>
+      <td style="text-align:right;color:var(--red)">${(parseInt(d.senhasCanceladas)||0).toLocaleString('pt-BR')}</td>
+      <td style="text-align:right">${mediaDia}</td>
+      <td style="text-align:right">${senhaH}</td>
+      <td style="text-align:center">${d.tma||'—'}</td>
+      <td style="text-align:center">${d.tme||'—'}</td>
+      <td style="text-align:center"><span class="ind-badge ${nsClass(d.ns10)}">${fmtNS(d.ns10)}</span></td>
+      <td style="text-align:center"><span class="ind-badge ${nsClass(d.ns15)}">${fmtNS(d.ns15)}</span></td>
+      <td style="text-align:center"><span class="ind-badge ${nsClass(d.ns30)}">${fmtNS(d.ns30)}</span></td>
+      ${apos30Td}
+    </tr>`;
+  }).join('');
+}
+
+function renderMultasIndicadores() {
+  // Todos os registros com apos30min > 0
+  const ofensores = allIndicadores.filter(d => (parseInt(d.apos30min)||0) > 0);
+  
+  // Totais por mês
+  const meses = [...new Set(allIndicadores.map(d=>d.mesRef))].sort();
+  const totalAno = ofensores.reduce((a,d)=>a+(parseInt(d.apos30min)||0),0);
+  
+  // Totais por posto (acumulado)
+  const porPosto = {};
+  ofensores.forEach(d => {
+    if (!porPosto[d.postoNome]) porPosto[d.postoNome] = 0;
+    porPosto[d.postoNome] += parseInt(d.apos30min)||0;
+  });
+  const ranking = Object.entries(porPosto).sort((a,b)=>b[1]-a[1]);
+
+  // Por mês
+  const porMes = {};
+  ofensores.forEach(d => {
+    if (!porMes[d.mesRef]) porMes[d.mesRef] = 0;
+    porMes[d.mesRef] += parseInt(d.apos30min)||0;
+  });
+
+  const el = document.getElementById('ind-multas-body');
+  el.innerHTML = `
+    <div class="ind-kpi-grid" style="margin-bottom:20px">
+      <div class="ind-kpi-card red">
+        <div class="ind-kpi-label">Total Senhas Após 30min</div>
+        <div class="ind-kpi-val" style="color:var(--red)">${totalAno}</div>
+        <div class="ind-kpi-sub">acumulado ${meses[0]||''} a ${meses[meses.length-1]||''}</div>
+      </div>
+      <div class="ind-kpi-card">
+        <div class="ind-kpi-label">Postos Ofensores</div>
+        <div class="ind-kpi-val">${ranking.length}</div>
+        <div class="ind-kpi-sub">tiveram ao menos 1 ocorrência</div>
+      </div>
+      <div class="ind-kpi-card">
+        <div class="ind-kpi-label">Meses c/ Ocorrência</div>
+        <div class="ind-kpi-val">${Object.keys(porMes).length}</div>
+        <div class="ind-kpi-sub">de ${meses.length} meses analisados</div>
+      </div>
+    </div>
+
+    <div class="ind-analise-grid">
+      <div class="ind-analise-card">
+        <h3>📍 Postos Ofensores — Acumulado</h3>
+        ${ranking.length ? ranking.map(([nome, total]) => `
+          <div class="ind-bar-row">
+            <span class="ind-posto-name">${nome}</span>
+            <div class="ind-bar-wrap"><div class="ind-bar-fill red" style="width:${Math.round((total/ranking[0][1])*100)}%"></div></div>
+            <span class="ind-posto-val" style="color:var(--red)">${total}</span>
+          </div>`).join('') : '<div class="ind-empty">Nenhuma ocorrência registrada.</div>'}
+      </div>
+      <div class="ind-analise-card">
+        <h3>📅 Ocorrências por Mês</h3>
+        ${meses.map(m => {
+          const v = porMes[m]||0;
+          const label = new Date(m+'-15').toLocaleDateString('pt-BR',{month:'short',year:'numeric'});
+          return `<div class="ind-comp-row">
+            <span class="ind-comp-label">${label}</span>
+            <span style="font-weight:700;color:${v>0?'var(--red)':'var(--green)'}">${v > 0 ? v + ' senhas ⚠' : '✓ Nenhuma'}</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+
+    <div style="background:var(--surface);border-radius:12px;border:1px solid var(--border);padding:16px;margin-top:4px">
+      <div class="ind-section-title">Detalhamento de Ocorrências</div>
+      <div style="overflow-x:auto">
+        <table class="ind-table">
+          <thead><tr><th>Mês</th><th>Posto</th><th>Senhas Após 30min</th><th>NS30</th><th>Total Atendidas</th></tr></thead>
+          <tbody>
+            ${ofensores.sort((a,b)=>{
+              if(a.mesRef!==b.mesRef) return b.mesRef.localeCompare(a.mesRef);
+              return (parseInt(b.apos30min)||0)-(parseInt(a.apos30min)||0);
+            }).map(d => {
+              const label = new Date(d.mesRef+'-15').toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+              return `<tr>
+                <td>${label}</td>
+                <td style="font-weight:600">${d.postoNome}</td>
+                <td style="text-align:center;color:var(--red);font-weight:700">${d.apos30min} ⚠</td>
+                <td style="text-align:center"><span class="ind-badge red">${fmtNS(d.ns30)}</span></td>
+                <td style="text-align:right">${(parseInt(d.senhasAtendidas)||0).toLocaleString('pt-BR')}</td>
+              </tr>`;
+            }).join('')}
+            ${!ofensores.length ? '<tr><td colspan="5" class="ind-empty">Nenhuma ocorrência nos dados carregados.</td></tr>' : ''}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function renderImportarIndicadores() {
+  // já renderizado estaticamente no HTML
+}
+
+async function importarExcelIndicadores() {
+  const fileInput = document.getElementById('ind-import-file');
+  const mesRef = document.getElementById('ind-import-mes').value;
+  if (!fileInput.files.length) { toast('Selecione o arquivo Excel', 'err'); return; }
+  if (!mesRef) { toast('Informe o mês de referência', 'err'); return; }
+  
+  const file = fileInput.files[0];
+  const btn = document.getElementById('ind-import-btn');
+  btn.disabled = true; btn.textContent = '⏳ Importando...';
+  
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, {type:'array', cellDates:true});
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet);
+      
+      const nomeMap = {
+        'POSTO APERIBE':'Aperibé','POSTO AREAL':'Areal','POSTO BOM JARDIM':'Bom Jardim',
+        'POSTO BOM JESUS DO ITABAPOANA':'Bom Jesus do Itabapoana','POSTO CAMBUCI':'Cambuci',
+        'POSTO CANTAGALO':'Cantagalo','POSTO CARAPEBUS':'Carapebus','POSTO CARDOSO MOREIRA':'Cardoso Moreira',
+        'POSTO CONCEICAO DE MACABU':'Conceição de Macabu','POSTO DUAS BARRAS':'Duas Barras',
+        'POSTO GUARUS':'Guarus','POSTO ITALVA':'Italva','POSTO LAJE DE MURIAE':'Laje de Muriaé',
+        'POSTO MACUCO':'Macuco','POSTO MIRACEMA':'Miracema','POSTO NATIVIDADE':'Natividade',
+        'POSTO NOVA FRIBURGO':'Nova Friburgo','POSTO PORCIUNCULA':'Porciúncula',
+        'POSTO PORTO REAL':'Porto Real','POSTO QUISSAMA':'Quissamã',
+        'POSTO SANTA MARIA MADALENA':'Santa Maria Madalena','POSTO SAO JOSE DE UBA':'São José de Ubá',
+        'POSTO SAO JOSE DO VALE DO RIO PRETO':'São José do Vale do Rio Preto',
+        'POSTO SAO SEBASTIAO DO ALTO':'São Sebastião do Alto','POSTO SILVA JARDIM':'Silva Jardim',
+        'POSTO SUMIDOURO':'Sumidouro','POSTO TANGUA':'Tanguá',
+        'POSTO TRAJANO DE MORAES':'Trajano de Moraes','POSTO VARRE-SAI':'Varre-Sai',
+      };
+      
+      function timeToStr(val) {
+        if (!val) return '';
+        if (val instanceof Date) return `${String(val.getHours()).padStart(2,'0')}:${String(val.getMinutes()).padStart(2,'0')}:${String(val.getSeconds()).padStart(2,'0')}`;
+        if (typeof val === 'number') {
+          const seg = Math.round(val * 86400);
+          return `${String(Math.floor(seg/3600)).padStart(2,'0')}:${String(Math.floor((seg%3600)/60)).padStart(2,'0')}:${String(seg%60).padStart(2,'0')}`;
+        }
+        return String(val);
+      }
+      
+      const postosRows = rows.filter(r => r['para'] && String(r['para']).startsWith('POSTO'));
+      if (!postosRows.length) { toast('Nenhum dado de posto encontrado no arquivo', 'err'); btn.disabled=false; btn.textContent='📥 Importar'; return; }
+      
+      const batch = db.batch();
+      let count = 0;
+      postosRows.forEach(row => {
+        const nomeExcel = String(row['para']).trim();
+        const nomeSistema = nomeMap[nomeExcel] || nomeExcel;
+        const docId = `${mesRef}_${nomeSistema.replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_]/g,'')}`;
+        const ns30raw = parseFloat(row['NS 30']||0);
+        const atend30 = parseInt(row['Atendidas até 30 minutos']||0)||0;
+        const apos30 = parseInt(row['Atendidas após 30 minutos']||0)||0;
+        const ref = db.collection('indicadores').doc(docId);
+        batch.set(ref, {
+          mesRef, postoNome: nomeSistema,
+          senhasAtendidas: parseInt(row['Atendidas']||0)||0,
+          senhasCanceladas: parseInt(row['Canceladas']||0)||0,
+          senhasPerdidas: parseInt(row['Senhas perdidas']||0)||0,
+          volumeReal: parseInt(row['Volume Real']||0)||0,
+          tma: timeToStr(row['TMA Real']),
+          tme: timeToStr(row['TME Real']),
+          ns10: !isNaN(parseFloat(row['NS 10'])) ? Math.round(parseFloat(row['NS 10'])*10000)/100 : null,
+          ns15: !isNaN(parseFloat(row['NS 15'])) ? Math.round(parseFloat(row['NS 15'])*10000)/100 : null,
+          ns30: !isNaN(ns30raw) ? Math.round(ns30raw*10000)/100 : null,
+          atendidas30min: atend30,
+          apos30min: apos30,
+          updatedAt: new Date().toISOString()
+        }, {merge:true});
+        count++;
+      });
+      
+      await batch.commit();
+      await carregarTodosIndicadores();
+      indicadoresCarregados = true;
+      toast(`${count} postos importados com sucesso!`, 'ok');
+      btn.textContent = `✅ ${count} postos importados`;
+      fileInput.value = '';
+      const sel = document.getElementById('ind-mes-filtro');
+      if (sel) sel.value = mesRef;
+      document.getElementById('ind-tab-sel').value = 'painel';
+      renderIndicadores();
+    } catch(err) {
+      console.error(err);
+      toast('Erro ao importar: ' + err.message, 'err');
+      btn.disabled=false; btn.textContent='📥 Importar';
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+async function importarHistorico() {
+  const btn = document.getElementById('ind-hist-btn');
+  btn.disabled = true; btn.textContent = '⏳ Importando histórico...';
+  try {
+    const batch = db.batch();
+    DADOS_HISTORICOS_INICIAIS.forEach(doc => {
+      const ref = db.collection('indicadores').doc(doc.id);
+      const {id, ...data} = doc;
+      batch.set(ref, data, {merge:true});
+    });
+    await batch.commit();
+    await carregarTodosIndicadores();
+    toast(`${DADOS_HISTORICOS_INICIAIS.length} registros históricos importados!`, 'ok');
+    btn.textContent = `✅ Histórico importado (${DADOS_HISTORICOS_INICIAIS.length} registros)`;
+    btn.disabled = true;
+  } catch(e) {
+    toast('Erro: ' + e.message, 'err');
+    btn.disabled=false; btn.textContent='📦 Importar Histórico (Jan–Mai 2026)';
+  }
+}
+
 
 async function renderAdmPostos() {
   const today = todayKey();
