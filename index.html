@@ -2844,7 +2844,7 @@ function refreshCurrentView() {
   if (id === 'adm-ponto') renderAdmPonto();
   if (id === 'col-ponto') renderColPonto();
   if (id === 'adm-postos') renderAdmPostos();
-  if (id === 'adm-indicadores') { initIndicadoresMesFiltro().then(()=>renderIndicadores()); }
+  if (id === 'adm-indicadores') { (async()=>{ await initIndicadoresMesFiltro(); await renderIndicadores(); })(); }
   if (id === 'posto-registro') renderPostoRegistro();
   if (id === 'supervisor-postos') renderSupervisorPostos();
   if (id === 'sup-caixa') renderSupCaixa();
@@ -2879,7 +2879,7 @@ function showView(name, el) {
   if (name === 'adm-ponto') renderAdmPonto();
   if (name === 'col-ponto') renderColPonto();
   if (name === 'adm-postos') renderAdmPostos();
-  if (name === 'adm-indicadores') { initIndicadoresMesFiltro().then(()=>renderIndicadores()); }
+  if (name === 'adm-indicadores') { (async()=>{ await initIndicadoresMesFiltro(); await renderIndicadores(); })(); }
   if (name === 'posto-registro') renderPostoRegistro();
   if (name === 'supervisor-postos') renderSupervisorPostos();
   if (name === 'sup-caixa') renderSupCaixa();
@@ -4208,37 +4208,48 @@ async function carregarTodosIndicadores() {
   indicadoresCarregados = true;
 }
 
-// ── Init ──
+// ── Init + Render completo numa função só (sem cadeia de promises) ──
 async function initIndicadoresMesFiltro() {
-  if(!indicadoresCarregados) await carregarTodosIndicadores();
+  // 1. Carregar do Firestore
+  const snap = await db.collection('indicadores').get();
+  allIndicadores = snap.docs.map(d=>({id:d.id,...d.data()}));
+  indicadoresCarregados = true;
 
-  // Se Firestore vazio, importar histórico automaticamente
+  // 2. Se vazio, importar histórico e recarregar
   if(!allIndicadores.length) {
     const kpiGrid = document.getElementById('ind-kpi-grid');
-    if(kpiGrid) kpiGrid.innerHTML='<div style="padding:20px;color:var(--text3);font-size:13px">⏳ Carregando histórico inicial...</div>';
-    await importarHistoricoSilencioso();
+    if(kpiGrid) kpiGrid.innerHTML='<div style="padding:20px;color:var(--text3);font-size:13px">⏳ Carregando dados iniciais...</div>';
+    const batch = db.batch();
+    DADOS_HISTORICOS_INICIAIS.forEach(doc => {
+      const {id, ...data} = doc;
+      batch.set(db.collection('indicadores').doc(id), data, {merge:true});
+    });
+    await batch.commit();
+    // Recarregar após importar
+    const snap2 = await db.collection('indicadores').get();
+    allIndicadores = snap2.docs.map(d=>({id:d.id,...d.data()}));
   }
 
-  // Pegar meses disponíveis no Firestore
-  const mesesDisp = [...new Set(allIndicadores.map(d=>d.mesRef))].sort();
-  const meses = mesesDisp.length ? mesesDisp : [];
-
-  // Render botões de mês
+  // 3. Montar botões de mês
+  const meses = [...new Set(allIndicadores.map(d=>d.mesRef))].sort();
   const wrap = document.getElementById('ind-meses-btns');
   if(!wrap) return;
-  wrap.innerHTML = meses.map(m => `
-    <button class="ind-mes-btn${mesesSelecionados.includes(m)?' active':''}" data-mes="${m}" onclick="toggleMes('${m}')">${mesLabel(m)}</button>
-  `).join('');
+  wrap.innerHTML = meses.map(m =>
+    `<button class="ind-mes-btn${mesesSelecionados.includes(m)?' active':''}" data-mes="${m}" onclick="toggleMes('${m}')">${mesLabel(m)}</button>`
+  ).join('');
 
-  // Selecionar mês mais recente por padrão se nenhum selecionado
+  // 4. Selecionar mês mais recente se nenhum ainda selecionado
   if(!mesesSelecionados.length && meses.length) {
     mesesSelecionados = [meses[meses.length-1]];
     document.querySelector(`[data-mes="${meses[meses.length-1]}"]`)?.classList.add('active');
+  } else {
+    // Re-sincronizar botões com estado atual
+    document.querySelectorAll('.ind-mes-btn').forEach(b=>b.classList.toggle('active', mesesSelecionados.includes(b.dataset.mes)));
   }
 
-  // Filtro posto
+  // 5. Filtro de posto
   const selP = document.getElementById('ind-posto-filtro');
-  if(selP) {
+  if(selP && selP.options.length <= 1) {
     const postos = POSTOS_DATA.filter(p=>p.nome!=='Posto Teste');
     selP.innerHTML = '<option value="">Todos os postos</option>' + postos.map(p=>`<option value="${p.nome}">${p.nome}</option>`).join('');
   }
@@ -4662,18 +4673,6 @@ async function importarExcelIndicadores() {
   reader.readAsArrayBuffer(fileInput.files[0]);
 }
 
-async function importarHistoricoSilencioso() {
-  try {
-    const batch=db.batch();
-    DADOS_HISTORICOS_INICIAIS.forEach(doc=>{
-      const {id,...data}=doc;
-      batch.set(db.collection('indicadores').doc(id),data,{merge:true});
-    });
-    await batch.commit();
-    indicadoresCarregados=false;
-    await carregarTodosIndicadores();
-  } catch(e) { console.error('Erro histórico silencioso:',e); }
-}
 
 async function importarHistorico() {
   const btn=document.getElementById('ind-hist-btn');
