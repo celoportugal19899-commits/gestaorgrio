@@ -1187,7 +1187,7 @@
 
         <!-- TAB: EVOLUÇÃO -->
         <div id="pos-tab-evolucao" class="pos-tab-content">
-          <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid var(--border);margin-bottom:16px">
+          <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid var(--border)">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
               <h3 style="font-size:13px;font-weight:700;color:var(--text1);margin:0;flex:1">📈 Evolução Mensal</h3>
               <select id="pos-evolucao-select" class="form-select" style="width:200px" onchange="renderPOSEvolucao()"><option value="">Todos os postos</option></select>
@@ -1196,6 +1196,9 @@
                 <option value="qtd">Quantidade</option>
                 <option value="pct">% da Meta</option>
               </select>
+            </div>
+            <div id="pos-evolucao-empty" style="display:none;padding:40px;text-align:center;color:var(--text3);font-size:13px">
+              Nenhum dado disponível para o período.
             </div>
             <canvas id="pos-evolucao-chart" height="80"></canvas>
           </div>
@@ -7675,17 +7678,16 @@ async function confirmarEnvioFolhaAssinada(){
 // INIT
 // ══════════════════════════════════════
 // ══════════════════════════════════════
-// MÓDULO: MÁQUINA CARTÃO POS  v2
+// MÓDULO: MÁQUINA CARTÃO POS  v3
 // ══════════════════════════════════════
-let allPOSData   = [];  // [{mesRef,postoNome,qtd,valor,creditoQtd,debitoQtd,pixQtd,creditoVal,debitoVal,pixVal,dataRef,importadoEm}]
-let posMetas     = {};  // {mesRef:{postos:{nome:valorMeta}}}  — valor em R$
+let allPOSData   = [];
+let posMetas     = {};
 let posCarregado = false;
 let posChartEvolucao = null;
 let posChartCanal    = null;
 
-// ── Metas fixas (Campanha Missão Arrecadação — valor R$) ──
 const POS_METAS_FIXAS = {
-  'Miracema':25000,'Tanguá':15000,'Areal':15000,'Natividade':8800,
+  'Miracema':17000,'Tanguá':15000,'Areal':15000,'Natividade':8800,
   'Bom Jardim':8500,'Aperibé':7500,'Italva':6000,
   'Conceição de Macabu':3700,'Bom Jesus do Itabapoana':2900,
   'São José do V. do Rio Preto':2800,'Porto Real':2700,'Trajano de Moraes':2700,
@@ -7695,15 +7697,13 @@ const POS_METAS_FIXAS = {
   'Silva Jardim':1500,'Varre-Sai':1500,'Santa Maria Madalena':1500,
   'Cantagalo':1500,'Sumidouro':1500,'Nova Friburgo':1500
 };
-
-const POSTOS_RG = Object.keys(POS_METAS_FIXAS);
+const POSTOS_RG  = Object.keys(POS_METAS_FIXAS);
 const MESES_NOME = ['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-const posMLbl = m => { const [y,mo]=m.split('-'); return `${MESES_NOME[+mo]}/${y}`; };
+const posMLbl    = m => { const [,mo]=m.split('-'); return `${MESES_NOME[+mo]}/${m.split('-')[0]}`; };
+const fmtBRL     = v => v>=1000 ? `R$\u00a0${(v/1000).toFixed(1)}k` : `R$\u00a0${v.toFixed(0)}`;
 
-function getPOSMetaValor(mesRef, postoNome) {
-  // Verifica override no Firestore primeiro, senão usa fixo
-  const ov = posMetas[mesRef]?.postos?.[postoNome];
-  return ov || POS_METAS_FIXAS[postoNome] || 2000;
+function getPOSMeta(mesRef, nome) {
+  return posMetas[mesRef]?.postos?.[nome] || POS_METAS_FIXAS[nome] || 2000;
 }
 
 // ── Init ──────────────────────────────
@@ -7715,7 +7715,7 @@ async function initPOS() {
       db.collection('pos_metas').get()
     ]);
     allPOSData = snapD.docs.map(d => d.data());
-    posMetas = {};
+    posMetas   = {};
     snapM.docs.forEach(d => { posMetas[d.id] = d.data(); });
     posCarregado = true;
   } catch(e) { console.error('initPOS:', e); }
@@ -7730,14 +7730,13 @@ async function importarBasePOS(file) {
     `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`;
   openModal('modal-pos-import');
   window._posPendingFile = file;
-  // reset input so same file can be re-imported
   document.getElementById('pos-upload-input').value = '';
 }
 
 async function confirmarImportPOS() {
-  const file = window._posPendingFile;
+  const file    = window._posPendingFile;
   const dataRef = document.getElementById('pos-import-dataref').value;
-  if (!file) return;
+  if (!file)    return;
   if (!dataRef) { toast('Informe a data de referência','err'); return; }
   closeModal('modal-pos-import');
   toast('Processando...','info');
@@ -7752,78 +7751,71 @@ async function confirmarImportPOS() {
   try {
     const ab  = await file.arrayBuffer();
     const wb2 = XLSX.read(ab, {type:'array', cellDates:false});
-    const dataImport = new Date().toISOString();
+    const now = new Date().toISOString();
     const importados = {};
 
-    for (const sheetName of wb2.SheetNames) {
-      const mesRef = MESES_MAP[sheetName.toLowerCase().trim()];
+    for (const sn of wb2.SheetNames) {
+      const mesRef = MESES_MAP[sn.toLowerCase().trim()];
       if (!mesRef) continue;
-      const ws   = wb2.Sheets[sheetName];
+      const ws   = wb2.Sheets[sn];
       const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
 
-      // Canal (rede completa): linhas idx 6-8, col Q(16)=canal, S(18)=qtd, U(20)=valor
+      // Canal geral: linhas idx 6-8, col Q(16)=nome, S(18)=qtd, U(20)=valor
       let cQtd={},cVal={};
       for (let i=6;i<=9;i++) {
         const r=rows[i]||[];
         const c=String(r[16]||'');
-        const q=parseFloat(r[18])||0;
-        const v=parseFloat(r[20])||0;
-        if (/créd/i.test(c))       { cQtd.credito=q; cVal.credito=v; }
-        else if (/déb|deb/i.test(c)){ cQtd.debito=q;  cVal.debito=v; }
-        else if (/pix/i.test(c))   { cQtd.pix=q;     cVal.pix=v;    }
+        const q=parseFloat(r[18])||0, v=parseFloat(r[20])||0;
+        if(/créd/i.test(c))        { cQtd.credito=q; cVal.credito=v; }
+        else if(/déb|deb/i.test(c)){ cQtd.debito=q;  cVal.debito=v;  }
+        else if(/pix/i.test(c))    { cQtd.pix=q;     cVal.pix=v;     }
       }
 
       // Postos: idx 6+, col G(6)=loja, I(8)=qtd, L(11)=valor
-      for (let i=6; i<rows.length; i++) {
-        const r   = rows[i]||[];
-        const loja= r[6]; const qtd=r[8]; const val=r[11];
-        if (!loja || String(loja).toLowerCase()==='total') break;
-        const nome = normPOSNome(String(loja));
+      for (let i=6;i<rows.length;i++) {
+        const r=rows[i]||[];
+        const loja=r[6], qtd=r[8], val=r[11];
+        if (!loja||String(loja).toLowerCase()==='total') break;
+        const nome=normPOSNome(String(loja));
         if (!nome) continue;
-        const k = `${mesRef}_${nome}`;
-        importados[k] = {
+        const k=`${mesRef}_${nome}`;
+        importados[k]={
           mesRef, postoNome:nome,
-          qtd:parseInt(qtd)||0,
-          valor:parseFloat(val)||0,
+          qtd:parseInt(qtd)||0, valor:parseFloat(val)||0,
           creditoQtd:cQtd.credito||0, debitoQtd:cQtd.debito||0, pixQtd:cQtd.pix||0,
           creditoVal:cVal.credito||0, debitoVal:cVal.debito||0, pixVal:cVal.pix||0,
-          dataRef, importadoEm:dataImport
+          dataRef, importadoEm:now
         };
       }
     }
 
-    // Filtrar só meses com dados reais
-    const mesesComDados = [...new Set(
-      Object.values(importados).filter(d=>d.qtd>0||d.valor>0).map(d=>d.mesRef)
-    )];
-    const final = Object.fromEntries(
-      Object.entries(importados).filter(([,d])=>mesesComDados.includes(d.mesRef))
-    );
+    const mesesOk=[...new Set(Object.values(importados).filter(d=>d.qtd>0||d.valor>0).map(d=>d.mesRef))];
+    const final=Object.fromEntries(Object.entries(importados).filter(([,d])=>mesesOk.includes(d.mesRef)));
     if (!Object.keys(final).length) { toast('Nenhum dado dos postos RG encontrado','err'); return; }
 
-    const batch = db.batch();
-    Object.entries(final).forEach(([k,d]) => {
-      batch.set(db.collection('pos_dados').doc(k), d, {merge:true});
-    });
+    const batch=db.batch();
+    Object.entries(final).forEach(([k,d])=>{ batch.set(db.collection('pos_dados').doc(k),d,{merge:true}); });
 
-    // Salvar metadata de upload
-    const [yy,mm,dd] = dataRef.split('-');
+    // Data de referência formatada
+    const [yy,mm,dd]=dataRef.split('-');
+    const lbl=`${dd}/${mm}/${yy}`;
     await db.collection('pos_config').doc('ultima_atualizacao').set({
-      dataRef, label:`${dd}/${mm}/${yy}`,
-      arquivo:file.name, importadoEm:dataImport
+      dataRef, label:lbl, arquivo:file.name, importadoEm:now
     });
     await db.collection('pos_historico').add({
-      arquivo:file.name, dataRef,
-      label:`${dd}/${mm}/${yy}`,
-      dataImport, registros:Object.keys(final).length,
-      meses:mesesComDados.sort()
+      arquivo:file.name, dataRef, label:lbl,
+      dataImport:now, registros:Object.keys(final).length,
+      meses:mesesOk.sort()
     });
     await batch.commit();
 
-    const snap = await db.collection('pos_dados').get();
-    allPOSData = snap.docs.map(d=>d.data());
-    posCarregado = true;
-    toast(`✅ ${Object.keys(final).length} registros — ${mesesComDados.map(posMLbl).join(', ')}`, 'ok');
+    const snap=await db.collection('pos_dados').get();
+    allPOSData=snap.docs.map(d=>d.data());
+    posCarregado=true;
+
+    // Mostrar badge imediatamente
+    posAtualizarBadge(lbl);
+    toast(`✅ ${Object.keys(final).length} registros — ${mesesOk.map(posMLbl).join(', ')}`, 'ok');
     renderPOS();
   } catch(e) {
     console.error('confirmarImportPOS:', e);
@@ -7832,30 +7824,35 @@ async function confirmarImportPOS() {
 }
 
 function normPOSNome(s) {
-  const n = s.trim().replace(/^Posto\s+/i,'');
-  const direct = POSTOS_RG.find(p => p.toLowerCase() === n.toLowerCase());
-  if (direct) return direct;
-  return POSTOS_RG.find(p =>
-    p.toLowerCase().includes(n.toLowerCase()) || n.toLowerCase().includes(p.toLowerCase())
-  ) || null;
+  const n=s.trim().replace(/^Posto\s+/i,'');
+  return POSTOS_RG.find(p=>p.toLowerCase()===n.toLowerCase())
+    || POSTOS_RG.find(p=>p.toLowerCase().includes(n.toLowerCase())||n.toLowerCase().includes(p.toLowerCase()))
+    || null;
 }
 
-// ── Modal Meta (override por mês) ────
+function posAtualizarBadge(lbl) {
+  const b=document.getElementById('pos-dataref-badge');
+  if (!b) return;
+  b.textContent=`📅 Dados até ${lbl}`;
+  b.style.display='inline-flex';
+}
+
+// ── Modal Meta ────────────────────────
 async function abrirModalMetaPOS() {
-  const todosMeses = [...new Set(allPOSData.map(d=>d.mesRef))].sort();
-  const mesAtivo   = todosMeses[todosMeses.length-1] || (() => {
+  const todosMeses=[...new Set(allPOSData.map(d=>d.mesRef))].sort();
+  const mes=todosMeses[todosMeses.length-1]||(() => {
     const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`;
   })();
-  document.getElementById('pos-meta-mes').value = mesAtivo;
-  const m = posMetas[mesAtivo]||{};
-  document.getElementById('pos-meta-lista').innerHTML =
-    `<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">
-       Ajuste de meta individual (R$) — deixe vazio para usar a meta fixa da campanha
-     </div>`+
-    POSTOS_RG.map(p => {
-      const fixo = POS_METAS_FIXAS[p]||0;
-      const ov   = m.postos?.[p]||'';
-      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)">
+  document.getElementById('pos-meta-mes').value=mes;
+  const m=posMetas[mes]||{};
+  document.getElementById('pos-meta-lista').innerHTML=
+    `<div style="font-size:11px;font-weight:700;color:var(--text3);padding:8px 10px;text-transform:uppercase;letter-spacing:.5px">
+      Override de meta em R$ (vazio = usa meta fixa da campanha)
+    </div>`+
+    POSTOS_RG.map(p=>{
+      const fixo=POS_METAS_FIXAS[p]||0;
+      const ov=m.postos?.[p]||'';
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 8px;border-top:1px solid var(--border)">
         <div>
           <span style="font-size:12px;color:var(--text1)">${p}</span>
           <span style="font-size:10px;color:var(--text3);margin-left:6px">fixo: R$ ${fixo.toLocaleString('pt-BR')}</span>
@@ -7868,14 +7865,12 @@ async function abrirModalMetaPOS() {
 }
 
 async function salvarMetaPOS() {
-  const mes = document.getElementById('pos-meta-mes').value;
+  const mes=document.getElementById('pos-meta-mes').value;
   if (!mes) { toast('Selecione o mês','err'); return; }
-  const postos = {};
-  document.querySelectorAll('.pos-meta-inp').forEach(i => {
-    const v = parseFloat(i.value); if (v>0) postos[i.dataset.posto] = v;
-  });
-  await db.collection('pos_metas').doc(mes).set({postos, updatedAt:new Date().toISOString()});
-  posMetas[mes] = {postos};
+  const postos={};
+  document.querySelectorAll('.pos-meta-inp').forEach(i=>{ const v=parseFloat(i.value); if(v>0) postos[i.dataset.posto]=v; });
+  await db.collection('pos_metas').doc(mes).set({postos,updatedAt:new Date().toISOString()});
+  posMetas[mes]={postos};
   toast('Meta salva!','ok');
   closeModal('modal-pos-meta');
   renderPOS();
@@ -7883,106 +7878,85 @@ async function salvarMetaPOS() {
 
 // ── Histórico ─────────────────────────
 async function verHistoricoPOS() {
-  const lista = document.getElementById('pos-historico-lista');
-  lista.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text3)">Carregando...</div>`;
+  const lista=document.getElementById('pos-historico-lista');
+  lista.innerHTML=`<div style="padding:20px;text-align:center;color:var(--text3)">Carregando...</div>`;
   openModal('modal-pos-historico');
   try {
-    const snap = await db.collection('pos_historico').orderBy('dataImport','desc').limit(20).get();
-    if (snap.empty) {
-      lista.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text3)">Nenhum upload registrado.</div>`;
-    } else {
-      lista.innerHTML = snap.docs.map(d => {
-        const h  = d.data();
-        const dt = new Date(h.dataImport);
+    const snap=await db.collection('pos_historico').orderBy('dataImport','desc').limit(20).get();
+    lista.innerHTML=snap.empty
+      ?`<div style="padding:24px;text-align:center;color:var(--text3)">Nenhum upload registrado.</div>`
+      :snap.docs.map(d=>{
+        const h=d.data(), dt=new Date(h.dataImport);
         return `<div style="padding:10px 14px;border-bottom:1px solid var(--border)">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
-            <span style="font-size:13px;font-weight:700;color:var(--text1)">${h.arquivo}</span>
-            ${h.dataRef?`<span style="background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.3);border-radius:10px;padding:1px 8px;font-size:10px;font-weight:700;color:var(--accent)">Dados até ${h.label||h.dataRef}</span>`:''}
+            <span style="font-size:13px;font-weight:700;color:var(--text1);flex:1">${h.arquivo}</span>
+            ${h.label?`<span style="background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.3);border-radius:10px;padding:1px 8px;font-size:10px;font-weight:700;color:var(--accent)">Dados até ${h.label}</span>`:''}
           </div>
           <div style="font-size:11px;color:var(--text3)">
-            Importado em ${dt.toLocaleDateString('pt-BR')} às ${dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
-            · ${h.registros||'?'} registros
-            · ${(h.meses||[]).map(posMLbl).join(', ')}
+            Importado ${dt.toLocaleDateString('pt-BR')} ${dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
+            · ${h.registros||'?'} registros · ${(h.meses||[]).map(posMLbl).join(', ')}
           </div>
         </div>`;
       }).join('');
-    }
-  } catch(e) { lista.innerHTML = `<div style="padding:20px;color:var(--red)">Erro ao carregar.</div>`; }
+  } catch(e) { lista.innerHTML=`<div style="padding:20px;color:var(--red)">Erro ao carregar.</div>`; }
 }
 
 // ── Render principal ──────────────────
 async function renderPOS() {
   if (!posCarregado) await initPOS();
 
-  // Buscar data de última atualização
+  // Badge de atualização — busca do Firestore e exibe
   try {
-    const cfgSnap = await db.collection('pos_config').doc('ultima_atualizacao').get();
-    if (cfgSnap.exists) {
-      const cfg = cfgSnap.data();
-      document.getElementById('pos-dataref-badge').textContent = `📅 Dados até ${cfg.label||cfg.dataRef}`;
-      document.getElementById('pos-dataref-badge').style.display = 'inline-flex';
-    }
+    const cfg=await db.collection('pos_config').doc('ultima_atualizacao').get();
+    if (cfg.exists) posAtualizarBadge(cfg.data().label||cfg.data().dataRef);
   } catch(e){}
 
-  const comDados = allPOSData.filter(d=>d.valor>0);
+  const comDados=allPOSData.filter(d=>d.valor>0);
   if (!comDados.length) {
-    document.getElementById('pos-empty').style.display = 'flex';
-    document.getElementById('pos-main').style.display  = 'none';
+    document.getElementById('pos-empty').style.display='flex';
+    document.getElementById('pos-main').style.display='none';
     return;
   }
-  document.getElementById('pos-empty').style.display = 'none';
-  document.getElementById('pos-main').style.display  = 'block';
+  document.getElementById('pos-empty').style.display='none';
+  document.getElementById('pos-main').style.display='block';
 
-  const todosMeses = [...new Set(allPOSData.map(d=>d.mesRef))].sort()
-    .filter(m => allPOSData.some(d=>d.mesRef===m&&d.valor>0));
-  const mesAtivo = todosMeses[todosMeses.length-1];
+  const todosMeses=[...new Set(allPOSData.map(d=>d.mesRef))].sort()
+    .filter(m=>allPOSData.some(d=>d.mesRef===m&&d.valor>0));
+  const mesAtivo=todosMeses[todosMeses.length-1];
 
-  // Selects
-  const selMes = document.getElementById('pos-mes-select');
-  if (selMes) {
-    selMes.innerHTML = todosMeses.map(m=>
-      `<option value="${m}"${m===mesAtivo?' selected':''}>${posMLbl(m)}</option>`
-    ).join('');
-  }
-  const selEvol = document.getElementById('pos-evolucao-select');
-  if (selEvol) {
-    selEvol.innerHTML = `<option value="">Todos os postos</option>`+
-      POSTOS_RG.map(p=>`<option value="${p}">${p}</option>`).join('');
-  }
+  // Popula selects
+  const selMes=document.getElementById('pos-mes-select');
+  if (selMes) selMes.innerHTML=todosMeses.map(m=>`<option value="${m}"${m===mesAtivo?' selected':''}>${posMLbl(m)}</option>`).join('');
+  const selEvol=document.getElementById('pos-evolucao-select');
+  if (selEvol) selEvol.innerHTML=`<option value="">Todos os postos</option>`+POSTOS_RG.map(p=>`<option value="${p}">${p}</option>`).join('');
 
-  document.getElementById('pos-subtitle').textContent = `Negociação POS — ${posMLbl(mesAtivo)}`;
+  document.getElementById('pos-subtitle').textContent=`Negociação POS — ${posMLbl(mesAtivo)}`;
+
+  // Renderiza apenas as tabs visíveis agora (ranking e campanha)
   renderPOSKPIs(mesAtivo, todosMeses);
   renderPOSCampanha(mesAtivo);
   renderPOSRanking(mesAtivo);
-  renderPOSEvolucao();
-  renderPOSCanal(mesAtivo, todosMeses);
+  // Evolução e Canal só são renderizados ao clicar nas abas (canvas precisa estar visível)
 }
 
 // ── KPIs ──────────────────────────────
 function renderPOSKPIs(mesAtivo, todosMeses) {
-  const dadosMes = allPOSData.filter(d=>d.mesRef===mesAtivo);
-  const totalQtd = dadosMes.reduce((a,d)=>a+(d.qtd||0),0);
-  const totalVal = dadosMes.reduce((a,d)=>a+(d.valor||0),0);
-  const ativos   = dadosMes.filter(d=>d.valor>0).length;
-  const aptos    = dadosMes.filter(d=>{
-    const meta = getPOSMetaValor(mesAtivo, d.postoNome);
-    return d.valor >= meta;
-  }).length;
-  const ticket   = totalQtd>0 ? totalVal/totalQtd : 0;
+  const dadosMes=allPOSData.filter(d=>d.mesRef===mesAtivo);
+  const totalQtd=dadosMes.reduce((a,d)=>a+(d.qtd||0),0);
+  const totalVal=dadosMes.reduce((a,d)=>a+(d.valor||0),0);
+  const ativos=dadosMes.filter(d=>d.valor>0).length;
+  const aptos=dadosMes.filter(d=>d.valor>=getPOSMeta(mesAtivo,d.postoNome)).length;
+  const ticket=totalQtd>0?totalVal/totalQtd:0;
+  const idxA=todosMeses.indexOf(mesAtivo);
+  const mesAnt=idxA>0?todosMeses[idxA-1]:null;
+  const valAnt=mesAnt?allPOSData.filter(d=>d.mesRef===mesAnt).reduce((a,d)=>a+(d.valor||0),0):0;
+  const cresc=valAnt>0?((totalVal-valAnt)/valAnt*100):null;
+  const crescTxt=cresc!==null?`${cresc>=0?'▲':'▼'} ${Math.abs(cresc).toFixed(1)}% vs ${posMLbl(mesAnt)}`:posMLbl(mesAtivo);
 
-  // Crescimento vs mês anterior
-  const idxA  = todosMeses.indexOf(mesAtivo);
-  const mesAnt= idxA>0 ? todosMeses[idxA-1] : null;
-  const valAnt= mesAnt ? allPOSData.filter(d=>d.mesRef===mesAnt).reduce((a,d)=>a+(d.valor||0),0) : 0;
-  const cresc = valAnt>0 ? ((totalVal-valAnt)/valAnt*100) : null;
-  const crescTxt = cresc!==null
-    ? `${cresc>=0?'▲':'▼'} ${Math.abs(cresc).toFixed(1)}% vs ${posMLbl(mesAnt)}`
-    : posMLbl(mesAtivo);
-
-  document.getElementById('pos-kpis').innerHTML = [
+  document.getElementById('pos-kpis').innerHTML=[
     {ico:'💰',lbl:'Valor Negociado',val:`R$ ${(totalVal/1000).toFixed(1)}k`,sub:crescTxt,cor:cresc===null?'accent':cresc>=0?'green':'red'},
     {ico:'💳',lbl:'Negociações',val:totalQtd.toLocaleString('pt-BR'),sub:`Ticket médio R$ ${ticket.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`,cor:'accent'},
-    {ico:'🎯',lbl:'Aptos Campanha',val:`${aptos} postos`,sub:`Bateram a meta em R$`,cor:'green'},
+    {ico:'🎯',lbl:'Aptos Campanha',val:`${aptos} postos`,sub:'Bateram a meta em R$',cor:'green'},
     {ico:'🏪',lbl:'Postos Ativos',val:`${ativos}/${POSTOS_RG.length}`,sub:`${POSTOS_RG.length-ativos} sem negociação`,cor:'yellow'},
   ].map(k=>`
     <div class="kpi-card">
@@ -7993,291 +7967,289 @@ function renderPOSKPIs(mesAtivo, todosMeses) {
     </div>`).join('');
 }
 
+// ── Ranking ─────────────────────────
+function renderPOSRanking(mesAtivo) {
+  const dadosMes=allPOSData.filter(d=>d.mesRef===mesAtivo);
+  const rank=POSTOS_RG.map(nome=>{
+    const d=dadosMes.find(x=>x.postoNome===nome)||{qtd:0,valor:0};
+    const meta=getPOSMeta(mesAtivo,nome);
+    const pct=meta>0?(d.valor/meta)*100:0;
+    return {nome,qtd:d.qtd||0,valor:d.valor||0,meta,pct};
+  }).sort((a,b)=>b.valor-a.valor);
+
+  const maxVal=Math.max(...rank.map(p=>Math.max(p.valor,p.meta)),1);
+
+  // Cabeçalho
+  const header=`
+    <div style="display:flex;align-items:center;gap:8px;padding:0 0 8px;border-bottom:2px solid var(--border);margin-bottom:4px">
+      <span style="width:22px"></span>
+      <span style="width:185px;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Posto</span>
+      <span style="flex:1;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Progresso (▮ = meta)</span>
+      <span style="width:72px;text-align:right;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase">Valor</span>
+      <span style="width:36px;text-align:right;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase">Qtd</span>
+      <span style="width:52px;text-align:right;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase">% Meta</span>
+    </div>`;
+
+  const rows=rank.map((p,i)=>{
+    // Verde ≥100%, laranja ≥60%, vermelho <60%
+    const cor=p.pct>=100?'#27AE60':p.pct>=60?'#E67E22':'#E74C3C';
+    const barW=Math.min(100,Math.round((p.valor/maxVal)*100));
+    const metaPos=Math.min(96,Math.round((p.meta/maxVal)*100));
+    const aptoTag=p.pct>=100?`<span style="background:rgba(39,174,96,.15);color:#27AE60;font-size:9px;font-weight:800;padding:1px 5px;border-radius:8px;margin-left:4px">✓</span>`:'';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)">
+      <span style="width:22px;font-size:11px;color:var(--text3);text-align:right;flex-shrink:0">${i+1}</span>
+      <span style="width:185px;font-size:12px;font-weight:${p.valor?700:400};color:var(--${p.valor?'text1':'text3'});white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0">${p.nome}${aptoTag}</span>
+      <div style="flex:1;height:11px;background:var(--border);border-radius:5px;position:relative;overflow:visible;flex-shrink:0">
+        <div style="height:100%;width:${barW}%;background:${cor};border-radius:5px;transition:width .4s;max-width:100%"></div>
+        <div style="position:absolute;left:${metaPos}%;top:-4px;bottom:-4px;width:2px;background:rgba(255,255,255,.7);border-radius:2px;" title="Meta ${fmtBRL(p.meta)}"></div>
+      </div>
+      <span style="width:72px;text-align:right;font-size:12px;font-weight:800;color:${cor};flex-shrink:0">${fmtBRL(p.valor)}</span>
+      <span style="width:36px;text-align:right;font-size:12px;font-weight:700;color:var(--text2);flex-shrink:0">${p.qtd}</span>
+      <span style="width:52px;text-align:right;font-size:12px;font-weight:800;color:${cor};flex-shrink:0">${p.pct.toFixed(0)}%</span>
+    </div>`;
+  }).join('');
+
+  const metaMin=Math.min(...POSTOS_RG.map(n=>getPOSMeta(mesAtivo,n)));
+  const metaMax=Math.max(...POSTOS_RG.map(n=>getPOSMeta(mesAtivo,n)));
+  document.getElementById('pos-ranking').innerHTML=`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px">
+      <span style="font-size:11px;color:var(--text3)">Linha branca = meta individual · metas: ${fmtBRL(metaMin)} – ${fmtBRL(metaMax)}</span>
+      <div style="display:flex;gap:10px;font-size:11px">
+        <span style="color:#27AE60">▬ ≥100%</span>
+        <span style="color:#E67E22">▬ ≥60%</span>
+        <span style="color:#E74C3C">▬ &lt;60%</span>
+      </div>
+    </div>
+    ${header}${rows}`;
+}
+
 // ── Campanha / Pódio ─────────────────
 function renderPOSCampanha(mesAtivo) {
-  const dadosMes = allPOSData.filter(d=>d.mesRef===mesAtivo);
+  const dadosMes=allPOSData.filter(d=>d.mesRef===mesAtivo);
+  const rank=POSTOS_RG.map(nome=>{
+    const d=dadosMes.find(x=>x.postoNome===nome)||{qtd:0,valor:0};
+    const meta=getPOSMeta(mesAtivo,nome);
+    return {nome,qtd:d.qtd||0,valor:d.valor||0,meta,pct:meta>0?(d.valor/meta)*100:0};
+  }).sort((a,b)=>b.pct-a.pct);
 
-  // Regra: elegíveis = bateram a meta em VALOR; desempate = maior % (valor/meta)
-  const rank = POSTOS_RG.map(nome => {
-    const d    = dadosMes.find(x=>x.postoNome===nome)||{qtd:0,valor:0};
-    const meta = getPOSMetaValor(mesAtivo, nome);
-    const pct  = meta>0 ? (d.valor/meta)*100 : 0;
-    return {nome, qtd:d.qtd||0, valor:d.valor||0, meta, pct};
-  }).sort((a,b)=>b.pct-a.pct);   // ordena por % desc
+  const aptos=rank.filter(p=>p.pct>=100);
+  const inaptos=rank.filter(p=>p.pct<100);
+  const top3=aptos.length>=3?aptos.slice(0,3):rank.slice(0,3);
+  const M=['🥇','🥈','🥉'], CL=['gold','silver','bronze'], LB=['1º Lugar','2º Lugar','3º Lugar'];
 
-  const aptos   = rank.filter(p=>p.pct>=100);
-  const inaptos = rank.filter(p=>p.pct<100);
-  const top3    = aptos.length>=3 ? aptos.slice(0,3) : rank.slice(0,3);   // se <3 aptos, pega os que estão mais próximos
-  const M=['🥇','🥈','🥉']; const CL=['gold','silver','bronze']; const LB=['1º Lugar','2º Lugar','3º Lugar'];
-
-  const podium = top3.map((p,i)=>`
+  const podium=top3.map((p,i)=>`
     <div class="pos-podium-card ${CL[i]}">
       <div style="font-size:32px;margin-bottom:4px">${M[i]}</div>
       <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.7px">${LB[i]}</div>
       <div style="font-size:13px;font-weight:800;color:var(--text1);margin:6px 0 2px;line-height:1.2">${p.nome}</div>
-      <div style="font-size:24px;font-weight:900;color:var(--${p.pct>=100?'green':p.pct>=70?'yellow':'red'});line-height:1">${p.pct.toFixed(1)}%</div>
-      <div style="font-size:11px;color:var(--text3);margin-top:2px">R$ ${p.valor.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
-      <div style="font-size:10px;color:var(--text3)">meta R$ ${p.meta.toLocaleString('pt-BR')}</div>
-      <div style="margin-top:8px">${p.pct>=100
-        ?'<span class="pos-badge-apto">✓ Apto</span>'
-        :'<span class="pos-badge-inapto">Em progresso</span>'}</div>
+      <div style="font-size:24px;font-weight:900;color:${p.pct>=100?'#27AE60':p.pct>=60?'#E67E22':'#E74C3C'};line-height:1">${p.pct.toFixed(1)}%</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:2px">${fmtBRL(p.valor)}</div>
+      <div style="font-size:10px;color:var(--text3)">meta ${fmtBRL(p.meta)}</div>
+      <div style="margin-top:8px">${p.pct>=100?'<span class="pos-badge-apto">✓ Apto</span>':'<span class="pos-badge-inapto">Em progresso</span>'}</div>
     </div>`).join('');
 
-  const listaAptos = aptos.slice(0,10).map((p,i)=>`
+  const listaAptos=aptos.slice(0,10).map((p,i)=>`
     <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border)">
       <span style="font-size:15px;width:22px">${M[i]||'✓'}</span>
       <span style="flex:1;font-size:13px;font-weight:700">${p.nome}</span>
-      <span style="font-size:13px;font-weight:800;color:var(--green)">${p.pct.toFixed(1)}%</span>
-      <span style="font-size:11px;color:var(--text3);width:120px;text-align:right">R$ ${p.valor.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>
+      <span style="font-size:13px;font-weight:800;color:#27AE60">${p.pct.toFixed(1)}%</span>
+      <span style="font-size:11px;color:var(--text3);width:110px;text-align:right">${fmtBRL(p.valor)}</span>
       <span class="pos-badge-apto">✓</span>
-    </div>`).join('') || `<div style="padding:20px;text-align:center;color:var(--text3);font-size:13px">Nenhum posto bateu a meta ainda.</div>`;
+    </div>`).join('')||`<div style="padding:20px;text-align:center;color:var(--text3);font-size:13px">Nenhum posto bateu a meta ainda.</div>`;
 
-  const listaInaptos = inaptos.slice(0,12).map(p=>`
+  const listaInaptos=inaptos.slice(0,12).map(p=>`
     <div style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid var(--border)">
       <span style="flex:1;font-size:12px;color:var(--text2)">${p.nome}</span>
-      <div style="width:72px;height:6px;background:var(--border);border-radius:4px;overflow:hidden">
-        <div style="height:100%;width:${Math.min(100,p.pct)}%;background:var(--${p.pct>=70?'yellow':'red'});border-radius:4px"></div>
+      <div style="width:70px;height:6px;background:var(--border);border-radius:4px;overflow:hidden">
+        <div style="height:100%;width:${Math.min(100,p.pct)}%;background:${p.pct>=60?'#E67E22':'#E74C3C'};border-radius:4px"></div>
       </div>
-      <span style="font-size:12px;font-weight:700;color:var(--${p.pct>=70?'yellow':'red'});width:40px;text-align:right">${p.pct.toFixed(0)}%</span>
-      <span style="font-size:10px;color:var(--text3);width:100px;text-align:right">R$ ${(p.valor/1000).toFixed(1)}k / ${(p.meta/1000).toFixed(1)}k</span>
+      <span style="font-size:12px;font-weight:700;color:${p.pct>=60?'#E67E22':'#E74C3C'};width:38px;text-align:right">${p.pct.toFixed(0)}%</span>
+      <span style="font-size:10px;color:var(--text3);width:110px;text-align:right">${fmtBRL(p.valor)} / ${fmtBRL(p.meta)}</span>
     </div>`).join('');
 
-  document.getElementById('pos-campanha').innerHTML = `
+  document.getElementById('pos-campanha').innerHTML=`
     <div style="background:linear-gradient(135deg,rgba(5,39,118,.25),rgba(201,168,76,.08));border:1px solid rgba(201,168,76,.3);border-radius:14px;padding:20px;margin-bottom:20px">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
         <div>
           <h3 style="margin:0;font-size:15px;font-weight:800;color:var(--text1)">🏆 Campanha Missão Arrecadação POS</h3>
-          <p style="margin:4px 0 0;font-size:12px;color:var(--text3)">Elegíveis: bateram a meta em valor negociado · Desempate: maior % atingimento · Top 3 premiados</p>
+          <p style="margin:4px 0 0;font-size:12px;color:var(--text3)">Elegíveis: bateram a meta em valor · Desempate: maior % atingimento · Top 3 premiados</p>
         </div>
-        <button class="btn btn-secondary" style="font-size:11px;white-space:nowrap" onclick="abrirModalMetaPOS()">⚙️ Ajustar Metas</button>
+        <button class="btn btn-secondary" style="font-size:11px" onclick="abrirModalMetaPOS()">⚙️ Ajustar Metas</button>
       </div>
-      <div style="display:flex;gap:8px;margin:12px 0;flex-wrap:wrap">
-        <div style="background:rgba(39,174,96,.1);border:1px solid rgba(39,174,96,.3);border-radius:8px;padding:6px 14px;font-size:12px">
-          <span style="color:var(--green);font-weight:800">${aptos.length}</span><span style="color:var(--text3);margin-left:4px">aptos</span>
-        </div>
-        <div style="background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.3);border-radius:8px;padding:6px 14px;font-size:12px">
-          <span style="color:var(--red);font-weight:800">${inaptos.length}</span><span style="color:var(--text3);margin-left:4px">em progresso</span>
-        </div>
-        <div style="background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.3);border-radius:8px;padding:6px 14px;font-size:12px">
-          <span style="color:var(--accent);font-weight:800">3</span><span style="color:var(--text3);margin-left:4px">premiados</span>
-        </div>
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+        <span style="background:rgba(39,174,96,.1);border:1px solid rgba(39,174,96,.3);border-radius:8px;padding:4px 12px;font-size:12px"><span style="color:#27AE60;font-weight:800">${aptos.length}</span><span style="color:var(--text3);margin-left:4px">aptos</span></span>
+        <span style="background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.3);border-radius:8px;padding:4px 12px;font-size:12px"><span style="color:#E74C3C;font-weight:800">${inaptos.length}</span><span style="color:var(--text3);margin-left:4px">em progresso</span></span>
       </div>
       <div class="pos-podium">${podium}</div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
       <div style="background:var(--surface2);border-radius:10px;border:1px solid var(--border)">
-        <div style="padding:12px 14px;border-bottom:1px solid var(--border)">
-          <span style="font-size:13px;font-weight:700;color:var(--green)">✅ Aptos (${aptos.length})</span>
-        </div>${listaAptos}
+        <div style="padding:12px 14px;border-bottom:1px solid var(--border)"><span style="font-size:13px;font-weight:700;color:#27AE60">✅ Aptos (${aptos.length})</span></div>
+        ${listaAptos}
       </div>
       <div style="background:var(--surface2);border-radius:10px;border:1px solid var(--border)">
-        <div style="padding:12px 14px;border-bottom:1px solid var(--border)">
-          <span style="font-size:13px;font-weight:700;color:var(--yellow)">⏳ Em Progresso (${inaptos.length})</span>
-        </div>${listaInaptos}
+        <div style="padding:12px 14px;border-bottom:1px solid var(--border)"><span style="font-size:13px;font-weight:700;color:#E67E22">⏳ Em Progresso (${inaptos.length})</span></div>
+        ${listaInaptos}
       </div>
     </div>`;
 }
 
-// ── Ranking visual ─────────────────────
-function renderPOSRanking(mesAtivo) {
-  const dadosMes = allPOSData.filter(d=>d.mesRef===mesAtivo);
-  const rank = POSTOS_RG.map(nome => {
-    const d    = dadosMes.find(x=>x.postoNome===nome)||{qtd:0,valor:0};
-    const meta = getPOSMetaValor(mesAtivo, nome);
-    return {nome, qtd:d.qtd||0, valor:d.valor||0, meta, pct:meta>0?(d.valor/meta)*100:0};
-  }).sort((a,b)=>b.valor-a.valor);
-
-  const maxVal = Math.max(...rank.map(p=>Math.max(p.valor,p.meta)),1);
-  const fmtK   = v => v>=1000 ? `R$ ${(v/1000).toFixed(1)}k` : `R$ ${v.toFixed(0)}`;
-
-  const rows = rank.map((p,i)=>{
-    const barPct  = Math.round((p.valor/maxVal)*100);
-    const metaPos = Math.min(96,Math.round((p.meta/maxVal)*100));
-    const cor = p.pct>=100?'green':p.pct>=70?'yellow':'red';
-    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)">
-      <span style="width:22px;font-size:11px;color:var(--text3);text-align:right;flex-shrink:0">${i+1}</span>
-      <span style="width:185px;font-size:12px;font-weight:${p.valor?700:400};color:var(--${p.valor?'text1':'text3'});white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0">${p.nome}</span>
-      <div style="flex:1;height:12px;background:var(--border);border-radius:6px;position:relative;overflow:visible">
-        <div style="height:100%;width:${barPct}%;background:var(--${cor});border-radius:6px;transition:width .4s;max-width:100%"></div>
-        <div style="position:absolute;left:${metaPos}%;top:-4px;bottom:-4px;width:2px;background:var(--accent);border-radius:2px;opacity:.9"></div>
-      </div>
-      <span style="width:72px;text-align:right;font-size:12px;font-weight:800;color:var(--${cor});flex-shrink:0">${fmtK(p.valor)}</span>
-      <span style="width:48px;text-align:right;font-size:11px;font-weight:700;color:var(--${cor});flex-shrink:0">${p.pct.toFixed(0)}%</span>
-      <span style="width:36px;text-align:right;font-size:11px;color:var(--text3);flex-shrink:0">${p.qtd}x</span>
-    </div>`;
-  }).join('');
-
-  const metaMin = Math.min(...POSTOS_RG.map(n=>getPOSMetaValor(mesAtivo,n)));
-  const metaMax = Math.max(...POSTOS_RG.map(n=>getPOSMetaValor(mesAtivo,n)));
-  document.getElementById('pos-ranking').innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px">
-      <span style="font-size:12px;color:var(--text3)">Linha laranja = meta individual · metas: R$ ${metaMin.toLocaleString('pt-BR')} – R$ ${metaMax.toLocaleString('pt-BR')}</span>
-      <div style="display:flex;gap:10px;font-size:11px">
-        <span style="color:var(--green)">▬ ≥100%</span>
-        <span style="color:var(--yellow)">▬ ≥70%</span>
-        <span style="color:var(--red)">▬ &lt;70%</span>
-      </div>
-    </div>
-    ${rows}`;
-}
-
-// ── Evolução mensal ───────────────────
+// ── Evolução — só renderiza com canvas visível ──
 function renderPOSEvolucao() {
-  const todosMeses = [...new Set(allPOSData.map(d=>d.mesRef))].sort()
+  const todosMeses=[...new Set(allPOSData.map(d=>d.mesRef))].sort()
     .filter(m=>allPOSData.some(d=>d.mesRef===m&&d.valor>0));
-  if (!todosMeses.length) return;
+  if (!todosMeses.length) {
+    document.getElementById('pos-evolucao-empty').style.display='block';
+    return;
+  }
+  document.getElementById('pos-evolucao-empty').style.display='none';
 
-  const selPosto  = document.getElementById('pos-evolucao-select')?.value||'';
-  const metrica   = document.getElementById('pos-evolucao-metrica')?.value||'valor';
-  const labels    = todosMeses.map(posMLbl);
+  const selPosto =document.getElementById('pos-evolucao-select')?.value||'';
+  const metrica  =document.getElementById('pos-evolucao-metrica')?.value||'valor';
+  const labels   =todosMeses.map(posMLbl);
+  let datasets=[];
 
-  let datasets = [];
   if (selPosto) {
-    const vals = todosMeses.map(m=>{
-      const d = allPOSData.find(x=>x.mesRef===m&&x.postoNome===selPosto);
-      if (!d || (!d.valor&&!d.qtd)) return null;
+    const vals=todosMeses.map(m=>{
+      const d=allPOSData.find(x=>x.mesRef===m&&x.postoNome===selPosto);
+      if (!d||(d.valor===0&&d.qtd===0)) return null;
       if (metrica==='valor') return d.valor;
       if (metrica==='qtd')   return d.qtd;
-      const meta = getPOSMetaValor(m, selPosto);
-      return meta>0 ? parseFloat(((d.valor/meta)*100).toFixed(1)) : null;
+      const meta=getPOSMeta(m,selPosto);
+      return meta>0?parseFloat(((d.valor/meta)*100).toFixed(1)):null;
     });
-    datasets = [
-      {label:selPosto, data:vals, borderColor:'#C9A84C', backgroundColor:'rgba(201,168,76,.15)', tension:.35, fill:true, spanGaps:true, pointRadius:5, pointBackgroundColor:'#C9A84C'},
+    datasets=[
+      {label:selPosto,data:vals,borderColor:'#C9A84C',backgroundColor:'rgba(201,168,76,.15)',
+       tension:.35,fill:true,spanGaps:true,pointRadius:5,pointBackgroundColor:'#C9A84C'},
     ];
-    if (metrica==='pct') datasets.push({label:'Meta 100%', data:todosMeses.map(()=>100), borderColor:'rgba(255,255,255,.3)', borderDash:[5,4], pointRadius:0, fill:false, spanGaps:true});
+    if (metrica==='pct') datasets.push({label:'Meta 100%',data:todosMeses.map(()=>100),borderColor:'rgba(255,255,255,.3)',borderDash:[5,4],pointRadius:0,fill:false,spanGaps:true});
   } else {
     if (metrica==='valor') {
-      const totVal = todosMeses.map(m=>allPOSData.filter(d=>d.mesRef===m).reduce((a,d)=>a+(d.valor||0),0));
-      const medVal = todosMeses.map((m,i)=>{const n=allPOSData.filter(d=>d.mesRef===m&&d.valor>0).length; return n?parseFloat((totVal[i]/n).toFixed(0)):null;});
-      datasets = [
-        {label:'Total R$', data:totVal, borderColor:'#C9A84C', backgroundColor:'rgba(201,168,76,.12)', tension:.35, fill:true, spanGaps:true, pointRadius:5, pointBackgroundColor:'#C9A84C', yAxisID:'y'},
-        {label:'Média por posto', data:medVal, borderColor:'rgba(52,152,219,.8)', backgroundColor:'transparent', borderDash:[4,3], tension:.35, spanGaps:true, pointRadius:4, yAxisID:'y2'},
+      const totVal=todosMeses.map(m=>allPOSData.filter(d=>d.mesRef===m).reduce((a,d)=>a+(d.valor||0),0));
+      const medVal=todosMeses.map((m,i)=>{const n=allPOSData.filter(d=>d.mesRef===m&&d.valor>0).length;return n?+(totVal[i]/n).toFixed(0):null;});
+      datasets=[
+        {label:'Total R$',data:totVal,borderColor:'#C9A84C',backgroundColor:'rgba(201,168,76,.12)',tension:.35,fill:true,spanGaps:true,pointRadius:5,pointBackgroundColor:'#C9A84C',yAxisID:'y'},
+        {label:'Média/posto',data:medVal,borderColor:'rgba(52,152,219,.8)',backgroundColor:'transparent',borderDash:[4,3],tension:.35,spanGaps:true,pointRadius:4,yAxisID:'y2'},
       ];
     } else if (metrica==='qtd') {
-      const totQtd = todosMeses.map(m=>allPOSData.filter(d=>d.mesRef===m).reduce((a,d)=>a+(d.qtd||0),0));
-      datasets = [{label:'Total negociações', data:totQtd, borderColor:'#C9A84C', backgroundColor:'rgba(201,168,76,.12)', tension:.35, fill:true, spanGaps:true, pointRadius:5, pointBackgroundColor:'#C9A84C'}];
+      const totQtd=todosMeses.map(m=>allPOSData.filter(d=>d.mesRef===m).reduce((a,d)=>a+(d.qtd||0),0));
+      datasets=[{label:'Total negociações',data:totQtd,borderColor:'#C9A84C',backgroundColor:'rgba(201,168,76,.12)',tension:.35,fill:true,spanGaps:true,pointRadius:5,pointBackgroundColor:'#C9A84C'}];
     } else {
-      const pctMed = todosMeses.map(m=>{
-        const mes = allPOSData.filter(d=>d.mesRef===m&&d.valor>0);
+      const pctMed=todosMeses.map(m=>{
+        const mes=allPOSData.filter(d=>d.mesRef===m&&d.valor>0);
         if (!mes.length) return null;
-        const sum = mes.reduce((a,d)=>{const meta=getPOSMetaValor(m,d.postoNome); return a+(meta>0?(d.valor/meta)*100:0);},0);
-        return parseFloat((sum/mes.length).toFixed(1));
+        return +(mes.reduce((a,d)=>{const meta=getPOSMeta(m,d.postoNome);return a+(meta>0?(d.valor/meta)*100:0);},0)/mes.length).toFixed(1);
       });
-      datasets = [
-        {label:'% médio de meta', data:pctMed, borderColor:'#C9A84C', backgroundColor:'rgba(201,168,76,.12)', tension:.35, fill:true, spanGaps:true, pointRadius:5, pointBackgroundColor:'#C9A84C'},
-        {label:'Meta 100%', data:todosMeses.map(()=>100), borderColor:'rgba(255,255,255,.25)', borderDash:[5,4], pointRadius:0, fill:false},
+      datasets=[
+        {label:'% médio de meta',data:pctMed,borderColor:'#C9A84C',backgroundColor:'rgba(201,168,76,.12)',tension:.35,fill:true,spanGaps:true,pointRadius:5,pointBackgroundColor:'#C9A84C'},
+        {label:'Meta 100%',data:todosMeses.map(()=>100),borderColor:'rgba(255,255,255,.25)',borderDash:[5,4],pointRadius:0,fill:false},
       ];
     }
   }
 
-  const ctx = document.getElementById('pos-evolucao-chart');
+  const ctx=document.getElementById('pos-evolucao-chart');
   if (!ctx) return;
-  if (posChartEvolucao) { posChartEvolucao.destroy(); posChartEvolucao = null; }
-  const scales = {
-    x:{ticks:{color:'#888',font:{size:11}}, grid:{color:'rgba(255,255,255,.04)'}},
-    y:{ticks:{color:'#888',font:{size:10}}, grid:{color:'rgba(255,255,255,.05)'},
-       title:{display:true, text:metrica==='valor'?'R$':metrica==='pct'?'% meta':'Qtd', color:'#888', font:{size:10}}}
+  if (posChartEvolucao) { posChartEvolucao.destroy(); posChartEvolucao=null; }
+  const scales={
+    x:{ticks:{color:'#888',font:{size:11}},grid:{color:'rgba(255,255,255,.04)'}},
+    y:{ticks:{color:'#888',font:{size:10}},grid:{color:'rgba(255,255,255,.05)'},
+       title:{display:true,text:metrica==='valor'?'R$':metrica==='pct'?'% meta':'Qtd',color:'#888',font:{size:10}}}
   };
-  if (!selPosto && metrica==='valor') {
-    scales.y2 = {position:'right', ticks:{color:'rgba(52,152,219,.6)',font:{size:10}}, grid:{display:false},
-                 title:{display:true, text:'Média/posto', color:'rgba(52,152,219,.6)', font:{size:10}}};
-  }
-  posChartEvolucao = new Chart(ctx, {
-    type:'line', data:{labels, datasets},
-    options:{responsive:true, interaction:{mode:'index',intersect:false},
-      plugins:{legend:{labels:{color:'#aaa',font:{size:11},boxWidth:12}}},
-      scales}
+  if (!selPosto&&metrica==='valor') scales.y2={position:'right',ticks:{color:'rgba(52,152,219,.6)',font:{size:10}},grid:{display:false},title:{display:true,text:'Média/posto',color:'rgba(52,152,219,.6)',font:{size:10}}};
+  posChartEvolucao=new Chart(ctx,{
+    type:'line',data:{labels,datasets},
+    options:{responsive:true,interaction:{mode:'index',intersect:false},
+      plugins:{legend:{labels:{color:'#aaa',font:{size:11},boxWidth:12}}},scales}
   });
 }
 
-// ── Canal (Crédito/Débito/Pix) ────────
+// ── Canal — só renderiza com canvas visível ──
 function renderPOSCanal(mesAtivo, todosMeses) {
-  // Canal vem do registro de qualquer posto (é dado geral da rede por mês)
-  const comCanal = allPOSData.filter(d=>d.mesRef===mesAtivo&&(d.creditoQtd||d.debitoQtd||d.pixQtd));
+  const wrap=document.getElementById('pos-canal-wrap');
+  if (!wrap) return;
+
+  const comCanal=allPOSData.filter(d=>d.mesRef===mesAtivo&&(d.creditoQtd||d.debitoQtd||d.pixQtd));
   if (!comCanal.length) {
-    document.getElementById('pos-canal-wrap').innerHTML =
-      `<div style="padding:40px;text-align:center;color:var(--text3);font-size:13px">
-        Dados de canal (Crédito/Débito/Pix) disponíveis após a próxima importação.
-      </div>`;
+    wrap.innerHTML=`<div style="padding:60px;text-align:center;color:var(--text3);font-size:13px">
+      Dados de canal disponíveis após a próxima importação do arquivo completo.
+    </div>`;
     return;
   }
-  // Usar o primeiro registro com dados de canal do mês
-  const ref = comCanal[0];
-  const cQtd=ref.creditoQtd||0, dQtd=ref.debitoQtd||0, pQtd=ref.pixQtd||0;
-  const cVal=ref.creditoVal||0, dVal=ref.debitoVal||0, pVal=ref.pixVal||0;
-  const totQtd = cQtd+dQtd+pQtd;
+  const ref=comCanal[0];
+  const cQ=ref.creditoQtd||0, dQ=ref.debitoQtd||0, pQ=ref.pixQtd||0;
+  const cV=ref.creditoVal||0, dV=ref.debitoVal||0, pV=ref.pixVal||0;
+  const totQ=cQ+dQ+pQ;
 
-  // Evolução de canal
-  const evCred = todosMeses.map(m=>{const r=allPOSData.find(d=>d.mesRef===m&&d.creditoQtd); return r?.creditoQtd||null;});
-  const evDeb  = todosMeses.map(m=>{const r=allPOSData.find(d=>d.mesRef===m&&d.debitoQtd);  return r?.debitoQtd||null;});
-  const evPix  = todosMeses.map(m=>{const r=allPOSData.find(d=>d.mesRef===m&&d.pixQtd);     return r?.pixQtd||null;});
-  const hasCanal = evCred.some(v=>v)||evDeb.some(v=>v)||evPix.some(v=>v);
+  const evCred=todosMeses.map(m=>{const r=allPOSData.find(d=>d.mesRef===m&&(d.creditoQtd||d.debitoQtd||d.pixQtd));return r?.creditoQtd||null;});
+  const evDeb =todosMeses.map(m=>{const r=allPOSData.find(d=>d.mesRef===m&&(d.creditoQtd||d.debitoQtd||d.pixQtd));return r?.debitoQtd||null;});
+  const evPix =todosMeses.map(m=>{const r=allPOSData.find(d=>d.mesRef===m&&(d.creditoQtd||d.debitoQtd||d.pixQtd));return r?.pixQtd||null;});
+  const hasHist=evCred.some(v=>v)||evDeb.some(v=>v)||evPix.some(v=>v);
 
-  document.getElementById('pos-canal-wrap').innerHTML = `
-    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid var(--border);margin-bottom:16px">
+  wrap.innerHTML=`
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid var(--border)">
       <h3 style="font-size:13px;font-weight:700;color:var(--text1);margin:0 0 14px">💳 Mix de Canal — Rede Completa (${posMLbl(mesAtivo)})</h3>
-      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">
-        ${[{lbl:'Crédito',qtd:cQtd,val:cVal,cor:'#C9A84C'},{lbl:'Débito',qtd:dQtd,val:dVal,cor:'#3498DB'},{lbl:'Pix',qtd:pQtd,val:pVal,cor:'#27AE60'}].map(c=>`
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:${hasHist?20:0}px">
+        ${[{lbl:'Crédito',q:cQ,v:cV,cor:'#C9A84C'},{lbl:'Débito',q:dQ,v:dV,cor:'#3498DB'},{lbl:'Pix',q:pQ,v:pV,cor:'#27AE60'}].map(c=>`
         <div style="flex:1;min-width:110px;background:var(--surface);border-radius:10px;padding:14px;border:1px solid var(--border);text-align:center">
           <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;margin-bottom:6px">${c.lbl}</div>
-          <div style="font-size:22px;font-weight:900;color:${c.cor}">${c.qtd.toLocaleString('pt-BR')}</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:2px">${totQtd>0?((c.qtd/totQtd)*100).toFixed(1)+'%':''}</div>
-          <div style="font-size:11px;color:${c.cor};font-weight:700;margin-top:4px">R$ ${(c.val/1000).toFixed(1)}k</div>
+          <div style="font-size:22px;font-weight:900;color:${c.cor}">${c.q.toLocaleString('pt-BR')}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${totQ>0?((c.q/totQ)*100).toFixed(1)+'%':''}</div>
+          <div style="font-size:12px;color:${c.cor};font-weight:700;margin-top:4px">R$ ${(c.v/1000).toFixed(1)}k</div>
         </div>`).join('')}
       </div>
-      ${hasCanal?`<canvas id="pos-canal-chart" height="70"></canvas>`:''}
+      ${hasHist?`<canvas id="pos-canal-chart" height="70"></canvas>`:''}
     </div>`;
 
-  if (hasCanal) {
-    const ctx = document.getElementById('pos-canal-chart');
-    if (ctx) {
-      if (posChartCanal) { posChartCanal.destroy(); posChartCanal = null; }
-      posChartCanal = new Chart(ctx, {
-        type:'bar',
-        data:{
-          labels:todosMeses.map(posMLbl),
-          datasets:[
-            {label:'Crédito', data:evCred, backgroundColor:'rgba(201,168,76,.7)', borderRadius:4},
-            {label:'Débito',  data:evDeb,  backgroundColor:'rgba(52,152,219,.7)',  borderRadius:4},
-            {label:'Pix',     data:evPix,  backgroundColor:'rgba(39,174,96,.7)',   borderRadius:4},
-          ]
-        },
-        options:{responsive:true,
-          plugins:{legend:{labels:{color:'#aaa',font:{size:11},boxWidth:12}}},
-          scales:{
-            x:{stacked:true, ticks:{color:'#888',font:{size:10}}, grid:{display:false}},
-            y:{stacked:true, ticks:{color:'#888',font:{size:10}}, grid:{color:'rgba(255,255,255,.04)'}}
-          }
+  if (hasHist) {
+    const ctx=document.getElementById('pos-canal-chart');
+    if (!ctx) return;
+    if (posChartCanal) { posChartCanal.destroy(); posChartCanal=null; }
+    posChartCanal=new Chart(ctx,{
+      type:'bar',
+      data:{labels:todosMeses.map(posMLbl),datasets:[
+        {label:'Crédito',data:evCred,backgroundColor:'rgba(201,168,76,.75)',borderRadius:4},
+        {label:'Débito', data:evDeb, backgroundColor:'rgba(52,152,219,.75)', borderRadius:4},
+        {label:'Pix',    data:evPix, backgroundColor:'rgba(39,174,96,.75)',  borderRadius:4},
+      ]},
+      options:{responsive:true,
+        plugins:{legend:{labels:{color:'#aaa',font:{size:11},boxWidth:12}}},
+        scales:{
+          x:{stacked:true,ticks:{color:'#888',font:{size:10}},grid:{display:false}},
+          y:{stacked:true,ticks:{color:'#888',font:{size:10}},grid:{color:'rgba(255,255,255,.04)'}}
         }
-      });
-    }
+      }
+    });
   }
 }
 
-// ── Tab switch ─────────────────────────
+// ── Tab switch ────────────────────────
 function switchPosTab(tab, el) {
   document.querySelectorAll('.pos-tab').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.pos-tab-content').forEach(c=>c.classList.remove('active'));
   el.classList.add('active');
   document.getElementById('pos-tab-'+tab).classList.add('active');
-  if (tab==='evolucao') setTimeout(renderPOSEvolucao, 60);
+
+  // Gráficos só renderizam após o elemento estar visível no DOM
+  if (tab==='evolucao') {
+    requestAnimationFrame(()=>requestAnimationFrame(renderPOSEvolucao));
+  }
   if (tab==='canal') {
-    const mes = document.getElementById('pos-mes-select')?.value;
-    const todosMeses = [...new Set(allPOSData.map(d=>d.mesRef))].sort().filter(m=>allPOSData.some(d=>d.mesRef===m&&d.valor>0));
-    if (mes) setTimeout(()=>renderPOSCanal(mes, todosMeses), 60);
+    const mes=document.getElementById('pos-mes-select')?.value;
+    const todosMeses=[...new Set(allPOSData.map(d=>d.mesRef))].sort().filter(m=>allPOSData.some(d=>d.mesRef===m&&d.valor>0));
+    if (mes) requestAnimationFrame(()=>requestAnimationFrame(()=>renderPOSCanal(mes,todosMeses)));
   }
 }
 
 function onPosTabMesChange() {
-  const mes = document.getElementById('pos-mes-select')?.value;
+  const mes=document.getElementById('pos-mes-select')?.value;
   if (!mes) return;
-  const todosMeses = [...new Set(allPOSData.map(d=>d.mesRef))].sort().filter(m=>allPOSData.some(d=>d.mesRef===m&&d.valor>0));
-  renderPOSKPIs(mes, todosMeses);
+  const todosMeses=[...new Set(allPOSData.map(d=>d.mesRef))].sort().filter(m=>allPOSData.some(d=>d.mesRef===m&&d.valor>0));
+  renderPOSKPIs(mes,todosMeses);
   renderPOSCampanha(mes);
   renderPOSRanking(mes);
-  // Atualizar aba canal se estiver ativa
-  const canalTab = document.getElementById('pos-tab-canal');
-  if (canalTab?.classList.contains('active')) renderPOSCanal(mes, todosMeses);
+  // Atualiza canal se aba estiver ativa
+  if (document.getElementById('pos-tab-canal')?.classList.contains('active'))
+    requestAnimationFrame(()=>renderPOSCanal(mes,todosMeses));
 }
 
 initSystem();
