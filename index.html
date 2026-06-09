@@ -710,6 +710,7 @@
         <div class="sidebar-item" onclick="showView('sup-demandas-equipe',this)"><span class="icon">◈</span> Demandas da Equipe</div>
         <div class="sidebar-item" onclick="showView('col-ponto',this)"><span class="icon">⏱</span> Meu Ponto</div>
         <div class="sidebar-item" onclick="showView('col-incidencias',this)"><span class="icon">📋</span> Incidências</div>
+        <div class="sidebar-item" onclick="showView('adm-indicadores',this)"><span class="icon">📊</span> Indicadores</div>
         <div class="sidebar-item" onclick="showView('sup-caixa',this)"><span class="icon">💰</span> Caixa Rotativo</div>
         <div class="sidebar-item" onclick="showView('sup-combustivel',this)"><span class="icon">⛽</span> Recarga Combustível</div>
       </div>
@@ -4428,19 +4429,28 @@ function renderAnalisesCompletas(dados,postos,totalDiasUteis) {
       const dadosMesAnt=allIndicadores.filter(d=>d.mesRef===mesAnt);
       const duAtual=diasUteisMesComDados(mesAtual, dadosMesAtual);
       const duAnt=diasUteisMesComDados(mesAnt, dadosMesAnt);
-      const postosList=[...new Set([...dados,...indAnt].map(d=>d.postoNome))].sort();
-      const linhas=postosList.map(nome=>{
+      const postosList=[...new Set([...dados,...indAnt].map(d=>d.postoNome))];
+      const postosData=postosList.map(nome=>{
         const vA=(dados.find(x=>x.postoNome===nome)?.senhasAtendidas)||0;
         const vB=(indAnt.find(x=>x.postoNome===nome)?.senhasAtendidas)||0;
         const mdA=duAtual>0?Math.round(vA/duAtual):0;
         const mdB=duAnt>0?Math.round(vB/duAnt):0;
-        const dlt=mdA-mdB; const dpp=mdB>0?((dlt/mdB)*100).toFixed(1):null;
+        const dlt=mdA-mdB;
+        const dpp=mdB>0?parseFloat(((dlt/mdB)*100).toFixed(1)):null;
+        return{nome,mdA,mdB,dlt,dpp};
+      });
+      // Ordenar: quedas primeiro (menor % no topo), depois altas (maior % no topo)
+      postosData.sort((a,b)=>{
+        const pa=a.dpp??0; const pb=b.dpp??0;
+        return pa-pb;
+      });
+      const linhas=postosData.map(({nome,mdA,mdB,dlt,dpp})=>{
         const c=dlt>=0?'green':'red'; const sv=dlt>=0?'▲':'▼';
         return `<tr style="border-bottom:1px solid var(--border)">
           <td style="padding:7px 8px;font-size:12px;white-space:nowrap">${nome}</td>
           <td style="padding:7px 8px;text-align:right;font-size:12px;color:var(--text3)">${mdB}</td>
           <td style="padding:7px 8px;text-align:right;font-size:12px;font-weight:700">${mdA}</td>
-          <td style="padding:7px 8px;text-align:right;font-size:12px;font-weight:700;color:var(--${c})">${dpp?sv+' '+Math.abs(dpp)+'%':'—'}</td>
+          <td style="padding:7px 8px;text-align:right;font-size:12px;font-weight:700;color:var(--${c})">${dpp!==null?sv+' '+Math.abs(dpp)+'%':'—'}</td>
         </tr>`;
       }).join('');
       const mediaDiaAnt=duAnt>0?Math.round(totAnt/(postosList.length*duAnt)):0;
@@ -4510,34 +4520,35 @@ function renderAnalisesCompletas(dados,postos,totalDiasUteis) {
       </div>`;
     }).join('')}`;
 
-  // ── 4. Postos em alerta (abaixo da média de volume) ──
-  const mediaVolPosto=Object.keys(porPosto).length>0&&totalDiasUteis>0
-    ?Object.values(porPosto).reduce((a,b)=>a+b,0)/(Object.keys(porPosto).length*totalDiasUteis):0;
-
-  const agrupAlerta={};
+  // ── 4. TMA por posto vs meta ──
+  const tmaAgrup={};
   dados.forEach(d=>{
-    if(!agrupAlerta[d.postoNome]) agrupAlerta[d.postoNome]={atend:0,meses:[]};
-    agrupAlerta[d.postoNome].atend+=parseInt(d.senhasAtendidas)||0;
-    agrupAlerta[d.postoNome].meses.push(d.mesRef);
+    if(!tmaAgrup[d.postoNome]) tmaAgrup[d.postoNome]=[];
+    if(d.tma!==null&&d.tma!==undefined){
+      const v=typeof d.tma==='string'?(s=>{const p=s.split(':');return p.length===3?(+p[0])*3600+(+p[1])*60+(+p[2]):(+p[0])*60+(+p[1]||0);})(d.tma):(parseInt(d.tma)||0);
+      if(v>0) tmaAgrup[d.postoNome].push(v);
+    }
   });
-  const alertas=Object.entries(agrupAlerta).map(([nome,g])=>{
-    const mesesDoPosto=[...new Set(g.meses)];
-    const duPosto=mesesDoPosto.reduce((a,m)=>{
-      const dadosMes=allIndicadores.filter(dd=>dd.mesRef===m&&dd.postoNome===nome);
-      return a+diasUteisMesComDados(m,dadosMes);
-    },0);
-    const mediaDia=duPosto>0?g.atend/duPosto:0;
-    return{nome,mediaDia:Math.round(mediaDia),baixoVol:mediaDia<mediaVolPosto};
-  }).filter(a=>a.baixoVol).sort((a,b)=>a.mediaDia-b.mediaDia);
-
-  const alertaHTML=alertas.length?alertas.map(a=>`
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid var(--border)">
-      <span style="font-size:12px;font-weight:600;color:var(--text1)">${a.nome}</span>
-      <div style="text-align:right">
-        <span style="font-size:12px;color:var(--red);font-weight:700">${a.mediaDia}/dia</span>
-        <span style="font-size:11px;color:var(--text3);margin-left:6px">média: ${Math.round(mediaVolPosto)}/dia</span>
+  const tmaPostos=Object.entries(tmaAgrup)
+    .filter(([,vs])=>vs.length>0)
+    .map(([nome,vs])=>({nome,tma:Math.round(vs.reduce((a,b)=>a+b,0)/vs.length)}))
+    .sort((a,b)=>b.tma-a.tma);
+  const tmaMeta=META_TMA; // 288s = 4:48
+  const tmaHTML=tmaPostos.length?tmaPostos.map(p=>{
+    const excede=p.tma>tmaMeta;
+    const pct=Math.min(100,Math.round((p.tma/(tmaMeta*2))*100));
+    const mm=Math.floor(p.tma/60); const ss=String(p.tma%60).padStart(2,'0');
+    return `<div class="ind-bar-row">
+      <span class="ind-posto-name">${p.nome}</span>
+      <div class="ind-bar-wrap">
+        <div class="ind-bar-fill ${excede?'red':'green'}" style="width:${pct}%"></div>
+        <div style="position:absolute;left:${Math.min(50,Math.round((tmaMeta/(tmaMeta*2))*100))}%;top:0;bottom:0;width:2px;background:var(--accent);opacity:.7"></div>
       </div>
-    </div>`).join(''):`<div class="ind-empty" style="padding:16px">✅ Todos os postos acima da média.</div>`;
+      <span class="ind-posto-val" style="color:var(--${excede?'red':'green'})">${mm}:${ss}</span>
+    </div>`;
+  }).join(''):`<div class="ind-empty">Sem dados de TMA.</div>`;
+  const tmaAcima=tmaPostos.filter(p=>p.tma>tmaMeta).length;
+  const tmaAbaixo=tmaPostos.filter(p=>p.tma<=tmaMeta).length;
 
   // ── 5. NS30 por posto ──
   const nsAgrup={};
@@ -4566,7 +4577,14 @@ function renderAnalisesCompletas(dados,postos,totalDiasUteis) {
       </div>
       ${mediaCompHTML}
     </div>
-    <div class="ind-analise-card"><h3>🔴 Postos em Alerta <span style="font-size:11px;font-weight:400;color:var(--text3)">(abaixo da média de volume)</span></h3>${alertaHTML}</div>
+    <div class="ind-analise-card">
+      <h3>⏳ TMA por Posto <span style="font-size:11px;font-weight:400;color:var(--text3)">meta: 4:48 • linha laranja = meta</span></h3>
+      <div style="display:flex;gap:12px;margin-bottom:10px;font-size:11px">
+        <span style="color:var(--red);font-weight:700">▲ ${tmaAcima} acima da meta</span>
+        <span style="color:var(--green);font-weight:700">✓ ${tmaAbaixo} dentro da meta</span>
+      </div>
+      ${tmaHTML}
+    </div>
     <div class="ind-analise-card"><h3>⏱ NS30 por Posto</h3>${nsHTML||'<div class="ind-empty">Sem dados.</div>'}</div>
   `;
 }
