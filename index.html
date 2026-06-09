@@ -7727,7 +7727,7 @@ async function importarBasePOS(file) {
   const hoje = new Date();
   document.getElementById('pos-import-dataref').value =
     `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`;
-  openModal('modal-pos-import');
+  document.getElementById('modal-pos-import').classList.add('open');
   window._posPendingFile = file;
   document.getElementById('pos-upload-input').value = '';
 }
@@ -7860,7 +7860,7 @@ async function abrirModalMetaPOS() {
           placeholder="${fixo}" style="width:90px;padding:4px 8px;font-size:12px">
       </div>`;
     }).join('');
-  openModal('modal-pos-meta');
+  document.getElementById('modal-pos-meta').classList.add('open');
 }
 
 async function salvarMetaPOS() {
@@ -7879,7 +7879,7 @@ async function salvarMetaPOS() {
 async function verHistoricoPOS() {
   const lista=document.getElementById('pos-historico-lista');
   lista.innerHTML=`<div style="padding:20px;text-align:center;color:var(--text3)">Carregando...</div>`;
-  openModal('modal-pos-historico');
+  document.getElementById('modal-pos-historico').classList.add('open');
   try {
     const snap=await db.collection('pos_historico').orderBy('dataImport','desc').limit(20).get();
     lista.innerHTML=snap.empty
@@ -8228,14 +8228,16 @@ function switchPosTab(tab, el) {
   el.classList.add('active');
   document.getElementById('pos-tab-'+tab).classList.add('active');
 
-  // Gráficos só renderizam após o elemento estar visível no DOM
   if (tab==='evolucao') {
-    requestAnimationFrame(()=>requestAnimationFrame(renderPOSEvolucao));
+    // Destruir gráfico antigo antes de recriar — garante canvas limpo
+    if (posChartEvolucao) { posChartEvolucao.destroy(); posChartEvolucao=null; }
+    setTimeout(renderPOSEvolucao, 150);
   }
   if (tab==='canal') {
+    if (posChartCanal) { posChartCanal.destroy(); posChartCanal=null; }
     const mes=document.getElementById('pos-mes-select')?.value;
     const todosMeses=[...new Set(allPOSData.map(d=>d.mesRef))].sort().filter(m=>allPOSData.some(d=>d.mesRef===m&&d.valor>0));
-    if (mes) requestAnimationFrame(()=>requestAnimationFrame(()=>renderPOSCanal(mes,todosMeses)));
+    if (mes) setTimeout(()=>renderPOSCanal(mes,todosMeses), 150);
   }
 }
 
