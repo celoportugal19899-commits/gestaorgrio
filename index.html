@@ -7700,7 +7700,6 @@ const POS_METAS_FIXAS = {
 const POSTOS_RG  = Object.keys(POS_METAS_FIXAS);
 const MESES_NOME = ['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 const posMLbl    = m => { const [,mo]=m.split('-'); return `${MESES_NOME[+mo]}/${m.split('-')[0]}`; };
-const fmtBRL     = v => v>=1000 ? `R$\u00a0${(v/1000).toFixed(1)}k` : `R$\u00a0${v.toFixed(0)}`;
 
 function getPOSMeta(mesRef, nome) {
   return posMetas[mesRef]?.postos?.[nome] || POS_METAS_FIXAS[nome] || 2000;
