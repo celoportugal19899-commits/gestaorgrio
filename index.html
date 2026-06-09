@@ -1197,10 +1197,10 @@
                 <option value="pct">% da Meta</option>
               </select>
             </div>
-            <div id="pos-evolucao-empty" style="display:none;padding:40px;text-align:center;color:var(--text3);font-size:13px">
-              Nenhum dado disponível para o período.
+            <div id="pos-evolucao-empty" style="display:none;padding:40px;text-align:center;color:var(--text3);font-size:13px">Nenhum dado disponível.</div>
+            <div id="pos-evolucao-wrap" style="position:relative;height:280px">
+              <canvas id="pos-evolucao-chart"></canvas>
             </div>
-            <canvas id="pos-evolucao-chart" height="80"></canvas>
           </div>
         </div>
 
@@ -7982,11 +7982,12 @@ function renderPOSRanking(mesAtivo) {
   const header=`
     <div style="display:flex;align-items:center;gap:8px;padding:0 0 8px;border-bottom:2px solid var(--border);margin-bottom:4px">
       <span style="width:22px"></span>
-      <span style="width:185px;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Posto</span>
-      <span style="flex:1;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Progresso (▮ = meta)</span>
-      <span style="width:72px;text-align:right;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase">Valor</span>
-      <span style="width:36px;text-align:right;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase">Qtd</span>
-      <span style="width:52px;text-align:right;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase">% Meta</span>
+      <span style="width:170px;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Posto</span>
+      <span style="flex:1;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Progresso</span>
+      <span style="width:68px;text-align:right;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase">Valor</span>
+      <span style="width:60px;text-align:right;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase">Meta</span>
+      <span style="width:30px;text-align:right;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase">Qtd</span>
+      <span style="width:48px;text-align:right;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase">% Meta</span>
     </div>`;
 
   const rows=rank.map((p,i)=>{
@@ -7997,14 +7998,15 @@ function renderPOSRanking(mesAtivo) {
     const aptoTag=p.pct>=100?`<span style="background:rgba(39,174,96,.15);color:#27AE60;font-size:9px;font-weight:800;padding:1px 5px;border-radius:8px;margin-left:4px">✓</span>`:'';
     return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)">
       <span style="width:22px;font-size:11px;color:var(--text3);text-align:right;flex-shrink:0">${i+1}</span>
-      <span style="width:185px;font-size:12px;font-weight:${p.valor?700:400};color:var(--${p.valor?'text1':'text3'});white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0">${p.nome}${aptoTag}</span>
+      <span style="width:170px;font-size:12px;font-weight:${p.valor?700:400};color:var(--${p.valor?'text1':'text3'});white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0">${p.nome}${aptoTag}</span>
       <div style="flex:1;height:11px;background:var(--border);border-radius:5px;position:relative;overflow:visible;flex-shrink:0">
         <div style="height:100%;width:${barW}%;background:${cor};border-radius:5px;transition:width .4s;max-width:100%"></div>
         <div style="position:absolute;left:${metaPos}%;top:-4px;bottom:-4px;width:2px;background:rgba(255,255,255,.7);border-radius:2px;" title="Meta ${fmtBRL(p.meta)}"></div>
       </div>
-      <span style="width:72px;text-align:right;font-size:12px;font-weight:800;color:${cor};flex-shrink:0">${fmtBRL(p.valor)}</span>
-      <span style="width:36px;text-align:right;font-size:12px;font-weight:700;color:var(--text2);flex-shrink:0">${p.qtd}</span>
-      <span style="width:52px;text-align:right;font-size:12px;font-weight:800;color:${cor};flex-shrink:0">${p.pct.toFixed(0)}%</span>
+      <span style="width:68px;text-align:right;font-size:12px;font-weight:800;color:${cor};flex-shrink:0">${fmtBRL(p.valor)}</span>
+      <span style="width:60px;text-align:right;font-size:11px;color:var(--text3);flex-shrink:0">${fmtBRL(p.meta)}</span>
+      <span style="width:30px;text-align:right;font-size:12px;font-weight:700;color:var(--text2);flex-shrink:0">${p.qtd}</span>
+      <span style="width:48px;text-align:right;font-size:12px;font-weight:800;color:${cor};flex-shrink:0">${p.pct.toFixed(0)}%</span>
     </div>`;
   }).join('');
 
@@ -8048,11 +8050,12 @@ function renderPOSCampanha(mesAtivo) {
     </div>`).join('');
 
   const listaAptos=aptos.slice(0,10).map((p,i)=>`
-    <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border)">
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border)">
       <span style="font-size:15px;width:22px">${M[i]||'✓'}</span>
       <span style="flex:1;font-size:13px;font-weight:700">${p.nome}</span>
-      <span style="font-size:13px;font-weight:800;color:#27AE60">${p.pct.toFixed(1)}%</span>
-      <span style="font-size:11px;color:var(--text3);width:110px;text-align:right">${fmtBRL(p.valor)}</span>
+      <span style="font-size:12px;font-weight:800;color:#27AE60;white-space:nowrap">${fmtBRL(p.valor)}</span>
+      <span style="font-size:10px;color:var(--text3);white-space:nowrap">/ meta ${fmtBRL(p.meta)}</span>
+      <span style="font-size:12px;font-weight:800;color:#27AE60;width:42px;text-align:right">${p.pct.toFixed(1)}%</span>
       <span class="pos-badge-apto">✓</span>
     </div>`).join('')||`<div style="padding:20px;text-align:center;color:var(--text3);font-size:13px">Nenhum posto bateu a meta ainda.</div>`;
 
@@ -8157,7 +8160,7 @@ function renderPOSEvolucao() {
   if (!selPosto&&metrica==='valor') scales.y2={position:'right',ticks:{color:'rgba(52,152,219,.6)',font:{size:10}},grid:{display:false},title:{display:true,text:'Média/posto',color:'rgba(52,152,219,.6)',font:{size:10}}};
   posChartEvolucao=new Chart(ctx,{
     type:'line',data:{labels,datasets},
-    options:{responsive:true,interaction:{mode:'index',intersect:false},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
       plugins:{legend:{labels:{color:'#aaa',font:{size:11},boxWidth:12}}},scales}
   });
 }
@@ -8184,6 +8187,9 @@ function renderPOSCanal(mesAtivo, todosMeses) {
   const evPix =todosMeses.map(m=>{const r=allPOSData.find(d=>d.mesRef===m&&(d.creditoQtd||d.debitoQtd||d.pixQtd));return r?.pixQtd||null;});
   const hasHist=evCred.some(v=>v)||evDeb.some(v=>v)||evPix.some(v=>v);
 
+  // Sempre destruir chart antigo antes de reescrever innerHTML
+  if (posChartCanal) { posChartCanal.destroy(); posChartCanal=null; }
+
   wrap.innerHTML=`
     <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid var(--border)">
       <h3 style="font-size:13px;font-weight:700;color:var(--text1);margin:0 0 14px">💳 Mix de Canal — Rede Completa (${posMLbl(mesAtivo)})</h3>
@@ -8196,13 +8202,12 @@ function renderPOSCanal(mesAtivo, todosMeses) {
           <div style="font-size:12px;color:${c.cor};font-weight:700;margin-top:4px">R$ ${(c.v/1000).toFixed(1)}k</div>
         </div>`).join('')}
       </div>
-      ${hasHist?`<canvas id="pos-canal-chart" height="70"></canvas>`:''}
+      ${hasHist?`<div style="position:relative;height:220px"><canvas id="pos-canal-chart"></canvas></div>`:''}
     </div>`;
 
   if (hasHist) {
     const ctx=document.getElementById('pos-canal-chart');
     if (!ctx) return;
-    if (posChartCanal) { posChartCanal.destroy(); posChartCanal=null; }
     posChartCanal=new Chart(ctx,{
       type:'bar',
       data:{labels:todosMeses.map(posMLbl),datasets:[
@@ -8210,7 +8215,7 @@ function renderPOSCanal(mesAtivo, todosMeses) {
         {label:'Débito', data:evDeb, backgroundColor:'rgba(52,152,219,.75)', borderRadius:4},
         {label:'Pix',    data:evPix, backgroundColor:'rgba(39,174,96,.75)',  borderRadius:4},
       ]},
-      options:{responsive:true,
+      options:{responsive:true,maintainAspectRatio:false,
         plugins:{legend:{labels:{color:'#aaa',font:{size:11},boxWidth:12}}},
         scales:{
           x:{stacked:true,ticks:{color:'#888',font:{size:10}},grid:{display:false}},
@@ -8229,12 +8234,12 @@ function switchPosTab(tab, el) {
   document.getElementById('pos-tab-'+tab).classList.add('active');
 
   if (tab==='evolucao') {
-    // Destruir gráfico antigo antes de recriar — garante canvas limpo
+    // Destruir antes de recriar — canvas fixo no HTML
     if (posChartEvolucao) { posChartEvolucao.destroy(); posChartEvolucao=null; }
     setTimeout(renderPOSEvolucao, 150);
   }
   if (tab==='canal') {
-    if (posChartCanal) { posChartCanal.destroy(); posChartCanal=null; }
+    // renderPOSCanal destrói o chart internamente antes de reescrever o innerHTML
     const mes=document.getElementById('pos-mes-select')?.value;
     const todosMeses=[...new Set(allPOSData.map(d=>d.mesRef))].sort().filter(m=>allPOSData.some(d=>d.mesRef===m&&d.valor>0));
     if (mes) setTimeout(()=>renderPOSCanal(mes,todosMeses), 150);
