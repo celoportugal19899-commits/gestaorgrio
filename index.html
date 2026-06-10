@@ -11,6 +11,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script>/* pako 2.1.0 inline */
 /*! pako 2.1.0 https://github.com/nodeca/pako @license (MIT AND Zlib) */
@@ -7729,6 +7730,13 @@ async function initCsatMesFiltro() {
       const cfg = await db.collection('csat_config').doc('geral').get();
       if (cfg.exists) csatUltimaAtualizacao = cfg.data().ultimaAtualizacao || '';
     } catch(e){}
+    // Atualizar subtitle do topbar com data
+    const subtitleEl = document.getElementById('csat-subtitle');
+    if (subtitleEl) {
+      subtitleEl.innerHTML = csatUltimaAtualizacao
+        ? `Postos de Atendimento &nbsp;|&nbsp; <span style="color:var(--yellow);font-weight:700">📅 Dados até: ${csatUltimaAtualizacao}</span>`
+        : 'Postos de Atendimento — Voz do Cliente';
+    }
     csatMesesDisponiveis = [...mesesSet].sort();
     if (csatMesesSelecionados.length === 0 && csatMesesDisponiveis.length > 0)
       csatMesesSelecionados = csatMesesDisponiveis.slice(-6);
@@ -7786,7 +7794,7 @@ function renderCsatPainel() {
 
   const dados = csatAllData.filter(d => csatMesesSelecionados.includes(d.mesRef));
   const dataInfo = csatUltimaAtualizacao
-    ? `<span style="font-size:12px;color:var(--text3);margin-left:12px">📅 Dados de: <strong>${csatUltimaAtualizacao}</strong></span>` : '';
+    ? `<div style="display:inline-flex;align-items:center;gap:6px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:5px 12px;font-size:12px;font-weight:600;color:#f59e0b">📅 Dados até: ${csatUltimaAtualizacao}</div>` : '';
 
   if(dados.length===0){
     el.innerHTML = `<div style="text-align:center;padding:60px;color:var(--text3)">
@@ -7869,7 +7877,12 @@ function renderCsatPainel() {
       <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">Nota Cordialidade</div>
       <div style="font-size:28px;font-weight:700;color:${csatCorNota(notaCord)}">${notaCord.toFixed(2)}</div>
       <div style="font-size:11px;color:var(--text3)">Atendente foi cortês</div>
-    </div>`:''}
+    </div>`:`
+    <div class="card" style="padding:16px 20px;border-left:4px solid var(--border)">
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">Nota Cordialidade</div>
+      <div style="font-size:28px;font-weight:700;color:var(--text3)">—</div>
+      <div style="font-size:11px;color:var(--text3)">Reimporte o Excel para ver</div>
+    </div>`}
     <div class="card" style="padding:16px 20px;border-left:4px solid var(--blue)">
       <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">Postos Avaliados</div>
       <div style="font-size:28px;font-weight:700;color:var(--text1)">${postosAv}<span style="font-size:14px;color:var(--text3)">/29</span></div>
@@ -7950,19 +7963,30 @@ function renderCsatPainel() {
 
   // Renderizar gráficos
   requestAnimationFrame(()=>setTimeout(()=>{
+    // Registrar plugin globalmente uma vez
+    if(window.ChartDataLabels && !Chart._csatDlRegistered){
+      Chart.register(ChartDataLabels);
+      Chart._csatDlRegistered = true;
+    }
+
     csatChartEvo = csatDestroyChart(csatChartEvo);
     const ce = document.getElementById('csat-chart-evo');
     if(ce && labEvo.length){
       csatChartEvo = new Chart(ce.getContext('2d'),{
         data:{ labels:labEvo, datasets:[
-          {type:'bar',label:'Pesquisas',data:pesqEvo,backgroundColor:'rgba(79,120,255,.6)',yAxisID:'y'},
-          {type:'line',label:'Nota',data:notaEvo,borderColor:'#f59e0b',backgroundColor:'transparent',pointBackgroundColor:'#f59e0b',yAxisID:'y2',tension:.3,pointRadius:5,spanGaps:true},
-          {type:'line',label:'Meta 4,50',data:labEvo.map(()=>CSAT_META),borderColor:'rgba(239,68,68,.5)',borderDash:[6,4],backgroundColor:'transparent',pointRadius:0,yAxisID:'y2'}
+          {type:'bar',label:'Pesquisas',data:pesqEvo,backgroundColor:'rgba(79,120,255,.6)',yAxisID:'y',
+           datalabels:{anchor:'end',align:'top',color:'var(--text2)',font:{size:11,weight:'bold'},formatter:v=>v>0?v:''}},
+          {type:'line',label:'Nota',data:notaEvo,borderColor:'#f59e0b',backgroundColor:'transparent',pointBackgroundColor:'#f59e0b',yAxisID:'y2',tension:.3,pointRadius:5,spanGaps:true,
+           datalabels:{anchor:'top',align:'top',color:'#f59e0b',font:{size:11,weight:'bold'},formatter:v=>v!==null?v.toFixed(2):''}},
+          {type:'line',label:'Meta 4,50',data:labEvo.map(()=>CSAT_META),borderColor:'rgba(239,68,68,.5)',borderDash:[6,4],backgroundColor:'transparent',pointRadius:0,yAxisID:'y2',
+           datalabels:{display:false}}
         ]},
-        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{size:11}}}},scales:{
-          y:{position:'left',ticks:{font:{size:11}},grid:{color:'rgba(128,128,128,.1)'}},
-          y2:{position:'right',min:3.5,max:5.3,ticks:{font:{size:11},stepSize:.5},grid:{drawOnChartArea:false}}
-        }}
+        options:{responsive:true,maintainAspectRatio:false,
+          plugins:{legend:{labels:{font:{size:11}}},datalabels:{}},
+          scales:{
+            y:{position:'left',ticks:{font:{size:11}},grid:{color:'rgba(128,128,128,.1)'}},
+            y2:{position:'right',min:3.5,max:5.6,ticks:{font:{size:11},stepSize:.5},grid:{drawOnChartArea:false}}
+          }}
       });
     }
     csatChartAno = csatDestroyChart(csatChartAno);
@@ -7970,13 +7994,17 @@ function renderCsatPainel() {
     if(ca && anos.length){
       csatChartAno = new Chart(ca.getContext('2d'),{
         data:{ labels:anos, datasets:[
-          {type:'bar',label:'Pesquisas',data:pesqAno,backgroundColor:'rgba(79,120,255,.6)',yAxisID:'y'},
-          {type:'line',label:'Nota',data:notaAno,borderColor:'#f59e0b',backgroundColor:'transparent',pointBackgroundColor:'#f59e0b',yAxisID:'y2',tension:.3,pointRadius:5}
+          {type:'bar',label:'Pesquisas',data:pesqAno,backgroundColor:'rgba(79,120,255,.6)',yAxisID:'y',
+           datalabels:{anchor:'end',align:'top',color:'var(--text2)',font:{size:11,weight:'bold'},formatter:v=>v>0?v:''}},
+          {type:'line',label:'Nota',data:notaAno,borderColor:'#f59e0b',backgroundColor:'transparent',pointBackgroundColor:'#f59e0b',yAxisID:'y2',tension:.3,pointRadius:5,
+           datalabels:{anchor:'top',align:'top',color:'#f59e0b',font:{size:11,weight:'bold'},formatter:v=>v>0?v.toFixed(2):''}}
         ]},
-        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{size:11}}}},scales:{
-          y:{position:'left',ticks:{font:{size:11}},grid:{color:'rgba(128,128,128,.1)'}},
-          y2:{position:'right',min:3.5,max:5.5,ticks:{font:{size:11},stepSize:.25},grid:{drawOnChartArea:false}}
-        }}
+        options:{responsive:true,maintainAspectRatio:false,
+          plugins:{legend:{labels:{font:{size:11}}},datalabels:{}},
+          scales:{
+            y:{position:'left',ticks:{font:{size:11}},grid:{color:'rgba(128,128,128,.1)'}},
+            y2:{position:'right',min:3.5,max:5.7,ticks:{font:{size:11},stepSize:.25},grid:{drawOnChartArea:false}}
+          }}
       });
     }
   },120));
@@ -7990,13 +8018,21 @@ async function abrirCsatComentarios(postoNome) {
   document.getElementById('csat-coment-body').innerHTML = '<div style="text-align:center;padding:30px;color:var(--text3)">Carregando...</div>';
   modal.classList.add('open');
   try {
-    const docId = csatNorm(postoNome).replace(/\s+/g,'_');
     const snap = await db.collection('csat_comentarios').where('postoNome','==',postoNome).get();
     const comentarios = [];
     snap.forEach(d=>{ const dt=d.data(); if(dt.comentarios) dt.comentarios.forEach(c=>comentarios.push({...c,mesRef:dt.mesRef})); });
     comentarios.sort((a,b)=>(b.mesRef||'').localeCompare(a.mesRef||''));
     if(!comentarios.length){
-      document.getElementById('csat-coment-body').innerHTML = '<div style="text-align:center;padding:30px;color:var(--text3)">Nenhum comentário registrado para este posto.</div>';
+      document.getElementById('csat-coment-body').innerHTML = `
+        <div style="text-align:center;padding:30px">
+          <div style="font-size:32px;margin-bottom:10px">💬</div>
+          <div style="color:var(--text2);font-weight:600;margin-bottom:8px">Nenhum comentário encontrado</div>
+          <div style="color:var(--text3);font-size:13px;line-height:1.6">
+            Os comentários são importados junto com o Excel da Neobpo.<br>
+            Se você já importou dados, reimporte usando a nova versão do sistema<br>
+            para que os comentários sejam salvos.
+          </div>
+        </div>`;
       return;
     }
     document.getElementById('csat-coment-body').innerHTML = comentarios.map(c=>{
@@ -8165,12 +8201,16 @@ function renderCsatSupervisor() {
       csatChartSup = new Chart(cs.getContext('2d'),{
         type:'line',
         data:{ labels:labSup, datasets:[
-          {label:'Nota Média',data:notaSup,borderColor:'#4F78FF',backgroundColor:'rgba(79,120,255,.15)',fill:true,tension:.3,pointRadius:5,pointBackgroundColor:'#4F78FF',spanGaps:true},
-          {label:'Meta 4,50',data:labSup.map(()=>CSAT_META),borderColor:'rgba(239,68,68,.5)',borderDash:[6,4],pointRadius:0}
+          {label:'Nota Média',data:notaSup,borderColor:'#4F78FF',backgroundColor:'rgba(79,120,255,.15)',fill:true,tension:.3,pointRadius:6,pointBackgroundColor:'#4F78FF',spanGaps:true,
+           datalabels:{anchor:'top',align:'top',color:'#4F78FF',font:{size:11,weight:'bold'},formatter:v=>v!==null?v.toFixed(2):''}},
+          {label:'Meta 4,50',data:labSup.map(()=>CSAT_META),borderColor:'rgba(239,68,68,.5)',borderDash:[6,4],pointRadius:0,
+           datalabels:{display:false}}
         ]},
-        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{size:11}}}},scales:{
-          y:{min:3.5,max:5.3,ticks:{font:{size:11},stepSize:.25},grid:{color:'rgba(128,128,128,.1)'}}
-        }}
+        options:{responsive:true,maintainAspectRatio:false,
+          plugins:{legend:{labels:{font:{size:11}}},datalabels:{}},
+          scales:{
+            y:{min:3.5,max:5.5,ticks:{font:{size:11},stepSize:.25},grid:{color:'rgba(128,128,128,.1)'}}
+          }}
       });
     }
   },120));
