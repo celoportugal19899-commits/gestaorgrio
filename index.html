@@ -10,7 +10,6 @@
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script>/* pako 2.1.0 inline */
 /*! pako 2.1.0 https://github.com/nodeca/pako @license (MIT AND Zlib) */
@@ -228,23 +227,6 @@
   .ind-comp-delta{font-size:11px;font-weight:700;}
   .ind-comp-delta.up{color:var(--green);} .ind-comp-delta.down{color:var(--red);}
   .ind-empty{text-align:center;padding:40px;color:var(--text3);font-size:13px;}
-
-  /* POS Module */
-  .pos-tab{background:none;border:none;border-bottom:3px solid transparent;padding:8px 18px;font-size:13px;font-weight:600;color:var(--text3);cursor:pointer;transition:all .15s;margin-bottom:-2px;}
-  .pos-tab.active{border-bottom-color:var(--accent);color:var(--accent);}
-  .pos-tab-content{display:none;}
-  .pos-tab-content.active{display:block;}
-  .pos-meta-bar-wrap{flex:1;height:10px;background:var(--border);border-radius:6px;overflow:hidden;position:relative;}
-  .pos-meta-bar-fill{height:100%;border-radius:6px;transition:width .4s;}
-  .pos-posto-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);transition:background .15s;}
-  .pos-posto-row:hover{background:var(--surface2);}
-  .pos-podium{display:flex;gap:16px;margin-bottom:24px;flex-wrap:wrap;}
-  .pos-podium-card{flex:1;min-width:160px;background:var(--surface2);border-radius:12px;padding:16px;text-align:center;border:2px solid var(--border);position:relative;}
-  .pos-podium-card.gold{border-color:#C9A84C;background:linear-gradient(135deg,rgba(201,168,76,.12),var(--surface2));}
-  .pos-podium-card.silver{border-color:#aaa;background:linear-gradient(135deg,rgba(180,180,180,.1),var(--surface2));}
-  .pos-podium-card.bronze{border-color:#cd7f32;background:linear-gradient(135deg,rgba(205,127,50,.1),var(--surface2));}
-  .pos-badge-apto{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:rgba(var(--green-rgb,39,174,96),.15);color:var(--green);}
-  .pos-badge-inapto{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:rgba(var(--red-rgb,231,76,60),.12);color:var(--red);}
 
   .ind-tab-btn{background:none;border:none;padding:5px 12px;border-radius:6px;font-size:12px;font-weight:600;color:var(--text3);cursor:pointer;transition:all .15s;}
   .ind-tab-btn.active{background:var(--accent);color:#fff;}
@@ -687,7 +669,6 @@
         <div class="sidebar-group" id="postos-group" style="display:none">
           <div class="sidebar-item sidebar-sub" id="nav-postos-adm" onclick="showView('adm-postos',this)"><span class="icon">📡</span> Horários Postos</div>
           <div class="sidebar-item sidebar-sub" id="nav-indicadores-adm" onclick="showView('adm-indicadores',this)"><span class="icon">📊</span> Indicadores</div>
-          <div class="sidebar-item sidebar-sub" id="nav-pos-adm" onclick="showView('adm-pos',this)"><span class="icon">💳</span> Máquina Cartão POS</div>
         </div>
         <div class="sidebar-item" id="nav-inc-adm" onclick="showView('adm-incidencias',this)"><span class="icon">📋</span> Incidências <span id="inc-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
         <div class="sidebar-item" id="nav-caixas-adm" onclick="showView('adm-caixas',this)"><span class="icon">💰</span> Caixas Rotativos <span id="caixa-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
@@ -729,8 +710,6 @@
         <div class="sidebar-item" onclick="showView('sup-demandas-equipe',this)"><span class="icon">◈</span> Demandas da Equipe</div>
         <div class="sidebar-item" onclick="showView('col-ponto',this)"><span class="icon">⏱</span> Meu Ponto</div>
         <div class="sidebar-item" onclick="showView('col-incidencias',this)"><span class="icon">📋</span> Incidências</div>
-        <div class="sidebar-item" onclick="showView('adm-indicadores',this)"><span class="icon">📊</span> Indicadores</div>
-        <div class="sidebar-item" onclick="showView('adm-pos',this)"><span class="icon">💳</span> Máquina Cartão POS</div>
         <div class="sidebar-item" onclick="showView('sup-caixa',this)"><span class="icon">💰</span> Caixa Rotativo</div>
         <div class="sidebar-item" onclick="showView('sup-combustivel',this)"><span class="icon">⛽</span> Recarga Combustível</div>
       </div>
@@ -1125,93 +1104,6 @@
       </div>
     </div>
 
-
-    <!-- MÁQUINA CARTÃO POS -->
-    <div id="view-adm-pos" class="view">
-      <div class="topbar">
-        <div class="page-header" style="margin:0">
-          <h1>💳 Máquina Cartão POS</h1>
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-            <p id="pos-subtitle" style="margin:0">Negociação de dívidas — acompanhamento e campanha</p>
-            <span id="pos-dataref-badge" style="display:none;background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.4);border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;color:var(--accent)"></span>
-          </div>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <button class="btn btn-secondary" style="font-size:12px" onclick="verHistoricoPOS()">📂 Histórico</button>
-          <button class="btn btn-secondary" style="font-size:12px" onclick="abrirModalMetaPOS()">⚙️ Meta</button>
-          <button class="btn btn-primary" style="font-size:12px" onclick="document.getElementById('pos-upload-input').click()">📥 Importar Base</button>
-          <input type="file" id="pos-upload-input" accept=".xlsx,.xls" style="display:none" onchange="importarBasePOS(this.files[0])">
-        </div>
-      </div>
-
-      <!-- EMPTY STATE -->
-      <div id="pos-empty" style="display:none;flex-direction:column;align-items:center;justify-content:center;padding:80px 20px;text-align:center">
-        <div style="font-size:56px;margin-bottom:16px">💳</div>
-        <div style="font-size:17px;font-weight:800;color:var(--text1);margin-bottom:6px">Nenhuma base importada</div>
-        <div style="font-size:13px;color:var(--text3);margin-bottom:24px;max-width:360px">Importe a planilha de performance POS da Neobpo para visualizar negociações, campanha e evolução mensal.</div>
-        <button class="btn btn-primary" style="font-size:13px" onclick="document.getElementById('pos-upload-input').click()">📥 Importar Base POS</button>
-      </div>
-
-      <!-- CONTEÚDO PRINCIPAL -->
-      <div id="pos-main" style="display:none">
-
-        <!-- Filtro de mês -->
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
-          <span style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Mês:</span>
-          <select id="pos-mes-select" class="form-select" style="width:130px" onchange="onPosTabMesChange()"></select>
-          <span style="font-size:11px;color:var(--text3)">Selecione o mês para atualizar painel e campanha</span>
-        </div>
-
-        <!-- KPIs -->
-        <div class="grid-4" id="pos-kpis" style="margin-bottom:20px"></div>
-
-        <!-- TABS -->
-        <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:20px">
-          <button class="pos-tab active" onclick="switchPosTab('ranking',this)">📊 Ranking</button>
-          <button class="pos-tab" onclick="switchPosTab('campanha',this)">🏆 Campanha</button>
-          <button class="pos-tab" onclick="switchPosTab('evolucao',this)">📈 Evolução</button>
-          <button class="pos-tab" onclick="switchPosTab('canal',this)">💳 Por Canal</button>
-        </div>
-
-        <!-- TAB: RANKING -->
-        <div id="pos-tab-ranking" class="pos-tab-content active">
-          <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid var(--border)">
-            <h3 style="font-size:13px;font-weight:700;color:var(--text1);margin:0 0 12px">🏅 Ranking de Negociações — Postos RG</h3>
-            <div id="pos-ranking"></div>
-          </div>
-        </div>
-
-        <!-- TAB: CAMPANHA -->
-        <div id="pos-tab-campanha" class="pos-tab-content">
-          <div id="pos-campanha"></div>
-        </div>
-
-        <!-- TAB: EVOLUÇÃO -->
-        <div id="pos-tab-evolucao" class="pos-tab-content">
-          <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid var(--border)">
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
-              <h3 style="font-size:13px;font-weight:700;color:var(--text1);margin:0;flex:1">📈 Evolução Mensal</h3>
-              <select id="pos-evolucao-select" class="form-select" style="width:200px" onchange="renderPOSEvolucao()"><option value="">Todos os postos</option></select>
-              <select id="pos-evolucao-metrica" class="form-select" style="width:150px" onchange="renderPOSEvolucao()">
-                <option value="valor">Valor (R$)</option>
-                <option value="qtd">Quantidade</option>
-                <option value="pct">% da Meta</option>
-              </select>
-            </div>
-            <div id="pos-evolucao-empty" style="display:none;padding:40px;text-align:center;color:var(--text3);font-size:13px">Nenhum dado disponível.</div>
-            <div id="pos-evolucao-wrap" style="position:relative;height:280px">
-              <canvas id="pos-evolucao-chart"></canvas>
-            </div>
-          </div>
-        </div>
-
-        <!-- TAB: CANAL -->
-        <div id="pos-tab-canal" class="pos-tab-content">
-          <div id="pos-canal-wrap"></div>
-        </div>
-
-      </div><!-- /pos-main -->
-    </div>
     <!-- SUPERVISOR POSTOS -->
     <div id="view-supervisor-postos" class="view">
       <div class="topbar">
@@ -1643,32 +1535,13 @@
     <div class="lr-header">
       <div class="lr-eyebrow">Recuperação de acesso</div>
       <div class="lr-title">Esqueci minha senha</div>
-      <div class="lr-sub">Informe seu e-mail para continuar</div>
+      <div class="lr-sub">Informe seu e-mail e o administrador irá resetar seu acesso</div>
     </div>
     <label class="lf-label">Seu E-mail</label>
     <input class="lf-input" type="email" id="fs-email" placeholder="seu@gruporgbrasil.com">
     <div id="fs-error" class="lf-err"></div>
-    <button class="lf-btn" onclick="doEsqueciSenha()">Continuar →</button>
+    <button class="lf-btn" onclick="doEsqueciSenha()">Enviar Solicitação →</button>
     <button style="margin-top:12px;background:none;border:none;color:rgba(255,255,255,0.35);font-size:13px;cursor:pointer;width:100%;text-align:center" onclick="showPage('login')">← Voltar ao login</button>
-  </div>
-</div>
-
-<!-- ESQUECI MINHA SENHA — PASSO 2: NOVA SENHA (auto-reset) -->
-<div id="page-forgot-newpass" class="page">
-  <div class="login-right" style="width:100%;max-width:480px;margin:0 auto;border:none">
-    <div class="lr-header">
-      <div class="lr-eyebrow">Recuperação de acesso</div>
-      <div class="lr-title">Criar nova senha</div>
-      <div class="lr-sub" id="fn-sub">Defina uma nova senha para sua conta</div>
-    </div>
-    <div id="fn-aviso" style="display:none;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:rgba(255,255,255,0.7);line-height:1.6"></div>
-    <label class="lf-label">Nova Senha</label>
-    <input class="lf-input" type="password" id="fn-nova" placeholder="Mínimo 6 caracteres">
-    <label class="lf-label">Confirmar Senha</label>
-    <input class="lf-input" type="password" id="fn-conf" placeholder="Repita a nova senha">
-    <div id="fn-error" class="lf-err"></div>
-    <button class="lf-btn" onclick="doForgotNewPass()">Salvar nova senha →</button>
-    <button style="margin-top:12px;background:none;border:none;color:rgba(255,255,255,0.35);font-size:13px;cursor:pointer;width:100%;text-align:center" onclick="showPage('login')">← Cancelar</button>
   </div>
 </div>
 
@@ -2865,94 +2738,31 @@ async function doChangePassword() {
   } catch(e) { err.textContent = 'Erro ao salvar. Tente novamente.'; err.style.display = 'block'; }
 }
 
-// userId temporário para o fluxo de esqueci senha
-let _forgotUserId = null;
-let _forgotResetCount = 0;
-
 async function doEsqueciSenha() {
   const email = document.getElementById('fs-email').value.trim();
-  const err   = document.getElementById('fs-error');
+  const err = document.getElementById('fs-error');
   err.style.display = 'none';
   if (!email) { err.textContent = 'Digite seu e-mail.'; err.style.display = 'block'; return; }
   try {
     const snap = await db.collection('users').where('email','==',email).get();
     if (snap.empty) { err.textContent = 'E-mail não encontrado.'; err.style.display = 'block'; return; }
-    const doc  = snap.docs[0];
-    const user = doc.data();
+    const user = snap.docs[0].data();
     if (user.role === 'admin') { err.textContent = 'Entre em contato com o suporte.'; err.style.display = 'block'; return; }
-
-    const resetCount = user.resetCount || 0;  // quantas vezes já resetou por conta própria
-
-    if (resetCount >= 2) {
-      // 3ª vez ou mais — envia pro ADM
-      await db.collection('reset_requests').add({
-        userId: doc.id, userName: user.name || user.nome || email,
-        userEmail: email, status: 'pendente',
-        requestedAt: new Date().toISOString(),
-        motivo: `Reset bloqueado após ${resetCount+1} tentativas`
-      });
-      showPage('login');
-      document.getElementById('login-email').value = email;
-      toast('Limite de resets atingido. O administrador foi notificado e irá criar sua nova senha.', 'ok');
-      return;
-    }
-
-    // 1ª ou 2ª vez — libera criar nova senha direto
-    _forgotUserId   = doc.id;
-    _forgotResetCount = resetCount;
-
-    const aviso = document.getElementById('fn-aviso');
-    const restante = 2 - resetCount - 1; // resets que ainda sobram depois deste
-    if (resetCount === 1) {
-      // 2ª vez — avisa que a próxima vai pro ADM
-      aviso.innerHTML = '⚠️ Este é seu último reset automático. Se esquecer a senha novamente, o administrador precisará criar uma nova para você.';
-      aviso.style.display = 'block';
-    } else {
-      aviso.style.display = 'none';
-    }
-    document.getElementById('fn-sub').textContent = `Olá, ${user.name || user.nome || email}. Crie uma nova senha abaixo.`;
-    document.getElementById('fn-nova').value = '';
-    document.getElementById('fn-conf').value = '';
-    document.getElementById('fn-error').style.display = 'none';
-    showPage('forgot-newpass');
-  } catch(e) { err.textContent = 'Erro ao verificar. Tente novamente.'; err.style.display = 'block'; }
-}
-
-async function doForgotNewPass() {
-  const nova = document.getElementById('fn-nova').value;
-  const conf = document.getElementById('fn-conf').value;
-  const err  = document.getElementById('fn-error');
-  err.style.display = 'none';
-  if (!nova || nova.length < 6) { err.textContent = 'A senha deve ter no mínimo 6 caracteres.'; err.style.display = 'block'; return; }
-  if (!/[a-zA-Z]/.test(nova) || !/[0-9]/.test(nova)) { err.textContent = 'A senha deve conter letras e números.'; err.style.display = 'block'; return; }
-  if (nova !== conf) { err.textContent = 'As senhas não coincidem.'; err.style.display = 'block'; return; }
-  if (!_forgotUserId) { showPage('login'); return; }
-  try {
-    await db.collection('users').doc(_forgotUserId).update({
-      password: nova,
-      mustChangePassword: false,
-      resetCount: _forgotResetCount + 1,
-      lastResetAt: new Date().toISOString()
+    await db.collection('reset_requests').add({
+      userId: snap.docs[0].id, userName: user.name, userEmail: email,
+      status: 'pendente', requestedAt: new Date().toISOString()
     });
-    _forgotUserId = null;
-    _forgotResetCount = 0;
     showPage('login');
-    toast('Senha atualizada! Faça login com a nova senha.', 'ok');
-  } catch(e) { err.textContent = 'Erro ao salvar. Tente novamente.'; err.style.display = 'block'; }
+    document.getElementById('login-email').value = email;
+    toast('Solicitação enviada! Aguarde o administrador resetar sua senha.', 'ok');
+  } catch(e) { err.textContent = 'Erro ao enviar. Tente novamente.'; err.style.display = 'block'; }
 }
 
 async function resetarSenha(userId, reqId) {
-  const novaSenha = prompt('Digite a nova senha para o colaborador (mín. 6 caracteres):');
-  if (!novaSenha || novaSenha.length < 6) { toast('Senha inválida — mínimo 6 caracteres.', 'err'); return; }
   try {
-    await db.collection('users').doc(userId).update({
-      password: novaSenha,
-      mustChangePassword: true,
-      resetCount: 0,           // zera o contador — usuário volta a ter 2 resets automáticos
-      lastResetAt: new Date().toISOString()
-    });
+    await db.collection('users').doc(userId).update({ password: SENHA_PADRAO, mustChangePassword: true });
     await db.collection('reset_requests').doc(reqId).update({ status: 'concluido', resolvedAt: new Date().toISOString() });
-    toast('Senha criada e contador zerado. O colaborador deverá trocar no primeiro acesso.', 'ok');
+    toast('Senha resetada! O colaborador deverá criar uma nova senha.', 'ok');
     renderAdmDashboardExtras();
   } catch(e) { toast('Erro ao resetar senha', 'err'); }
 }
@@ -3035,7 +2845,6 @@ function refreshCurrentView() {
   if (id === 'col-ponto') renderColPonto();
   if (id === 'adm-postos') renderAdmPostos();
   if (id === 'adm-indicadores') { (async()=>{ await initIndicadoresMesFiltro(); await renderIndicadores(); })(); }
-  if (id === 'adm-pos') { (async()=>{ await initPOS(); renderPOS(); })(); }
   if (id === 'posto-registro') renderPostoRegistro();
   if (id === 'supervisor-postos') renderSupervisorPostos();
   if (id === 'sup-caixa') renderSupCaixa();
@@ -3057,7 +2866,7 @@ function showView(name, el) {
   document.getElementById('view-' + name).classList.add('active');
   document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
   if (el) el.classList.add('active');
-  if (name === 'adm-postos' || name === 'adm-indicadores' || name === 'adm-pos') {
+  if (name === 'adm-postos' || name === 'adm-indicadores') {
     const grp = document.getElementById('postos-group');
     const arr = document.getElementById('arrow-postos-group');
     if (grp) grp.style.display = 'block';
@@ -3071,7 +2880,6 @@ function showView(name, el) {
   if (name === 'col-ponto') renderColPonto();
   if (name === 'adm-postos') renderAdmPostos();
   if (name === 'adm-indicadores') { (async()=>{ await initIndicadoresMesFiltro(); await renderIndicadores(); })(); }
-  if (name === 'adm-pos') { (async()=>{ await initPOS(); renderPOS(); })(); }
   if (name === 'posto-registro') renderPostoRegistro();
   if (name === 'supervisor-postos') renderSupervisorPostos();
   if (name === 'sup-caixa') renderSupCaixa();
@@ -4620,28 +4428,19 @@ function renderAnalisesCompletas(dados,postos,totalDiasUteis) {
       const dadosMesAnt=allIndicadores.filter(d=>d.mesRef===mesAnt);
       const duAtual=diasUteisMesComDados(mesAtual, dadosMesAtual);
       const duAnt=diasUteisMesComDados(mesAnt, dadosMesAnt);
-      const postosList=[...new Set([...dados,...indAnt].map(d=>d.postoNome))];
-      const postosData=postosList.map(nome=>{
+      const postosList=[...new Set([...dados,...indAnt].map(d=>d.postoNome))].sort();
+      const linhas=postosList.map(nome=>{
         const vA=(dados.find(x=>x.postoNome===nome)?.senhasAtendidas)||0;
         const vB=(indAnt.find(x=>x.postoNome===nome)?.senhasAtendidas)||0;
         const mdA=duAtual>0?Math.round(vA/duAtual):0;
         const mdB=duAnt>0?Math.round(vB/duAnt):0;
-        const dlt=mdA-mdB;
-        const dpp=mdB>0?parseFloat(((dlt/mdB)*100).toFixed(1)):null;
-        return{nome,mdA,mdB,dlt,dpp};
-      });
-      // Ordenar: quedas primeiro (menor % no topo), depois altas (maior % no topo)
-      postosData.sort((a,b)=>{
-        const pa=a.dpp??0; const pb=b.dpp??0;
-        return pa-pb;
-      });
-      const linhas=postosData.map(({nome,mdA,mdB,dlt,dpp})=>{
+        const dlt=mdA-mdB; const dpp=mdB>0?((dlt/mdB)*100).toFixed(1):null;
         const c=dlt>=0?'green':'red'; const sv=dlt>=0?'▲':'▼';
         return `<tr style="border-bottom:1px solid var(--border)">
           <td style="padding:7px 8px;font-size:12px;white-space:nowrap">${nome}</td>
           <td style="padding:7px 8px;text-align:right;font-size:12px;color:var(--text3)">${mdB}</td>
           <td style="padding:7px 8px;text-align:right;font-size:12px;font-weight:700">${mdA}</td>
-          <td style="padding:7px 8px;text-align:right;font-size:12px;font-weight:700;color:var(--${c})">${dpp!==null?sv+' '+Math.abs(dpp)+'%':'—'}</td>
+          <td style="padding:7px 8px;text-align:right;font-size:12px;font-weight:700;color:var(--${c})">${dpp?sv+' '+Math.abs(dpp)+'%':'—'}</td>
         </tr>`;
       }).join('');
       const mediaDiaAnt=duAnt>0?Math.round(totAnt/(postosList.length*duAnt)):0;
@@ -4711,35 +4510,34 @@ function renderAnalisesCompletas(dados,postos,totalDiasUteis) {
       </div>`;
     }).join('')}`;
 
-  // ── 4. TMA por posto vs meta ──
-  const tmaAgrup={};
+  // ── 4. Postos em alerta (abaixo da média de volume) ──
+  const mediaVolPosto=Object.keys(porPosto).length>0&&totalDiasUteis>0
+    ?Object.values(porPosto).reduce((a,b)=>a+b,0)/(Object.keys(porPosto).length*totalDiasUteis):0;
+
+  const agrupAlerta={};
   dados.forEach(d=>{
-    if(!tmaAgrup[d.postoNome]) tmaAgrup[d.postoNome]=[];
-    if(d.tma!==null&&d.tma!==undefined){
-      const v=typeof d.tma==='string'?(s=>{const p=s.split(':');return p.length===3?(+p[0])*3600+(+p[1])*60+(+p[2]):(+p[0])*60+(+p[1]||0);})(d.tma):(parseInt(d.tma)||0);
-      if(v>0) tmaAgrup[d.postoNome].push(v);
-    }
+    if(!agrupAlerta[d.postoNome]) agrupAlerta[d.postoNome]={atend:0,meses:[]};
+    agrupAlerta[d.postoNome].atend+=parseInt(d.senhasAtendidas)||0;
+    agrupAlerta[d.postoNome].meses.push(d.mesRef);
   });
-  const tmaPostos=Object.entries(tmaAgrup)
-    .filter(([,vs])=>vs.length>0)
-    .map(([nome,vs])=>({nome,tma:Math.round(vs.reduce((a,b)=>a+b,0)/vs.length)}))
-    .sort((a,b)=>b.tma-a.tma);
-  const tmaMeta=META_TMA; // 288s = 4:48
-  const tmaHTML=tmaPostos.length?tmaPostos.map(p=>{
-    const excede=p.tma>tmaMeta;
-    const pct=Math.min(100,Math.round((p.tma/(tmaMeta*2))*100));
-    const mm=Math.floor(p.tma/60); const ss=String(p.tma%60).padStart(2,'0');
-    return `<div class="ind-bar-row">
-      <span class="ind-posto-name">${p.nome}</span>
-      <div class="ind-bar-wrap">
-        <div class="ind-bar-fill ${excede?'red':'green'}" style="width:${pct}%"></div>
-        <div style="position:absolute;left:${Math.min(50,Math.round((tmaMeta/(tmaMeta*2))*100))}%;top:0;bottom:0;width:2px;background:var(--accent);opacity:.7"></div>
+  const alertas=Object.entries(agrupAlerta).map(([nome,g])=>{
+    const mesesDoPosto=[...new Set(g.meses)];
+    const duPosto=mesesDoPosto.reduce((a,m)=>{
+      const dadosMes=allIndicadores.filter(dd=>dd.mesRef===m&&dd.postoNome===nome);
+      return a+diasUteisMesComDados(m,dadosMes);
+    },0);
+    const mediaDia=duPosto>0?g.atend/duPosto:0;
+    return{nome,mediaDia:Math.round(mediaDia),baixoVol:mediaDia<mediaVolPosto};
+  }).filter(a=>a.baixoVol).sort((a,b)=>a.mediaDia-b.mediaDia);
+
+  const alertaHTML=alertas.length?alertas.map(a=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid var(--border)">
+      <span style="font-size:12px;font-weight:600;color:var(--text1)">${a.nome}</span>
+      <div style="text-align:right">
+        <span style="font-size:12px;color:var(--red);font-weight:700">${a.mediaDia}/dia</span>
+        <span style="font-size:11px;color:var(--text3);margin-left:6px">média: ${Math.round(mediaVolPosto)}/dia</span>
       </div>
-      <span class="ind-posto-val" style="color:var(--${excede?'red':'green'})">${mm}:${ss}</span>
-    </div>`;
-  }).join(''):`<div class="ind-empty">Sem dados de TMA.</div>`;
-  const tmaAcima=tmaPostos.filter(p=>p.tma>tmaMeta).length;
-  const tmaAbaixo=tmaPostos.filter(p=>p.tma<=tmaMeta).length;
+    </div>`).join(''):`<div class="ind-empty" style="padding:16px">✅ Todos os postos acima da média.</div>`;
 
   // ── 5. NS30 por posto ──
   const nsAgrup={};
@@ -4768,14 +4566,7 @@ function renderAnalisesCompletas(dados,postos,totalDiasUteis) {
       </div>
       ${mediaCompHTML}
     </div>
-    <div class="ind-analise-card">
-      <h3>⏳ TMA por Posto <span style="font-size:11px;font-weight:400;color:var(--text3)">meta: 4:48 • linha laranja = meta</span></h3>
-      <div style="display:flex;gap:12px;margin-bottom:10px;font-size:11px">
-        <span style="color:var(--red);font-weight:700">▲ ${tmaAcima} acima da meta</span>
-        <span style="color:var(--green);font-weight:700">✓ ${tmaAbaixo} dentro da meta</span>
-      </div>
-      ${tmaHTML}
-    </div>
+    <div class="ind-analise-card"><h3>🔴 Postos em Alerta <span style="font-size:11px;font-weight:400;color:var(--text3)">(abaixo da média de volume)</span></h3>${alertaHTML}</div>
     <div class="ind-analise-card"><h3>⏱ NS30 por Posto</h3>${nsHTML||'<div class="ind-empty">Sem dados.</div>'}</div>
   `;
 }
@@ -7323,10 +7114,20 @@ function handleAssinadoDrop(e) {
 
 function handleAssinadoFile(file) {
   if (!file) return;
+  // Verificar tamanho antes — Firestore limita 1MB por documento (~750KB de base64)
+  const maxBytes = 700 * 1024; // 700KB margem segura
+  if (file.size > maxBytes) {
+    document.getElementById('assinado-file-label').textContent =
+      `⚠️ Arquivo muito grande (${(file.size/1024).toFixed(0)}KB). Máx: 700KB. Reduza a qualidade no CamScanner.`;
+    assinadoFileBase64 = null;
+    toast(`PDF muito grande: ${(file.size/1024).toFixed(0)}KB. Reduza a qualidade no CamScanner e tente novamente.`, 'err');
+    return;
+  }
   const reader = new FileReader();
   reader.onload = e => {
     assinadoFileBase64 = e.target.result.split(',')[1];
-    document.getElementById('assinado-file-label').textContent = `✅ ${file.name}`;
+    document.getElementById('assinado-file-label').textContent =
+      `✅ ${file.name} (${(file.size/1024).toFixed(0)}KB)`;
   };
   reader.readAsDataURL(file);
 }
@@ -7334,6 +7135,12 @@ function handleAssinadoFile(file) {
 async function confirmarEnvioAssinado() {
   const id = document.getElementById('enviar-assinado-id').value;
   if (!assinadoFileBase64) { toast('Selecione o PDF assinado', 'err'); return; }
+  // Verificação final de tamanho
+  const sizeBytes = Math.ceil(assinadoFileBase64.length * 0.75);
+  if (sizeBytes > 700 * 1024) {
+    toast(`PDF muito grande (${(sizeBytes/1024).toFixed(0)}KB). Reduza a qualidade no CamScanner.`, 'err');
+    return;
+  }
   try {
     await db.collection('holerites').doc(id).update({
       status: 'assinado',
@@ -7743,10 +7550,24 @@ function renderColRhFolha() {
 
 function abrirEnviarFolhaAssinada(id){const f=allFolhas.find(x=>x.id===id);if(!f)return;folhaAssinadaFileBase64=null;document.getElementById('enviar-folha-assinada-id').value=id;document.getElementById('folha-assinada-file-label').textContent='Selecionar PDF assinado';document.getElementById('folha-assinada-file-input').value='';document.getElementById('enviar-folha-assinada-info').innerHTML=`<strong>Folha de Ponto ${f.mes}</strong><br>Imprima, assine, escaneie e faça upload abaixo.`;document.getElementById('modal-enviar-folha-assinada').classList.add('open');}
 function handleFolhaAssinadaDrop(e){e.preventDefault();e.currentTarget.classList.remove('drag-over');const f=e.dataTransfer.files[0];if(f&&f.type==='application/pdf')handleFolhaAssinadaFile(f);else toast('Selecione um PDF','err');}
-function handleFolhaAssinadaFile(f){if(!f)return;const r=new FileReader();r.onload=e=>{folhaAssinadaFileBase64=e.target.result.split(',')[1];document.getElementById('folha-assinada-file-label').textContent=`✅ ${f.name}`;};r.readAsDataURL(f);}
+function handleFolhaAssinadaFile(f){
+  if(!f) return;
+  const maxBytes = 700*1024;
+  if(f.size > maxBytes){
+    document.getElementById('folha-assinada-file-label').textContent=`⚠️ Muito grande (${(f.size/1024).toFixed(0)}KB). Máx: 700KB.`;
+    folhaAssinadaFileBase64=null;
+    toast(`PDF muito grande: ${(f.size/1024).toFixed(0)}KB. Reduza a qualidade no CamScanner.`,'err');
+    return;
+  }
+  const r=new FileReader();
+  r.onload=e=>{folhaAssinadaFileBase64=e.target.result.split(',')[1];document.getElementById('folha-assinada-file-label').textContent=`✅ ${f.name} (${(f.size/1024).toFixed(0)}KB)`;};
+  r.readAsDataURL(f);
+}
 async function confirmarEnvioFolhaAssinada(){
   const id=document.getElementById('enviar-folha-assinada-id').value;
   if(!folhaAssinadaFileBase64){toast('Selecione o PDF assinado','err');return;}
+  const sizeBytes=Math.ceil(folhaAssinadaFileBase64.length*0.75);
+  if(sizeBytes>700*1024){toast(`PDF muito grande (${(sizeBytes/1024).toFixed(0)}KB). Reduza a qualidade no CamScanner.`,'err');return;}
   try{
     await db.collection('folhasPonto').doc(id).update({status:'assinado',assinadoBase64:folhaAssinadaFileBase64,assinadoEm:new Date().toISOString(),vistoManager:false});
     const adm=allUsers.find(u=>u.role==='admin');
@@ -7760,587 +7581,6 @@ async function confirmarEnvioFolhaAssinada(){
 // ══════════════════════════════════════
 // INIT
 // ══════════════════════════════════════
-// ══════════════════════════════════════
-// MÓDULO: MÁQUINA CARTÃO POS  v3
-// ══════════════════════════════════════
-let allPOSData   = [];
-let posMetas     = {};
-let posCarregado = false;
-let posChartEvolucao = null;
-let posChartCanal    = null;
-
-const POS_METAS_FIXAS = {
-  'Miracema':17000,'Tanguá':15000,'Areal':15000,'Natividade':8800,
-  'Bom Jardim':8500,'Aperibé':7500,'Italva':6000,
-  'Conceição de Macabu':3700,'Bom Jesus do Itabapoana':2900,
-  'São José do V. do Rio Preto':2800,'Porto Real':2700,'Trajano de Moraes':2700,
-  'Laje do Muriaé':2600,'Quissamã':2500,'Macuco':2500,'Porciúncula':2500,
-  'Cardoso Moreira':2500,'Carapebus':2500,'Cambuci':2000,'Duas Barras':2000,
-  'São José de Ubá':2000,'Guarus':2000,'São Sebastião do Alto':1900,
-  'Silva Jardim':1500,'Varre-Sai':1500,'Santa Maria Madalena':1500,
-  'Cantagalo':1500,'Sumidouro':1500,'Nova Friburgo':1500
-};
-const POSTOS_RG  = Object.keys(POS_METAS_FIXAS);
-const MESES_NOME = ['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-const posMLbl    = m => { const [,mo]=m.split('-'); return `${MESES_NOME[+mo]}/${m.split('-')[0]}`; };
-
-function getPOSMeta(mesRef, nome) {
-  return posMetas[mesRef]?.postos?.[nome] || POS_METAS_FIXAS[nome] || 2000;
-}
-
-// ── Init ──────────────────────────────
-async function initPOS() {
-  if (posCarregado) return;
-  try {
-    const [snapD, snapM] = await Promise.all([
-      db.collection('pos_dados').get(),
-      db.collection('pos_metas').get()
-    ]);
-    allPOSData = snapD.docs.map(d => d.data());
-    posMetas   = {};
-    snapM.docs.forEach(d => { posMetas[d.id] = d.data(); });
-    posCarregado = true;
-  } catch(e) { console.error('initPOS:', e); }
-}
-
-// ── Importação ────────────────────────
-async function importarBasePOS(file) {
-  if (!file) return;
-  document.getElementById('pos-import-filename').textContent = file.name;
-  const hoje = new Date();
-  document.getElementById('pos-import-dataref').value =
-    `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`;
-  document.getElementById('modal-pos-import').classList.add('open');
-  window._posPendingFile = file;
-  document.getElementById('pos-upload-input').value = '';
-}
-
-async function confirmarImportPOS() {
-  const file    = window._posPendingFile;
-  const dataRef = document.getElementById('pos-import-dataref').value;
-  if (!file)    return;
-  if (!dataRef) { toast('Informe a data de referência','err'); return; }
-  closeModal('modal-pos-import');
-  toast('Processando...','info');
-
-  const MESES_MAP = {
-    'janeiro':'2026-01','fevereiro':'2026-02','março':'2026-03','marco':'2026-03',
-    'abril':'2026-04','maio':'2026-05','junho':'2026-06','julho':'2026-07',
-    'agosto':'2026-08','setembro':'2026-09','outubro':'2026-10',
-    'novembro':'2026-11','dezembro':'2026-12'
-  };
-
-  try {
-    const ab  = await file.arrayBuffer();
-    const wb2 = XLSX.read(ab, {type:'array', cellDates:false});
-    const now = new Date().toISOString();
-    const importados = {};
-
-    for (const sn of wb2.SheetNames) {
-      const mesRef = MESES_MAP[sn.toLowerCase().trim()];
-      if (!mesRef) continue;
-      const ws   = wb2.Sheets[sn];
-      const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
-
-      // Canal geral: linhas idx 6-8, col Q(16)=nome, S(18)=qtd, U(20)=valor
-      let cQtd={},cVal={};
-      for (let i=6;i<=9;i++) {
-        const r=rows[i]||[];
-        const c=String(r[16]||'');
-        const q=parseFloat(r[18])||0, v=parseFloat(r[20])||0;
-        if(/créd/i.test(c))        { cQtd.credito=q; cVal.credito=v; }
-        else if(/déb|deb/i.test(c)){ cQtd.debito=q;  cVal.debito=v;  }
-        else if(/pix/i.test(c))    { cQtd.pix=q;     cVal.pix=v;     }
-      }
-
-      // Postos: idx 6+, col G(6)=loja, I(8)=qtd, L(11)=valor
-      for (let i=6;i<rows.length;i++) {
-        const r=rows[i]||[];
-        const loja=r[6], qtd=r[8], val=r[11];
-        if (!loja||String(loja).toLowerCase()==='total') break;
-        const nome=normPOSNome(String(loja));
-        if (!nome) continue;
-        const k=`${mesRef}_${nome}`;
-        importados[k]={
-          mesRef, postoNome:nome,
-          qtd:parseInt(qtd)||0, valor:parseFloat(val)||0,
-          creditoQtd:cQtd.credito||0, debitoQtd:cQtd.debito||0, pixQtd:cQtd.pix||0,
-          creditoVal:cVal.credito||0, debitoVal:cVal.debito||0, pixVal:cVal.pix||0,
-          dataRef, importadoEm:now
-        };
-      }
-    }
-
-    const mesesOk=[...new Set(Object.values(importados).filter(d=>d.qtd>0||d.valor>0).map(d=>d.mesRef))];
-    const final=Object.fromEntries(Object.entries(importados).filter(([,d])=>mesesOk.includes(d.mesRef)));
-    if (!Object.keys(final).length) { toast('Nenhum dado dos postos RG encontrado','err'); return; }
-
-    const batch=db.batch();
-    Object.entries(final).forEach(([k,d])=>{ batch.set(db.collection('pos_dados').doc(k),d,{merge:true}); });
-
-    // Data de referência formatada
-    const [yy,mm,dd]=dataRef.split('-');
-    const lbl=`${dd}/${mm}/${yy}`;
-    await db.collection('pos_config').doc('ultima_atualizacao').set({
-      dataRef, label:lbl, arquivo:file.name, importadoEm:now
-    });
-    await db.collection('pos_historico').add({
-      arquivo:file.name, dataRef, label:lbl,
-      dataImport:now, registros:Object.keys(final).length,
-      meses:mesesOk.sort()
-    });
-    await batch.commit();
-
-    const snap=await db.collection('pos_dados').get();
-    allPOSData=snap.docs.map(d=>d.data());
-    posCarregado=true;
-
-    // Mostrar badge imediatamente
-    posAtualizarBadge(lbl);
-    toast(`✅ ${Object.keys(final).length} registros — ${mesesOk.map(posMLbl).join(', ')}`, 'ok');
-    renderPOS();
-  } catch(e) {
-    console.error('confirmarImportPOS:', e);
-    toast('Erro: '+e.message, 'err');
-  }
-}
-
-function normPOSNome(s) {
-  const n=s.trim().replace(/^Posto\s+/i,'');
-  return POSTOS_RG.find(p=>p.toLowerCase()===n.toLowerCase())
-    || POSTOS_RG.find(p=>p.toLowerCase().includes(n.toLowerCase())||n.toLowerCase().includes(p.toLowerCase()))
-    || null;
-}
-
-function posAtualizarBadge(lbl) {
-  const b=document.getElementById('pos-dataref-badge');
-  if (!b) return;
-  b.textContent=`📅 Dados até ${lbl}`;
-  b.style.display='inline-flex';
-}
-
-// ── Modal Meta ────────────────────────
-async function abrirModalMetaPOS() {
-  const todosMeses=[...new Set(allPOSData.map(d=>d.mesRef))].sort();
-  const mes=todosMeses[todosMeses.length-1]||(() => {
-    const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`;
-  })();
-  document.getElementById('pos-meta-mes').value=mes;
-  const m=posMetas[mes]||{};
-  document.getElementById('pos-meta-lista').innerHTML=
-    `<div style="font-size:11px;font-weight:700;color:var(--text3);padding:8px 10px;text-transform:uppercase;letter-spacing:.5px">
-      Override de meta em R$ (vazio = usa meta fixa da campanha)
-    </div>`+
-    POSTOS_RG.map(p=>{
-      const fixo=POS_METAS_FIXAS[p]||0;
-      const ov=m.postos?.[p]||'';
-      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 8px;border-top:1px solid var(--border)">
-        <div>
-          <span style="font-size:12px;color:var(--text1)">${p}</span>
-          <span style="font-size:10px;color:var(--text3);margin-left:6px">fixo: R$ ${fixo.toLocaleString('pt-BR')}</span>
-        </div>
-        <input type="number" class="form-input pos-meta-inp" data-posto="${p}" value="${ov}"
-          placeholder="${fixo}" style="width:90px;padding:4px 8px;font-size:12px">
-      </div>`;
-    }).join('');
-  document.getElementById('modal-pos-meta').classList.add('open');
-}
-
-async function salvarMetaPOS() {
-  const mes=document.getElementById('pos-meta-mes').value;
-  if (!mes) { toast('Selecione o mês','err'); return; }
-  const postos={};
-  document.querySelectorAll('.pos-meta-inp').forEach(i=>{ const v=parseFloat(i.value); if(v>0) postos[i.dataset.posto]=v; });
-  await db.collection('pos_metas').doc(mes).set({postos,updatedAt:new Date().toISOString()});
-  posMetas[mes]={postos};
-  toast('Meta salva!','ok');
-  closeModal('modal-pos-meta');
-  renderPOS();
-}
-
-// ── Histórico ─────────────────────────
-async function verHistoricoPOS() {
-  const lista=document.getElementById('pos-historico-lista');
-  lista.innerHTML=`<div style="padding:20px;text-align:center;color:var(--text3)">Carregando...</div>`;
-  document.getElementById('modal-pos-historico').classList.add('open');
-  try {
-    const snap=await db.collection('pos_historico').orderBy('dataImport','desc').limit(20).get();
-    lista.innerHTML=snap.empty
-      ?`<div style="padding:24px;text-align:center;color:var(--text3)">Nenhum upload registrado.</div>`
-      :snap.docs.map(d=>{
-        const h=d.data(), dt=new Date(h.dataImport);
-        return `<div style="padding:10px 14px;border-bottom:1px solid var(--border)">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
-            <span style="font-size:13px;font-weight:700;color:var(--text1);flex:1">${h.arquivo}</span>
-            ${h.label?`<span style="background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.3);border-radius:10px;padding:1px 8px;font-size:10px;font-weight:700;color:var(--accent)">Dados até ${h.label}</span>`:''}
-          </div>
-          <div style="font-size:11px;color:var(--text3)">
-            Importado ${dt.toLocaleDateString('pt-BR')} ${dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
-            · ${h.registros||'?'} registros · ${(h.meses||[]).map(posMLbl).join(', ')}
-          </div>
-        </div>`;
-      }).join('');
-  } catch(e) { lista.innerHTML=`<div style="padding:20px;color:var(--red)">Erro ao carregar.</div>`; }
-}
-
-// ── Render principal ──────────────────
-async function renderPOS() {
-  if (!posCarregado) await initPOS();
-
-  // Badge de atualização — busca do Firestore e exibe
-  try {
-    const cfg=await db.collection('pos_config').doc('ultima_atualizacao').get();
-    if (cfg.exists) posAtualizarBadge(cfg.data().label||cfg.data().dataRef);
-  } catch(e){}
-
-  const comDados=allPOSData.filter(d=>d.valor>0);
-  if (!comDados.length) {
-    document.getElementById('pos-empty').style.display='flex';
-    document.getElementById('pos-main').style.display='none';
-    return;
-  }
-  document.getElementById('pos-empty').style.display='none';
-  document.getElementById('pos-main').style.display='block';
-
-  const todosMeses=[...new Set(allPOSData.map(d=>d.mesRef))].sort()
-    .filter(m=>allPOSData.some(d=>d.mesRef===m&&d.valor>0));
-  const mesAtivo=todosMeses[todosMeses.length-1];
-
-  // Popula selects
-  const selMes=document.getElementById('pos-mes-select');
-  if (selMes) selMes.innerHTML=todosMeses.map(m=>`<option value="${m}"${m===mesAtivo?' selected':''}>${posMLbl(m)}</option>`).join('');
-  const selEvol=document.getElementById('pos-evolucao-select');
-  if (selEvol) selEvol.innerHTML=`<option value="">Todos os postos</option>`+POSTOS_RG.map(p=>`<option value="${p}">${p}</option>`).join('');
-
-  document.getElementById('pos-subtitle').textContent=`Negociação POS — ${posMLbl(mesAtivo)}`;
-
-  // Renderiza apenas as tabs visíveis agora (ranking e campanha)
-  renderPOSKPIs(mesAtivo, todosMeses);
-  renderPOSCampanha(mesAtivo);
-  renderPOSRanking(mesAtivo);
-  // Evolução e Canal só são renderizados ao clicar nas abas (canvas precisa estar visível)
-}
-
-// ── KPIs ──────────────────────────────
-function renderPOSKPIs(mesAtivo, todosMeses) {
-  const dadosMes=allPOSData.filter(d=>d.mesRef===mesAtivo);
-  const totalQtd=dadosMes.reduce((a,d)=>a+(d.qtd||0),0);
-  const totalVal=dadosMes.reduce((a,d)=>a+(d.valor||0),0);
-  const ativos=dadosMes.filter(d=>d.valor>0).length;
-  const aptos=dadosMes.filter(d=>d.valor>=getPOSMeta(mesAtivo,d.postoNome)).length;
-  const ticket=totalQtd>0?totalVal/totalQtd:0;
-  const idxA=todosMeses.indexOf(mesAtivo);
-  const mesAnt=idxA>0?todosMeses[idxA-1]:null;
-  const valAnt=mesAnt?allPOSData.filter(d=>d.mesRef===mesAnt).reduce((a,d)=>a+(d.valor||0),0):0;
-  const cresc=valAnt>0?((totalVal-valAnt)/valAnt*100):null;
-  const crescTxt=cresc!==null?`${cresc>=0?'▲':'▼'} ${Math.abs(cresc).toFixed(1)}% vs ${posMLbl(mesAnt)}`:posMLbl(mesAtivo);
-
-  document.getElementById('pos-kpis').innerHTML=[
-    {ico:'💰',lbl:'Valor Negociado',val:`R$ ${(totalVal/1000).toFixed(1)}k`,sub:crescTxt,cor:cresc===null?'accent':cresc>=0?'green':'red'},
-    {ico:'💳',lbl:'Negociações',val:totalQtd.toLocaleString('pt-BR'),sub:`Ticket médio R$ ${ticket.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`,cor:'accent'},
-    {ico:'🎯',lbl:'Aptos Campanha',val:`${aptos} postos`,sub:'Bateram a meta em R$',cor:'green'},
-    {ico:'🏪',lbl:'Postos Ativos',val:`${ativos}/${POSTOS_RG.length}`,sub:`${POSTOS_RG.length-ativos} sem negociação`,cor:'yellow'},
-  ].map(k=>`
-    <div class="kpi-card">
-      <div class="kpi-icon">${k.ico}</div>
-      <div class="kpi-value" style="color:var(--${k.cor})">${k.val}</div>
-      <div class="kpi-label">${k.lbl}</div>
-      <div style="font-size:11px;color:var(--${k.cor==='accent'?'text3':k.cor});margin-top:3px;opacity:.85">${k.sub}</div>
-    </div>`).join('');
-}
-
-// ── Ranking ─────────────────────────
-function renderPOSRanking(mesAtivo) {
-  const dadosMes=allPOSData.filter(d=>d.mesRef===mesAtivo);
-  const rank=POSTOS_RG.map(nome=>{
-    const d=dadosMes.find(x=>x.postoNome===nome)||{qtd:0,valor:0};
-    const meta=getPOSMeta(mesAtivo,nome);
-    const pct=meta>0?(d.valor/meta)*100:0;
-    return {nome,qtd:d.qtd||0,valor:d.valor||0,meta,pct};
-  }).sort((a,b)=>b.valor-a.valor);
-
-  const maxVal=Math.max(...rank.map(p=>Math.max(p.valor,p.meta)),1);
-
-  // Cabeçalho
-  const header=`
-    <div style="display:flex;align-items:center;gap:8px;padding:0 0 8px;border-bottom:2px solid var(--border);margin-bottom:4px">
-      <span style="width:22px"></span>
-      <span style="width:170px;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Posto</span>
-      <span style="flex:1;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Progresso</span>
-      <span style="width:68px;text-align:right;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase">Valor</span>
-      <span style="width:60px;text-align:right;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase">Meta</span>
-      <span style="width:30px;text-align:right;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase">Qtd</span>
-      <span style="width:48px;text-align:right;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase">% Meta</span>
-    </div>`;
-
-  const rows=rank.map((p,i)=>{
-    // Verde ≥100%, laranja ≥60%, vermelho <60%
-    const cor=p.pct>=100?'#27AE60':p.pct>=60?'#E67E22':'#E74C3C';
-    const barW=Math.min(100,Math.round((p.valor/maxVal)*100));
-    const metaPos=Math.min(96,Math.round((p.meta/maxVal)*100));
-    const aptoTag=p.pct>=100?`<span style="background:rgba(39,174,96,.15);color:#27AE60;font-size:9px;font-weight:800;padding:1px 5px;border-radius:8px;margin-left:4px">✓</span>`:'';
-    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)">
-      <span style="width:22px;font-size:11px;color:var(--text3);text-align:right;flex-shrink:0">${i+1}</span>
-      <span style="width:170px;font-size:12px;font-weight:${p.valor?700:400};color:var(--${p.valor?'text1':'text3'});white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0">${p.nome}${aptoTag}</span>
-      <div style="flex:1;height:11px;background:var(--border);border-radius:5px;position:relative;overflow:visible;flex-shrink:0">
-        <div style="height:100%;width:${barW}%;background:${cor};border-radius:5px;transition:width .4s;max-width:100%"></div>
-        <div style="position:absolute;left:${metaPos}%;top:-4px;bottom:-4px;width:2px;background:rgba(255,255,255,.7);border-radius:2px;" title="Meta ${fmtBRL(p.meta)}"></div>
-      </div>
-      <span style="width:68px;text-align:right;font-size:12px;font-weight:800;color:${cor};flex-shrink:0">${fmtBRL(p.valor)}</span>
-      <span style="width:60px;text-align:right;font-size:11px;color:var(--text3);flex-shrink:0">${fmtBRL(p.meta)}</span>
-      <span style="width:30px;text-align:right;font-size:12px;font-weight:700;color:var(--text2);flex-shrink:0">${p.qtd}</span>
-      <span style="width:48px;text-align:right;font-size:12px;font-weight:800;color:${cor};flex-shrink:0">${p.pct.toFixed(0)}%</span>
-    </div>`;
-  }).join('');
-
-  const metaMin=Math.min(...POSTOS_RG.map(n=>getPOSMeta(mesAtivo,n)));
-  const metaMax=Math.max(...POSTOS_RG.map(n=>getPOSMeta(mesAtivo,n)));
-  document.getElementById('pos-ranking').innerHTML=`
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px">
-      <span style="font-size:11px;color:var(--text3)">Linha branca = meta individual · metas: ${fmtBRL(metaMin)} – ${fmtBRL(metaMax)}</span>
-      <div style="display:flex;gap:10px;font-size:11px">
-        <span style="color:#27AE60">▬ ≥100%</span>
-        <span style="color:#E67E22">▬ ≥60%</span>
-        <span style="color:#E74C3C">▬ &lt;60%</span>
-      </div>
-    </div>
-    ${header}${rows}`;
-}
-
-// ── Campanha / Pódio ─────────────────
-function renderPOSCampanha(mesAtivo) {
-  const dadosMes=allPOSData.filter(d=>d.mesRef===mesAtivo);
-  const rank=POSTOS_RG.map(nome=>{
-    const d=dadosMes.find(x=>x.postoNome===nome)||{qtd:0,valor:0};
-    const meta=getPOSMeta(mesAtivo,nome);
-    return {nome,qtd:d.qtd||0,valor:d.valor||0,meta,pct:meta>0?(d.valor/meta)*100:0};
-  }).sort((a,b)=>b.pct-a.pct);
-
-  const aptos=rank.filter(p=>p.pct>=100);
-  const inaptos=rank.filter(p=>p.pct<100);
-  const top3=aptos.length>=3?aptos.slice(0,3):rank.slice(0,3);
-  const M=['🥇','🥈','🥉'], CL=['gold','silver','bronze'], LB=['1º Lugar','2º Lugar','3º Lugar'];
-
-  const podium=top3.map((p,i)=>`
-    <div class="pos-podium-card ${CL[i]}">
-      <div style="font-size:32px;margin-bottom:4px">${M[i]}</div>
-      <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.7px">${LB[i]}</div>
-      <div style="font-size:13px;font-weight:800;color:var(--text1);margin:6px 0 2px;line-height:1.2">${p.nome}</div>
-      <div style="font-size:24px;font-weight:900;color:${p.pct>=100?'#27AE60':p.pct>=60?'#E67E22':'#E74C3C'};line-height:1">${p.pct.toFixed(1)}%</div>
-      <div style="font-size:11px;color:var(--text3);margin-top:2px">${fmtBRL(p.valor)}</div>
-      <div style="font-size:10px;color:var(--text3)">meta ${fmtBRL(p.meta)}</div>
-      <div style="margin-top:8px">${p.pct>=100?'<span class="pos-badge-apto">✓ Apto</span>':'<span class="pos-badge-inapto">Em progresso</span>'}</div>
-    </div>`).join('');
-
-  const listaAptos=aptos.slice(0,10).map((p,i)=>`
-    <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border)">
-      <span style="font-size:15px;width:22px">${M[i]||'✓'}</span>
-      <span style="flex:1;font-size:13px;font-weight:700">${p.nome}</span>
-      <span style="font-size:12px;font-weight:800;color:#27AE60;white-space:nowrap">${fmtBRL(p.valor)}</span>
-      <span style="font-size:10px;color:var(--text3);white-space:nowrap">/ meta ${fmtBRL(p.meta)}</span>
-      <span style="font-size:12px;font-weight:800;color:#27AE60;width:42px;text-align:right">${p.pct.toFixed(1)}%</span>
-      <span class="pos-badge-apto">✓</span>
-    </div>`).join('')||`<div style="padding:20px;text-align:center;color:var(--text3);font-size:13px">Nenhum posto bateu a meta ainda.</div>`;
-
-  const listaInaptos=inaptos.slice(0,12).map(p=>`
-    <div style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid var(--border)">
-      <span style="flex:1;font-size:12px;color:var(--text2)">${p.nome}</span>
-      <div style="width:70px;height:6px;background:var(--border);border-radius:4px;overflow:hidden">
-        <div style="height:100%;width:${Math.min(100,p.pct)}%;background:${p.pct>=60?'#E67E22':'#E74C3C'};border-radius:4px"></div>
-      </div>
-      <span style="font-size:12px;font-weight:700;color:${p.pct>=60?'#E67E22':'#E74C3C'};width:38px;text-align:right">${p.pct.toFixed(0)}%</span>
-      <span style="font-size:10px;color:var(--text3);width:110px;text-align:right">${fmtBRL(p.valor)} / ${fmtBRL(p.meta)}</span>
-    </div>`).join('');
-
-  document.getElementById('pos-campanha').innerHTML=`
-    <div style="background:linear-gradient(135deg,rgba(5,39,118,.25),rgba(201,168,76,.08));border:1px solid rgba(201,168,76,.3);border-radius:14px;padding:20px;margin-bottom:20px">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-        <div>
-          <h3 style="margin:0;font-size:15px;font-weight:800;color:var(--text1)">🏆 Campanha Missão Arrecadação POS</h3>
-          <p style="margin:4px 0 0;font-size:12px;color:var(--text3)">Elegíveis: bateram a meta em valor · Desempate: maior % atingimento · Top 3 premiados</p>
-        </div>
-        <button class="btn btn-secondary" style="font-size:11px" onclick="abrirModalMetaPOS()">⚙️ Ajustar Metas</button>
-      </div>
-      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-        <span style="background:rgba(39,174,96,.1);border:1px solid rgba(39,174,96,.3);border-radius:8px;padding:4px 12px;font-size:12px"><span style="color:#27AE60;font-weight:800">${aptos.length}</span><span style="color:var(--text3);margin-left:4px">aptos</span></span>
-        <span style="background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.3);border-radius:8px;padding:4px 12px;font-size:12px"><span style="color:#E74C3C;font-weight:800">${inaptos.length}</span><span style="color:var(--text3);margin-left:4px">em progresso</span></span>
-      </div>
-      <div class="pos-podium">${podium}</div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-      <div style="background:var(--surface2);border-radius:10px;border:1px solid var(--border)">
-        <div style="padding:12px 14px;border-bottom:1px solid var(--border)"><span style="font-size:13px;font-weight:700;color:#27AE60">✅ Aptos (${aptos.length})</span></div>
-        ${listaAptos}
-      </div>
-      <div style="background:var(--surface2);border-radius:10px;border:1px solid var(--border)">
-        <div style="padding:12px 14px;border-bottom:1px solid var(--border)"><span style="font-size:13px;font-weight:700;color:#E67E22">⏳ Em Progresso (${inaptos.length})</span></div>
-        ${listaInaptos}
-      </div>
-    </div>`;
-}
-
-// ── Evolução — só renderiza com canvas visível ──
-function renderPOSEvolucao() {
-  const todosMeses=[...new Set(allPOSData.map(d=>d.mesRef))].sort()
-    .filter(m=>allPOSData.some(d=>d.mesRef===m&&d.valor>0));
-  if (!todosMeses.length) {
-    document.getElementById('pos-evolucao-empty').style.display='block';
-    return;
-  }
-  document.getElementById('pos-evolucao-empty').style.display='none';
-
-  const selPosto =document.getElementById('pos-evolucao-select')?.value||'';
-  const metrica  =document.getElementById('pos-evolucao-metrica')?.value||'valor';
-  const labels   =todosMeses.map(posMLbl);
-  let datasets=[];
-
-  if (selPosto) {
-    const vals=todosMeses.map(m=>{
-      const d=allPOSData.find(x=>x.mesRef===m&&x.postoNome===selPosto);
-      if (!d||(d.valor===0&&d.qtd===0)) return null;
-      if (metrica==='valor') return d.valor;
-      if (metrica==='qtd')   return d.qtd;
-      const meta=getPOSMeta(m,selPosto);
-      return meta>0?parseFloat(((d.valor/meta)*100).toFixed(1)):null;
-    });
-    datasets=[
-      {label:selPosto,data:vals,borderColor:'#C9A84C',backgroundColor:'rgba(201,168,76,.15)',
-       tension:.35,fill:true,spanGaps:true,pointRadius:5,pointBackgroundColor:'#C9A84C'},
-    ];
-    if (metrica==='pct') datasets.push({label:'Meta 100%',data:todosMeses.map(()=>100),borderColor:'rgba(255,255,255,.3)',borderDash:[5,4],pointRadius:0,fill:false,spanGaps:true});
-  } else {
-    if (metrica==='valor') {
-      const totVal=todosMeses.map(m=>allPOSData.filter(d=>d.mesRef===m).reduce((a,d)=>a+(d.valor||0),0));
-      const medVal=todosMeses.map((m,i)=>{const n=allPOSData.filter(d=>d.mesRef===m&&d.valor>0).length;return n?+(totVal[i]/n).toFixed(0):null;});
-      datasets=[
-        {label:'Total R$',data:totVal,borderColor:'#C9A84C',backgroundColor:'rgba(201,168,76,.12)',tension:.35,fill:true,spanGaps:true,pointRadius:5,pointBackgroundColor:'#C9A84C',yAxisID:'y'},
-        {label:'Média/posto',data:medVal,borderColor:'rgba(52,152,219,.8)',backgroundColor:'transparent',borderDash:[4,3],tension:.35,spanGaps:true,pointRadius:4,yAxisID:'y2'},
-      ];
-    } else if (metrica==='qtd') {
-      const totQtd=todosMeses.map(m=>allPOSData.filter(d=>d.mesRef===m).reduce((a,d)=>a+(d.qtd||0),0));
-      datasets=[{label:'Total negociações',data:totQtd,borderColor:'#C9A84C',backgroundColor:'rgba(201,168,76,.12)',tension:.35,fill:true,spanGaps:true,pointRadius:5,pointBackgroundColor:'#C9A84C'}];
-    } else {
-      const pctMed=todosMeses.map(m=>{
-        const mes=allPOSData.filter(d=>d.mesRef===m&&d.valor>0);
-        if (!mes.length) return null;
-        return +(mes.reduce((a,d)=>{const meta=getPOSMeta(m,d.postoNome);return a+(meta>0?(d.valor/meta)*100:0);},0)/mes.length).toFixed(1);
-      });
-      datasets=[
-        {label:'% médio de meta',data:pctMed,borderColor:'#C9A84C',backgroundColor:'rgba(201,168,76,.12)',tension:.35,fill:true,spanGaps:true,pointRadius:5,pointBackgroundColor:'#C9A84C'},
-        {label:'Meta 100%',data:todosMeses.map(()=>100),borderColor:'rgba(255,255,255,.25)',borderDash:[5,4],pointRadius:0,fill:false},
-      ];
-    }
-  }
-
-  const ctx=document.getElementById('pos-evolucao-chart');
-  if (!ctx) return;
-  if (posChartEvolucao) { posChartEvolucao.destroy(); posChartEvolucao=null; }
-  const scales={
-    x:{ticks:{color:'#888',font:{size:11}},grid:{color:'rgba(255,255,255,.04)'}},
-    y:{ticks:{color:'#888',font:{size:10}},grid:{color:'rgba(255,255,255,.05)'},
-       title:{display:true,text:metrica==='valor'?'R$':metrica==='pct'?'% meta':'Qtd',color:'#888',font:{size:10}}}
-  };
-  if (!selPosto&&metrica==='valor') scales.y2={position:'right',ticks:{color:'rgba(52,152,219,.6)',font:{size:10}},grid:{display:false},title:{display:true,text:'Média/posto',color:'rgba(52,152,219,.6)',font:{size:10}}};
-  posChartEvolucao=new Chart(ctx,{
-    type:'line',data:{labels,datasets},
-    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
-      plugins:{legend:{labels:{color:'#aaa',font:{size:11},boxWidth:12}}},scales}
-  });
-}
-
-// ── Canal — só renderiza com canvas visível ──
-function renderPOSCanal(mesAtivo, todosMeses) {
-  const wrap=document.getElementById('pos-canal-wrap');
-  if (!wrap) return;
-
-  const comCanal=allPOSData.filter(d=>d.mesRef===mesAtivo&&(d.creditoQtd||d.debitoQtd||d.pixQtd));
-  if (!comCanal.length) {
-    wrap.innerHTML=`<div style="padding:60px;text-align:center;color:var(--text3);font-size:13px">
-      Dados de canal disponíveis após a próxima importação do arquivo completo.
-    </div>`;
-    return;
-  }
-  const ref=comCanal[0];
-  const cQ=ref.creditoQtd||0, dQ=ref.debitoQtd||0, pQ=ref.pixQtd||0;
-  const cV=ref.creditoVal||0, dV=ref.debitoVal||0, pV=ref.pixVal||0;
-  const totQ=cQ+dQ+pQ;
-
-  const evCred=todosMeses.map(m=>{const r=allPOSData.find(d=>d.mesRef===m&&(d.creditoQtd||d.debitoQtd||d.pixQtd));return r?.creditoQtd||null;});
-  const evDeb =todosMeses.map(m=>{const r=allPOSData.find(d=>d.mesRef===m&&(d.creditoQtd||d.debitoQtd||d.pixQtd));return r?.debitoQtd||null;});
-  const evPix =todosMeses.map(m=>{const r=allPOSData.find(d=>d.mesRef===m&&(d.creditoQtd||d.debitoQtd||d.pixQtd));return r?.pixQtd||null;});
-  const hasHist=evCred.some(v=>v)||evDeb.some(v=>v)||evPix.some(v=>v);
-
-  // Sempre destruir chart antigo antes de reescrever innerHTML
-  if (posChartCanal) { posChartCanal.destroy(); posChartCanal=null; }
-
-  wrap.innerHTML=`
-    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid var(--border)">
-      <h3 style="font-size:13px;font-weight:700;color:var(--text1);margin:0 0 14px">💳 Mix de Canal — Rede Completa (${posMLbl(mesAtivo)})</h3>
-      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:${hasHist?20:0}px">
-        ${[{lbl:'Crédito',q:cQ,v:cV,cor:'#C9A84C'},{lbl:'Débito',q:dQ,v:dV,cor:'#3498DB'},{lbl:'Pix',q:pQ,v:pV,cor:'#27AE60'}].map(c=>`
-        <div style="flex:1;min-width:110px;background:var(--surface);border-radius:10px;padding:14px;border:1px solid var(--border);text-align:center">
-          <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;margin-bottom:6px">${c.lbl}</div>
-          <div style="font-size:22px;font-weight:900;color:${c.cor}">${c.q.toLocaleString('pt-BR')}</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:2px">${totQ>0?((c.q/totQ)*100).toFixed(1)+'%':''}</div>
-          <div style="font-size:12px;color:${c.cor};font-weight:700;margin-top:4px">R$ ${(c.v/1000).toFixed(1)}k</div>
-        </div>`).join('')}
-      </div>
-      ${hasHist?`<div style="position:relative;height:220px"><canvas id="pos-canal-chart"></canvas></div>`:''}
-    </div>`;
-
-  if (hasHist) {
-    const ctx=document.getElementById('pos-canal-chart');
-    if (!ctx) return;
-    posChartCanal=new Chart(ctx,{
-      type:'bar',
-      data:{labels:todosMeses.map(posMLbl),datasets:[
-        {label:'Crédito',data:evCred,backgroundColor:'rgba(201,168,76,.75)',borderRadius:4},
-        {label:'Débito', data:evDeb, backgroundColor:'rgba(52,152,219,.75)', borderRadius:4},
-        {label:'Pix',    data:evPix, backgroundColor:'rgba(39,174,96,.75)',  borderRadius:4},
-      ]},
-      options:{responsive:true,maintainAspectRatio:false,
-        plugins:{legend:{labels:{color:'#aaa',font:{size:11},boxWidth:12}}},
-        scales:{
-          x:{stacked:true,ticks:{color:'#888',font:{size:10}},grid:{display:false}},
-          y:{stacked:true,ticks:{color:'#888',font:{size:10}},grid:{color:'rgba(255,255,255,.04)'}}
-        }
-      }
-    });
-  }
-}
-
-// ── Tab switch ────────────────────────
-function switchPosTab(tab, el) {
-  document.querySelectorAll('.pos-tab').forEach(b=>b.classList.remove('active'));
-  document.querySelectorAll('.pos-tab-content').forEach(c=>c.classList.remove('active'));
-  el.classList.add('active');
-  document.getElementById('pos-tab-'+tab).classList.add('active');
-
-  if (tab==='evolucao') {
-    // Destruir antes de recriar — canvas fixo no HTML
-    if (posChartEvolucao) { posChartEvolucao.destroy(); posChartEvolucao=null; }
-    setTimeout(renderPOSEvolucao, 150);
-  }
-  if (tab==='canal') {
-    // renderPOSCanal destrói o chart internamente antes de reescrever o innerHTML
-    const mes=document.getElementById('pos-mes-select')?.value;
-    const todosMeses=[...new Set(allPOSData.map(d=>d.mesRef))].sort().filter(m=>allPOSData.some(d=>d.mesRef===m&&d.valor>0));
-    if (mes) setTimeout(()=>renderPOSCanal(mes,todosMeses), 150);
-  }
-}
-
-function onPosTabMesChange() {
-  const mes=document.getElementById('pos-mes-select')?.value;
-  if (!mes) return;
-  const todosMeses=[...new Set(allPOSData.map(d=>d.mesRef))].sort().filter(m=>allPOSData.some(d=>d.mesRef===m&&d.valor>0));
-  renderPOSKPIs(mes,todosMeses);
-  renderPOSCampanha(mes);
-  renderPOSRanking(mes);
-  // Atualiza canal se aba estiver ativa
-  if (document.getElementById('pos-tab-canal')?.classList.contains('active'))
-    requestAnimationFrame(()=>renderPOSCanal(mes,todosMeses));
-}
-
 initSystem();
 </script>
 <!-- MODAL: HOLERITE — VER ASSINADO (ADM) -->
@@ -8422,52 +7662,6 @@ initSystem();
     <div style="display:flex;gap:10px;margin-top:8px">
       <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-enviar-folha-assinada')">Cancelar</button>
       <button class="btn btn-primary" style="flex:1" onclick="confirmarEnvioFolhaAssinada()">📤 Enviar</button>
-    </div>
-  </div>
-</div>
-<!-- MODAL: POS — IMPORTAR COM DATA -->
-<div class="modal-overlay" id="modal-pos-import">
-  <div class="modal" style="max-width:440px">
-    <div class="modal-header"><div class="modal-title">📥 Importar Base POS</div><button class="close-btn" onclick="closeModal('modal-pos-import')">✕</button></div>
-    <div style="background:var(--surface2);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:var(--text3)">
-      <span style="font-weight:700;color:var(--text2)">Arquivo:</span> <span id="pos-import-filename"></span>
-    </div>
-    <div class="form-group">
-      <label class="form-label">Data de referência dos dados <span style="color:var(--red)">*</span></label>
-      <p style="font-size:12px;color:var(--text3);margin:0 0 8px">Data até quando os dados foram extraídos (ex: última sexta-feira)</p>
-      <input type="date" class="form-input" id="pos-import-dataref">
-    </div>
-    <div style="display:flex;gap:10px;margin-top:16px">
-      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-pos-import')">Cancelar</button>
-      <button class="btn btn-primary" style="flex:1" onclick="confirmarImportPOS()">✅ Confirmar Importação</button>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL: POS — DEFINIR META -->
-<div class="modal-overlay" id="modal-pos-meta">
-  <div class="modal" style="max-width:500px">
-    <div class="modal-header"><div class="modal-title">⚙️ Ajustar Metas POS</div><button class="close-btn" onclick="closeModal('modal-pos-meta')">✕</button></div>
-    <p style="font-size:13px;color:var(--text3);margin-bottom:12px">Metas em <strong>valor negociado (R$)</strong> da Campanha Missão Arrecadação. Deixe em branco para usar a meta fixa da campanha.</p>
-    <div class="form-group" style="max-width:180px;margin-bottom:12px">
-      <label class="form-label">Mês de referência</label>
-      <input type="month" class="form-input" id="pos-meta-mes">
-    </div>
-    <div style="max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:8px" id="pos-meta-lista"></div>
-    <div style="display:flex;gap:10px;margin-top:16px">
-      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-pos-meta')">Cancelar</button>
-      <button class="btn btn-primary" style="flex:1" onclick="salvarMetaPOS()">💾 Salvar</button>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL: POS — HISTÓRICO DE UPLOADS -->
-<div class="modal-overlay" id="modal-pos-historico">
-  <div class="modal" style="max-width:520px">
-    <div class="modal-header"><div class="modal-title">📂 Histórico de Importações POS</div><button class="close-btn" onclick="closeModal('modal-pos-historico')">✕</button></div>
-    <div id="pos-historico-lista" style="max-height:400px;overflow-y:auto"></div>
-    <div style="margin-top:16px;text-align:right">
-      <button class="btn btn-secondary" onclick="closeModal('modal-pos-historico')">Fechar</button>
     </div>
   </div>
 </div>
