@@ -10,6 +10,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script>/* pako 2.1.0 inline */
 /*! pako 2.1.0 https://github.com/nodeca/pako @license (MIT AND Zlib) */
@@ -1642,13 +1643,32 @@
     <div class="lr-header">
       <div class="lr-eyebrow">Recuperação de acesso</div>
       <div class="lr-title">Esqueci minha senha</div>
-      <div class="lr-sub">Informe seu e-mail e o administrador irá resetar seu acesso</div>
+      <div class="lr-sub">Informe seu e-mail para continuar</div>
     </div>
     <label class="lf-label">Seu E-mail</label>
     <input class="lf-input" type="email" id="fs-email" placeholder="seu@gruporgbrasil.com">
     <div id="fs-error" class="lf-err"></div>
-    <button class="lf-btn" onclick="doEsqueciSenha()">Enviar Solicitação →</button>
+    <button class="lf-btn" onclick="doEsqueciSenha()">Continuar →</button>
     <button style="margin-top:12px;background:none;border:none;color:rgba(255,255,255,0.35);font-size:13px;cursor:pointer;width:100%;text-align:center" onclick="showPage('login')">← Voltar ao login</button>
+  </div>
+</div>
+
+<!-- ESQUECI MINHA SENHA — PASSO 2: NOVA SENHA (auto-reset) -->
+<div id="page-forgot-newpass" class="page">
+  <div class="login-right" style="width:100%;max-width:480px;margin:0 auto;border:none">
+    <div class="lr-header">
+      <div class="lr-eyebrow">Recuperação de acesso</div>
+      <div class="lr-title">Criar nova senha</div>
+      <div class="lr-sub" id="fn-sub">Defina uma nova senha para sua conta</div>
+    </div>
+    <div id="fn-aviso" style="display:none;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:rgba(255,255,255,0.7);line-height:1.6"></div>
+    <label class="lf-label">Nova Senha</label>
+    <input class="lf-input" type="password" id="fn-nova" placeholder="Mínimo 6 caracteres">
+    <label class="lf-label">Confirmar Senha</label>
+    <input class="lf-input" type="password" id="fn-conf" placeholder="Repita a nova senha">
+    <div id="fn-error" class="lf-err"></div>
+    <button class="lf-btn" onclick="doForgotNewPass()">Salvar nova senha →</button>
+    <button style="margin-top:12px;background:none;border:none;color:rgba(255,255,255,0.35);font-size:13px;cursor:pointer;width:100%;text-align:center" onclick="showPage('login')">← Cancelar</button>
   </div>
 </div>
 
@@ -2845,31 +2865,94 @@ async function doChangePassword() {
   } catch(e) { err.textContent = 'Erro ao salvar. Tente novamente.'; err.style.display = 'block'; }
 }
 
+// userId temporário para o fluxo de esqueci senha
+let _forgotUserId = null;
+let _forgotResetCount = 0;
+
 async function doEsqueciSenha() {
   const email = document.getElementById('fs-email').value.trim();
-  const err = document.getElementById('fs-error');
+  const err   = document.getElementById('fs-error');
   err.style.display = 'none';
   if (!email) { err.textContent = 'Digite seu e-mail.'; err.style.display = 'block'; return; }
   try {
     const snap = await db.collection('users').where('email','==',email).get();
     if (snap.empty) { err.textContent = 'E-mail não encontrado.'; err.style.display = 'block'; return; }
-    const user = snap.docs[0].data();
+    const doc  = snap.docs[0];
+    const user = doc.data();
     if (user.role === 'admin') { err.textContent = 'Entre em contato com o suporte.'; err.style.display = 'block'; return; }
-    await db.collection('reset_requests').add({
-      userId: snap.docs[0].id, userName: user.name, userEmail: email,
-      status: 'pendente', requestedAt: new Date().toISOString()
+
+    const resetCount = user.resetCount || 0;  // quantas vezes já resetou por conta própria
+
+    if (resetCount >= 2) {
+      // 3ª vez ou mais — envia pro ADM
+      await db.collection('reset_requests').add({
+        userId: doc.id, userName: user.name || user.nome || email,
+        userEmail: email, status: 'pendente',
+        requestedAt: new Date().toISOString(),
+        motivo: `Reset bloqueado após ${resetCount+1} tentativas`
+      });
+      showPage('login');
+      document.getElementById('login-email').value = email;
+      toast('Limite de resets atingido. O administrador foi notificado e irá criar sua nova senha.', 'ok');
+      return;
+    }
+
+    // 1ª ou 2ª vez — libera criar nova senha direto
+    _forgotUserId   = doc.id;
+    _forgotResetCount = resetCount;
+
+    const aviso = document.getElementById('fn-aviso');
+    const restante = 2 - resetCount - 1; // resets que ainda sobram depois deste
+    if (resetCount === 1) {
+      // 2ª vez — avisa que a próxima vai pro ADM
+      aviso.innerHTML = '⚠️ Este é seu último reset automático. Se esquecer a senha novamente, o administrador precisará criar uma nova para você.';
+      aviso.style.display = 'block';
+    } else {
+      aviso.style.display = 'none';
+    }
+    document.getElementById('fn-sub').textContent = `Olá, ${user.name || user.nome || email}. Crie uma nova senha abaixo.`;
+    document.getElementById('fn-nova').value = '';
+    document.getElementById('fn-conf').value = '';
+    document.getElementById('fn-error').style.display = 'none';
+    showPage('forgot-newpass');
+  } catch(e) { err.textContent = 'Erro ao verificar. Tente novamente.'; err.style.display = 'block'; }
+}
+
+async function doForgotNewPass() {
+  const nova = document.getElementById('fn-nova').value;
+  const conf = document.getElementById('fn-conf').value;
+  const err  = document.getElementById('fn-error');
+  err.style.display = 'none';
+  if (!nova || nova.length < 6) { err.textContent = 'A senha deve ter no mínimo 6 caracteres.'; err.style.display = 'block'; return; }
+  if (!/[a-zA-Z]/.test(nova) || !/[0-9]/.test(nova)) { err.textContent = 'A senha deve conter letras e números.'; err.style.display = 'block'; return; }
+  if (nova !== conf) { err.textContent = 'As senhas não coincidem.'; err.style.display = 'block'; return; }
+  if (!_forgotUserId) { showPage('login'); return; }
+  try {
+    await db.collection('users').doc(_forgotUserId).update({
+      password: nova,
+      mustChangePassword: false,
+      resetCount: _forgotResetCount + 1,
+      lastResetAt: new Date().toISOString()
     });
+    _forgotUserId = null;
+    _forgotResetCount = 0;
     showPage('login');
-    document.getElementById('login-email').value = email;
-    toast('Solicitação enviada! Aguarde o administrador resetar sua senha.', 'ok');
-  } catch(e) { err.textContent = 'Erro ao enviar. Tente novamente.'; err.style.display = 'block'; }
+    toast('Senha atualizada! Faça login com a nova senha.', 'ok');
+  } catch(e) { err.textContent = 'Erro ao salvar. Tente novamente.'; err.style.display = 'block'; }
 }
 
 async function resetarSenha(userId, reqId) {
+  const novaSenha = prompt('Digite a nova senha para o colaborador (mín. 6 caracteres):');
+  if (!novaSenha || novaSenha.length < 6) { toast('Senha inválida — mínimo 6 caracteres.', 'err'); return; }
   try {
-    await db.collection('users').doc(userId).update({ password: SENHA_PADRAO, mustChangePassword: true });
+    await db.collection('users').doc(userId).update({
+      password: novaSenha,
+      mustChangePassword: true,
+      resetCount: 0,           // zera o contador — usuário volta a ter 2 resets automáticos
+      lastResetAt: new Date().toISOString()
+    });
     await db.collection('reset_requests').doc(reqId).update({ status: 'concluido', resolvedAt: new Date().toISOString() });
-    toast('Senha resetada! O colaborador deverá criar uma nova senha.', 'ok');
+    toast('Senha criada e contador zerado. O colaborador deverá trocar no primeiro acesso.', 'ok');
     renderAdmDashboardExtras();
   } catch(e) { toast('Erro ao resetar senha', 'err'); }
 }
