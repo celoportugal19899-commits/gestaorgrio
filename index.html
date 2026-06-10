@@ -10,6 +10,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script>/* pako 2.1.0 inline */
 /*! pako 2.1.0 https://github.com/nodeca/pako @license (MIT AND Zlib) */
@@ -1088,14 +1089,30 @@
         <div style="max-width:600px">
           <div class="card" style="padding:24px">
             <h3 style="margin:0 0 6px;font-size:15px">📥 Importar Excel Neobpo</h3>
-            <p style="color:var(--text3);font-size:13px;margin:0 0 18px">Selecione o arquivo Excel exportado da Neobpo. O sistema lê a sheet <strong>Base</strong>, filtra os 29 postos RG e salva os dados no Firestore.</p>
+            <p style="color:var(--text3);font-size:13px;margin:0 0 18px">Selecione o arquivo Excel da Neobpo. O sistema lê a sheet <strong>Base</strong>, filtra os 29 postos RG e salva os dados no Firestore.</p>
+            <div style="margin-bottom:16px">
+              <label style="display:block;font-size:12px;color:var(--text3);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">📅 Data de referência dos dados</label>
+              <input type="date" id="csat-data-ref" class="form-control" style="max-width:220px" />
+              <div style="font-size:11px;color:var(--text3);margin-top:4px">Informe o dia/mês de corte desta extração</div>
+            </div>
             <input type="file" id="csat-file-input" accept=".xlsx,.xls" style="display:none" onchange="importarCSAT(this)">
-            <button class="btn btn-primary" onclick="document.getElementById('csat-file-input').click()">📂 Selecionar Arquivo</button>
+            <button class="btn btn-primary" onclick="document.getElementById('csat-file-input').click()">📂 Selecionar e Importar</button>
           </div>
           <div id="csat-import-log" style="margin-top:14px;font-size:13px;color:var(--text3)">
             <strong style="color:var(--text2)">Último import:</strong> <span id="csat-import-log-txt">Nenhum import realizado nesta sessão.</span>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- MODAL: COMENTÁRIOS CSAT -->
+    <div id="modal-csat-comentarios" class="modal">
+      <div class="modal-box" style="max-width:640px;max-height:80vh;display:flex;flex-direction:column">
+        <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border)">
+          <h3 id="csat-coment-titulo" style="margin:0;font-size:15px;color:var(--text1)">💬 Comentários</h3>
+          <button onclick="document.getElementById('modal-csat-comentarios').classList.remove('open')" style="background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer;padding:0 4px">×</button>
+        </div>
+        <div id="csat-coment-body" style="overflow-y:auto;padding:16px 20px;flex:1"></div>
       </div>
     </div>
 
@@ -7639,23 +7656,19 @@ async function confirmarEnvioFolhaAssinada(){
 // ══════════════════════════════════════════════════════
 const CSAT_META = 4.50;
 const CSAT_MESES_NOME = ['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const TODOS_POSTOS_RG = [
+  'APERIBE','CONCEICAO DE MACABU','GUARUS','CARDOSO MOREIRA','CAMBUCI',
+  'QUISSAMA','CARAPEBUS','SAO JOSE DE UBA','CANTAGALO','TANGUA','ITALVA',
+  'MACUCO','SILVA JARDIM','BOM JESUS DO ITABAPOANA',
+  'SAO JOSE DO VALE DO RIO PRETO','NOVA FRIBURGO','SANTA MARIA MADALENA',
+  'PORCIUNCULA','MIRACEMA','SUMIDOURO','BOM JARDIM','VARRE-SAI','NATIVIDADE',
+  'AREAL','PORTO REAL','DUAS BARRAS','TRAJANO DE MORAES','LAJE DO MURIAE',
+  'SAO SEBASTIAO DO ALTO'
+];
 const CSAT_SUPERVISORES = {
-  leonardo: {
-    nome: 'Leonardo Costa',
-    postos: ['APERIBE','CONCEICAO DE MACABU','GUARUS','CARDOSO MOREIRA','CAMBUCI',
-             'QUISSAMA','CARAPEBUS','SAO JOSE DE UBA','CANTAGALO','TANGUA','ITALVA',
-             'MACUCO','SILVA JARDIM','BOM JESUS DO ITABAPOANA']
-  },
-  victor: {
-    nome: 'Victor Simões',
-    postos: ['SAO JOSE DO VALE DO RIO PRETO','NOVA FRIBURGO','SANTA MARIA MADALENA',
-             'PORCIUNCULA','MIRACEMA','SUMIDOURO','BOM JARDIM','VARRE-SAI','NATIVIDADE',
-             'AREAL','PORTO REAL','DUAS BARRAS','TRAJANO DE MORAES','LAJE DO MURIAE',
-             'SAO SEBASTIAO DO ALTO']
-  }
+  leonardo: { nome:'Leonardo Costa', postos:['APERIBE','CONCEICAO DE MACABU','GUARUS','CARDOSO MOREIRA','CAMBUCI','QUISSAMA','CARAPEBUS','SAO JOSE DE UBA','CANTAGALO','TANGUA','ITALVA','MACUCO','SILVA JARDIM','BOM JESUS DO ITABAPOANA'] },
+  victor:   { nome:'Victor Simões',  postos:['SAO JOSE DO VALE DO RIO PRETO','NOVA FRIBURGO','SANTA MARIA MADALENA','PORCIUNCULA','MIRACEMA','SUMIDOURO','BOM JARDIM','VARRE-SAI','NATIVIDADE','AREAL','PORTO REAL','DUAS BARRAS','TRAJANO DE MORAES','LAJE DO MURIAE','SAO SEBASTIAO DO ALTO'] }
 };
-
-// Mapa de normalização: nome no Excel → nome canônico RG
 const CSAT_NOME_MAP = {
   'APERIBE':'APERIBE','CONCEICAO DE MACABU':'CONCEICAO DE MACABU','GUARUS':'GUARUS',
   'CARDOSO MOREIRA':'CARDOSO MOREIRA','CAMBUCI':'CAMBUCI','QUISSAMA':'QUISSAMA',
@@ -7669,27 +7682,38 @@ const CSAT_NOME_MAP = {
   'AREAL':'AREAL','PORTO REAL':'PORTO REAL','DUAS BARRAS':'DUAS BARRAS',
   'TRAJANO DE MORAES':'TRAJANO DE MORAES','LAJE DO MURIAE':'LAJE DO MURIAE',
   'SAO SEBASTIAO DO ALTO':'SAO SEBASTIAO DO ALTO',
-  // variações comuns no Excel
   'CONCEIÇÃO DE MACABU':'CONCEICAO DE MACABU','TANGUÁ':'TANGUA',
   'PORCIÚNCULA':'PORCIUNCULA','LAJE DO MURIAÉ':'LAJE DO MURIAE',
-  'BOM JESUS DO ITABAPOANA':'BOM JESUS DO ITABAPOANA',
   'SÃO JOSÉ DE UBÁ':'SAO JOSE DE UBA','SÃO JOSÉ DO VALE DO RIO PRETO':'SAO JOSE DO VALE DO RIO PRETO',
   'VARRE SAI':'VARRE-SAI','SÃO SEBASTIÃO DO ALTO':'SAO SEBASTIAO DO ALTO',
-  'SANTA MARIA MADALENA':'SANTA MARIA MADALENA','SÃO JOSE DE UBA':'SAO JOSE DE UBA',
-  'SAO JOSE DO V. DO RIO PRETO':'SAO JOSE DO VALE DO RIO PRETO',
-  'SAO JOSE DO VALE DO R.PRETO':'SAO JOSE DO VALE DO RIO PRETO'
+  'SÃO JOSE DE UBA':'SAO JOSE DE UBA','SAO JOSE DO V. DO RIO PRETO':'SAO JOSE DO VALE DO RIO PRETO',
+  'SAO JOSE DO VALE DO R.PRETO':'SAO JOSE DO VALE DO RIO PRETO','QUISSAMÃ':'QUISSAMA'
 };
 
-let csatAllData = [];       // [{mesRef, postoNome, pesquisas, notaMedia, promotores, neutros, detratores}]
+let csatAllData = [];
 let csatMesesSelecionados = [];
 let csatMesesDisponiveis = [];
 let csatSupAtivo = 'leonardo';
 let csatTabAtiva = 'painel';
-let csatChartEvolucao = null;
-let csatChartAnual = null;
-let csatChartSupEvolucao = null;
+let csatUltimaAtualizacao = '';
+let csatChartEvo = null;
+let csatChartAno = null;
+let csatChartSup = null;
 
 function csatNorm(str){ return (str||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim(); }
+function csatCorNota(n) {
+  if (n === null || n === undefined || isNaN(n)) return 'var(--text3)';
+  if (n >= 4.50) return '#22c55e';
+  if (n >= 4.30) return '#f97316';
+  return '#ef4444';
+}
+function csatBgNota(n) {
+  if (!n || isNaN(n)) return '';
+  if (n >= 4.50) return 'rgba(34,197,94,.06)';
+  if (n >= 4.30) return 'rgba(249,115,22,.08)';
+  return 'rgba(239,68,68,.07)';
+}
+function csatLabelMes(m){ const[,mo]=m.split('-'); return `${CSAT_MESES_NOME[+mo]}/${m.slice(2,4)}`; }
 
 async function initCsatMesFiltro() {
   try {
@@ -7698,183 +7722,198 @@ async function initCsatMesFiltro() {
     csatAllData = [];
     snap.forEach(doc => {
       const d = doc.data();
-      if (d.mesRef) {
-        mesesSet.add(d.mesRef);
-        csatAllData.push(d);
-      }
+      if (d.mesRef) { mesesSet.add(d.mesRef); csatAllData.push(d); }
     });
+    // Buscar data de atualização do config
+    try {
+      const cfg = await db.collection('csat_config').doc('geral').get();
+      if (cfg.exists) csatUltimaAtualizacao = cfg.data().ultimaAtualizacao || '';
+    } catch(e){}
     csatMesesDisponiveis = [...mesesSet].sort();
-    // default: último 6 meses disponíveis
-    if (csatMesesSelecionados.length === 0 && csatMesesDisponiveis.length > 0) {
+    if (csatMesesSelecionados.length === 0 && csatMesesDisponiveis.length > 0)
       csatMesesSelecionados = csatMesesDisponiveis.slice(-6);
-    }
     renderCsatMesBtns();
-  } catch(e) {
-    console.error('initCsatMesFiltro', e);
-  }
+  } catch(e){ console.error('initCsatMesFiltro', e); }
 }
 
 function renderCsatMesBtns() {
   const wrap = document.getElementById('csat-meses-btns');
   if (!wrap) return;
   wrap.innerHTML = csatMesesDisponiveis.map(m => {
-    const [ano, mes] = m.split('-');
-    const lbl = `${CSAT_MESES_NOME[+mes]}/${ano.slice(2)}`;
+    const lbl = csatLabelMes(m);
     const sel = csatMesesSelecionados.includes(m);
     return `<button class="ind-mes-btn${sel?' active':''}" onclick="csatToggleMes('${m}',this)">${lbl}</button>`;
   }).join('');
 }
-
 function csatToggleMes(m, el) {
   const idx = csatMesesSelecionados.indexOf(m);
-  if (idx >= 0) csatMesesSelecionados.splice(idx,1); else csatMesesSelecionados.push(m);
+  if (idx>=0) csatMesesSelecionados.splice(idx,1); else csatMesesSelecionados.push(m);
   csatMesesSelecionados.sort();
   el.classList.toggle('active');
   renderCSAT();
 }
-function csatSelecionarTodos() {
-  csatMesesSelecionados = [...csatMesesDisponiveis];
-  renderCsatMesBtns();
-  renderCSAT();
-}
-function csatLimparMeses() {
-  csatMesesSelecionados = [];
-  renderCsatMesBtns();
-  renderCSAT();
-}
+function csatSelecionarTodos(){ csatMesesSelecionados=[...csatMesesDisponiveis]; renderCsatMesBtns(); renderCSAT(); }
+function csatLimparMeses(){ csatMesesSelecionados=[]; renderCsatMesBtns(); renderCSAT(); }
 
 function switchCsatTab(tab) {
   csatTabAtiva = tab;
   ['painel','supervisor','importar'].forEach(t => {
-    const btn = document.getElementById('csatTab-' + t);
-    const content = document.getElementById('csatTabContent-' + t);
-    if (btn) btn.classList.toggle('active', t === tab);
-    if (content) content.style.display = t === tab ? '' : 'none';
+    document.getElementById('csatTab-'+t)?.classList.toggle('active', t===tab);
+    const c = document.getElementById('csatTabContent-'+t);
+    if(c) c.style.display = t===tab ? '' : 'none';
   });
-  const mesesWrap = document.getElementById('csat-meses-wrap');
-  if (mesesWrap) mesesWrap.style.display = tab === 'importar' ? 'none' : '';
-  if (tab === 'painel') renderCsatPainel();
-  if (tab === 'supervisor') renderCsatSupervisor();
+  const mw = document.getElementById('csat-meses-wrap');
+  if(mw) mw.style.display = tab==='importar' ? 'none' : '';
+  if(tab==='painel') renderCsatPainel();
+  if(tab==='supervisor') renderCsatSupervisor();
 }
-
-function selectCsatSupervisor(supKey, el) {
-  csatSupAtivo = supKey;
-  document.querySelectorAll('[id^="csatSup-"]').forEach(b => b.classList.remove('active'));
-  if (el) el.classList.add('active');
+function selectCsatSupervisor(k, el) {
+  csatSupAtivo = k;
+  document.querySelectorAll('[id^="csatSup-"]').forEach(b=>b.classList.remove('active'));
+  if(el) el.classList.add('active');
   renderCsatSupervisor();
 }
-
 async function renderCSAT() {
-  if (csatTabAtiva === 'painel') renderCsatPainel();
-  else if (csatTabAtiva === 'supervisor') renderCsatSupervisor();
+  if(csatTabAtiva==='painel') renderCsatPainel();
+  else if(csatTabAtiva==='supervisor') renderCsatSupervisor();
 }
+function csatDestroyChart(ref) { try { if(ref) ref.destroy(); } catch(e){} return null; }
 
 // ─── ABA PAINEL ────────────────────────────────────────────────────
 function renderCsatPainel() {
   const el = document.getElementById('csat-painel-content');
-  if (!el) return;
+  if(!el) return;
 
   const dados = csatAllData.filter(d => csatMesesSelecionados.includes(d.mesRef));
-  if (dados.length === 0) {
-    el.innerHTML = `<div style="text-align:center;padding:60px;color:var(--text3)">Nenhum dado para o período selecionado.<br><small>Importe o Excel na aba Importar ou selecione outros meses.</small></div>`;
+  const dataInfo = csatUltimaAtualizacao
+    ? `<span style="font-size:12px;color:var(--text3);margin-left:12px">📅 Dados de: <strong>${csatUltimaAtualizacao}</strong></span>` : '';
+
+  if(dados.length===0){
+    el.innerHTML = `<div style="text-align:center;padding:60px;color:var(--text3)">
+      ${dataInfo}<br>Nenhum dado para o período selecionado.<br><small>Importe o Excel na aba Importar ou selecione outros meses.</small></div>`;
     return;
   }
 
-  const totalPesquisas = dados.reduce((s,d) => s + (d.pesquisas||0), 0);
-  const totalPromo  = dados.reduce((s,d) => s + (d.promotores||0), 0);
-  const totalNeutro = dados.reduce((s,d) => s + (d.neutros||0), 0);
-  const totalDetr   = dados.reduce((s,d) => s + (d.detratores||0), 0);
-  const notaGeral   = totalPesquisas > 0
-    ? dados.reduce((s,d) => s + (d.notaMedia||0)*(d.pesquisas||0), 0) / totalPesquisas
-    : 0;
-  const postosAvaliados = new Set(dados.map(d => d.postoNome)).size;
-  const metaOk = notaGeral >= CSAT_META;
+  const totalPesq  = dados.reduce((s,d)=>s+(d.pesquisas||0),0);
+  const totalPromo = dados.reduce((s,d)=>s+(d.promotores||0),0);
+  const totalNeutro= dados.reduce((s,d)=>s+(d.neutros||0),0);
+  const totalDetr  = dados.reduce((s,d)=>s+(d.detratores||0),0);
+  const notaGeral  = totalPesq>0 ? dados.reduce((s,d)=>s+(d.notaMedia||0)*(d.pesquisas||0),0)/totalPesq : 0;
+  const notaCord   = (() => { const c=dados.filter(d=>d.notaCordialidade>0); if(!c.length) return null; const tot=c.reduce((s,d)=>s+(d.pesquisas||0),0); return tot>0?c.reduce((s,d)=>s+(d.notaCordialidade||0)*(d.pesquisas||0),0)/tot:null; })();
+  const postosAv   = new Set(dados.map(d=>d.postoNome)).size;
+  const pctPromo   = totalPesq>0?(totalPromo/totalPesq*100).toFixed(1):'0.0';
+  const pctNeutro  = totalPesq>0?(totalNeutro/totalPesq*100).toFixed(1):'0.0';
+  const pctDetr    = totalPesq>0?(totalDetr/totalPesq*100).toFixed(1):'0.0';
 
-  const pctPromo  = totalPesquisas > 0 ? (totalPromo/totalPesquisas*100).toFixed(1) : '0.0';
-  const pctNeutro = totalPesquisas > 0 ? (totalNeutro/totalPesquisas*100).toFixed(1) : '0.0';
-  const pctDetr   = totalPesquisas > 0 ? (totalDetr/totalPesquisas*100).toFixed(1) : '0.0';
-
-  // Evolução por mês (todos os meses disponíveis)
-  const porMes = {};
-  csatAllData.forEach(d => {
-    if (!porMes[d.mesRef]) porMes[d.mesRef] = {pesquisas:0, notaSum:0};
-    porMes[d.mesRef].pesquisas += d.pesquisas||0;
-    porMes[d.mesRef].notaSum += (d.notaMedia||0)*(d.pesquisas||0);
+  // Evolução por mês (meses SELECIONADOS)
+  const porMesSel = {};
+  dados.forEach(d => {
+    if(!porMesSel[d.mesRef]) porMesSel[d.mesRef]={pesquisas:0,notaSum:0};
+    porMesSel[d.mesRef].pesquisas+=d.pesquisas||0;
+    porMesSel[d.mesRef].notaSum+=(d.notaMedia||0)*(d.pesquisas||0);
   });
-  const mesesEvo = Object.keys(porMes).sort();
-  const labelsEvo = mesesEvo.map(m => { const[,mo]=m.split('-'); return `${CSAT_MESES_NOME[+mo]}/${m.slice(2,4)}`; });
-  const pesqEvo   = mesesEvo.map(m => porMes[m].pesquisas);
-  const notaEvo   = mesesEvo.map(m => porMes[m].pesquisas > 0 ? +(porMes[m].notaSum/porMes[m].pesquisas).toFixed(2) : 0);
+  const mesesEvo = csatMesesSelecionados.slice().sort();
+  const labEvo   = mesesEvo.map(csatLabelMes);
+  const pesqEvo  = mesesEvo.map(m=>porMesSel[m]?.pesquisas||0);
+  const notaEvo  = mesesEvo.map(m=>porMesSel[m]?.pesquisas>0?+(porMesSel[m].notaSum/porMesSel[m].pesquisas).toFixed(2):null);
 
-  // Histórico anual
+  // Histórico anual (TODOS os dados)
   const porAno = {};
-  csatAllData.forEach(d => {
-    const ano = (d.mesRef||'').slice(0,4);
-    if (!ano) return;
-    if (!porAno[ano]) porAno[ano] = {pesquisas:0, notaSum:0};
-    porAno[ano].pesquisas += d.pesquisas||0;
-    porAno[ano].notaSum += (d.notaMedia||0)*(d.pesquisas||0);
+  csatAllData.forEach(d=>{
+    const ano=(d.mesRef||'').slice(0,4); if(!ano) return;
+    if(!porAno[ano]) porAno[ano]={pesquisas:0,notaSum:0};
+    porAno[ano].pesquisas+=d.pesquisas||0;
+    porAno[ano].notaSum+=(d.notaMedia||0)*(d.pesquisas||0);
   });
-  const anos = Object.keys(porAno).sort();
-  const pesqAnual = anos.map(a => porAno[a].pesquisas);
-  const notaAnual = anos.map(a => porAno[a].pesquisas > 0 ? +(porAno[a].notaSum/porAno[a].pesquisas).toFixed(2) : 0);
+  const anos     = Object.keys(porAno).sort();
+  const pesqAno  = anos.map(a=>porAno[a].pesquisas);
+  const notaAno  = anos.map(a=>porAno[a].pesquisas>0?+(porAno[a].notaSum/porAno[a].pesquisas).toFixed(2):0);
+
+  // Ranking TODOS os 29 postos
+  const porPosto = {};
+  dados.forEach(d=>{
+    if(!porPosto[d.postoNome]) porPosto[d.postoNome]={pesquisas:0,notaSum:0,promotores:0,neutros:0,detratores:0};
+    const p=porPosto[d.postoNome];
+    p.pesquisas+=d.pesquisas||0; p.notaSum+=(d.notaMedia||0)*(d.pesquisas||0);
+    p.promotores+=d.promotores||0; p.neutros+=d.neutros||0; p.detratores+=d.detratores||0;
+  });
+  const rankingRows = TODOS_POSTOS_RG.map(nome=>{
+    const p=porPosto[nome]||{pesquisas:0,notaSum:0,promotores:0,neutros:0,detratores:0};
+    return {...p, nome, nota:p.pesquisas>0?p.notaSum/p.pesquisas:null};
+  }).sort((a,b)=>{
+    if(a.nota===null&&b.nota===null) return b.pesquisas-a.pesquisas;
+    if(a.nota===null) return 1; if(b.nota===null) return -1;
+    if(Math.abs(a.nota-b.nota)>0.001) return b.nota-a.nota;
+    return b.pesquisas-a.pesquisas;
+  });
 
   el.innerHTML = `
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+    <span style="font-size:13px;font-weight:600;color:var(--text2)">📊 Período: ${labEvo.join(', ')||'Nenhum'}</span>
+    ${dataInfo}
+  </div>
+
   <!-- KPIs -->
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px">
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px;margin-bottom:20px">
     <div class="card" style="padding:16px 20px;border-left:4px solid var(--primary)">
       <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">Total Pesquisas</div>
-      <div style="font-size:28px;font-weight:700;color:var(--text1)">${totalPesquisas}</div>
+      <div style="font-size:28px;font-weight:700;color:var(--text1)">${totalPesq}</div>
     </div>
-    <div class="card" style="padding:16px 20px;border-left:4px solid ${metaOk?'var(--green)':'var(--red)'}">
-      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">Nota Média</div>
-      <div style="font-size:28px;font-weight:700;color:${metaOk?'var(--green)':'var(--red)'}">${notaGeral.toFixed(2)}</div>
-      <div style="font-size:11px;color:var(--text3)">Meta: ${CSAT_META.toFixed(2)} ${metaOk?'✅':'⚠️'}</div>
+    <div class="card" style="padding:16px 20px;border-left:4px solid ${csatCorNota(notaGeral)}">
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">Nota Média CSAT</div>
+      <div style="font-size:28px;font-weight:700;color:${csatCorNota(notaGeral)}">${notaGeral.toFixed(2)}</div>
+      <div style="font-size:11px;color:var(--text3)">Meta: ${CSAT_META.toFixed(2)} ${notaGeral>=CSAT_META?'✅':'⚠️'}</div>
     </div>
+    ${notaCord!==null?`
+    <div class="card" style="padding:16px 20px;border-left:4px solid ${csatCorNota(notaCord)}">
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">Nota Cordialidade</div>
+      <div style="font-size:28px;font-weight:700;color:${csatCorNota(notaCord)}">${notaCord.toFixed(2)}</div>
+      <div style="font-size:11px;color:var(--text3)">Atendente foi cortês</div>
+    </div>`:''}
     <div class="card" style="padding:16px 20px;border-left:4px solid var(--blue)">
       <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">Postos Avaliados</div>
-      <div style="font-size:28px;font-weight:700;color:var(--text1)">${postosAvaliados}<span style="font-size:14px;color:var(--text3)">/29</span></div>
+      <div style="font-size:28px;font-weight:700;color:var(--text1)">${postosAv}<span style="font-size:14px;color:var(--text3)">/29</span></div>
     </div>
-    <div class="card" style="padding:16px 20px;border-left:4px solid var(--green)">
+    <div class="card" style="padding:16px 20px;border-left:4px solid #22c55e">
       <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">% Promotores</div>
-      <div style="font-size:28px;font-weight:700;color:var(--green)">${pctPromo}%</div>
+      <div style="font-size:28px;font-weight:700;color:#22c55e">${pctPromo}%</div>
     </div>
   </div>
 
-  <!-- Gráficos -->
-  <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:24px">
+  <!-- Gráficos linha 1 -->
+  <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px">
     <div class="card" style="padding:18px">
-      <div style="font-weight:700;font-size:13px;margin-bottom:14px;color:var(--text2)">📈 Evolução CSAT por Mês</div>
-      <canvas id="csat-chart-evolucao" height="120"></canvas>
+      <div style="font-weight:700;font-size:13px;margin-bottom:14px;color:var(--text2)">📈 Evolução CSAT — Meses Selecionados</div>
+      <canvas id="csat-chart-evo" style="max-height:200px"></canvas>
     </div>
     <div class="card" style="padding:18px">
-      <div style="font-weight:700;font-size:13px;margin-bottom:14px;color:var(--text2)">🗓 NPS do Período</div>
+      <div style="font-weight:700;font-size:13px;margin-bottom:12px;color:var(--text2)">🗓 NPS do Período</div>
       <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:rgba(34,197,94,.12);border-radius:8px;border-left:4px solid var(--green)">
-          <span style="font-weight:700;color:var(--green)">Promotores</span>
-          <div style="text-align:right"><span style="font-size:20px;font-weight:800;color:var(--green)">${totalPromo}</span> <span style="font-size:12px;color:var(--text3)">${pctPromo}%</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:rgba(34,197,94,.12);border-radius:8px;border-left:4px solid #22c55e">
+          <span style="font-weight:700;color:#22c55e">Promotores</span>
+          <div style="text-align:right"><span style="font-size:20px;font-weight:800;color:#22c55e">${totalPromo}</span> <span style="font-size:12px;color:var(--text3)">${pctPromo}%</span></div>
         </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:rgba(251,191,36,.1);border-radius:8px;border-left:4px solid var(--yellow)">
-          <span style="font-weight:700;color:var(--yellow)">Neutros</span>
-          <div style="text-align:right"><span style="font-size:20px;font-weight:800;color:var(--yellow)">${totalNeutro}</span> <span style="font-size:12px;color:var(--text3)">${pctNeutro}%</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:rgba(251,191,36,.1);border-radius:8px;border-left:4px solid #f59e0b">
+          <span style="font-weight:700;color:#f59e0b">Neutros</span>
+          <div style="text-align:right"><span style="font-size:20px;font-weight:800;color:#f59e0b">${totalNeutro}</span> <span style="font-size:12px;color:var(--text3)">${pctNeutro}%</span></div>
         </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:rgba(239,68,68,.1);border-radius:8px;border-left:4px solid var(--red)">
-          <span style="font-weight:700;color:var(--red)">Detratores</span>
-          <div style="text-align:right"><span style="font-size:20px;font-weight:800;color:var(--red)">${totalDetr}</span> <span style="font-size:12px;color:var(--text3)">${pctDetr}%</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:rgba(239,68,68,.1);border-radius:8px;border-left:4px solid #ef4444">
+          <span style="font-weight:700;color:#ef4444">Detratores</span>
+          <div style="text-align:right"><span style="font-size:20px;font-weight:800;color:#ef4444">${totalDetr}</span> <span style="font-size:12px;color:var(--text3)">${pctDetr}%</span></div>
         </div>
       </div>
     </div>
   </div>
 
   <!-- Histórico anual -->
-  <div class="card" style="padding:18px;margin-bottom:24px">
-    <div style="font-weight:700;font-size:13px;margin-bottom:14px;color:var(--text2)">📅 Histórico Anual</div>
-    <canvas id="csat-chart-anual" height="80"></canvas>
+  <div class="card" style="padding:18px;margin-bottom:16px">
+    <div style="font-weight:700;font-size:13px;margin-bottom:14px;color:var(--text2)">📅 Histórico Anual (todos os dados)</div>
+    <canvas id="csat-chart-ano" style="max-height:160px"></canvas>
   </div>
 
-  <!-- Ranking postos -->
+  <!-- Ranking -->
   <div class="card" style="padding:18px">
-    <div style="font-weight:700;font-size:13px;margin-bottom:14px;color:var(--text2)">🏆 Ranking — Nota Média por Posto (período selecionado)</div>
+    <div style="font-weight:700;font-size:13px;margin-bottom:14px;color:var(--text2)">🏆 Ranking — Todos os Postos (período selecionado)</div>
     <div style="overflow-x:auto">
     <table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead>
@@ -7886,134 +7925,154 @@ function renderCsatPainel() {
           <th style="padding:8px 12px;text-align:center;color:var(--text3);font-weight:600">Promotores</th>
           <th style="padding:8px 12px;text-align:center;color:var(--text3);font-weight:600">Detratores</th>
           <th style="padding:8px 12px;text-align:center;color:var(--text3);font-weight:600">Meta</th>
+          <th style="padding:8px 12px;text-align:center;color:var(--text3);font-weight:600">💬</th>
         </tr>
       </thead>
-      <tbody>${(() => {
-        const porPosto = {};
-        dados.forEach(d => {
-          if (!porPosto[d.postoNome]) porPosto[d.postoNome] = {pesquisas:0,notaSum:0,promotores:0,neutros:0,detratores:0};
-          const p = porPosto[d.postoNome];
-          p.pesquisas += d.pesquisas||0;
-          p.notaSum += (d.notaMedia||0)*(d.pesquisas||0);
-          p.promotores += d.promotores||0;
-          p.neutros += d.neutros||0;
-          p.detratores += d.detratores||0;
-        });
-        return Object.entries(porPosto)
-          .map(([nome,v]) => ({nome, ...v, nota: v.pesquisas>0?v.notaSum/v.pesquisas:0}))
-          .sort((a,b) => b.nota - a.nota)
-          .map((p,i) => {
-            const ok = p.nota >= CSAT_META;
-            const cor = p.nota >= CSAT_META ? 'var(--green)' : p.nota >= 4.0 ? 'var(--yellow)' : 'var(--red)';
-            return `<tr style="border-bottom:1px solid var(--border);${!ok?'background:rgba(239,68,68,.04)':''}">
-              <td style="padding:8px 12px;color:var(--text3)">${i+1}</td>
-              <td style="padding:8px 12px;font-weight:600;color:var(--text1)">${p.nome}</td>
-              <td style="padding:8px 12px;text-align:center;color:var(--text2)">${p.pesquisas}</td>
-              <td style="padding:8px 12px;text-align:center;font-weight:700;color:${cor}">${p.nota.toFixed(2)}</td>
-              <td style="padding:8px 12px;text-align:center;color:var(--green)">${p.promotores}</td>
-              <td style="padding:8px 12px;text-align:center;color:var(--red)">${p.detratores}</td>
-              <td style="padding:8px 12px;text-align:center">${ok?'<span style="color:var(--green)">✅</span>':'<span style="color:var(--red)">⚠️</span>'}</td>
-            </tr>`;
-          }).join('');
-      })()}</tbody>
+      <tbody>${rankingRows.map((p,i)=>{
+        const semDado = p.nota===null;
+        const cor = semDado ? 'var(--text3)' : csatCorNota(p.nota);
+        const bg  = semDado ? '' : csatBgNota(p.nota);
+        const metaIco = semDado ? '<span style="color:var(--text3)">—</span>' : p.nota>=CSAT_META ? '<span style="color:#22c55e">✅</span>' : '<span style="color:#ef4444">⚠️</span>';
+        return `<tr style="border-bottom:1px solid var(--border);${bg?'background:'+bg:''}">
+          <td style="padding:8px 12px;color:var(--text3)">${i+1}</td>
+          <td style="padding:8px 12px;font-weight:600;color:var(--text1)">${p.nome}</td>
+          <td style="padding:8px 12px;text-align:center;color:var(--text2)">${p.pesquisas}</td>
+          <td style="padding:8px 12px;text-align:center;font-weight:700;color:${cor}">${p.nota!==null?p.nota.toFixed(2):'—'}</td>
+          <td style="padding:8px 12px;text-align:center;color:#22c55e">${p.promotores}</td>
+          <td style="padding:8px 12px;text-align:center;color:#ef4444">${p.detratores}</td>
+          <td style="padding:8px 12px;text-align:center">${metaIco}</td>
+          <td style="padding:8px 12px;text-align:center"><button onclick="abrirCsatComentarios('${p.nome}')" style="background:none;border:none;cursor:pointer;font-size:16px;padding:2px 6px;border-radius:6px;color:var(--text3)" title="Ver comentários">💬</button></td>
+        </tr>`;
+      }).join('')}</tbody>
     </table>
     </div>
   </div>`;
 
-  // Renderizar gráficos após DOM
-  setTimeout(() => {
-    // Gráfico evolução
-    const ctxEvo = document.getElementById('csat-chart-evolucao');
-    if (ctxEvo) {
-      if (csatChartEvolucao) csatChartEvolucao.destroy();
-      csatChartEvolucao = new Chart(ctxEvo.getContext('2d'), {
-        data: {
-          labels: labelsEvo,
-          datasets: [
-            { type:'bar', label:'Pesquisas', data: pesqEvo, backgroundColor:'rgba(79,120,255,0.6)', yAxisID:'y' },
-            { type:'line', label:'Nota', data: notaEvo, borderColor:'#f59e0b', backgroundColor:'transparent', pointBackgroundColor:'#f59e0b', yAxisID:'y2', tension:.3, pointRadius:4 },
-            { type:'line', label:'Meta', data: labelsEvo.map(()=>CSAT_META), borderColor:'rgba(239,68,68,.6)', borderDash:[6,4], backgroundColor:'transparent', pointRadius:0, yAxisID:'y2' }
-          ]
-        },
-        options: { responsive:true, plugins:{legend:{labels:{font:{size:11}}}}, scales:{
-          y:{ position:'left', ticks:{font:{size:11}}, grid:{color:'rgba(128,128,128,.1)'} },
-          y2:{ position:'right', min:3.5, max:5.2, ticks:{font:{size:11}}, grid:{drawOnChartArea:false} }
+  // Renderizar gráficos
+  requestAnimationFrame(()=>setTimeout(()=>{
+    csatChartEvo = csatDestroyChart(csatChartEvo);
+    const ce = document.getElementById('csat-chart-evo');
+    if(ce && labEvo.length){
+      csatChartEvo = new Chart(ce.getContext('2d'),{
+        data:{ labels:labEvo, datasets:[
+          {type:'bar',label:'Pesquisas',data:pesqEvo,backgroundColor:'rgba(79,120,255,.6)',yAxisID:'y'},
+          {type:'line',label:'Nota',data:notaEvo,borderColor:'#f59e0b',backgroundColor:'transparent',pointBackgroundColor:'#f59e0b',yAxisID:'y2',tension:.3,pointRadius:5,spanGaps:true},
+          {type:'line',label:'Meta 4,50',data:labEvo.map(()=>CSAT_META),borderColor:'rgba(239,68,68,.5)',borderDash:[6,4],backgroundColor:'transparent',pointRadius:0,yAxisID:'y2'}
+        ]},
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{size:11}}}},scales:{
+          y:{position:'left',ticks:{font:{size:11}},grid:{color:'rgba(128,128,128,.1)'}},
+          y2:{position:'right',min:3.5,max:5.3,ticks:{font:{size:11},stepSize:.5},grid:{drawOnChartArea:false}}
         }}
       });
     }
-    // Gráfico anual
-    const ctxAno = document.getElementById('csat-chart-anual');
-    if (ctxAno) {
-      if (csatChartAnual) csatChartAnual.destroy();
-      csatChartAnual = new Chart(ctxAno.getContext('2d'), {
-        data: {
-          labels: anos,
-          datasets: [
-            { type:'bar', label:'Pesquisas', data: pesqAnual, backgroundColor:'rgba(79,120,255,0.6)', yAxisID:'y' },
-            { type:'line', label:'Nota', data: notaAnual, borderColor:'#f59e0b', backgroundColor:'transparent', pointBackgroundColor:'#f59e0b', yAxisID:'y2', tension:.3, pointRadius:5 }
-          ]
-        },
-        options: { responsive:true, plugins:{legend:{labels:{font:{size:11}}}}, scales:{
-          y:{ position:'left', ticks:{font:{size:11}}, grid:{color:'rgba(128,128,128,.1)'} },
-          y2:{ position:'right', min:3.5, max:5.5, ticks:{font:{size:11}}, grid:{drawOnChartArea:false} }
+    csatChartAno = csatDestroyChart(csatChartAno);
+    const ca = document.getElementById('csat-chart-ano');
+    if(ca && anos.length){
+      csatChartAno = new Chart(ca.getContext('2d'),{
+        data:{ labels:anos, datasets:[
+          {type:'bar',label:'Pesquisas',data:pesqAno,backgroundColor:'rgba(79,120,255,.6)',yAxisID:'y'},
+          {type:'line',label:'Nota',data:notaAno,borderColor:'#f59e0b',backgroundColor:'transparent',pointBackgroundColor:'#f59e0b',yAxisID:'y2',tension:.3,pointRadius:5}
+        ]},
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{size:11}}}},scales:{
+          y:{position:'left',ticks:{font:{size:11}},grid:{color:'rgba(128,128,128,.1)'}},
+          y2:{position:'right',min:3.5,max:5.5,ticks:{font:{size:11},stepSize:.25},grid:{drawOnChartArea:false}}
         }}
       });
     }
-  }, 80);
+  },120));
 }
 
-// ─── ABA POR SUPERVISOR ────────────────────────────────────────────
+// ─── COMENTÁRIOS MODAL ─────────────────────────────────────────────
+async function abrirCsatComentarios(postoNome) {
+  const modal = document.getElementById('modal-csat-comentarios');
+  if(!modal) return;
+  document.getElementById('csat-coment-titulo').textContent = `💬 Comentários — ${postoNome}`;
+  document.getElementById('csat-coment-body').innerHTML = '<div style="text-align:center;padding:30px;color:var(--text3)">Carregando...</div>';
+  modal.classList.add('open');
+  try {
+    const docId = csatNorm(postoNome).replace(/\s+/g,'_');
+    const snap = await db.collection('csat_comentarios').where('postoNome','==',postoNome).get();
+    const comentarios = [];
+    snap.forEach(d=>{ const dt=d.data(); if(dt.comentarios) dt.comentarios.forEach(c=>comentarios.push({...c,mesRef:dt.mesRef})); });
+    comentarios.sort((a,b)=>(b.mesRef||'').localeCompare(a.mesRef||''));
+    if(!comentarios.length){
+      document.getElementById('csat-coment-body').innerHTML = '<div style="text-align:center;padding:30px;color:var(--text3)">Nenhum comentário registrado para este posto.</div>';
+      return;
+    }
+    document.getElementById('csat-coment-body').innerHTML = comentarios.map(c=>{
+      const [,mo]=(c.mesRef||'').split('-');
+      const lbl = c.mesRef ? csatLabelMes(c.mesRef) : '';
+      const cor = c.nota>=5?'#22c55e':c.nota>=4?'#f59e0b':'#ef4444';
+      const qual = c.qualificacao||'';
+      const bgQ = qual==='Promotor'?'rgba(34,197,94,.1)':qual==='Detrator'?'rgba(239,68,68,.1)':'rgba(251,191,36,.08)';
+      return `<div style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;border-left:4px solid ${cor}">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span style="font-size:11px;font-weight:700;background:${bgQ};color:${cor};padding:2px 8px;border-radius:12px">${qual}</span>
+          <span style="font-size:11px;color:var(--text3)">${lbl} • Nota: <strong style="color:${cor}">${c.nota||'—'}</strong></span>
+        </div>
+        <div style="font-size:13px;color:var(--text2);line-height:1.6;font-style:italic">"${c.texto}"</div>
+      </div>`;
+    }).join('');
+  } catch(e){
+    document.getElementById('csat-coment-body').innerHTML = `<div style="color:#ef4444;padding:20px">Erro ao carregar: ${e.message}</div>`;
+  }
+}
+
+// ─── ABA SUPERVISOR ────────────────────────────────────────────────
 function renderCsatSupervisor() {
   const el = document.getElementById('csat-supervisor-content');
-  if (!el) return;
+  if(!el) return;
   const sup = CSAT_SUPERVISORES[csatSupAtivo];
-  if (!sup) return;
+  if(!sup) return;
 
   const postosDoSup = sup.postos;
-  const dados = csatAllData.filter(d => csatMesesSelecionados.includes(d.mesRef) && postosDoSup.includes(d.postoNome));
-  const todosDoSup = csatAllData.filter(d => postosDoSup.includes(d.postoNome));
+  const dados = csatAllData.filter(d=>csatMesesSelecionados.includes(d.mesRef)&&postosDoSup.includes(d.postoNome));
+  const todosDoSup = csatAllData.filter(d=>postosDoSup.includes(d.postoNome));
 
   const totalPesq = dados.reduce((s,d)=>s+(d.pesquisas||0),0);
-  const notaMedia = totalPesq>0 ? dados.reduce((s,d)=>s+(d.notaMedia||0)*(d.pesquisas||0),0)/totalPesq : 0;
+  const notaMedia = totalPesq>0?dados.reduce((s,d)=>s+(d.notaMedia||0)*(d.pesquisas||0),0)/totalPesq:0;
   const postosAv  = new Set(dados.map(d=>d.postoNome)).size;
 
-  // Nota acumulada do ano
   const anoAtual = new Date().getFullYear().toString();
   const dadosAno = todosDoSup.filter(d=>(d.mesRef||'').startsWith(anoAtual));
   const totalAno = dadosAno.reduce((s,d)=>s+(d.pesquisas||0),0);
-  const notaAno  = totalAno>0 ? dadosAno.reduce((s,d)=>s+(d.notaMedia||0)*(d.pesquisas||0),0)/totalAno : 0;
+  const notaAno  = totalAno>0?dadosAno.reduce((s,d)=>s+(d.notaMedia||0)*(d.pesquisas||0),0)/totalAno:0;
 
-  // Últimos 6 meses para o gráfico
-  const ultimos6 = csatMesesDisponiveis.filter(m=>postosDoSup.some(p=>csatAllData.find(d=>d.mesRef===m&&d.postoNome===p))).slice(-6);
-  const supMesData = ultimos6.map(m => {
-    const mes = csatAllData.filter(d=>d.mesRef===m&&postosDoSup.includes(d.postoNome));
-    const tot = mes.reduce((s,d)=>s+(d.pesquisas||0),0);
-    const nota = tot>0 ? mes.reduce((s,d)=>s+(d.notaMedia||0)*(d.pesquisas||0),0)/tot : 0;
-    return {m, nota:+nota.toFixed(2)};
+  // Meses selecionados para gráfico (ordenados)
+  const mesesSel = csatMesesSelecionados.slice().sort();
+  const supMesData = mesesSel.map(m=>{
+    const registros = csatAllData.filter(d=>d.mesRef===m&&postosDoSup.includes(d.postoNome));
+    const tot=registros.reduce((s,d)=>s+(d.pesquisas||0),0);
+    const nota=tot>0?registros.reduce((s,d)=>s+(d.notaMedia||0)*(d.pesquisas||0),0)/tot:null;
+    return {m, nota:nota!==null?+nota.toFixed(2):null};
   });
-  const labSup = supMesData.map(x=>{ const[,mo]=x.m.split('-'); return `${CSAT_MESES_NOME[+mo]}/${x.m.slice(2,4)}`; });
+  const labSup  = supMesData.map(x=>csatLabelMes(x.m));
   const notaSup = supMesData.map(x=>x.nota);
 
-  // Tabela por posto × mês selecionado
-  const mesesTabela = csatMesesSelecionados.slice().sort();
-  const mesesLabel  = mesesTabela.map(m=>{ const[,mo]=m.split('-'); return `${CSAT_MESES_NOME[+mo]}/${m.slice(2,4)}`; });
-
-  // Análises automáticas
+  // Acumulado por posto
   const porPostoAcum = {};
-  dados.forEach(d => {
-    if (!porPostoAcum[d.postoNome]) porPostoAcum[d.postoNome] = {pesquisas:0,notaSum:0};
-    porPostoAcum[d.postoNome].pesquisas += d.pesquisas||0;
-    porPostoAcum[d.postoNome].notaSum += (d.notaMedia||0)*(d.pesquisas||0);
+  dados.forEach(d=>{
+    if(!porPostoAcum[d.postoNome]) porPostoAcum[d.postoNome]={pesquisas:0,notaSum:0};
+    porPostoAcum[d.postoNome].pesquisas+=d.pesquisas||0;
+    porPostoAcum[d.postoNome].notaSum+=(d.notaMedia||0)*(d.pesquisas||0);
   });
-  const destaques = [], alertas = [];
-  postosDoSup.forEach(posto => {
-    const p = porPostoAcum[posto];
-    if (!p || p.pesquisas===0) { alertas.push(`<li><strong>${posto}</strong>: sem avaliações no período</li>`); return; }
-    const nota = p.notaSum/p.pesquisas;
-    if (nota >= CSAT_META && nota === 5.0) destaques.push(`<li>⭐ <strong>${posto}</strong>: nota perfeita 5,00 (${p.pesquisas} pesq.)</li>`);
-    else if (nota >= CSAT_META) destaques.push(`<li>✅ <strong>${posto}</strong>: ${nota.toFixed(2)} — acima da meta</li>`);
-    else alertas.push(`<li>⚠️ <strong>${posto}</strong>: ${nota.toFixed(2)} — abaixo da meta (${CSAT_META})</li>`);
+
+  // Ranking por posto ordenado
+  const rankingSup = postosDoSup.map(nome=>{
+    const p=porPostoAcum[nome]||{pesquisas:0,notaSum:0};
+    return {...p, nome, nota:p.pesquisas>0?p.notaSum/p.pesquisas:null};
+  }).sort((a,b)=>{
+    if(a.nota===null&&b.nota===null) return b.pesquisas-a.pesquisas;
+    if(a.nota===null) return 1; if(b.nota===null) return -1;
+    if(Math.abs(a.nota-b.nota)>0.001) return b.nota-a.nota;
+    return b.pesquisas-a.pesquisas;
   });
+
+  // Análise de evolução
+  const analise = csatGerarAnalise(postosDoSup, porPostoAcum, mesesSel, csatAllData);
+
+  const mesesTabela = mesesSel;
+  const mesesLabel  = mesesTabela.map(csatLabelMes);
 
   el.innerHTML = `
   <!-- KPIs -->
@@ -8022,15 +8081,15 @@ function renderCsatSupervisor() {
       <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px">Pesquisas</div>
       <div style="font-size:26px;font-weight:700;color:var(--text1)">${totalPesq}</div>
     </div>
-    <div class="card" style="padding:14px 18px;border-left:4px solid ${notaMedia>=CSAT_META?'var(--green)':'var(--red)'}">
+    <div class="card" style="padding:14px 18px;border-left:4px solid ${csatCorNota(notaMedia)}">
       <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px">Nota Média</div>
-      <div style="font-size:26px;font-weight:700;color:${notaMedia>=CSAT_META?'var(--green)':'var(--red)'}">${notaMedia.toFixed(2)}</div>
+      <div style="font-size:26px;font-weight:700;color:${csatCorNota(notaMedia)}">${notaMedia.toFixed(2)}</div>
       <div style="font-size:11px;color:var(--text3)">Meta: ${CSAT_META}</div>
     </div>
-    <div class="card" style="padding:14px 18px;border-left:4px solid ${notaAno>=CSAT_META?'var(--green)':'var(--yellow)'}">
-      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px">Média Acum. ${anoAtual}</div>
-      <div style="font-size:26px;font-weight:700;color:${notaAno>=CSAT_META?'var(--green)':'var(--yellow)'}">${notaAno.toFixed(2)}</div>
-      <div style="font-size:11px;color:var(--text3)">${notaAno>=CSAT_META?'Meta atingida':'Meta não atingida'}</div>
+    <div class="card" style="padding:14px 18px;border-left:4px solid ${csatCorNota(notaAno)}">
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px">Acum. ${anoAtual}</div>
+      <div style="font-size:26px;font-weight:700;color:${csatCorNota(notaAno)}">${notaAno.toFixed(2)}</div>
+      <div style="font-size:11px;color:var(--text3)">${notaAno>=CSAT_META?'Meta atingida ✅':'Abaixo da meta ⚠️'}</div>
     </div>
     <div class="card" style="padding:14px 18px;border-left:4px solid var(--blue)">
       <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px">Postos Avaliados</div>
@@ -8038,160 +8097,191 @@ function renderCsatSupervisor() {
     </div>
   </div>
 
-  <div style="display:grid;grid-template-columns:3fr 2fr;gap:16px;margin-bottom:20px">
-    <!-- Tabela por posto -->
+  <!-- Tabela + Gráfico -->
+  <div style="display:grid;grid-template-columns:3fr 1fr;gap:16px;margin-bottom:20px">
     <div class="card" style="padding:18px;overflow-x:auto">
       <div style="font-weight:700;font-size:13px;margin-bottom:12px;color:var(--text2)">Performance por Posto — ${sup.nome}</div>
       <table style="width:100%;border-collapse:collapse;font-size:12px">
         <thead>
           <tr style="background:var(--surface2)">
+            <th style="padding:7px 10px;text-align:left;color:var(--text3)">#</th>
             <th style="padding:7px 10px;text-align:left;color:var(--text3);white-space:nowrap">Posto</th>
             ${mesesLabel.map(l=>`<th style="padding:7px 8px;text-align:center;color:var(--text3);white-space:nowrap">${l}</th>`).join('')}
             <th style="padding:7px 10px;text-align:center;color:var(--text3)">Total</th>
             <th style="padding:7px 10px;text-align:center;color:var(--text3)">Nota</th>
+            <th style="padding:7px 8px;text-align:center;color:var(--text3)">💬</th>
           </tr>
         </thead>
-        <tbody>${postosDoSup.map(posto => {
-          const celulasMes = mesesTabela.map(m => {
-            const rec = csatAllData.find(d=>d.mesRef===m&&d.postoNome===posto);
-            if (!rec || !rec.pesquisas) return `<td style="padding:7px 8px;text-align:center;color:var(--text3)">—</td>`;
-            const cor = rec.notaMedia >= CSAT_META ? 'var(--green)' : rec.notaMedia >= 4.0 ? 'var(--yellow)' : 'var(--red)';
-            const bg  = rec.notaMedia < CSAT_META ? (rec.notaMedia<4?'rgba(239,68,68,.08)':'rgba(251,191,36,.08)') : '';
-            return `<td style="padding:7px 8px;text-align:center;background:${bg};border-radius:4px">
-              <span style="font-size:11px;color:var(--text3)">${rec.pesquisas}</span><br>
+        <tbody>${rankingSup.map((p,i)=>{
+          const celulasMes = mesesTabela.map(m=>{
+            const rec=csatAllData.find(d=>d.mesRef===m&&d.postoNome===p.nome);
+            if(!rec||!rec.pesquisas) return `<td style="padding:7px 8px;text-align:center;color:var(--text3);font-size:11px">—</td>`;
+            const cor=csatCorNota(rec.notaMedia);
+            const bg=csatBgNota(rec.notaMedia);
+            return `<td style="padding:7px 8px;text-align:center;${bg?'background:'+bg:''};border-radius:4px">
+              <span style="font-size:10px;color:var(--text3)">${rec.pesquisas}p</span><br>
               <span style="font-weight:700;color:${cor}">${rec.notaMedia.toFixed(2)}</span>
             </td>`;
           }).join('');
-          const pa = porPostoAcum[posto];
-          const notaT = pa && pa.pesquisas>0 ? pa.notaSum/pa.pesquisas : null;
-          const corT = notaT===null?'var(--text3)':notaT>=CSAT_META?'var(--green)':notaT>=4?'var(--yellow)':'var(--red)';
-          const bgT = notaT!==null&&notaT<CSAT_META?'rgba(239,68,68,.06)':'';
+          const corT=p.nota!==null?csatCorNota(p.nota):'var(--text3)';
+          const bgT=p.nota!==null?csatBgNota(p.nota):'';
           return `<tr style="border-bottom:1px solid var(--border);${bgT?'background:'+bgT:''}">
-            <td style="padding:7px 10px;font-weight:600;color:var(--text1);white-space:nowrap">${posto}</td>
+            <td style="padding:7px 10px;color:var(--text3);font-size:11px">${i+1}</td>
+            <td style="padding:7px 10px;font-weight:600;color:var(--text1);white-space:nowrap">${p.nome}</td>
             ${celulasMes}
-            <td style="padding:7px 10px;text-align:center;color:var(--text2)">${pa?pa.pesquisas:0}</td>
-            <td style="padding:7px 10px;text-align:center;font-weight:700;color:${corT}">${notaT!==null?notaT.toFixed(2):'—'}</td>
+            <td style="padding:7px 10px;text-align:center;color:var(--text2)">${p.pesquisas}</td>
+            <td style="padding:7px 10px;text-align:center;font-weight:700;color:${corT}">${p.nota!==null?p.nota.toFixed(2):'—'}</td>
+            <td style="padding:7px 8px;text-align:center"><button onclick="abrirCsatComentarios('${p.nome}')" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--text3)" title="Ver comentários">💬</button></td>
           </tr>`;
         }).join('')}</tbody>
       </table>
     </div>
-
-    <!-- Gráfico evolução + análises -->
-    <div style="display:flex;flex-direction:column;gap:16px">
-      <div class="card" style="padding:18px">
-        <div style="font-weight:700;font-size:13px;margin-bottom:12px;color:var(--text2)">📈 Evolução Nota Média (últimos meses)</div>
-        <canvas id="csat-chart-sup-evo" height="140"></canvas>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <div class="card" style="padding:14px;border-left:3px solid var(--green)">
-          <div style="font-weight:700;font-size:12px;color:var(--green);margin-bottom:8px">✅ Destaques</div>
-          <ul style="margin:0;padding-left:16px;font-size:12px;color:var(--text2);line-height:1.8">${destaques.length?destaques.join(''):'<li style="color:var(--text3)">Nenhum no período</li>'}</ul>
-        </div>
-        <div class="card" style="padding:14px;border-left:3px solid var(--red)">
-          <div style="font-weight:700;font-size:12px;color:var(--red);margin-bottom:8px">⚠️ Atenção</div>
-          <ul style="margin:0;padding-left:16px;font-size:12px;color:var(--text2);line-height:1.8">${alertas.length?alertas.join(''):'<li style="color:var(--text3)">Nenhum</li>'}</ul>
-        </div>
-      </div>
+    <div class="card" style="padding:18px">
+      <div style="font-weight:700;font-size:13px;margin-bottom:12px;color:var(--text2)">📈 Evolução Nota Média</div>
+      <canvas id="csat-chart-sup" style="max-height:300px"></canvas>
     </div>
-  </div>`;
+  </div>
 
-  setTimeout(() => {
-    const ctxSup = document.getElementById('csat-chart-sup-evo');
-    if (ctxSup) {
-      if (csatChartSupEvolucao) csatChartSupEvolucao.destroy();
-      csatChartSupEvolucao = new Chart(ctxSup.getContext('2d'), {
+  <!-- Análises embaixo -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div class="card" style="padding:16px;border-left:3px solid #22c55e">
+      <div style="font-weight:700;font-size:13px;color:#22c55e;margin-bottom:10px">✅ Destaques Positivos</div>
+      <ul style="margin:0;padding-left:18px;font-size:13px;color:var(--text2);line-height:2">${analise.destaques.length?analise.destaques.join(''):'<li style="color:var(--text3)">Nenhum no período</li>'}</ul>
+    </div>
+    <div class="card" style="padding:16px;border-left:3px solid #ef4444">
+      <div style="font-weight:700;font-size:13px;color:#ef4444;margin-bottom:10px">⚠️ Pontos de Atenção</div>
+      <ul style="margin:0;padding-left:18px;font-size:13px;color:var(--text2);line-height:2">${analise.alertas.length?analise.alertas.join(''):'<li style="color:var(--text3)">Nenhum</li>'}</ul>
+    </div>
+  </div>
+  ${analise.evolucaoTxt?`<div class="card" style="padding:16px;margin-top:14px;border-left:3px solid var(--primary)">
+    <div style="font-weight:700;font-size:13px;color:var(--text2);margin-bottom:8px">📊 Análise de Evolução</div>
+    <div style="font-size:13px;color:var(--text2);line-height:1.8">${analise.evolucaoTxt}</div>
+  </div>`:''}`;
+
+  requestAnimationFrame(()=>setTimeout(()=>{
+    csatChartSup = csatDestroyChart(csatChartSup);
+    const cs = document.getElementById('csat-chart-sup');
+    if(cs && labSup.length){
+      csatChartSup = new Chart(cs.getContext('2d'),{
         type:'line',
-        data: {
-          labels: labSup,
-          datasets: [
-            { label:'Nota Média', data:notaSup, borderColor:'#4F78FF', backgroundColor:'rgba(79,120,255,.12)', fill:true, tension:.3, pointRadius:5, pointBackgroundColor:'#4F78FF' },
-            { label:'Meta', data:labSup.map(()=>CSAT_META), borderColor:'rgba(239,68,68,.6)', borderDash:[6,4], pointRadius:0 }
-          ]
-        },
-        options:{ responsive:true, plugins:{legend:{labels:{font:{size:11}}}}, scales:{
-          y:{ min:3.5, max:5.2, ticks:{font:{size:11}}, grid:{color:'rgba(128,128,128,.1)'} }
+        data:{ labels:labSup, datasets:[
+          {label:'Nota Média',data:notaSup,borderColor:'#4F78FF',backgroundColor:'rgba(79,120,255,.15)',fill:true,tension:.3,pointRadius:5,pointBackgroundColor:'#4F78FF',spanGaps:true},
+          {label:'Meta 4,50',data:labSup.map(()=>CSAT_META),borderColor:'rgba(239,68,68,.5)',borderDash:[6,4],pointRadius:0}
+        ]},
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{size:11}}}},scales:{
+          y:{min:3.5,max:5.3,ticks:{font:{size:11},stepSize:.25},grid:{color:'rgba(128,128,128,.1)'}}
         }}
       });
     }
-  }, 80);
+  },120));
+}
+
+function csatGerarAnalise(postosDoSup, porPostoAcum, mesesSel, allData) {
+  const destaques=[], alertas=[];
+  postosDoSup.forEach(posto=>{
+    const p=porPostoAcum[posto];
+    if(!p||p.pesquisas===0){ alertas.push(`<li><strong>${posto}</strong>: sem avaliações no período</li>`); return; }
+    const nota=p.notaSum/p.pesquisas;
+    if(nota>=CSAT_META) destaques.push(`<li>⭐ <strong>${posto}</strong>: ${nota.toFixed(2)}${nota===5?'  (perfeito!)':''}</li>`);
+    else alertas.push(`<li><strong>${posto}</strong>: ${nota.toFixed(2)} (${(nota-CSAT_META).toFixed(2)} abaixo da meta)</li>`);
+  });
+
+  let evolucaoTxt = '';
+  if(mesesSel.length>=2){
+    const m0=mesesSel[0], mN=mesesSel[mesesSel.length-1];
+    const calc=(m)=>{ const r=allData.filter(d=>d.mesRef===m&&postosDoSup.includes(d.postoNome)); const t=r.reduce((s,d)=>s+(d.pesquisas||0),0); return t>0?r.reduce((s,d)=>s+(d.notaMedia||0)*(d.pesquisas||0),0)/t:null; };
+    const n0=calc(m0), nN=calc(mN);
+    if(n0!==null&&nN!==null){
+      const diff=nN-n0, sinal=diff>=0?'📈':'📉';
+      const txt=diff>=0?'melhora':'queda';
+      evolucaoTxt=`${sinal} De <strong>${csatLabelMes(m0)}</strong> (${n0.toFixed(2)}) para <strong>${csatLabelMes(mN)}</strong> (${nN.toFixed(2)}): <strong style="color:${diff>=0?'#22c55e':'#ef4444'}">${txt} de ${Math.abs(diff).toFixed(2)} pontos</strong> no período. `;
+      if(diff>=0.1) evolucaoTxt+='<span style="color:#22c55e">Tendência positiva — manter o padrão de qualidade.</span>';
+      else if(diff<=-0.1) evolucaoTxt+='<span style="color:#ef4444">Tendência de queda — atenção redobrada nos postos com baixa nota.</span>';
+      else evolucaoTxt+='<span style="color:#f59e0b">Nota estável no período.</span>';
+    }
+  }
+  return {destaques, alertas, evolucaoTxt};
 }
 
 // ─── IMPORTAR ──────────────────────────────────────────────────────
 async function importarCSAT(input) {
   const file = input.files[0];
-  if (!file) return;
+  if(!file) return;
   const logEl = document.getElementById('csat-import-log-txt');
-  if (logEl) logEl.textContent = 'Lendo arquivo...';
+  if(logEl) logEl.textContent = 'Lendo arquivo...';
+
+  const dataRef = document.getElementById('csat-data-ref')?.value || '';
+  if(!dataRef){ if(logEl) logEl.textContent='❌ Selecione a data de referência antes de importar.'; return; }
 
   try {
     const buf = await file.arrayBuffer();
-    const wb  = XLSX.read(buf, { type:'array' });
-
-    if (!wb.SheetNames.includes('Base')) {
-      if (logEl) logEl.textContent = '❌ Sheet "Base" não encontrada no arquivo.';
-      return;
-    }
+    const wb  = XLSX.read(buf,{type:'array'});
+    if(!wb.SheetNames.includes('Base')){ if(logEl) logEl.textContent='❌ Sheet "Base" não encontrada.'; return; }
 
     const ws   = wb.Sheets['Base'];
-    const rows = XLSX.utils.sheet_to_json(ws, { defval:'' });
+    const rows = XLSX.utils.sheet_to_json(ws,{defval:''});
 
-    // Filtrar e agrupar por posto+mês
-    const grupos = {};
-    rows.forEach(row => {
-      const lojaRaw = (row['LOJA2']||'').trim().toUpperCase();
-      const loja = CSAT_NOME_MAP[lojaRaw] || CSAT_NOME_MAP[csatNorm(lojaRaw)];
-      if (!loja) return; // não é posto RG
-
-      const ano = row['ANO'] ? String(row['ANO']) : '';
-      const mes = row['MÊS'] ? String(row['MÊS']).padStart(2,'0') : '';
-      if (!ano || !mes) return;
-      const mesRef = `${ano}-${mes}`;
-
-      const key = `${mesRef}|${loja}`;
-      if (!grupos[key]) grupos[key] = { mesRef, postoNome:loja, pesquisas:0, notaSum:0, promotores:0, neutros:0, detratores:0 };
-      const g = grupos[key];
-      const nota = parseFloat(row['CSAT']) || 0;
-      const qual = (row['QUALIFICAÇÃO']||'').trim();
-      g.pesquisas++;
-      g.notaSum += nota;
-      if (qual === 'Promotor')  g.promotores++;
-      else if (qual === 'Neutro')  g.neutros++;
-      else if (qual === 'Detrator') g.detratores++;
+    const grupos = {}, comentariosGrupos = {};
+    rows.forEach(row=>{
+      const lojaRaw=(row['LOJA2']||'').trim().toUpperCase();
+      const loja=CSAT_NOME_MAP[lojaRaw]||CSAT_NOME_MAP[csatNorm(lojaRaw)];
+      if(!loja) return;
+      const ano=row['ANO']?String(row['ANO']):'';
+      const mes=row['MÊS']?String(row['MÊS']).padStart(2,'0'):'';
+      if(!ano||!mes) return;
+      const mesRef=`${ano}-${mes}`;
+      const key=`${mesRef}|${loja}`;
+      if(!grupos[key]) grupos[key]={mesRef,postoNome:loja,pesquisas:0,notaSum:0,promotores:0,neutros:0,detratores:0,cordSum:0,cordCount:0};
+      const g=grupos[key];
+      const nota=parseFloat(row['CSAT'])||0;
+      const qual=(row['QUALIFICAÇÃO']||'').trim();
+      const cord=parseFloat(row['O ATENDENTE FOI CORTEZ E GENTIL'])||0;
+      g.pesquisas++; g.notaSum+=nota;
+      if(qual==='Promotor') g.promotores++;
+      else if(qual==='Neutro') g.neutros++;
+      else if(qual==='Detrator') g.detratores++;
+      if(cord>0){ g.cordSum+=cord; g.cordCount++; }
+      // Comentários
+      const comentText=(row['EXPERIENCIA_O QUE VOCE ACHA QUE PODE SER MELHORADO']||'').trim();
+      if(comentText&&comentText.length>3){
+        if(!comentariosGrupos[key]) comentariosGrupos[key]={mesRef,postoNome:loja,comentarios:[]};
+        comentariosGrupos[key].comentarios.push({texto:comentText,nota,qualificacao:qual});
+      }
     });
 
-    // Salvar no Firestore
-    const batch = db.batch();
-    let count = 0;
-    Object.values(grupos).forEach(g => {
-      const notaMedia = g.pesquisas > 0 ? +(g.notaSum/g.pesquisas).toFixed(4) : 0;
-      const docId = `${g.mesRef}_${csatNorm(g.postoNome).replace(/\s+/g,'_')}`;
-      const ref = db.collection('csat').doc(docId);
-      batch.set(ref, {
-        mesRef: g.mesRef,
-        postoNome: g.postoNome,
-        pesquisas: g.pesquisas,
-        notaMedia,
-        promotores: g.promotores,
-        neutros: g.neutros,
-        detratores: g.detratores,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
+    const batch1=db.batch(); let count=0;
+    Object.values(grupos).forEach(g=>{
+      const notaMedia=g.pesquisas>0?+(g.notaSum/g.pesquisas).toFixed(4):0;
+      const notaCord=g.cordCount>0?+(g.cordSum/g.cordCount).toFixed(4):0;
+      const docId=`${g.mesRef}_${csatNorm(g.postoNome).replace(/\s+/g,'_')}`;
+      batch1.set(db.collection('csat').doc(docId),{mesRef:g.mesRef,postoNome:g.postoNome,pesquisas:g.pesquisas,notaMedia,notaCordialidade:notaCord,promotores:g.promotores,neutros:g.neutros,detratores:g.detratores,updatedAt:new Date().toISOString()},{merge:true});
       count++;
     });
+    await batch1.commit();
 
-    await batch.commit();
-    if (logEl) logEl.textContent = `✅ ${count} registros importados em ${new Date().toLocaleString('pt-BR')} — ${file.name}`;
-    input.value = '';
+    // Salvar comentários
+    const batch2=db.batch();
+    Object.values(comentariosGrupos).forEach(cg=>{
+      const docId=`${cg.mesRef}_${csatNorm(cg.postoNome).replace(/\s+/g,'_')}`;
+      batch2.set(db.collection('csat_comentarios').doc(docId),{mesRef:cg.mesRef,postoNome:cg.postoNome,comentarios:cg.comentarios},{merge:true});
+    });
+    await batch2.commit();
 
-    // Recarregar dados
+    // Salvar data de referência
+    const dataFormatada = new Date(dataRef+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
+    await db.collection('csat_config').doc('geral').set({ultimaAtualizacao:dataFormatada},{merge:true});
+    csatUltimaAtualizacao = dataFormatada;
+
+    if(logEl) logEl.textContent=`✅ ${count} registros + comentários importados em ${new Date().toLocaleString('pt-BR')} — ${file.name}`;
+    input.value='';
+    csatMesesSelecionados=[];
     await initCsatMesFiltro();
     renderCSAT();
-  } catch(e) {
-    console.error('importarCSAT', e);
-    if (logEl) logEl.textContent = `❌ Erro: ${e.message}`;
+  } catch(e){
+    console.error('importarCSAT',e);
+    if(logEl) logEl.textContent=`❌ Erro: ${e.message}`;
   }
 }
-// ══════════════════════════════════════════════════════
 // FIM MÓDULO CSAT
 // ══════════════════════════════════════════════════════
 
