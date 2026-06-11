@@ -9116,7 +9116,7 @@ async function confirmarImportPOS(){
     // Salvar no Firestore — SOBRESCREVE dados dos meses importados (não merge)
     // Primeiro: deletar docs existentes dos meses que estão sendo reimportados
     const mesesImportados=[...new Set(Object.values(grupos).map(g=>g.mesRef))].sort();
-    for(const mes of mesesImportados){
+    for(const mes of mesesImportados){ // deletar dados antigos antes de reimportar
       const oldSnap = await db.collection('pos_resultados').where('mesRef','==',mes).get();
       if(!oldSnap.empty){
         const delBatch = db.batch();
@@ -9137,7 +9137,6 @@ async function confirmarImportPOS(){
     });
     await batch.commit();
 
-    const mesesImportados=[...new Set(Object.values(grupos).map(g=>g.mesRef))].sort();
     const mesesLabel=mesesImportados.map(m=>{const[,mo]=m.split('-');return MESES_NOME[+mo];}).join(', ');
     const importLog=`${total} registros (${mesesLabel}) — ${new Date().toLocaleString('pt-BR')}${dataFormatada?' — dados até '+dataFormatada:''}`;
     await db.collection('pos_config').doc('geral').set({ultimoImport:importLog,dataRef:dataFormatada},{merge:true});
