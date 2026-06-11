@@ -722,6 +722,14 @@
         <div class="sidebar-item" onclick="showView('col-rh-atestado',this)"><span class="icon">🏥</span> Atestado</div>
         <div class="sidebar-item" onclick="showView(isRHManager()?'adm-rh-folha':'col-rh-folha',this)"><span class="icon">📋</span> Folha de Ponto</div>
       </div>
+      <div class="sidebar-section">
+        <div class="sidebar-section-label">Postos de Atendimento</div>
+        <div class="sidebar-item sidebar-group-toggle" id="nav-sup-postos-group" onclick="toggleSidebarGroup('sup-postos-group',this)"><span class="icon">🏪</span> Postos de Atendimento <span class="group-arrow" id="arrow-sup-postos-group">▸</span></div>
+        <div class="sidebar-group" id="sup-postos-group" style="display:none">
+          <div class="sidebar-item sidebar-sub" id="nav-indicadores-sup" onclick="showView('adm-indicadores',this)"><span class="icon">📊</span> Indicadores</div>
+          <div class="sidebar-item sidebar-sub" id="nav-csat-sup" onclick="showView('adm-csat',this)"><span class="icon">⭐</span> Pesquisa CSAT</div>
+        </div>
+      </div>
     </div>
     <div class="sidebar-footer">
       <div id="notif-panel" class="notif-panel">
@@ -2942,15 +2950,12 @@ function showView(name, el) {
     const arr = document.getElementById('arrow-postos-group');
     if (grp) grp.style.display = 'block';
     if (arr) arr.classList.add('open');
+    // Abrir também o grupo do supervisor se existir
+    const grpSup = document.getElementById('sup-postos-group');
+    const arrSup = document.getElementById('arrow-sup-postos-group');
+    if (grpSup) grpSup.style.display = 'block';
+    if (arrSup) arrSup.classList.add('open');
   }
-  if (name === 'adm-dashboard') renderDashboard();
-  if (name === 'adm-tasks') { renderAllTasks(); renderPendingDemandasAdm(); }
-  if (name === 'adm-team') renderTeam();
-  if (name === 'col-tasks') { renderCollabTasks(); renderColPropPendentes(); }
-  if (name === 'adm-ponto') renderAdmPonto();
-  if (name === 'col-ponto') renderColPonto();
-  if (name === 'adm-postos') renderAdmPostos();
-  if (name === 'adm-indicadores') { (async()=>{ await initIndicadoresMesFiltro(); await renderIndicadores(); })(); }
   if (name === 'adm-csat') { (async()=>{ await initCsatMesFiltro(); await renderCSAT(); })(); }
   if (name === 'supervisor-postos') renderSupervisorPostos();
   if (name === 'sup-caixa') renderSupCaixa();
