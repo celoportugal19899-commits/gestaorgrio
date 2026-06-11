@@ -1130,48 +1130,76 @@
     <!-- MÁQUINA CARTÃO POS -->
     <div id="view-adm-pos" class="view">
       <div class="topbar" style="flex-wrap:wrap;gap:10px;align-items:flex-start">
-        <div class="page-header" style="margin:0"><h1>Máquina Cartão POS</h1><p id="pos-subtitle">Negociação de Débitos — Postos de Atendimento</p></div>
+        <div>
+          <div class="page-header" style="margin:0"><h1>Máquina Cartão POS</h1></div>
+          <div id="pos-dataref-badge" style="margin-top:4px"></div>
+        </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select id="pos-mes-select" class="form-select" style="width:130px" onchange="onPosMesChange(this.value)"></select>
           <div style="display:flex;gap:4px;background:var(--surface2);border-radius:8px;padding:3px;border:1px solid var(--border)">
-            <button class="ind-tab-btn active" id="posTab-painel" onclick="switchPosTab('painel')">📊 Painel</button>
-            <button class="ind-tab-btn" id="posTab-importar" onclick="switchPosTab('importar')">📥 Importar</button>
+            <button class="ind-tab-btn active" id="pos-btn-ranking" onclick="switchPosTab('ranking')">📋 Ranking</button>
+            <button class="ind-tab-btn" id="pos-btn-campanha" onclick="switchPosTab('campanha')">🏆 Campanha</button>
+            <button class="ind-tab-btn" id="pos-btn-evolucao" onclick="switchPosTab('evolucao')">📈 Evolução</button>
+            <button class="ind-tab-btn" id="pos-btn-canal" onclick="switchPosTab('canal')">💳 Canal</button>
           </div>
+          <button class="btn btn-secondary" style="font-size:12px" onclick="verHistoricoPOS()">📅 Histórico</button>
+          <button class="btn btn-primary" style="font-size:12px" onclick="abrirModalImportPOS()">📥 Importar</button>
         </div>
       </div>
+      <div id="pos-kpis"></div>
+      <div id="pos-tab-ranking">  <div id="pos-ranking"></div></div>
+      <div id="pos-tab-campanha" style="display:none"><div id="pos-campanha"></div></div>
+      <div id="pos-tab-evolucao" style="display:none"><div id="pos-evolucao-wrap"></div></div>
+      <div id="pos-tab-canal"    style="display:none"><div id="pos-canal-wrap"></div></div>
+      <div style="margin-top:14px;font-size:12px;color:var(--text3)"><strong style="color:var(--text2)">Último import:</strong> <span id="pos-import-log">Nenhum import realizado nesta sessão.</span></div>
+    </div>
 
-      <!-- seletor de campanha -->
-      <div id="pos-campanha-wrap" style="display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 18px;align-items:center">
-        <span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;font-weight:700;margin-right:4px">Campanha:</span>
-        <div id="pos-campanha-btns" style="display:flex;flex-wrap:wrap;gap:6px"></div>
-      </div>
-
-      <div id="posTabContent-painel"><div id="pos-painel-content"></div></div>
-      <div id="posTabContent-importar" style="display:none">
-        <div style="max-width:600px">
-          <div class="card" style="padding:24px">
-            <h3 style="margin:0 0 6px;font-size:15px">📥 Importar Excel — Campanha POS</h3>
-            <p style="color:var(--text3);font-size:13px;margin:0 0 16px">Selecione o arquivo Excel com os dados de negociação. O sistema extrai posto, valor negociado e meta.</p>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
-              <div>
-                <label style="font-size:12px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px">Nome da Campanha</label>
-                <input type="text" id="pos-campanha-nome" class="form-control" placeholder="Ex: Maio/2026" />
-              </div>
-              <div>
-                <label style="font-size:12px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px">Data de Referência</label>
-                <input type="date" id="pos-data-ref" class="form-control" />
-              </div>
-            </div>
-            <input type="file" id="pos-file-input" accept=".xlsx,.xls" style="display:none" onchange="importarPOS(this)">
-            <button class="btn btn-primary" onclick="document.getElementById('pos-file-input').click()">📂 Selecionar e Importar</button>
-          </div>
-          <div style="margin-top:14px;font-size:13px;color:var(--text3)">
-            <strong style="color:var(--text2)">Último import:</strong> <span id="pos-import-log-txt">Nenhum import realizado nesta sessão.</span>
-          </div>
+    <!-- MODAL: IMPORTAR POS -->
+    <div id="modal-pos-import" class="modal-overlay">
+      <div class="modal" style="max-width:480px">
+        <div class="modal-header"><span class="modal-title">📥 Importar Excel POS</span></div>
+        <p style="color:var(--text3);font-size:13px;margin:0 0 16px">Selecione o arquivo Excel da Neobpo com os dados de arrecadação por posto.</p>
+        <div style="margin-bottom:12px">
+          <label style="font-size:12px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px">Data de Referência</label>
+          <input type="date" id="pos-import-dataref" class="form-control">
+          <div style="font-size:11px;color:var(--text3);margin-top:4px">Informe o dia de corte desta extração</div>
+        </div>
+        <div style="margin-bottom:20px">
+          <label style="font-size:12px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px">Arquivo Excel</label>
+          <input type="file" id="pos-import-file" accept=".xlsx,.xls" class="form-control">
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+          <button class="btn btn-secondary" onclick="document.getElementById('modal-pos-import').classList.remove('open')">Cancelar</button>
+          <button class="btn btn-primary" id="pos-import-btn" onclick="confirmarImportPOS()">Importar</button>
         </div>
       </div>
     </div>
 
-    <!-- POSTO REGISTRO -->
+    <!-- MODAL: METAS POS -->
+    <div id="modal-pos-meta" class="modal-overlay">
+      <div class="modal" style="max-width:480px;max-height:80vh;overflow-y:auto">
+        <div class="modal-header"><span class="modal-title">⚙️ Ajustar Metas da Campanha</span></div>
+        <p style="color:var(--text3);font-size:12px;margin:0 0 14px">Valores individuais por posto (R$). Sobrescreve as metas padrão da campanha.</p>
+        <div id="pos-meta-lista"></div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+          <button class="btn btn-secondary" onclick="document.getElementById('modal-pos-meta').classList.remove('open')">Cancelar</button>
+          <button class="btn btn-primary" onclick="salvarMetaPOS()">Salvar Metas</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL: HISTÓRICO POS -->
+    <div id="modal-pos-historico" class="modal-overlay">
+      <div class="modal" style="max-width:520px;max-height:80vh;overflow-y:auto">
+        <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <span class="modal-title">📅 Histórico POS</span>
+          <button onclick="document.getElementById('modal-pos-historico').classList.remove('open')" style="background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer">×</button>
+        </div>
+        <div id="pos-hist-content"></div>
+      </div>
+    </div>
+
+        <!-- POSTO REGISTRO -->
     <div id="view-posto-registro" class="view">
       <div class="topbar">
         <div class="page-header" style="margin:0"><h1 id="posto-titulo">Registro de Atendimento</h1><p id="posto-subtitulo">—</p></div>
@@ -8391,306 +8419,246 @@ async function importarCSAT(input) {
 // ══════════════════════════════════════════════════════
 // MÓDULO: MÁQUINA CARTÃO POS
 // ══════════════════════════════════════════════════════
-let posAllData      = [];   // [{campanhaId, campanhaLabel, postoNome, valorNeg, meta, dataRef}]
-let posCampanhas    = [];   // [{id, label, dataRef}]
-let posCampanhaAtiva = null;
-let posPainelChart  = null;
+const POS_METAS_FIXAS = {
+  'MIRACEMA':17000,'TANGUA':15000,'AREAL':15000,'BOM JARDIM':8500,
+  'APERIBE':7500,'ITALVA':6000,'CONCEICAO DE MACABU':3700,
+  'TRAJANO DE MORAES':2700,'SAO JOSE DO VALE DO RIO PRETO':2800,
+  'BOM JESUS DO ITABAPOANA':2900,'QUISSAMA':2500,'CARAPEBUS':2500,
+  'CARDOSO MOREIRA':2500,'PORCIUNCULA':2500,'GUARUS':2000,
+  'NATIVIDADE':2000,'PORTO REAL':2000,'CANTAGALO':2000,
+  'SAO SEBASTIAO DO ALTO':1500,'SUMIDOURO':1500,'SANTA MARIA MADALENA':1500,
+  'NOVA FRIBURGO':1500,'SILVA JARDIM':1500,'VARRE-SAI':1500,
+  'SAO JOSE DE UBA':1500,'DUAS BARRAS':1500,'MACUCO':1500,
+  'CAMBUCI':1500,'LAJE DO MURIAE':1500
+};
 
-function posNorm(s){ return (s||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim(); }
+let posMetasCustom = {};  // sobrescritas pelo ADM via modal
+let posAllResultados = []; // [{mesRef,postoNome,valor,qtd,credito,debito,pix}]
+let posMesSelecionado = null;
+let posMesesDisponiveis = [];
+let posTabAtiva = 'ranking';
+let posChartEvo = null;
+let posChartCanal = null;
+
+function posNormKey(s){ return (s||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim(); }
+function getPOSMeta(posto){
+  const k = posNormKey(posto);
+  return posMetasCustom[k] ?? POS_METAS_FIXAS[k] ?? 1500;
+}
 
 async function initPOS() {
   try {
-    const snap = await db.collection('pos_campanha').get();
-    posAllData  = [];
-    posCampanhas = [];
-    snap.forEach(doc=>{
-      const d = doc.data();
-      posCampanhas.push({id:doc.id, label:d.campanhaLabel||doc.id, dataRef:d.dataRef||''});
-      (d.postos||[]).forEach(p=>posAllData.push({...p, campanhaId:doc.id, campanhaLabel:d.campanhaLabel||doc.id}));
-    });
-    posCampanhas.sort((a,b)=>a.label.localeCompare(b.label));
-    // Restaurar log
+    // Carregar metas customizadas
+    try {
+      const mc = await db.collection('pos_config').doc('metas').get();
+      if(mc.exists) posMetasCustom = mc.data().metas || {};
+    } catch(e){}
+    // Restaurar log e badge
     try {
       const cfg = await db.collection('pos_config').doc('geral').get();
-      if(cfg.exists){ const l=document.getElementById('pos-import-log-txt'); if(l&&cfg.data().ultimoImport) l.textContent=cfg.data().ultimoImport; }
-    }catch(e){}
-    // Subtitle
-    const sub = document.getElementById('pos-subtitle');
-    if(sub && posCampanhas.length) sub.innerHTML = `Negociação de Débitos &nbsp;|&nbsp; <span style="color:var(--yellow);font-weight:700">📅 ${posCampanhas[posCampanhas.length-1].label}</span>`;
-    if(!posCampanhaAtiva && posCampanhas.length) posCampanhaAtiva = posCampanhas[posCampanhas.length-1].id;
-    renderPosCampanhaBtns();
-    renderPosPainel();
+      if(cfg.exists){
+        const d = cfg.data();
+        if(d.ultimoImport){ const l=document.getElementById('pos-import-log'); if(l) l.textContent=d.ultimoImport; }
+        if(d.dataRef){ posAtualizarBadge(d.dataRef); }
+      }
+    } catch(e){}
+    // Carregar resultados
+    const snap = await db.collection('pos_resultados').get();
+    posAllResultados = [];
+    const mesesSet = new Set();
+    snap.forEach(doc=>{ const d=doc.data(); posAllResultados.push(d); if(d.mesRef) mesesSet.add(d.mesRef); });
+    posMesesDisponiveis = [...mesesSet].sort();
+    if(!posMesSelecionado && posMesesDisponiveis.length) posMesSelecionado = posMesesDisponiveis[posMesesDisponiveis.length-1];
+    // Preencher select
+    const sel = document.getElementById('pos-mes-select');
+    if(sel){
+      sel.innerHTML = posMesesDisponiveis.length
+        ? posMesesDisponiveis.map(m=>{ const[a,mo]=m.split('-'); return `<option value="${m}"${m===posMesSelecionado?' selected':''}>${['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][+mo]}/${a.slice(2)}</option>`; }).join('')
+        : '<option value="">Nenhum dado</option>';
+    }
+    renderPOS();
   } catch(e){ console.error('initPOS',e); }
 }
 
-function renderPosCampanhaBtns(){
-  const wrap = document.getElementById('pos-campanha-btns');
-  if(!wrap) return;
-  wrap.innerHTML = posCampanhas.map(c=>`
-    <button class="ind-mes-btn${c.id===posCampanhaAtiva?' active':''}" onclick="selectPosCampanha('${c.id}',this)">${c.label}</button>`).join('');
-}
+function onPosMesChange(v){ posMesSelecionado=v; renderPOS(); }
 
-function selectPosCampanha(id, el){
-  posCampanhaAtiva = id;
-  document.querySelectorAll('#pos-campanha-btns .ind-mes-btn').forEach(b=>b.classList.remove('active'));
-  if(el) el.classList.add('active');
-  renderPosPainel();
+function posAtualizarBadge(dataStr){
+  const badge = document.getElementById('pos-dataref-badge');
+  if(badge) badge.innerHTML = dataStr ? `<span style="background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4);border-radius:8px;padding:4px 12px;font-size:12px;font-weight:700;color:#f59e0b">📅 Dados até: ${dataStr}</span>` : '';
 }
 
 function switchPosTab(tab){
-  ['painel','importar'].forEach(t=>{
-    document.getElementById('posTab-'+t)?.classList.toggle('active',t===tab);
-    const c=document.getElementById('posTabContent-'+t);
-    if(c) c.style.display=t===tab?'':'none';
+  posTabAtiva = tab;
+  ['ranking','campanha','evolucao','canal'].forEach(t=>{
+    document.getElementById('pos-btn-'+t)?.classList.toggle('active',t===tab);
+    const el=document.getElementById('pos-tab-'+t);
+    if(el) el.style.display=t===tab?'':'none';
   });
-  const cw=document.getElementById('pos-campanha-wrap');
-  if(cw) cw.style.display=tab==='importar'?'none':'';
-  if(tab==='painel') renderPosPainel();
+  if(tab==='evolucao') renderPOSEvolucao();
+  else if(tab==='canal') renderPOSCanal();
 }
 
-function renderPosPainel(){
-  const el = document.getElementById('pos-painel-content');
+function renderPOS(){
+  const dados = posAllResultados.filter(d=>d.mesRef===posMesSelecionado);
+  renderPOSKPIs(dados);
+  if(posTabAtiva==='ranking') renderPOSRanking(dados);
+  else if(posTabAtiva==='campanha') renderPOSCampanha(dados);
+  else if(posTabAtiva==='evolucao') renderPOSEvolucao();
+  else if(posTabAtiva==='canal') renderPOSCanal();
+}
+
+function renderPOSKPIs(dados){
+  const el = document.getElementById('pos-kpis');
   if(!el) return;
-  const campanha = posCampanhas.find(c=>c.id===posCampanhaAtiva);
-  const dados = posAllData.filter(d=>d.campanhaId===posCampanhaAtiva);
-
-  if(!campanha || !dados.length){
-    el.innerHTML=`<div style="text-align:center;padding:60px;color:var(--text3)">Nenhum dado para esta campanha.<br><small>Importe o Excel na aba Importar.</small></div>`;
-    return;
-  }
-
-  const totalNeg  = dados.reduce((s,d)=>s+(d.valorNeg||0),0);
-  const totalMeta = dados.reduce((s,d)=>s+(d.meta||0),0);
-  const pctGeral  = totalMeta>0?(totalNeg/totalMeta*100):0;
-  const acimaMeta = dados.filter(d=>d.meta>0&&(d.valorNeg/d.meta)>=1).length;
-
-  // Ranking por % individual
-  const ranking = dados.map(d=>({
-    ...d,
-    pct: d.meta>0 ? (d.valorNeg/d.meta*100) : 0
-  })).sort((a,b)=>b.pct-a.pct||b.valorNeg-a.valorNeg);
-
-  const top3 = ranking.slice(0,3);
-  const medalhas = ['🥇','🥈','🥉'];
-  const coresPodium = ['#FFD700','#C0C0C0','#CD7F32'];
-
-  el.innerHTML = `
-  <!-- Data info -->
-  ${campanha.dataRef?`<div style="display:inline-flex;align-items:center;gap:6px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:5px 12px;font-size:12px;font-weight:600;color:#f59e0b;margin-bottom:16px">📅 Referência: ${campanha.dataRef}</div>`:''}
-
-  <!-- KPIs -->
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px">
+  if(!dados.length){ el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text3)">Importe um arquivo Excel para visualizar os dados.</div>'; return; }
+  const totalValor = dados.reduce((s,d)=>s+(d.valor||0),0);
+  const totalQtd   = dados.reduce((s,d)=>s+(d.qtd||0),0);
+  const totalMeta  = dados.reduce((s,d)=>s+getPOSMeta(d.postoNome),0);
+  const pctGeral   = totalMeta>0?(totalValor/totalMeta*100):0;
+  const aptos      = dados.filter(d=>d.valor>=getPOSMeta(d.postoNome)).length;
+  const cor = pctGeral>=100?'#22c55e':pctGeral>=60?'#f97316':'#ef4444';
+  el.innerHTML=`
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px">
     <div class="card" style="padding:16px 20px;border-left:4px solid var(--primary)">
       <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">Total Negociado</div>
-      <div style="font-size:22px;font-weight:700;color:var(--text1)">${totalNeg.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</div>
+      <div style="font-size:22px;font-weight:700;color:var(--text1)">${totalValor.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</div>
     </div>
-    <div class="card" style="padding:16px 20px;border-left:4px solid ${pctGeral>=100?'#22c55e':'#f59e0b'}">
-      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">% da Meta Geral</div>
-      <div style="font-size:28px;font-weight:700;color:${pctGeral>=100?'#22c55e':'#f59e0b'}">${pctGeral.toFixed(1)}%</div>
+    <div class="card" style="padding:16px 20px;border-left:4px solid ${cor}">
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">% Meta Geral</div>
+      <div style="font-size:28px;font-weight:700;color:${cor}">${pctGeral.toFixed(1)}%</div>
       <div style="font-size:11px;color:var(--text3)">Meta: ${totalMeta.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</div>
     </div>
     <div class="card" style="padding:16px 20px;border-left:4px solid #22c55e">
-      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">Postos c/ Meta</div>
-      <div style="font-size:28px;font-weight:700;color:#22c55e">${acimaMeta}<span style="font-size:14px;color:var(--text3)">/${dados.length}</span></div>
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">Transações</div>
+      <div style="font-size:28px;font-weight:700;color:var(--text1)">${totalQtd.toLocaleString('pt-BR')}</div>
     </div>
-  </div>
-
-  <!-- Pódio Top 3 -->
-  <div class="card" style="padding:20px;margin-bottom:20px">
-    <div style="font-weight:700;font-size:13px;margin-bottom:18px;color:var(--text2)">🏆 Top 3 — Maior % de Meta Individual</div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
-      ${top3.map((p,i)=>`
-      <div style="text-align:center;padding:20px 12px;background:var(--surface2);border-radius:12px;border:2px solid ${coresPodium[i]}20;position:relative">
-        <div style="font-size:36px;margin-bottom:6px">${medalhas[i]}</div>
-        <div style="font-weight:800;font-size:22px;color:${coresPodium[i]}">${p.pct.toFixed(1)}%</div>
-        <div style="font-weight:700;font-size:13px;color:var(--text1);margin:6px 0 4px">${p.postoNome}</div>
-        <div style="font-size:12px;color:var(--text3)">${p.valorNeg.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px">Meta: ${p.meta.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</div>
-      </div>`).join('')}
-    </div>
-  </div>
-
-  <!-- Ranking completo -->
-  <div class="card" style="padding:18px">
-    <div style="font-weight:700;font-size:13px;margin-bottom:14px;color:var(--text2)">📋 Ranking Completo — ${campanha.label}</div>
-    <div style="overflow-x:auto">
-    <table style="width:100%;border-collapse:collapse;font-size:13px">
-      <thead>
-        <tr style="background:var(--surface2)">
-          <th style="padding:8px 12px;text-align:left;color:var(--text3);font-weight:600">#</th>
-          <th style="padding:8px 12px;text-align:left;color:var(--text3);font-weight:600">Posto</th>
-          <th style="padding:8px 12px;text-align:right;color:var(--text3);font-weight:600">Meta</th>
-          <th style="padding:8px 12px;text-align:right;color:var(--text3);font-weight:600">Negociado</th>
-          <th style="padding:8px 12px;text-align:center;color:var(--text3);font-weight:600">% Meta</th>
-          <th style="padding:8px 12px;text-align:center;color:var(--text3);font-weight:600">Situação</th>
-        </tr>
-      </thead>
-      <tbody>${ranking.map((p,i)=>{
-        const cor = p.pct>=100?'#22c55e':p.pct>=70?'#f59e0b':'#ef4444';
-        const ico = p.pct>=100?'✅':p.pct>=70?'🟡':'❌';
-        const bg  = p.pct>=100?'rgba(34,197,94,.05)':p.pct<50?'rgba(239,68,68,.04)':'';
-        return `<tr style="border-bottom:1px solid var(--border);${bg?'background:'+bg:''}">
-          <td style="padding:8px 12px;color:var(--text3)">${i<3?medalhas[i]:i+1}</td>
-          <td style="padding:8px 12px;font-weight:600;color:var(--text1)">${p.postoNome}</td>
-          <td style="padding:8px 12px;text-align:right;color:var(--text3)">${p.meta.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</td>
-          <td style="padding:8px 12px;text-align:right;font-weight:600;color:var(--text1)">${p.valorNeg.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</td>
-          <td style="padding:8px 12px;text-align:center;font-weight:700;color:${cor}">${p.pct.toFixed(1)}%</td>
-          <td style="padding:8px 12px;text-align:center">${ico}</td>
-        </tr>`;
-      }).join('')}</tbody>
-    </table>
+    <div class="card" style="padding:16px 20px;border-left:4px solid #22c55e">
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">Postos Aptos</div>
+      <div style="font-size:28px;font-weight:700;color:#22c55e">${aptos}<span style="font-size:14px;color:var(--text3)">/${dados.length}</span></div>
     </div>
   </div>`;
 }
 
-// ─── IMPORTAR POS ─────────────────────────────────────────────────
-async function importarPOS(input) {
-  const file = input.files[0];
-  if(!file) return;
-  const logEl = document.getElementById('pos-import-log-txt');
-  const nomeCampanha = document.getElementById('pos-campanha-nome')?.value.trim();
-  const dataRef = document.getElementById('pos-data-ref')?.value;
-  if(!nomeCampanha){ if(logEl) logEl.textContent='❌ Informe o nome da campanha.'; return; }
-
-  if(logEl) logEl.textContent = 'Lendo arquivo...';
-  try {
-    const buf = await file.arrayBuffer();
-    const wb  = XLSX.read(buf,{type:'array'});
-    const ws  = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws,{defval:''});
-
-    // Tentar detectar colunas automaticamente
-    const sample = rows[0]||{};
-    const cols = Object.keys(sample);
-
-    // Heurística: coluna com "loja" ou "posto" = nome, coluna com "meta" = meta, coluna com "neg" ou "valor" ou "real" = negociado
-    function findCol(keywords){ return cols.find(c=>keywords.some(k=>posNorm(c).includes(posNorm(k))))||null; }
-    const colPosto = findCol(['loja','posto','unidade','agencia']);
-    const colMeta  = findCol(['meta']);
-    const colNeg   = findCol(['negociado','realizado','valor negoc','neg','real','atingido']);
-
-    if(!colPosto||!colMeta||!colNeg){
-      if(logEl) logEl.textContent=`❌ Colunas não identificadas. Encontradas: ${cols.join(', ')}. Esperado: posto/loja, meta, negociado.`;
-      return;
-    }
-
-    const postos = [];
-    rows.forEach(row=>{
-      const nome = posNorm(String(row[colPosto]||''));
-      if(!nome || nome==='TOTAL' || nome==='GERAL') return;
-      const meta   = parseFloat(String(row[colMeta]||'0').replace(/[R$\s.]/g,'').replace(',','.')) || 0;
-      const valorNeg = parseFloat(String(row[colNeg]||'0').replace(/[R$\s.]/g,'').replace(',','.')) || 0;
-      postos.push({postoNome:nome, meta, valorNeg});
-    });
-
-    if(!postos.length){ if(logEl) logEl.textContent='❌ Nenhum dado encontrado.'; return; }
-
-    const campanhaId = nomeCampanha.toLowerCase().replace(/[^a-z0-9]/g,'_');
-    const dataFormatada = dataRef ? new Date(dataRef+'T12:00:00').toLocaleDateString('pt-BR') : '';
-    await db.collection('pos_campanha').doc(campanhaId).set({
-      campanhaLabel:nomeCampanha, dataRef:dataFormatada,
-      postos, updatedAt:new Date().toISOString()
-    });
-
-    const importInfo = `${postos.length} postos — ${nomeCampanha} — ${new Date().toLocaleString('pt-BR')}`;
-    await db.collection('pos_config').doc('geral').set({ultimoImport:importInfo},{merge:true});
-    if(logEl) logEl.textContent=importInfo;
-    input.value='';
-
-    posCampanhaAtiva = campanhaId;
-    await initPOS();
-    switchPosTab('painel');
-  } catch(e){
-    console.error('importarPOS',e);
-    if(logEl) logEl.textContent=`❌ Erro: ${e.message}`;
-  }
+function renderPOSRanking(dados){
+  const el = document.getElementById('pos-ranking');
+  if(!el) return;
+  if(!dados.length){ el.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3)">Sem dados.</div>'; return; }
+  const lista = dados.map(d=>({
+    ...d, meta:getPOSMeta(d.postoNome),
+    pct: getPOSMeta(d.postoNome)>0?(d.valor/getPOSMeta(d.postoNome)*100):0
+  })).sort((a,b)=>b.pct-a.pct||b.valor-a.valor);
+  el.innerHTML=`<div style="overflow-x:auto">
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead><tr style="background:var(--surface2)">
+      <th style="padding:8px 12px;text-align:left;color:var(--text3)">#</th>
+      <th style="padding:8px 12px;text-align:left;color:var(--text3)">Posto</th>
+      <th style="padding:8px 12px;text-align:right;color:var(--text3)">Meta</th>
+      <th style="padding:8px 12px;text-align:right;color:var(--text3)">Negociado</th>
+      <th style="padding:8px 12px;text-align:right;color:var(--text3)">Qtd</th>
+      <th style="padding:8px 12px;text-align:center;color:var(--text3)">% Meta</th>
+      <th style="padding:8px 12px;text-align:left;color:var(--text3);min-width:120px">Progresso</th>
+    </tr></thead>
+    <tbody>${lista.map((p,i)=>{
+      const cor = p.pct>=100?'#22c55e':p.pct>=60?'#f97316':'#ef4444';
+      const bgRow = p.pct>=100?'rgba(34,197,94,.04)':p.pct<60?'rgba(239,68,68,.04)':'';
+      const barW = Math.min(100,p.pct).toFixed(0);
+      return `<tr style="border-bottom:1px solid var(--border);${bgRow?'background:'+bgRow:''}">
+        <td style="padding:8px 12px;color:var(--text3)">${i+1}</td>
+        <td style="padding:8px 12px;font-weight:600;color:var(--text1)">${p.postoNome}</td>
+        <td style="padding:8px 12px;text-align:right;color:var(--text3)">${p.meta.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</td>
+        <td style="padding:8px 12px;text-align:right;font-weight:600;color:var(--text1)">${p.valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</td>
+        <td style="padding:8px 12px;text-align:right;color:var(--text2)">${(p.qtd||0).toLocaleString('pt-BR')}</td>
+        <td style="padding:8px 12px;text-align:center;font-weight:700;color:${cor}">${p.pct.toFixed(1)}%</td>
+        <td style="padding:8px 12px">
+          <div style="background:var(--surface3);border-radius:4px;height:8px;overflow:hidden">
+            <div style="background:${cor};width:${barW}%;height:100%;border-radius:4px;transition:width .3s"></div>
+          </div>
+        </td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table></div>`;
 }
-// FIM MÓDULO POS
 
-initSystem();
-</script>
-<!-- MODAL: HOLERITE — VER ASSINADO (ADM) -->
-<div class="modal-overlay" id="modal-ver-assinado">
-  <div class="modal" style="max-width:560px">
-    <div class="modal-header"><div class="modal-title">📄 Holerite Assinado</div><button class="close-btn" onclick="closeModal('modal-ver-assinado')">✕</button></div>
-    <div id="ver-assinado-info" style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px"></div>
-    <div id="ver-assinado-preview" style="text-align:center;margin-bottom:16px"></div>
-    <input type="hidden" id="ver-assinado-id">
-    <div style="display:flex;gap:10px;margin-top:8px">
-      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-ver-assinado')">Fechar</button>
-      <button class="btn btn-primary" style="flex:1" onclick="downloadAssinado()">⬇ Baixar Assinado</button>
-    </div>
-  </div>
-</div>
+function renderPOSCampanha(dados){
+  const el = document.getElementById('pos-campanha');
+  if(!el) return;
+  if(!dados.length){ el.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3)">Sem dados.</div>'; return; }
+  const lista = dados.map(d=>({
+    ...d, meta:getPOSMeta(d.postoNome),
+    pct: getPOSMeta(d.postoNome)>0?(d.valor/getPOSMeta(d.postoNome)*100):0
+  })).sort((a,b)=>b.pct-a.pct);
+  const aptos   = lista.filter(p=>p.valor>=p.meta);
+  const inaptos = lista.filter(p=>p.valor<p.meta);
+  const top3    = aptos.slice(0,3);
+  const medalhas= ['🥇','🥈','🥉'];
+  const coresPodium=['#FFD700','#C0C0C0','#CD7F32'];
 
-<!-- MODAL: HOLERITE — ENVIAR ASSINADO (COLABORADOR) -->
-<div class="modal-overlay" id="modal-enviar-assinado">
-  <div class="modal" style="max-width:480px">
-    <div class="modal-header"><div class="modal-title">✍️ Enviar Holerite Assinado</div><button class="close-btn" onclick="closeModal('modal-enviar-assinado')">✕</button></div>
-    <div id="enviar-assinado-info" style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px"></div>
-    <div class="form-group">
-      <label class="form-label">PDF do holerite assinado</label>
-      <div class="rh-drop-zone" style="padding:24px" onclick="document.getElementById('assinado-file-input').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="handleAssinadoDrop(event)">
-        <div class="dz-ico" style="font-size:28px">✍️</div>
-        <div class="dz-title" style="font-size:13px" id="assinado-file-label">Selecionar PDF assinado</div>
-        <div class="dz-sub">Imprima, assine e escaneie/fotografe como PDF</div>
-        <input type="file" id="assinado-file-input" accept=".pdf" style="display:none" onchange="handleAssinadoFile(this.files[0])">
+  el.innerHTML=`
+  <div style="background:linear-gradient(135deg,rgba(5,39,118,.25),rgba(201,168,76,.08));border:1px solid rgba(201,168,76,.3);border-radius:14px;padding:20px;margin-bottom:20px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+      <div>
+        <h3 style="margin:0;font-size:15px;font-weight:800;color:var(--text1)">🏆 Campanha Missão Arrecadação POS</h3>
+        <p style="margin:4px 0 0;font-size:12px;color:var(--text3)">Elegíveis: bateram a meta em valor · Desempate: maior % atingimento · Top 3 premiados</p>
       </div>
+      <button class="btn btn-secondary" style="font-size:11px" onclick="abrirModalMetaPOS()">⚙️ Ajustar Metas</button>
     </div>
-    <input type="hidden" id="enviar-assinado-id">
-    <div style="display:flex;gap:10px;margin-top:8px">
-      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-enviar-assinado')">Cancelar</button>
-      <button class="btn btn-primary" style="flex:1" onclick="confirmarEnvioAssinado()">📤 Enviar</button>
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+      <span style="background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);border-radius:8px;padding:4px 12px;font-size:12px"><span style="color:#22c55e;font-weight:800">${aptos.length}</span><span style="color:var(--text3);margin-left:4px">aptos</span></span>
+      <span style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:4px 12px;font-size:12px"><span style="color:#ef4444;font-weight:800">${inaptos.length}</span><span style="color:var(--text3);margin-left:4px">em progresso</span></span>
     </div>
-  </div>
-</div>
-
-<!-- MODAL: ATESTADO — VER PDF (ADM) -->
-<div class="modal-overlay" id="modal-ver-atestado">
-  <div class="modal" style="max-width:520px">
-    <div class="modal-header"><div class="modal-title">🏥 Atestado Médico</div><button class="close-btn" onclick="closeModal('modal-ver-atestado')">✕</button></div>
-    <div id="ver-atestado-info" style="background:var(--surface2);border-radius:8px;padding:14px;margin-bottom:16px;font-size:13px"></div>
-    <input type="hidden" id="ver-atestado-id">
-    <div style="display:flex;gap:10px;margin-top:8px">
-      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-ver-atestado')">Fechar</button>
-      <button class="btn btn-primary" style="flex:1" onclick="downloadAtestadoPdf()">⬇ Baixar PDF</button>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL: FOLHA — VER ASSINADA (MANAGER) -->
-<div class="modal-overlay" id="modal-ver-folha-assinada">
-  <div class="modal" style="max-width:560px">
-    <div class="modal-header"><div class="modal-title">📋 Folha de Ponto Assinada</div><button class="close-btn" onclick="closeModal('modal-ver-folha-assinada')">✕</button></div>
-    <div id="ver-folha-assinada-info" style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px"></div>
-    <input type="hidden" id="ver-folha-assinada-id">
-    <div style="display:flex;gap:10px;margin-top:8px">
-      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-ver-folha-assinada')">Fechar</button>
-      <button class="btn btn-primary" style="flex:1" onclick="downloadFolhaAssinada()">⬇ Baixar Assinada</button>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL: FOLHA — ENVIAR ASSINADA (COLABORADOR) -->
-<div class="modal-overlay" id="modal-enviar-folha-assinada">
-  <div class="modal" style="max-width:480px">
-    <div class="modal-header"><div class="modal-title">✍️ Enviar Folha Assinada</div><button class="close-btn" onclick="closeModal('modal-enviar-folha-assinada')">✕</button></div>
-    <div id="enviar-folha-assinada-info" style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px"></div>
-    <div class="form-group">
-      <label class="form-label">PDF da folha assinada</label>
-      <div class="rh-drop-zone" style="padding:24px" onclick="document.getElementById('folha-assinada-file-input').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="handleFolhaAssinadaDrop(event)">
-        <div class="dz-ico" style="font-size:28px">✍️</div>
-        <div class="dz-title" style="font-size:13px" id="folha-assinada-file-label">Selecionar PDF assinado</div>
-        <input type="file" id="folha-assinada-file-input" accept=".pdf" style="display:none" onchange="handleFolhaAssinadaFile(this.files[0])">
+    ${top3.length?`
+    <div style="display:grid;grid-template-columns:repeat(${Math.min(3,top3.length)},1fr);gap:14px;margin-bottom:16px">
+      ${top3.map((p,i)=>`
+      <div style="text-align:center;padding:18px 10px;background:var(--surface2);border-radius:12px;border:2px solid ${coresPodium[i]}30">
+        <div style="font-size:32px;margin-bottom:6px">${medalhas[i]}</div>
+        <div style="font-weight:800;font-size:22px;color:${coresPodium[i]}">${p.pct.toFixed(1)}%</div>
+        <div style="font-weight:700;font-size:12px;color:var(--text1);margin:6px 0 4px;line-height:1.3">${p.postoNome}</div>
+        <div style="font-size:11px;color:var(--text3)">${p.valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</div>
+        <div style="font-size:10px;color:var(--text3)">Meta: ${p.meta.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</div>
+      </div>`).join('')}
+    </div>`:'<div style="text-align:center;padding:16px;color:var(--text3);font-size:13px">Nenhum posto atingiu a meta neste período.</div>'}
+    ${aptos.length>3?`
+    <div style="margin-top:8px">
+      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:8px">Demais elegíveis:</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${aptos.slice(3).map(p=>`<span style="background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);border-radius:8px;padding:4px 10px;font-size:12px;color:#22c55e;font-weight:600">${p.postoNome} <span style="opacity:.8">${p.pct.toFixed(0)}%</span></span>`).join('')}
       </div>
-    </div>
-    <input type="hidden" id="enviar-folha-assinada-id">
-    <div style="display:flex;gap:10px;margin-top:8px">
-      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-enviar-folha-assinada')">Cancelar</button>
-      <button class="btn btn-primary" style="flex:1" onclick="confirmarEnvioFolhaAssinada()">📤 Enviar</button>
-    </div>
+    </div>`:''}
   </div>
-</div>
+  ${inaptos.length?`
+  <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid var(--border)">
+    <div style="font-size:12px;font-weight:600;color:var(--text3);margin-bottom:10px">Em progresso (${inaptos.length} postos):</div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      ${inaptos.map(p=>{
+        const cor=p.pct>=60?'#f97316':'#ef4444';
+        const barW=Math.min(100,p.pct).toFixed(0);
+        return `<div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:12px;color:var(--text2);min-width:180px;font-weight:600">${p.postoNome}</span>
+          <div style="flex:1;background:var(--surface3);border-radius:4px;height:8px"><div style="background:${cor};width:${barW}%;height:100%;border-radius:4px"></div></div>
+          <span style="font-size:12px;font-weight:700;color:${cor};width:38px;text-align:right">${p.pct.toFixed(0)}%</span>
+          <span style="font-size:11px;color:var(--text3);width:120px;text-align:right">${p.valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})} / ${p.meta.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</span>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`:''}`;
+}
 
-</body>
-</html>
+function renderPOSEvolucao(){
+  const el = document.getElementById('pos-evolucao-wrap');
+  if(!el) return;
+  const meses = posMesesDisponiveis.slice(-8);
+  const labEvo = meses.map(m=>{ const[a,mo]=m.split('-'); return `${['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][+mo]}/${a.slice(2)}`; });
+  const valEvo = meses.map(m=>{ const d=posAllResultados.filter(r=>r.mesRef===m); return d.reduce((s,r)=>s+(r.valor||0),0); });
+  const metaEvo = meses.map(m=>{ const d=posAllResultados.filter(r=>r.mesRef===m); return d.reduce((s,r)=>s+getPOSMeta(r.postoNome),0)||0; });
+  el.innerHTML=`<div style="position:relative;height:280px"><canvas id="pos-evo-chart"></canvas></div>`;
+  requestAnimationFrame(()=>requestAnimationFrame(()=>setTimeout(()=>{
+    posChartEvo = posDestroyChart(posChartEvo);
+    const cv=document.getElementById('pos-evo-chart');
+    if(!cv||!meses.length) return;
+    posChartEvo=new Chart(cv.getContext('2d'),{
+      data:{ labels:labEvo, datasets:[
+        {type:'bar',label:'Negociado',data:valEvo,backgroundColor:'rgba(79,120,255,.6)',yAxisID:'y'},
+        {type:'line',label:'Meta',data:metaEvo,borderColor:'rgba(239,68,68,.6)',borderDash:[6,4],backgroundColor:'transparent',pointRadius:0,yAxisID:'y',spanGaps:true}
+      ]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{size:11}}}},scales:{
+        y:{position:'left',ticks:{font:{size:11},callback:v=>v.toLocaleStr
