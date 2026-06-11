@@ -1935,13 +1935,23 @@ const PosCanalLabels = {
         <label class="form-label">Tipo de incidência</label>
         <select class="form-select" id="inc-tipo">
           <option value="">Selecione...</option>
-          <option value="Queda Link">🔴 Queda Link</option>
-          <option value="Falta de Luz">⚡ Falta de Luz</option>
-          <option value="BR Bloqueado">🚧 BR Bloqueado</option>
-          <option value="Erro Salesforce">💻 Erro Salesforce</option>
-          <option value="Erro SAP">📊 Erro SAP</option>
-          <option value="Quenda Inoperante">⚙️ Quenda Inoperante</option>
-          <option value="Outro">❓ Outro</option>
+          <optgroup label="Sistema">
+            <option value="Queda Link">🔴 Queda de Link</option>
+            <option value="Erro Salesforce">💻 Erro Salesforce</option>
+            <option value="Erro SAP">📊 Erro SAP</option>
+          </optgroup>
+          <optgroup label="Periféricos">
+            <option value="Totem Senhas Inoperante">🎫 Totem Senhas Inoperante</option>
+            <option value="AutoAtendimento Inoperante">🖥️ AutoAtendimento Inoperante</option>
+            <option value="Scanner Inoperante">📷 Scanner Inoperante</option>
+          </optgroup>
+          <optgroup label="Infraestrutura">
+            <option value="Falta de Luz">⚡ Falta de Luz</option>
+            <option value="BR Bloqueado">🚧 BR Bloqueado</option>
+          </optgroup>
+          <optgroup label="Outros">
+            <option value="Outro">❓ Outro</option>
+          </optgroup>
         </select>
       </div>
       <div class="form-group">
@@ -2120,7 +2130,7 @@ function validarSenha(senha) {
 let allIncidencias = [];
 let unsubIncidencias = null;
 
-const TIPOS_INCIDENCIA = ['Queda Link', 'Falta de Luz', 'BR Bloqueado', 'Erro Salesforce', 'Erro SAP', 'Quenda Inoperante', 'Outro'];
+const TIPOS_INCIDENCIA = ['Queda Link','Erro Salesforce','Erro SAP','Totem Senhas Inoperante','AutoAtendimento Inoperante','Scanner Inoperante','Falta de Luz','BR Bloqueado','Outro'];
 const PRIORIDADES = {baixa: '🟢', media: '🟡', alta: '🟠', critica: '🔴'};
 
 async function initIncidencias() {
@@ -2157,7 +2167,9 @@ async function abrirModalNovaIncidencia() {
   if (postos.length === 0) {
     sel.innerHTML = '<option value="">Nenhum posto cadastrado</option>';
   } else {
-    sel.innerHTML = '<option value="">Selecione o posto...</option>' + postos.map(p => 
+    sel.innerHTML = '<option value="">Selecione o posto...</option>' +
+      '<option value="GERAL" style="font-weight:700;color:#f97316">🌐 GERAL — Toda a Operação</option>' +
+      postos.map(p => 
       `<option value="${p.id}">${p.nome}</option>`
     ).join('');
   }
@@ -2189,13 +2201,20 @@ async function confirmarNovaIncidencia() {
     return;
   }
   
-  // Buscar posto da collection 'postos'
-  const postoDoc = await db.collection('postos').doc(postoId).get();
-  if (!postoDoc.exists) {
-    toast('Posto não encontrado', 'err');
-    return;
+  // Buscar posto da collection 'postos' (ou usar GERAL)
+  let postoNome, postoIdFinal;
+  if(postoId === 'GERAL'){
+    postoNome = '🌐 GERAL';
+    postoIdFinal = 'GERAL';
+  } else {
+    const postoDoc = await db.collection('postos').doc(postoId).get();
+    if (!postoDoc.exists) {
+      toast('Posto não encontrado', 'err');
+      return;
+    }
+    postoNome = postoDoc.data().nome;
+    postoIdFinal = postoId;
   }
-  const posto = postoDoc.data();
   
   // Montar ISO string com data/hora informados
   const abertoEm = `${dataAbertura}T${horaAbertura}:00`;
@@ -2204,8 +2223,8 @@ async function confirmarNovaIncidencia() {
     const ref = db.collection('incidencias').doc();
     await ref.set({
       id: ref.id,
-      posto: posto.nome,
-      postoId,
+      posto: postoNome,
+      postoId: postoIdFinal,
       tipo,
       prioridade,
       status: 'aberta',
@@ -2503,16 +2522,16 @@ function renderDashboardIncidencias() {
   const rankingPostos = calcularRankingPostos(filtered);
   const rankingTipos = calcularRankingTipos(filtered);
   const postosMaiorTempo = calcularPostosMaiorTempo(filtered);
-  const mapaCalor = renderMapaCalorPostos();
+  const painelOperacional = renderPainelOperacionalPostos();
   
   // Montar conteúdo
   let html = '';
   
-  // Mapa de calor
+  // Painel operacional
   html += `
     <div style="background:var(--surface);border-radius:12px;padding:16px;margin-bottom:20px">
-      <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:12px">🗺️ Mapa de Calor - Status dos Postos</div>
-      ${mapaCalor}
+      <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:12px">🖥️ Status Operacional da Rede</div>
+      ${painelOperacional}
     </div>
   `;
   
@@ -2640,60 +2659,87 @@ function calcularPostosMaiorTempo(incidencias) {
     .sort((a, b) => b.tempoMedio - a.tempoMedio);
 }
 
-function renderMapaCalorPostos() {
+function renderPainelOperacionalPostos() {
   const abertas = allIncidencias.filter(inc => inc.status === 'aberta');
-  const postosComIncidencias = {};
-  
+
+  // Classificar incidências abertas por categoria operacional
+  const CATEG = {
+    sistema:      { label: 'Sistema', icon: '🖥️', tipos: ['Queda Link','Erro Salesforce','Erro SAP'], cor: '#6c6cff' },
+    totem:        { label: 'Totem Senhas', icon: '🎫', tipos: ['Totem Senhas Inoperante'], cor: '#f59e0b' },
+    autoatend:    { label: 'AutoAtendimento', icon: '📟', tipos: ['AutoAtendimento Inoperante'], cor: '#f97316' },
+  };
+
+  // Mapear postos afetados por categoria
+  const afetados = { sistema: new Set(), totem: new Set(), autoatend: new Set() };
   abertas.forEach(inc => {
-    postosComIncidencias[inc.posto] = (postosComIncidencias[inc.posto] || 0) + 1;
+    Object.entries(CATEG).forEach(([key, cat]) => {
+      if(cat.tipos.includes(inc.tipo)) afetados[key].add(inc.posto);
+    });
   });
-  
-  // Pegar todos postos do Firebase
-  const todosPostos = [...new Set(allIncidencias.map(inc => inc.posto))].sort();
-  
-  if (todosPostos.length === 0) {
-    return '<div style="font-size:13px;color:var(--text3);text-align:center;padding:20px">Nenhum posto com registro</div>';
-  }
-  
-  const grid = todosPostos.map(posto => {
-    const count = postosComIncidencias[posto] || 0;
-    let bgColor, textColor, status;
-    
-    if (count === 0) {
-      bgColor = 'var(--green-bg)';
-      textColor = 'var(--green)';
-      status = '✓';
-    } else if (count === 1) {
-      bgColor = 'var(--yellow-bg)';
-      textColor = 'var(--yellow)';
-      status = '1';
-    } else {
-      bgColor = 'var(--red-bg)';
-      textColor = 'var(--red)';
-      status = count;
-    }
-    
-    return `
-      <div style="background:${bgColor};border-radius:8px;padding:8px;text-align:center;border:2px solid ${count > 0 ? textColor : 'transparent'}">
-        <div style="font-size:18px;font-weight:700;color:${textColor}">${status}</div>
-        <div style="font-size:10px;color:var(--text2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${posto}">${posto}</div>
+
+  // Legenda de status resumido no topo
+  const totalPostos = 29;
+  const comSistemaDown = afetados.sistema.size;
+  const comTotemDown   = afetados.totem.size;
+  const comAutoDown    = afetados.autoatend.size;
+
+  let html = `
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
+    <div style="background:var(--surface2);border-radius:10px;padding:14px;border-left:4px solid ${CATEG.sistema.cor};display:flex;align-items:center;gap:12px">
+      <div style="font-size:26px">${CATEG.sistema.icon}</div>
+      <div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px">Sistema</div>
+        <div style="font-size:22px;font-weight:800;color:${comSistemaDown>0?'#ef4444':'#22c55e'}">${comSistemaDown > 0 ? comSistemaDown+' POSTO'+(comSistemaDown>1?'S':'')+' ⚠️' : '✅ OK'}</div>
+        <div style="font-size:11px;color:var(--text3)">Queda Link · Salesforce · SAP</div>
       </div>
-    `;
-  }).join('');
-  
-  return `
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px">
-      ${grid}
     </div>
-    <div style="display:flex;align-items:center;justify-content:center;gap:16px;margin-top:12px;font-size:12px;color:var(--text3)">
-      <span>✓ = OK</span>
-      <span style="color:var(--yellow)">● = 1 incidência</span>
-      <span style="color:var(--red)">● = 2+ incidências</span>
+    <div style="background:var(--surface2);border-radius:10px;padding:14px;border-left:4px solid ${CATEG.totem.cor};display:flex;align-items:center;gap:12px">
+      <div style="font-size:26px">${CATEG.totem.icon}</div>
+      <div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px">Totem de Senhas</div>
+        <div style="font-size:22px;font-weight:800;color:${comTotemDown>0?'#f59e0b':'#22c55e'}">${comTotemDown > 0 ? comTotemDown+' POSTO'+(comTotemDown>1?'S':'')+' ⚠️' : '✅ OK'}</div>
+        <div style="font-size:11px;color:var(--text3)">Totem Inoperante</div>
+      </div>
     </div>
-  `;
+    <div style="background:var(--surface2);border-radius:10px;padding:14px;border-left:4px solid ${CATEG.autoatend.cor};display:flex;align-items:center;gap:12px">
+      <div style="font-size:26px">${CATEG.autoatend.icon}</div>
+      <div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px">AutoAtendimento</div>
+        <div style="font-size:22px;font-weight:800;color:${comAutoDown>0?'#f97316':'#22c55e'}">${comAutoDown > 0 ? comAutoDown+' POSTO'+(comAutoDown>1?'S':'')+' ⚠️' : '✅ OK'}</div>
+        <div style="font-size:11px;color:var(--text3)">Quiosque / Terminal</div>
+      </div>
+    </div>
+  </div>`;
+
+  // Detalhe por postos afetados (se houver)
+  const todosAfetados = [...new Set([...afetados.sistema,...afetados.totem,...afetados.autoatend])].sort();
+  if(todosAfetados.length > 0){
+    html += `<div style="margin-top:4px">
+      <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Postos com incidência aberta</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${todosAfetados.map(p=>{
+          const cats = [];
+          if(afetados.sistema.has(p)) cats.push('🖥️');
+          if(afetados.totem.has(p))   cats.push('🎫');
+          if(afetados.autoatend.has(p)) cats.push('📟');
+          const isGeral = p === '🌐 GERAL';
+          return `<span style="background:${isGeral?'rgba(239,68,68,.15)':'rgba(239,68,68,.1)'};border:1px solid rgba(239,68,68,.35);border-radius:8px;padding:4px 10px;font-size:12px;font-weight:${isGeral?800:600};color:${isGeral?'#ef4444':'var(--text1)'}">
+            ${p} <span style="opacity:.8">${cats.join('')}</span>
+          </span>`;
+        }).join('')}
+      </div>
+    </div>`;
+  } else {
+    html += `<div style="text-align:center;padding:12px;font-size:13px;color:#22c55e;font-weight:600">✅ Toda a operação normalizada — sem incidências abertas</div>`;
+  }
+  return html;
 }
 
+// Mantida para compatibilidade retroativa
+function renderMapaCalorPostos(){ return renderPainelOperacionalPostos(); }
+
 let chartInstances = {linha: null, pizza: null, barras: null};
+
 
 function renderChartsIncidencias(incidencias) {
   // Destruir gráficos anteriores
@@ -6490,7 +6536,7 @@ function renderTeam() {
   const tbodyEl = document.getElementById('team-tbody');
   if (!mainEl) return;
   const collabs = allUsers.filter(u=>u.role!=='admin');
-  if (!collabs.length) { mainEl.innerHTML=`<div class="empty"><div class="icon">◉</div><p>Nenhum colaborador cadastrado.</p></div>`; if(tbodyEl)tbodyEl.innerHTML=''; return; }
+  if (!collabs.length) { mainEl.innerHTML=`<div class="empty"><div class="icon">👥</div><p>Nenhum colaborador cadastrado.</p><p style="font-size:13px;color:var(--text3);margin-top:8px">Clique em <strong>+ Novo Colaborador</strong> para adicionar membros à equipe.<br>Eles aparecerão aqui após o cadastro no Firebase.</p></div>`; if(tbodyEl)tbodyEl.innerHTML=''; return; }
 
   mainEl.innerHTML = collabs.map(c => {
     const ct = allTasks.filter(t=>t.assignedTo===c.id);
@@ -8946,44 +8992,85 @@ async function confirmarImportPOS(){
     const buf = await fileInput.files[0].arrayBuffer();
     const wb  = XLSX.read(buf,{type:'array'});
 
-    if(!wb.SheetNames.includes('Base')){
-      alert('Sheet "Base" não encontrada. Verifique se é o arquivo correto da Neobpo.');
-      btn.textContent='Importar'; btn.disabled=false; return;
+    // Ler com header:\"A\" — acesso por letra de coluna (robusto para colunas duplicadas)
+    const anoBase = dataRef ? new Date(dataRef+'T12:00:00').getFullYear() : new Date().getFullYear();
+    const grupos = {};
+
+    // ─── Modo A: arquivo base Neobpo (col AB = TID/loja-key, sheet Localidades - POS) ───
+    if(wb.SheetNames.includes('Base')){
+      // 1. Montar mapa TID → NomeLoja da sheet "Localidades - POS"
+      const maqLojaMap = {};
+      if(wb.SheetNames.includes('Localidades - POS')){
+        const wsLoc = wb.Sheets['Localidades - POS'];
+        const rowsLoc = XLSX.utils.sheet_to_json(wsLoc, {header:1, range:4, defval:''});
+        rowsLoc.forEach(r=>{
+          const cod  = (r[0]||'').toString().trim();
+          const loja = (r[1]||'').toString().trim();
+          if(cod && loja) maqLojaMap[cod] = loja;
+        });
+      }
+
+      // 2. Processar sheet Base
+      const ws = wb.Sheets['Base'];
+      const rows = XLSX.utils.sheet_to_json(ws, {header:1, range:4, defval:''});
+      const dataRows = rows.slice(1); // pula header
+
+      dataRows.forEach(row=>{
+        const colAB = (row[27]||'').toString().trim(); // Número lógico POS
+        const colD  = (row[3]||'').toString().trim();  // Data do pedido
+        const colE  = row[4];   // Valor
+        const colF  = (row[5]||'').toString();         // Modalidade
+
+        if(!colAB || !colE || typeof colE !== 'number' || colE <= 0) return;
+
+        // Resolver loja via mapa ou via col AD calculada
+        let lojaFull = maqLojaMap[colAB] || (row[29]||'').toString().trim();
+        if(!lojaFull.startsWith('Posto ')) return;
+
+        const postoNome = normPosLoja(lojaFull.replace(/^Posto\s+/,''));
+
+        // Extrair mês de col D (formato DD/MM/YYYY)
+        let mesNum = 0;
+        if(colD && colD.includes('/')){
+          const pts = colD.split('/');
+          if(pts.length === 3) mesNum = parseInt(pts[1]);
+        }
+        if(!mesNum || mesNum < 1 || mesNum > 12) return;
+
+        const mesRef = `${anoBase}-${String(mesNum).padStart(2,'0')}`;
+        const key = `${mesRef}|${postoNome}`;
+        const modal = (colF).toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+        if(!grupos[key]) grupos[key]={mesRef,postoNome,valor:0,qtd:0,credito:0,debito:0,pix:0};
+        const g=grupos[key];
+        g.valor+=colE; g.qtd++;
+        if(modal.includes('CREDITO')) g.credito+=colE;
+        else if(modal.includes('DEBITO')) g.debito+=colE;
+        else if(modal==='PIX') g.pix+=colE;
+      });
     }
 
-    // Ler com header:"A" — acesso por letra de coluna (robusto para colunas duplicadas)
-    // Pular as 4 linhas iniciais (range:4 = começa na linha 5 do Excel = header real)
-    const ws   = wb.Sheets['Base'];
-    const rows = XLSX.utils.sheet_to_json(ws, {header:'A', range:4, defval:''});
-
-    // Colunas mapeadas por letra:
-    // AD = Loja (postos RG, ex: "Posto Aperibé")
-    // E  = Valor do pedido
-    // F  = Modalidade (CRÉDITO/DÉBITO/PIX)
-    // AE = Mês (número 1-12)
-    // Linha 1 do range é o header — pular
-    const dataRows = rows.slice(1); // pula a linha de header
-
-    const anoBase = dataRef ? new Date(dataRef+'T12:00:00').getFullYear() : new Date().getFullYear();
-
-    const grupos = {};
-    dataRows.forEach(row=>{
-      const loja = (row['AD']||'').toString().trim();
-      if(!loja.startsWith('Posto ')) return;
-      const mesNum = parseInt(row['AE'])||0;
-      if(!mesNum || mesNum < 1 || mesNum > 12) return;
-      const mesRef = `${anoBase}-${String(mesNum).padStart(2,'0')}`;
-      const postoNome = normPosLoja(loja.replace(/^Posto\s+/,''));
-      const key = `${mesRef}|${postoNome}`;
-      const valor = parseFloat((row['E']||'0').toString().replace(',','.'))||0;
-      const modal = (row['F']||'').toString().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-      if(!grupos[key]) grupos[key]={mesRef,postoNome,valor:0,qtd:0,credito:0,debito:0,pix:0};
-      const g=grupos[key];
-      g.valor+=valor; g.qtd++;
-      if(modal.includes('CREDITO')) g.credito+=valor;
-      else if(modal.includes('DEBITO')) g.debito+=valor;
-      else if(modal==='PIX') g.pix+=valor;
-    });
+    // ─── Modo B: arquivo simples "Resultado Mês" (col A=Loja, B=Qtd, C=Valor) ───
+    if(Object.keys(grupos).length === 0){
+      const sheetRes = wb.SheetNames.find(n=>n.toLowerCase().includes('resultado'));
+      if(sheetRes){
+        const wsR = wb.Sheets[sheetRes];
+        const rowsR = XLSX.utils.sheet_to_json(wsR, {header:1, defval:''});
+        const mesNum = dataRef ? new Date(dataRef+'T12:00:00').getMonth()+1 : new Date().getMonth()+1;
+        const mesRef = `${anoBase}-${String(mesNum).padStart(2,'0')}`;
+        rowsR.forEach(r=>{
+          const lojaRaw = (r[0]||'').toString().trim();
+          if(!lojaRaw.startsWith('Posto ')) return;
+          const postoNome = normPosLoja(lojaRaw.replace(/^Posto\s+/,''));
+          const qtd   = parseInt(r[1])||0;
+          const valor = parseFloat(r[2]||0);
+          if(!valor) return;
+          const key = `${mesRef}|${postoNome}`;
+          if(!grupos[key]) grupos[key]={mesRef,postoNome,valor:0,qtd:0,credito:0,debito:0,pix:0};
+          grupos[key].valor += valor;
+          grupos[key].qtd   += qtd;
+        });
+      }
+    }
 
     const total = Object.keys(grupos).length;
     if(!total){
