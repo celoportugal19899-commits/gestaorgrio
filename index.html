@@ -3980,15 +3980,7 @@ async function toggleEmCurso(checked) {
 }
 
 async function renderAdmPonto() {
-  // Se allUsers ainda não carregou, buscar direto do Firestore
-  let collabs = allUsers.filter(u => u.role !== 'admin' && u.role !== 'posto');
-  if(collabs.length === 0 && allUsers.length === 0){
-    try{
-      const snap = await db.collection('users').get();
-      const fetched = snap.docs.map(d=>({id:d.id,...d.data()}));
-      collabs = fetched.filter(u => u.role !== 'admin' && u.role !== 'posto');
-    }catch(e){ console.warn('renderAdmPonto fallback query failed',e); }
-  }
+  const collabs = allUsers.filter(u => u.role !== 'admin');
   const today = todayKey();
 
   // Mês filtro
@@ -8566,6 +8558,9 @@ async function importarCSAT(input) {
 // ══════════════════════════════════════════════════════
 // MÓDULO: MÁQUINA CARTÃO POS
 // ══════════════════════════════════════════════════════
+// Meses com fechamento oficial — nunca sobrescritos por novas importações
+const POS_MESES_CONGELADOS = ['2026-05'];
+
 const POS_METAS_FIXAS = {
   'MIRACEMA':17000,'TANGUA':15000,'AREAL':15000,'BOM JARDIM':8500,
   'APERIBE':7500,'ITALVA':6000,'CONCEICAO DE MACABU':3700,
@@ -9072,6 +9067,10 @@ async function confirmarImportPOS(){
         if(!mesNum || mesNum < 1 || mesNum > 12) return;
 
         const mesRef = `${anoBase}-${String(mesNum).padStart(2,'0')}`;
+
+        // ── REGRA MESES CONGELADOS: Maio/2026 é oficial e não pode ser sobrescrito ──
+        if(POS_MESES_CONGELADOS.includes(mesRef)) return;
+
         const key = `${mesRef}|${postoNome}`;
         const modal = (colF).toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
         if(!grupos[key]) grupos[key]={mesRef,postoNome,valor:0,qtd:0,credito:0,debito:0,pix:0};
@@ -9091,6 +9090,10 @@ async function confirmarImportPOS(){
         const rowsR = XLSX.utils.sheet_to_json(wsR, {header:1, defval:''});
         const mesNum = dataRef ? new Date(dataRef+'T12:00:00').getMonth()+1 : new Date().getMonth()+1;
         const mesRef = `${anoBase}-${String(mesNum).padStart(2,'0')}`;
+        if(POS_MESES_CONGELADOS.includes(mesRef)){
+          alert(`⚠️ Maio/${anoBase} está congelado (fechamento oficial). Import cancelado.\nPara atualizar meses em andamento, use o arquivo completo.`);
+          btn.textContent='Importar'; btn.disabled=false; return;
+        }
         rowsR.forEach(r=>{
           const lojaRaw = (r[0]||'').toString().trim();
           if(!lojaRaw.startsWith('Posto ')) return;
@@ -9114,9 +9117,10 @@ async function confirmarImportPOS(){
     }
 
     // Salvar no Firestore — SOBRESCREVE dados dos meses importados (não merge)
-    // Primeiro: deletar docs existentes dos meses que estão sendo reimportados
+    // Meses congelados (fechados oficialmente) nunca são deletados nem reimportados
     const mesesImportados=[...new Set(Object.values(grupos).map(g=>g.mesRef))].sort();
     for(const mes of mesesImportados){ // deletar dados antigos antes de reimportar
+      if(POS_MESES_CONGELADOS.includes(mes)) continue; // nunca tocar em meses congelados
       const oldSnap = await db.collection('pos_resultados').where('mesRef','==',mes).get();
       if(!oldSnap.empty){
         const delBatch = db.batch();
