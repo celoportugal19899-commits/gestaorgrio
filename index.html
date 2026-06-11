@@ -982,20 +982,26 @@ const PosCanalLabels = {
 
     <!-- INCIDÊNCIAS - DASHBOARD ADM/SUPERVISOR -->
     <div id="view-adm-incidencias" class="view">
-      <div class="topbar">
+      <div class="topbar" style="flex-wrap:wrap;gap:10px">
         <div class="page-header" style="margin:0"><h1>Dashboard Incidências</h1><p>Visão geral em tempo real</p></div>
-        <div class="topbar-actions">
-          <button class="btn btn-sm btn-secondary" onclick="exportarIncidenciasExcel()" style="margin-right:8px">📊 Exportar Excel</button>
-          <select class="form-select" id="inc-filtro-status" onchange="renderDashboardIncidencias()" style="width:140px">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="abrirModalNovaIncidencia()">+ Nova Incidência</button>
+          <button class="btn btn-sm btn-secondary" onclick="exportarIncidenciasExcel()">📊 Exportar</button>
+          <select class="form-select" id="inc-filtro-status" onchange="renderDashboardIncidencias()" style="width:130px">
             <option value="todas">Todas</option>
             <option value="aberta">Abertas</option>
             <option value="normalizada">Normalizadas</option>
           </select>
-          <select class="form-select" id="inc-filtro-periodo" onchange="renderDashboardIncidencias()" style="width:140px;margin-left:8px">
+          <select class="form-select" id="inc-filtro-periodo" onchange="renderDashboardIncidencias()" style="width:130px">
             <option value="hoje">Hoje</option>
             <option value="semana">Esta Semana</option>
             <option value="mes">Este Mês</option>
             <option value="todos">Todos</option>
+          </select>
+          <input type="date" id="inc-filtro-data-ini" class="form-control" style="width:140px;font-size:12px" onchange="renderDashboardIncidencias()" title="Data inicial">
+          <input type="date" id="inc-filtro-data-fim" class="form-control" style="width:140px;font-size:12px" onchange="renderDashboardIncidencias()" title="Data final">
+          <select class="form-select" id="inc-filtro-posto" onchange="renderDashboardIncidencias()" style="width:180px">
+            <option value="">Todos os postos</option>
           </select>
         </div>
       </div>
@@ -2456,29 +2462,49 @@ function renderDashboardIncidencias() {
   if (!stats || !content) return;
   
   // Filtros
-  const filtroStatus = document.getElementById('inc-filtro-status')?.value || 'todas';
+  const filtroStatus  = document.getElementById('inc-filtro-status')?.value || 'todas';
   const filtroPeriodo = document.getElementById('inc-filtro-periodo')?.value || 'todos';
-  
-  let filtered = [...allIncidencias];
-  
-  // Filtrar por status
-  if (filtroStatus !== 'todas') {
-    filtered = filtered.filter(inc => inc.status === filtroStatus);
+  const filtroDataIni = document.getElementById('inc-filtro-data-ini')?.value || '';
+  const filtroDataFim = document.getElementById('inc-filtro-data-fim')?.value || '';
+  const filtroPosto   = document.getElementById('inc-filtro-posto')?.value   || '';
+
+  // Popular select de postos
+  const selPosto = document.getElementById('inc-filtro-posto');
+  if(selPosto){
+    const postosUnicos = [...new Set(allIncidencias.map(i=>i.posto).filter(Boolean))].sort();
+    const prevPosto = selPosto.value;
+    selPosto.innerHTML = '<option value="">Todos os postos</option>' +
+      postosUnicos.map(p=>`<option value="${p}"${p===prevPosto?' selected':''}>${p}</option>`).join('');
   }
-  
-  // Filtrar por período
+
+  let filtered = [...allIncidencias];
+
+  // Filtrar por status
+  if (filtroStatus !== 'todas') filtered = filtered.filter(i => i.status === filtroStatus);
+
+  // Filtrar por posto
+  if (filtroPosto) filtered = filtered.filter(i => i.posto === filtroPosto);
+
+  // Filtrar por datas customizadas (prioridade sobre período)
   const now = new Date();
   const hoje = now.toISOString().split('T')[0];
-  const ontem = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  
-  if (filtroPeriodo === 'hoje') {
-    filtered = filtered.filter(inc => inc.abertoEm.startsWith(hoje));
+  const ontem = new Date(now.getTime() - 86400000).toISOString().split('T')[0];
+
+  if (filtroDataIni || filtroDataFim) {
+    filtered = filtered.filter(i => {
+      const d = (i.abertoEm||'').substring(0,10);
+      if (filtroDataIni && d < filtroDataIni) return false;
+      if (filtroDataFim && d > filtroDataFim) return false;
+      return true;
+    });
+  } else if (filtroPeriodo === 'hoje') {
+    filtered = filtered.filter(i => i.abertoEm.startsWith(hoje));
   } else if (filtroPeriodo === 'semana') {
-    const semanaAtras = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    filtered = filtered.filter(inc => new Date(inc.abertoEm) >= semanaAtras);
+    const lim = new Date(now.getTime() - 7*86400000);
+    filtered = filtered.filter(i => new Date(i.abertoEm) >= lim);
   } else if (filtroPeriodo === 'mes') {
-    const mesAtras = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    filtered = filtered.filter(inc => new Date(inc.abertoEm) >= mesAtras);
+    const lim = new Date(now.getTime() - 30*86400000);
+    filtered = filtered.filter(i => new Date(i.abertoEm) >= lim);
   }
   
   // Métricas
@@ -3954,7 +3980,15 @@ async function toggleEmCurso(checked) {
 }
 
 async function renderAdmPonto() {
-  const collabs = allUsers.filter(u => u.role !== 'admin');
+  // Se allUsers ainda não carregou, buscar direto do Firestore
+  let collabs = allUsers.filter(u => u.role !== 'admin' && u.role !== 'posto');
+  if(collabs.length === 0 && allUsers.length === 0){
+    try{
+      const snap = await db.collection('users').get();
+      const fetched = snap.docs.map(d=>({id:d.id,...d.data()}));
+      collabs = fetched.filter(u => u.role !== 'admin' && u.role !== 'posto');
+    }catch(e){ console.warn('renderAdmPonto fallback query failed',e); }
+  }
   const today = todayKey();
 
   // Mês filtro
@@ -9079,7 +9113,18 @@ async function confirmarImportPOS(){
       btn.textContent='Importar'; btn.disabled=false; return;
     }
 
-    // Salvar no Firestore — merge:true = histórico nunca apagado
+    // Salvar no Firestore — SOBRESCREVE dados dos meses importados (não merge)
+    // Primeiro: deletar docs existentes dos meses que estão sendo reimportados
+    const mesesImportados=[...new Set(Object.values(grupos).map(g=>g.mesRef))].sort();
+    for(const mes of mesesImportados){
+      const oldSnap = await db.collection('pos_resultados').where('mesRef','==',mes).get();
+      if(!oldSnap.empty){
+        const delBatch = db.batch();
+        oldSnap.docs.forEach(d => delBatch.delete(d.ref));
+        await delBatch.commit();
+      }
+    }
+    // Agora salvar os dados novos (sem merge — set puro)
     const batch = db.batch();
     Object.values(grupos).forEach(g=>{
       const docId=`${g.mesRef}_${g.postoNome.replace(/\s+/g,'_')}`;
@@ -9088,7 +9133,7 @@ async function confirmarImportPOS(){
         valor:+g.valor.toFixed(2), qtd:g.qtd,
         credito:+g.credito.toFixed(2), debito:+g.debito.toFixed(2), pix:+g.pix.toFixed(2),
         updatedAt:new Date().toISOString()
-      },{merge:true});
+      });
     });
     await batch.commit();
 
