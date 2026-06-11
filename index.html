@@ -11,7 +11,32 @@
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<script>
+// Plugin inline de rótulos para charts CSAT/POS (não registrado globalmente)
+const CsatDataLabels = {
+  id: 'csatDataLabels',
+  afterDatasetsDraw(chart) {
+    const { ctx } = chart;
+    chart.data.datasets.forEach((dataset, i) => {
+      const meta = chart.getDatasetMeta(i);
+      if(meta.hidden || dataset._noLabels) return;
+      meta.data.forEach((el, j) => {
+        const val = dataset.data[j];
+        if(val === null || val === undefined || val === 0) return;
+        const txt = dataset._labelFmt ? dataset._labelFmt(val) : String(val);
+        ctx.save();
+        ctx.font = 'bold 11px sans-serif';
+        ctx.fillStyle = dataset._labelColor || '#888';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        const {x, y} = el.tooltipPosition ? el.tooltipPosition() : {x: el.x, y: el.y};
+        ctx.fillText(txt, x, y - 4);
+        ctx.restore();
+      });
+    });
+  }
+};
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script>/* pako 2.1.0 inline */
 /*! pako 2.1.0 https://github.com/nodeca/pako @license (MIT AND Zlib) */
@@ -8054,48 +8079,40 @@ function renderCsatPainel() {
 
   // Renderizar gráficos
   requestAnimationFrame(()=>setTimeout(()=>{
-    // Registrar plugin globalmente uma vez
-    if(window.ChartDataLabels && !Chart._csatDlRegistered){
-      Chart.register(ChartDataLabels);
-      Chart._csatDlRegistered = true;
-    }
-
     csatChartEvo = csatDestroyChart(csatChartEvo);
     const ce = document.getElementById('csat-chart-evo');
     if(ce && labEvo.length){
       csatChartEvo = new Chart(ce.getContext('2d'),{
+        plugins:[CsatDataLabels],
         data:{ labels:labEvo, datasets:[
           {type:'bar',label:'Pesquisas',data:pesqEvo,backgroundColor:'rgba(79,120,255,.6)',yAxisID:'y',
-           datalabels:{anchor:'end',align:'top',color:'var(--text2)',font:{size:11,weight:'bold'},formatter:v=>v>0?v:''}},
+           _labelColor:'#4F78FF',_labelFmt:v=>v>0?v:''},
           {type:'line',label:'Nota',data:notaEvo,borderColor:'#f59e0b',backgroundColor:'transparent',pointBackgroundColor:'#f59e0b',yAxisID:'y2',tension:.3,pointRadius:5,spanGaps:true,
-           datalabels:{anchor:'top',align:'top',color:'#f59e0b',font:{size:11,weight:'bold'},formatter:v=>v!==null?v.toFixed(2):''}},
+           _labelColor:'#f59e0b',_labelFmt:v=>v!==null?v.toFixed(2):''},
           {type:'line',label:'Meta 4,50',data:labEvo.map(()=>CSAT_META),borderColor:'rgba(239,68,68,.5)',borderDash:[6,4],backgroundColor:'transparent',pointRadius:0,yAxisID:'y2',
-           datalabels:{display:false}}
+           _noLabels:true}
         ]},
-        options:{responsive:true,maintainAspectRatio:false,
-          plugins:{legend:{labels:{font:{size:11}}},datalabels:{}},
-          scales:{
-            y:{position:'left',ticks:{font:{size:11}},grid:{color:'rgba(128,128,128,.1)'}},
-            y2:{position:'right',min:3.5,max:5.6,ticks:{font:{size:11},stepSize:.5},grid:{drawOnChartArea:false}}
-          }}
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{size:11}}}},scales:{
+          y:{position:'left',ticks:{font:{size:11}},grid:{color:'rgba(128,128,128,.1)'}},
+          y2:{position:'right',min:3.5,max:5.6,ticks:{font:{size:11},stepSize:.5},grid:{drawOnChartArea:false}}
+        }}
       });
     }
     csatChartAno = csatDestroyChart(csatChartAno);
     const ca = document.getElementById('csat-chart-ano');
     if(ca && anos.length){
       csatChartAno = new Chart(ca.getContext('2d'),{
+        plugins:[CsatDataLabels],
         data:{ labels:anos, datasets:[
           {type:'bar',label:'Pesquisas',data:pesqAno,backgroundColor:'rgba(79,120,255,.6)',yAxisID:'y',
-           datalabels:{anchor:'end',align:'top',color:'var(--text2)',font:{size:11,weight:'bold'},formatter:v=>v>0?v:''}},
+           _labelColor:'#4F78FF',_labelFmt:v=>v>0?v:''},
           {type:'line',label:'Nota',data:notaAno,borderColor:'#f59e0b',backgroundColor:'transparent',pointBackgroundColor:'#f59e0b',yAxisID:'y2',tension:.3,pointRadius:5,
-           datalabels:{anchor:'top',align:'top',color:'#f59e0b',font:{size:11,weight:'bold'},formatter:v=>v>0?v.toFixed(2):''}}
+           _labelColor:'#f59e0b',_labelFmt:v=>v>0?v.toFixed(2):''}
         ]},
-        options:{responsive:true,maintainAspectRatio:false,
-          plugins:{legend:{labels:{font:{size:11}}},datalabels:{}},
-          scales:{
-            y:{position:'left',ticks:{font:{size:11}},grid:{color:'rgba(128,128,128,.1)'}},
-            y2:{position:'right',min:3.5,max:5.7,ticks:{font:{size:11},stepSize:.25},grid:{drawOnChartArea:false}}
-          }}
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{size:11}}}},scales:{
+          y:{position:'left',ticks:{font:{size:11}},grid:{color:'rgba(128,128,128,.1)'}},
+          y2:{position:'right',min:3.5,max:5.7,ticks:{font:{size:11},stepSize:.25},grid:{drawOnChartArea:false}}
+        }}
       });
     }
   },120));
@@ -8291,14 +8308,15 @@ function renderCsatSupervisor() {
     if(cs && labSup.length){
       csatChartSup = new Chart(cs.getContext('2d'),{
         type:'line',
+        plugins:[CsatDataLabels],
         data:{ labels:labSup, datasets:[
           {label:'Nota Média',data:notaSup,borderColor:'#4F78FF',backgroundColor:'rgba(79,120,255,.15)',fill:true,tension:.3,pointRadius:6,pointBackgroundColor:'#4F78FF',spanGaps:true,
-           datalabels:{anchor:'top',align:'top',color:'#4F78FF',font:{size:11,weight:'bold'},formatter:v=>v!==null?v.toFixed(2):''}},
+           _labelColor:'#4F78FF',_labelFmt:v=>v!==null?v.toFixed(2):''},
           {label:'Meta 4,50',data:labSup.map(()=>CSAT_META),borderColor:'rgba(239,68,68,.5)',borderDash:[6,4],pointRadius:0,
-           datalabels:{display:false}}
+           _noLabels:true}
         ]},
         options:{responsive:true,maintainAspectRatio:false,
-          plugins:{legend:{labels:{font:{size:11}}},datalabels:{}},
+          plugins:{legend:{labels:{font:{size:11}}}},
           scales:{
             y:{min:3.5,max:5.5,ticks:{font:{size:11},stepSize:.25},grid:{color:'rgba(128,128,128,.1)'}}
           }}
@@ -8661,4 +8679,236 @@ function renderPOSEvolucao(){
         {type:'line',label:'Meta',data:metaEvo,borderColor:'rgba(239,68,68,.6)',borderDash:[6,4],backgroundColor:'transparent',pointRadius:0,yAxisID:'y',spanGaps:true}
       ]},
       options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{size:11}}}},scales:{
-        y:{position:'left',ticks:{font:{size:11},callback:v=>v.toLocaleStr
+        y:{position:'left',ticks:{font:{size:11},callback:v=>v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})},grid:{color:'rgba(128,128,128,.1)'}}
+      }}
+    });
+  },150)));
+}
+
+function renderPOSCanal(){
+  const el = document.getElementById('pos-canal-wrap');
+  if(!el) return;
+  const dados = posAllResultados.filter(d=>d.mesRef===posMesSelecionado);
+  const totCred = dados.reduce((s,d)=>s+(d.credito||0),0);
+  const totDeb  = dados.reduce((s,d)=>s+(d.debito||0),0);
+  const totPix  = dados.reduce((s,d)=>s+(d.pix||0),0);
+  const total   = totCred+totDeb+totPix||1;
+  el.innerHTML=`
+  <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid var(--border);margin-bottom:16px">
+    <h3 style="font-size:13px;font-weight:700;color:var(--text1);margin:0 0 12px">💳 Mix de Canal — Rede Completa</h3>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+      ${[['Crédito',totCred,'#4F78FF'],['Débito',totDeb,'#22c55e'],['Pix',totPix,'#f59e0b']].map(([nome,val,cor])=>`
+      <div style="flex:1;min-width:100px;background:var(--surface3);border-radius:10px;padding:12px;border-left:3px solid ${cor}">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:4px">${nome}</div>
+        <div style="font-size:16px;font-weight:700;color:${cor}">${(val/total*100).toFixed(1)}%</div>
+        <div style="font-size:11px;color:var(--text3)">${val.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</div>
+      </div>`).join('')}
+    </div>
+    <div style="position:relative;height:280px"><canvas id="pos-canal-chart"></canvas></div>
+  </div>`;
+  requestAnimationFrame(()=>requestAnimationFrame(()=>setTimeout(()=>{
+    posChartCanal = posDestroyChart(posChartCanal);
+    const cv=document.getElementById('pos-canal-chart');
+    if(!cv) return;
+    const postos29 = dados.map(d=>d.postoNome);
+    posChartCanal=new Chart(cv.getContext('2d'),{
+      type:'bar',
+      data:{ labels:postos29, datasets:[
+        {label:'Crédito',data:dados.map(d=>d.credito||0),backgroundColor:'rgba(79,120,255,.7)'},
+        {label:'Débito',data:dados.map(d=>d.debito||0),backgroundColor:'rgba(34,197,94,.7)'},
+        {label:'Pix',data:dados.map(d=>d.pix||0),backgroundColor:'rgba(245,158,11,.7)'}
+      ]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{size:11}}}},scales:{
+        x:{stacked:true,ticks:{font:{size:9}}},
+        y:{stacked:true,ticks:{font:{size:11},callback:v=>v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}}
+      }}
+    });
+  },150)));
+}
+
+function posDestroyChart(ch){ try{if(ch) ch.destroy();}catch(e){} return null; }
+
+// ─── MODAIS ──────────────────────────────────────────────────────
+function abrirModalImportPOS(){
+  document.getElementById('modal-pos-import').classList.add('open');
+}
+async function confirmarImportPOS(){
+  const fileInput = document.getElementById('pos-import-file');
+  const dataRef   = document.getElementById('pos-import-dataref').value;
+  if(!fileInput?.files[0]){ alert('Selecione um arquivo.'); return; }
+  const dataFormatada = dataRef ? new Date(dataRef+'T12:00:00').toLocaleDateString('pt-BR') : '';
+  const btn = document.getElementById('pos-import-btn');
+  btn.textContent='Importando...'; btn.disabled=true;
+  try {
+    const buf = await fileInput.files[0].arrayBuffer();
+    const wb  = XLSX.read(buf,{type:'array'});
+    const ws  = wb.Sheets[wb.SheetNames[0]];
+    const rows= XLSX.utils.sheet_to_json(ws,{defval:''});
+    const cols= Object.keys(rows[0]||{});
+    function findCol(kws){ return cols.find(c=>kws.some(k=>(c+'').toUpperCase().includes(k.toUpperCase())))||null; }
+    const colPosto = findCol(['loja','posto','unidade']);
+    const colValor = findCol(['valor','negoci','realiz','total','r$']);
+    const colQtd   = findCol(['qtd','quant','trans','operac']);
+    const colCred  = findCol(['credi']);
+    const colDeb   = findCol(['debit']);
+    const colPix   = findCol(['pix']);
+    if(!colPosto||!colValor){ alert(`Colunas não identificadas. Encontradas: ${cols.join(', ')}`); btn.textContent='Importar'; btn.disabled=false; return; }
+    // Determinar mês de referência
+    const dataInput = dataRef ? new Date(dataRef+'T12:00:00') : new Date();
+    const mesRef = `${dataInput.getFullYear()}-${String(dataInput.getMonth()+1).padStart(2,'0')}`;
+    const parseBRL=s=>parseFloat(String(s||0).replace(/[R$\s.]/g,'').replace(',','.'))||0;
+    const batch = db.batch();
+    let count=0;
+    rows.forEach(row=>{
+      const nome=(row[colPosto]||'').toString().trim().toUpperCase();
+      if(!nome||nome==='TOTAL'||nome==='GERAL'||nome.length<3) return;
+      const valor= parseBRL(row[colValor]);
+      const qtd  = parseInt(row[colQtd]||0)||0;
+      const cred = parseBRL(row[colCred]);
+      const deb  = parseBRL(row[colDeb]);
+      const pix  = parseBRL(row[colPix]);
+      const docId= `${mesRef}_${nome.replace(/\s+/g,'_')}`;
+      batch.set(db.collection('pos_resultados').doc(docId),{mesRef,postoNome:nome,valor,qtd,credito:cred,debito:deb,pix,updatedAt:new Date().toISOString()});
+      count++;
+    });
+    await batch.commit();
+    const importLog = `${count} postos importados — ${mesRef}${dataFormatada?' ('+dataFormatada+')':''} — ${new Date().toLocaleString('pt-BR')}`;
+    await db.collection('pos_config').doc('geral').set({ultimoImport:importLog,dataRef:dataFormatada},{merge:true});
+    document.getElementById('pos-import-log').textContent = importLog;
+    posAtualizarBadge(dataFormatada);
+    document.getElementById('modal-pos-import').classList.remove('open');
+    fileInput.value='';
+    await initPOS();
+    toast(`${count} postos importados!`,'ok');
+  } catch(e){ alert('Erro: '+e.message); }
+  btn.textContent='Importar'; btn.disabled=false;
+}
+
+function abrirModalMetaPOS(){
+  const el = document.getElementById('pos-meta-lista');
+  if(!el) return;
+  const postos = Object.keys(POS_METAS_FIXAS).sort();
+  el.innerHTML = postos.map(p=>`
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <span style="font-size:12px;color:var(--text2);flex:1">${p}</span>
+      <input type="number" id="pos-meta-${p.replace(/\s/g,'_')}" value="${getPOSMeta(p)}" style="width:100px;padding:4px 8px;background:var(--surface3);border:1px solid var(--border);border-radius:6px;color:var(--text1);font-size:12px;text-align:right">
+    </div>`).join('');
+  document.getElementById('modal-pos-meta').classList.add('open');
+}
+async function salvarMetaPOS(){
+  const postos = Object.keys(POS_METAS_FIXAS);
+  const novasMetas={};
+  postos.forEach(p=>{ const el=document.getElementById('pos-meta-'+p.replace(/\s/g,'_')); if(el) novasMetas[p]=parseFloat(el.value)||POS_METAS_FIXAS[p]; });
+  await db.collection('pos_config').doc('metas').set({metas:novasMetas});
+  posMetasCustom=novasMetas;
+  document.getElementById('modal-pos-meta').classList.remove('open');
+  renderPOS();
+  toast('Metas atualizadas!','ok');
+}
+
+function verHistoricoPOS(){
+  const el = document.getElementById('pos-hist-content');
+  if(!el) return;
+  const resumo = posMesesDisponiveis.map(m=>{
+    const d=posAllResultados.filter(r=>r.mesRef===m);
+    const val=d.reduce((s,r)=>s+(r.valor||0),0);
+    const meta=d.reduce((s,r)=>s+getPOSMeta(r.postoNome),0);
+    const [a,mo]=m.split('-');
+    return {label:`${['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][+mo]}/${a.slice(2)}`,val,meta,pct:meta>0?val/meta*100:0};
+  });
+  el.innerHTML=resumo.length?`<table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead><tr style="background:var(--surface2)"><th style="padding:8px;text-align:left;color:var(--text3)">Mês</th><th style="padding:8px;text-align:right;color:var(--text3)">Negociado</th><th style="padding:8px;text-align:right;color:var(--text3)">Meta</th><th style="padding:8px;text-align:center;color:var(--text3)">%</th></tr></thead>
+    <tbody>${resumo.map(r=>{const cor=r.pct>=100?'#22c55e':r.pct>=60?'#f97316':'#ef4444';return `<tr style="border-bottom:1px solid var(--border)"><td style="padding:8px">${r.label}</td><td style="padding:8px;text-align:right">${r.val.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</td><td style="padding:8px;text-align:right">${r.meta.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</td><td style="padding:8px;text-align:center;font-weight:700;color:${cor}">${r.pct.toFixed(1)}%</td></tr>`;}).join('')}</tbody>
+  </table>`:'<div style="text-align:center;padding:20px;color:var(--text3)">Nenhum histórico disponível.</div>';
+  document.getElementById('modal-pos-historico').classList.add('open');
+}
+// FIM MÓDULO POS
+
+
+initSystem();
+</script>
+<!-- MODAL: HOLERITE — VER ASSINADO (ADM) -->
+<div class="modal-overlay" id="modal-ver-assinado">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header"><div class="modal-title">📄 Holerite Assinado</div><button class="close-btn" onclick="closeModal('modal-ver-assinado')">✕</button></div>
+    <div id="ver-assinado-info" style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px"></div>
+    <div id="ver-assinado-preview" style="text-align:center;margin-bottom:16px"></div>
+    <input type="hidden" id="ver-assinado-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-ver-assinado')">Fechar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="downloadAssinado()">⬇ Baixar Assinado</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: HOLERITE — ENVIAR ASSINADO (COLABORADOR) -->
+<div class="modal-overlay" id="modal-enviar-assinado">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header"><div class="modal-title">✍️ Enviar Holerite Assinado</div><button class="close-btn" onclick="closeModal('modal-enviar-assinado')">✕</button></div>
+    <div id="enviar-assinado-info" style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px"></div>
+    <div class="form-group">
+      <label class="form-label">PDF do holerite assinado</label>
+      <div class="rh-drop-zone" style="padding:24px" onclick="document.getElementById('assinado-file-input').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="handleAssinadoDrop(event)">
+        <div class="dz-ico" style="font-size:28px">✍️</div>
+        <div class="dz-title" style="font-size:13px" id="assinado-file-label">Selecionar PDF assinado</div>
+        <div class="dz-sub">Imprima, assine e escaneie/fotografe como PDF</div>
+        <input type="file" id="assinado-file-input" accept=".pdf" style="display:none" onchange="handleAssinadoFile(this.files[0])">
+      </div>
+    </div>
+    <input type="hidden" id="enviar-assinado-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-enviar-assinado')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="confirmarEnvioAssinado()">📤 Enviar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ATESTADO — VER PDF (ADM) -->
+<div class="modal-overlay" id="modal-ver-atestado">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header"><div class="modal-title">🏥 Atestado Médico</div><button class="close-btn" onclick="closeModal('modal-ver-atestado')">✕</button></div>
+    <div id="ver-atestado-info" style="background:var(--surface2);border-radius:8px;padding:14px;margin-bottom:16px;font-size:13px"></div>
+    <input type="hidden" id="ver-atestado-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-ver-atestado')">Fechar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="downloadAtestadoPdf()">⬇ Baixar PDF</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: FOLHA — VER ASSINADA (MANAGER) -->
+<div class="modal-overlay" id="modal-ver-folha-assinada">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header"><div class="modal-title">📋 Folha de Ponto Assinada</div><button class="close-btn" onclick="closeModal('modal-ver-folha-assinada')">✕</button></div>
+    <div id="ver-folha-assinada-info" style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px"></div>
+    <input type="hidden" id="ver-folha-assinada-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-ver-folha-assinada')">Fechar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="downloadFolhaAssinada()">⬇ Baixar Assinada</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: FOLHA — ENVIAR ASSINADA (COLABORADOR) -->
+<div class="modal-overlay" id="modal-enviar-folha-assinada">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header"><div class="modal-title">✍️ Enviar Folha Assinada</div><button class="close-btn" onclick="closeModal('modal-enviar-folha-assinada')">✕</button></div>
+    <div id="enviar-folha-assinada-info" style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px"></div>
+    <div class="form-group">
+      <label class="form-label">PDF da folha assinada</label>
+      <div class="rh-drop-zone" style="padding:24px" onclick="document.getElementById('folha-assinada-file-input').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="handleFolhaAssinadaDrop(event)">
+        <div class="dz-ico" style="font-size:28px">✍️</div>
+        <div class="dz-title" style="font-size:13px" id="folha-assinada-file-label">Selecionar PDF assinado</div>
+        <input type="file" id="folha-assinada-file-input" accept=".pdf" style="display:none" onchange="handleFolhaAssinadaFile(this.files[0])">
+      </div>
+    </div>
+    <input type="hidden" id="enviar-folha-assinada-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-enviar-folha-assinada')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="confirmarEnvioFolhaAssinada()">📤 Enviar</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
