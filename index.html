@@ -23,7 +23,8 @@ const CsatDataLabels = {
       meta.data.forEach((el, j) => {
         const val = dataset.data[j];
         if(val === null || val === undefined || val === 0) return;
-        const txt = dataset._labelFmt ? dataset._labelFmt(val) : String(val);
+        const txt = dataset._labelFmt ? dataset._labelFmt(val, j) : String(val);
+        if(!txt) return;
         ctx.save();
         ctx.font = 'bold 11px sans-serif';
         ctx.fillStyle = dataset._labelColor || '#888';
@@ -31,6 +32,35 @@ const CsatDataLabels = {
         ctx.textBaseline = 'bottom';
         const {x, y} = el.tooltipPosition ? el.tooltipPosition() : {x: el.x, y: el.y};
         ctx.fillText(txt, x, y - 4);
+        ctx.restore();
+      });
+    });
+  }
+};
+
+// Plugin para rótulos internos em barras empilhadas (Canal POS)
+const PosCanalLabels = {
+  id: 'posCanalLabels',
+  afterDatasetsDraw(chart) {
+    const { ctx } = chart;
+    chart.data.datasets.forEach((dataset, i) => {
+      if(!dataset._labelInside) return;
+      const meta = chart.getDatasetMeta(i);
+      if(meta.hidden) return;
+      meta.data.forEach((bar, j) => {
+        const val = dataset.data[j];
+        if(!val || val === 0) return;
+        const txt = dataset._labelFmt ? dataset._labelFmt(val, j) : '';
+        if(!txt) return;
+        const barH = Math.abs(bar.height || (bar.base - bar.y));
+        if(barH < 14) return;
+        ctx.save();
+        ctx.font = 'bold 9px sans-serif';
+        ctx.fillStyle = dataset._labelColor || '#fff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const midY = bar.y + barH / 2;
+        ctx.fillText(txt, bar.x, midY);
         ctx.restore();
       });
     });
@@ -1172,9 +1202,28 @@ const CsatDataLabels = {
         </div>
       </div>
       <div id="pos-kpis"></div>
-      <div id="pos-tab-ranking">  <div id="pos-ranking"></div></div>
+      <div id="pos-tab-ranking">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+          <label style="font-size:12px;color:var(--text3);font-weight:600">Filtrar posto:</label>
+          <select id="pos-ranking-posto-select" class="form-select" style="width:220px" onchange="renderPOS()">
+            <option value="TODOS">Todos os postos</option>
+          </select>
+        </div>
+        <div id="pos-ranking"></div>
+      </div>
       <div id="pos-tab-campanha" style="display:none"><div id="pos-campanha"></div></div>
-      <div id="pos-tab-evolucao" style="display:none"><div id="pos-evolucao-wrap"></div></div>
+      <div id="pos-tab-evolucao" style="display:none">
+        <div style="margin-bottom:12px">
+          <label style="font-size:12px;color:var(--text3);font-weight:600;display:block;margin-bottom:6px">Selecionar postos (múltipla escolha):</label>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <select id="pos-evo-posto-select" class="form-select" style="width:220px;height:110px" multiple onchange="renderPOSEvolucao()">
+              <option value="TODOS" selected>Todos os postos (rede)</option>
+            </select>
+            <span style="font-size:11px;color:var(--text3)">Segure Ctrl/Cmd<br>para múltiplos</span>
+          </div>
+        </div>
+        <div id="pos-evolucao-wrap"></div>
+      </div>
       <div id="pos-tab-canal"    style="display:none"><div id="pos-canal-wrap"></div></div>
       <div style="margin-top:14px;font-size:12px;color:var(--text3)"><strong style="color:var(--text2)">Último import:</strong> <span id="pos-import-log">Nenhum import realizado nesta sessão.</span></div>
     </div>
@@ -8557,14 +8606,41 @@ function renderPOSKPIs(dados){
   </div>`;
 }
 
-function renderPOSRanking(dados){
+function posPopularFiltroRanking(dados){
+  const sel = document.getElementById('pos-ranking-posto-select');
+  if(!sel) return;
+  const prev = sel.value;
+  const postos = [...new Set(dados.map(d=>d.postoNome))].sort();
+  sel.innerHTML = '<option value="TODOS">Todos os postos</option>' +
+    postos.map(p=>`<option value="${p}"${p===prev?' selected':''}>${p}</option>`).join('');
+  if(prev && prev!=='TODOS' && postos.includes(prev)) sel.value=prev;
+}
+
+function renderPOSRanking(dadosMes){
   const el = document.getElementById('pos-ranking');
   if(!el) return;
-  if(!dados.length){ el.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3)">Sem dados.</div>'; return; }
-  const lista = dados.map(d=>({
-    ...d, meta:getPOSMeta(d.postoNome),
-    pct: getPOSMeta(d.postoNome)>0?(d.valor/getPOSMeta(d.postoNome)*100):0
-  })).sort((a,b)=>b.pct-a.pct||b.valor-a.valor);
+
+  // Montar lista completa: todos os 29 postos conhecidos, incluindo sem negociação
+  const todasChaves = Object.keys(POS_METAS_FIXAS);
+  const dadosMap = {};
+  dadosMes.forEach(d=>{ dadosMap[posNormKey(d.postoNome)] = d; });
+
+  const lista = todasChaves.map(k=>{
+    const d = dadosMap[k];
+    const meta = getPOSMeta(k);
+    const valor = d ? (d.valor||0) : 0;
+    const qtd   = d ? (d.qtd||0)   : 0;
+    const pct   = meta>0 ? (valor/meta*100) : 0;
+    const falta = Math.max(0, meta - valor);
+    return { postoNome: d ? d.postoNome : k, meta, valor, qtd, pct, falta, semDados: !d };
+  }).sort((a,b)=>b.pct-a.pct||b.valor-a.valor);
+
+  posPopularFiltroRanking(dadosMes);
+  const filtro = document.getElementById('pos-ranking-posto-select')?.value || 'TODOS';
+  const listaFiltrada = filtro==='TODOS' ? lista : lista.filter(p=>p.postoNome===filtro||posNormKey(p.postoNome)===posNormKey(filtro));
+
+  if(!listaFiltrada.length){ el.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3)">Sem dados.</div>'; return; }
+
   el.innerHTML=`<div style="overflow-x:auto">
   <table style="width:100%;border-collapse:collapse;font-size:13px">
     <thead><tr style="background:var(--surface2)">
@@ -8574,24 +8650,26 @@ function renderPOSRanking(dados){
       <th style="padding:8px 12px;text-align:right;color:var(--text3)">Negociado</th>
       <th style="padding:8px 12px;text-align:right;color:var(--text3)">Qtd</th>
       <th style="padding:8px 12px;text-align:center;color:var(--text3)">% Meta</th>
-      <th style="padding:8px 12px;text-align:left;color:var(--text3);min-width:120px">Progresso</th>
+      <th style="padding:8px 12px;text-align:right;color:var(--text3)">Falta para Meta</th>
     </tr></thead>
-    <tbody>${lista.map((p,i)=>{
-      const cor = p.pct>=100?'#22c55e':p.pct>=60?'#f97316':'#ef4444';
-      const bgRow = p.pct>=100?'rgba(34,197,94,.04)':p.pct<60?'rgba(239,68,68,.04)':'';
-      const barW = Math.min(100,p.pct).toFixed(0);
+    <tbody>${listaFiltrada.map((p,i)=>{
+      const cor = p.semDados?'#6b7280':p.pct>=100?'#22c55e':p.pct>=60?'#f97316':'#ef4444';
+      const bgRow = p.semDados?'rgba(107,114,128,.04)':p.pct>=100?'rgba(34,197,94,.04)':p.pct<60?'rgba(239,68,68,.04)':'';
+      const faltaStr = p.pct>=100
+        ? `<span style="color:#22c55e;font-weight:700">✔ Meta batida</span>`
+        : p.semDados
+          ? `<span style="color:#6b7280">—</span>`
+          : `<span style="color:#ef4444;font-weight:600">- ${p.falta.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</span>`;
       return `<tr style="border-bottom:1px solid var(--border);${bgRow?'background:'+bgRow:''}">
         <td style="padding:8px 12px;color:var(--text3)">${i+1}</td>
-        <td style="padding:8px 12px;font-weight:600;color:var(--text1)">${p.postoNome}</td>
-        <td style="padding:8px 12px;text-align:right;color:var(--text3)">${p.meta.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</td>
-        <td style="padding:8px 12px;text-align:right;font-weight:600;color:var(--text1)">${p.valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</td>
-        <td style="padding:8px 12px;text-align:right;color:var(--text2)">${(p.qtd||0).toLocaleString('pt-BR')}</td>
-        <td style="padding:8px 12px;text-align:center;font-weight:700;color:${cor}">${p.pct.toFixed(1)}%</td>
-        <td style="padding:8px 12px">
-          <div style="background:var(--surface3);border-radius:4px;height:8px;overflow:hidden">
-            <div style="background:${cor};width:${barW}%;height:100%;border-radius:4px;transition:width .3s"></div>
-          </div>
+        <td style="padding:8px 12px;font-weight:600;color:${p.semDados?'var(--text3)':'var(--text1)'}">
+          ${p.semDados?'<span title="Sem negociações registradas">⚠️ </span>':''}${p.postoNome}
         </td>
+        <td style="padding:8px 12px;text-align:right;color:var(--text3)">${p.meta.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</td>
+        <td style="padding:8px 12px;text-align:right;font-weight:600;color:${p.semDados?'var(--text3)':'var(--text1)'}">${p.valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</td>
+        <td style="padding:8px 12px;text-align:right;color:var(--text2)">${p.qtd.toLocaleString('pt-BR')}</td>
+        <td style="padding:8px 12px;text-align:center;font-weight:700;color:${cor}">${p.semDados?'0%':p.pct.toFixed(1)+'%'}</td>
+        <td style="padding:8px 12px;text-align:right">${faltaStr}</td>
       </tr>`;
     }).join('')}</tbody>
   </table></div>`;
@@ -8601,86 +8679,185 @@ function renderPOSCampanha(dados){
   const el = document.getElementById('pos-campanha');
   if(!el) return;
   if(!dados.length){ el.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3)">Sem dados.</div>'; return; }
-  const lista = dados.map(d=>({
-    ...d, meta:getPOSMeta(d.postoNome),
-    pct: getPOSMeta(d.postoNome)>0?(d.valor/getPOSMeta(d.postoNome)*100):0
-  })).sort((a,b)=>b.pct-a.pct);
-  const aptos   = lista.filter(p=>p.valor>=p.meta);
-  const inaptos = lista.filter(p=>p.valor<p.meta);
-  const top3    = aptos.slice(0,3);
-  const medalhas= ['🥇','🥈','🥉'];
-  const coresPodium=['#FFD700','#C0C0C0','#CD7F32'];
 
-  el.innerHTML=`
+  const todasChaves = Object.keys(POS_METAS_FIXAS);
+  const dadosMap = {};
+  dados.forEach(d=>{ dadosMap[posNormKey(d.postoNome)] = d; });
+
+  const listaCompleta = todasChaves.map(k=>{
+    const d = dadosMap[k];
+    const meta = getPOSMeta(k);
+    const valor = d ? (d.valor||0) : 0;
+    const pct   = meta>0 ? (valor/meta*100) : 0;
+    return { postoNome: d ? d.postoNome : k, meta, valor, pct, semDados: !d };
+  }).sort((a,b)=>b.pct-a.pct);
+
+  const aptos      = listaCompleta.filter(p=>p.valor>=p.meta);
+  const inaptos    = listaCompleta.filter(p=>p.valor<p.meta);
+  const top3       = aptos.slice(0,3);
+  const demaisAptos= aptos.slice(3);
+  const medalhas   = ['🥇','🥈','🥉'];
+  const coresPodium= ['#FFD700','#C0C0C0','#CD7F32'];
+  const bgsPodium  = ['rgba(255,215,0,.12)','rgba(192,192,192,.12)','rgba(205,127,50,.12)'];
+
+  let html = `
   <div style="background:linear-gradient(135deg,rgba(5,39,118,.25),rgba(201,168,76,.08));border:1px solid rgba(201,168,76,.3);border-radius:14px;padding:20px;margin-bottom:20px">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
       <div>
         <h3 style="margin:0;font-size:15px;font-weight:800;color:var(--text1)">🏆 Campanha Missão Arrecadação POS</h3>
-        <p style="margin:4px 0 0;font-size:12px;color:var(--text3)">Elegíveis: bateram a meta em valor · Desempate: maior % atingimento · Top 3 premiados</p>
+        <p style="margin:4px 0 0;font-size:12px;color:var(--text3)">Todos elegíveis ao bater a meta · Top 3 por maior % premiados</p>
       </div>
       <button class="btn btn-secondary" style="font-size:11px" onclick="abrirModalMetaPOS()">⚙️ Ajustar Metas</button>
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
-      <span style="background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);border-radius:8px;padding:4px 12px;font-size:12px"><span style="color:#22c55e;font-weight:800">${aptos.length}</span><span style="color:var(--text3);margin-left:4px">aptos</span></span>
+    <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap">
+      <span style="background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);border-radius:8px;padding:4px 12px;font-size:12px"><span style="color:#22c55e;font-weight:800">${aptos.length}</span><span style="color:var(--text3);margin-left:4px">bateram a meta</span></span>
       <span style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:4px 12px;font-size:12px"><span style="color:#ef4444;font-weight:800">${inaptos.length}</span><span style="color:var(--text3);margin-left:4px">em progresso</span></span>
-    </div>
-    ${top3.length?`
-    <div style="display:grid;grid-template-columns:repeat(${Math.min(3,top3.length)},1fr);gap:14px;margin-bottom:16px">
+    </div>`;
+
+  if(top3.length){
+    html += `<div style="margin-bottom:8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text3)">🏆 Vencedores</div>
+    <div style="display:grid;grid-template-columns:repeat(${Math.min(3,top3.length)},1fr);gap:14px;margin-bottom:20px">
       ${top3.map((p,i)=>`
-      <div style="text-align:center;padding:18px 10px;background:var(--surface2);border-radius:12px;border:2px solid ${coresPodium[i]}30">
-        <div style="font-size:32px;margin-bottom:6px">${medalhas[i]}</div>
-        <div style="font-weight:800;font-size:22px;color:${coresPodium[i]}">${p.pct.toFixed(1)}%</div>
-        <div style="font-weight:700;font-size:12px;color:var(--text1);margin:6px 0 4px;line-height:1.3">${p.postoNome}</div>
-        <div style="font-size:11px;color:var(--text3)">${p.valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</div>
+      <div style="text-align:center;padding:18px 10px;background:${bgsPodium[i]};border-radius:12px;border:2px solid ${coresPodium[i]}50">
+        <div style="font-size:38px;margin-bottom:4px">${medalhas[i]}</div>
+        <div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:2px">${i===0?'1º Lugar':i===1?'2º Lugar':'3º Lugar'}</div>
+        <div style="font-weight:800;font-size:26px;color:${coresPodium[i]};line-height:1.1">${p.pct.toFixed(1)}%</div>
+        <div style="font-weight:700;font-size:13px;color:var(--text1);margin:8px 0 4px;line-height:1.3">${p.postoNome}</div>
+        <div style="font-size:12px;color:var(--text2);font-weight:600">${p.valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</div>
         <div style="font-size:10px;color:var(--text3)">Meta: ${p.meta.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</div>
       </div>`).join('')}
-    </div>`:'<div style="text-align:center;padding:16px;color:var(--text3);font-size:13px">Nenhum posto atingiu a meta neste período.</div>'}
-    ${aptos.length>3?`
-    <div style="margin-top:8px">
-      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:8px">Demais elegíveis:</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px">
-        ${aptos.slice(3).map(p=>`<span style="background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);border-radius:8px;padding:4px 10px;font-size:12px;color:#22c55e;font-weight:600">${p.postoNome} <span style="opacity:.8">${p.pct.toFixed(0)}%</span></span>`).join('')}
-      </div>
-    </div>`:''}
-  </div>
-  ${inaptos.length?`
-  <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid var(--border)">
-    <div style="font-size:12px;font-weight:600;color:var(--text3);margin-bottom:10px">Em progresso (${inaptos.length} postos):</div>
-    <div style="display:flex;flex-direction:column;gap:6px">
-      ${inaptos.map(p=>{
-        const cor=p.pct>=60?'#f97316':'#ef4444';
-        const barW=Math.min(100,p.pct).toFixed(0);
-        return `<div style="display:flex;align-items:center;gap:8px">
-          <span style="font-size:12px;color:var(--text2);min-width:180px;font-weight:600">${p.postoNome}</span>
-          <div style="flex:1;background:var(--surface3);border-radius:4px;height:8px"><div style="background:${cor};width:${barW}%;height:100%;border-radius:4px"></div></div>
-          <span style="font-size:12px;font-weight:700;color:${cor};width:38px;text-align:right">${p.pct.toFixed(0)}%</span>
-          <span style="font-size:11px;color:var(--text3);width:120px;text-align:right">${p.valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})} / ${p.meta.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</span>
+    </div>`;
+  } else {
+    html += `<div style="text-align:center;padding:16px;color:var(--text3);font-size:13px">Nenhum posto atingiu a meta neste período.</div>`;
+  }
+
+  if(demaisAptos.length){
+    html += `<div style="margin-bottom:6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text3)">✅ Demais elegíveis (bateram a meta)</div>
+    <div style="background:var(--surface2);border-radius:10px;border:1px solid var(--border);overflow:hidden;margin-bottom:4px">
+      ${demaisAptos.map((p,i)=>{
+        const pos=i+4;
+        return `<div style="display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border)">
+          <span style="font-size:12px;color:var(--text3);min-width:24px;text-align:right">${pos}º</span>
+          <span style="flex:1;font-size:13px;font-weight:600;color:var(--text1)">${p.postoNome}</span>
+          <span style="font-size:13px;font-weight:700;color:#22c55e">${p.pct.toFixed(1)}%</span>
+          <span style="font-size:11px;color:var(--text3)">${p.valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</span>
         </div>`;
       }).join('')}
+    </div>`;
+  }
+
+  html += `</div>`;
+
+  if(inaptos.length){
+    html += `
+  <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid var(--border)">
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);margin-bottom:12px">Em progresso (${inaptos.length} postos)</div>
+    <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="background:var(--surface3)">
+        <th style="padding:6px 10px;text-align:left;color:var(--text3)">#</th>
+        <th style="padding:6px 10px;text-align:left;color:var(--text3)">Posto</th>
+        <th style="padding:6px 10px;text-align:right;color:var(--text3)">Negociado</th>
+        <th style="padding:6px 10px;text-align:right;color:var(--text3)">Meta</th>
+        <th style="padding:6px 10px;text-align:right;color:var(--text3)">Falta</th>
+        <th style="padding:6px 10px;text-align:center;color:var(--text3)">%</th>
+      </tr></thead>
+      <tbody>${inaptos.map((p,i)=>{
+        const cor=p.semDados?'#6b7280':p.pct>=60?'#f97316':'#ef4444';
+        const falta=p.meta-p.valor;
+        const posGlobal=aptos.length+i+1;
+        return `<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:6px 10px;color:var(--text3)">${posGlobal}º</td>
+          <td style="padding:6px 10px;font-weight:600;color:${p.semDados?'var(--text3)':'var(--text1)'}">${p.semDados?'⚠️ ':''}${p.postoNome}</td>
+          <td style="padding:6px 10px;text-align:right;color:var(--text2)">${p.valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</td>
+          <td style="padding:6px 10px;text-align:right;color:var(--text3)">${p.meta.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</td>
+          <td style="padding:6px 10px;text-align:right;font-weight:600;color:#ef4444">-${falta.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</td>
+          <td style="padding:6px 10px;text-align:center;font-weight:700;color:${cor}">${p.semDados?'0%':p.pct.toFixed(1)+'%'}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>
     </div>
-  </div>`:''}`;
+  </div>`;
+  }
+
+  el.innerHTML = html;
+}
+
+function posPopularSelectEvo(){
+  const sel = document.getElementById('pos-evo-posto-select');
+  if(!sel) return;
+  const prevSelected = [...sel.selectedOptions].map(o=>o.value);
+  const postos = [...new Set(posAllResultados.map(d=>d.postoNome))].sort();
+  sel.innerHTML = '<option value="TODOS">Todos os postos (rede)</option>' +
+    postos.map(p=>`<option value="${p}">${p}</option>`).join('');
+  // restaurar seleção anterior
+  if(prevSelected.length && !prevSelected.includes('TODOS')){
+    [...sel.options].forEach(o=>{ o.selected = prevSelected.includes(o.value); });
+  } else {
+    sel.options[0].selected = true;
+  }
 }
 
 function renderPOSEvolucao(){
   const el = document.getElementById('pos-evolucao-wrap');
   if(!el) return;
-  const meses = posMesesDisponiveis.slice(-8);
-  const labEvo = meses.map(m=>{ const[a,mo]=m.split('-'); return `${['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][+mo]}/${a.slice(2)}`; });
-  const valEvo = meses.map(m=>{ const d=posAllResultados.filter(r=>r.mesRef===m); return d.reduce((s,r)=>s+(r.valor||0),0); });
-  const metaEvo = meses.map(m=>{ const d=posAllResultados.filter(r=>r.mesRef===m); return d.reduce((s,r)=>s+getPOSMeta(r.postoNome),0)||0; });
-  el.innerHTML=`<div style="position:relative;height:280px"><canvas id="pos-evo-chart"></canvas></div>`;
+  posPopularSelectEvo();
+  const sel = document.getElementById('pos-evo-posto-select');
+  const selectedVals = sel ? [...sel.selectedOptions].map(o=>o.value) : ['TODOS'];
+  const isTodos = selectedVals.includes('TODOS') || selectedVals.length===0;
+  const meses = posMesesDisponiveis.slice(-12);
+  const MESES_NOME=['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const labEvo = meses.map(m=>{ const[a,mo]=m.split('-'); return `${MESES_NOME[+mo]}/${a.slice(2)}`; });
+
+  let datasets = [];
+  if(isTodos){
+    const valEvo  = meses.map(m=>posAllResultados.filter(r=>r.mesRef===m).reduce((s,r)=>s+(r.valor||0),0));
+    const qtdEvo  = meses.map(m=>posAllResultados.filter(r=>r.mesRef===m).reduce((s,r)=>s+(r.qtd||0),0));
+    const metaEvo = meses.map(m=>{ const d=posAllResultados.filter(r=>r.mesRef===m); return d.length?d.reduce((s,r)=>s+getPOSMeta(r.postoNome),0):null; });
+    datasets = [
+      {type:'bar',label:'Valor Negociado',data:valEvo,backgroundColor:'rgba(79,120,255,.65)',yAxisID:'yValor',
+        _labelFmt:v=>v>0?v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0}):'',_labelColor:'var(--text2)'},
+      {type:'bar',label:'Qtd Negociações',data:qtdEvo,backgroundColor:'rgba(34,197,94,.55)',yAxisID:'yQtd',
+        _labelFmt:v=>v>0?v.toLocaleString('pt-BR'):'',_labelColor:'#22c55e'},
+      {type:'line',label:'Meta',data:metaEvo,borderColor:'rgba(239,68,68,.7)',borderDash:[6,4],backgroundColor:'transparent',pointRadius:4,yAxisID:'yValor',spanGaps:true,
+        _noLabels:true}
+    ];
+  } else {
+    const cores = ['rgba(79,120,255,.7)','rgba(34,197,94,.7)','rgba(245,158,11,.7)','rgba(239,68,68,.7)','rgba(168,85,247,.7)','rgba(236,72,153,.7)'];
+    selectedVals.forEach((postoNome,idx)=>{
+      const cor = cores[idx%cores.length];
+      const valEvo  = meses.map(m=>{ const d=posAllResultados.find(r=>r.mesRef===m&&r.postoNome===postoNome); return d?(d.valor||0):0; });
+      const qtdEvo  = meses.map(m=>{ const d=posAllResultados.find(r=>r.mesRef===m&&r.postoNome===postoNome); return d?(d.qtd||0):0; });
+      const metaNome = getPOSMeta(postoNome);
+      datasets.push(
+        {type:'bar',label:`${postoNome} — Valor`,data:valEvo,backgroundColor:cor,yAxisID:'yValor',
+          _labelFmt:v=>v>0?v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0}):'',_labelColor:'var(--text2)'},
+        {type:'bar',label:`${postoNome} — Qtd`,data:qtdEvo,backgroundColor:cor.replace('.7','.35'),yAxisID:'yQtd',
+          _labelFmt:v=>v>0?v.toLocaleString('pt-BR'):''},
+        {type:'line',label:`Meta ${postoNome}`,data:meses.map(()=>metaNome),borderColor:cor.replace('.7','.5'),borderDash:[4,3],backgroundColor:'transparent',pointRadius:0,yAxisID:'yValor',
+          _noLabels:true}
+      );
+    });
+  }
+
+  el.innerHTML=`<div style="position:relative;height:320px"><canvas id="pos-evo-chart"></canvas></div>`;
   requestAnimationFrame(()=>requestAnimationFrame(()=>setTimeout(()=>{
     posChartEvo = posDestroyChart(posChartEvo);
     const cv=document.getElementById('pos-evo-chart');
     if(!cv||!meses.length) return;
     posChartEvo=new Chart(cv.getContext('2d'),{
-      data:{ labels:labEvo, datasets:[
-        {type:'bar',label:'Negociado',data:valEvo,backgroundColor:'rgba(79,120,255,.6)',yAxisID:'y'},
-        {type:'line',label:'Meta',data:metaEvo,borderColor:'rgba(239,68,68,.6)',borderDash:[6,4],backgroundColor:'transparent',pointRadius:0,yAxisID:'y',spanGaps:true}
-      ]},
-      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{size:11}}}},scales:{
-        y:{position:'left',ticks:{font:{size:11},callback:v=>v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})},grid:{color:'rgba(128,128,128,.1)'}}
-      }}
+      data:{ labels:labEvo, datasets },
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{
+          legend:{labels:{font:{size:10}}},
+          csatDataLabels:{display:false}
+        },
+        scales:{
+          yValor:{position:'left',ticks:{font:{size:10},callback:v=>v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})},grid:{color:'rgba(128,128,128,.1)'}},
+          yQtd:{position:'right',ticks:{font:{size:10}},grid:{drawOnChartArea:false}}
+        }
+      },
+      plugins:[CsatDataLabels]
     });
   },150)));
 }
@@ -8704,29 +8881,42 @@ function renderPOSCanal(){
         <div style="font-size:11px;color:var(--text3)">${val.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</div>
       </div>`).join('')}
     </div>
-    <div style="position:relative;height:280px"><canvas id="pos-canal-chart"></canvas></div>
+    <div style="position:relative;height:300px"><canvas id="pos-canal-chart"></canvas></div>
   </div>`;
   requestAnimationFrame(()=>requestAnimationFrame(()=>setTimeout(()=>{
     posChartCanal = posDestroyChart(posChartCanal);
     const cv=document.getElementById('pos-canal-chart');
     if(!cv) return;
     const postos29 = dados.map(d=>d.postoNome);
+    const credData = dados.map(d=>d.credito||0);
+    const debData  = dados.map(d=>d.debito||0);
+    const pixData  = dados.map(d=>d.pix||0);
+    const totaisPorPosto = postos29.map((_,i)=>(credData[i]+debData[i]+pixData[i])||1);
     posChartCanal=new Chart(cv.getContext('2d'),{
       type:'bar',
       data:{ labels:postos29, datasets:[
-        {label:'Crédito',data:dados.map(d=>d.credito||0),backgroundColor:'rgba(79,120,255,.7)'},
-        {label:'Débito',data:dados.map(d=>d.debito||0),backgroundColor:'rgba(34,197,94,.7)'},
-        {label:'Pix',data:dados.map(d=>d.pix||0),backgroundColor:'rgba(245,158,11,.7)'}
+        {label:'Crédito',data:credData,backgroundColor:'rgba(79,120,255,.75)',
+          _labelFmt:(v,i)=>{const t=totaisPorPosto[i];return v/t>=0.06?(v/t*100).toFixed(0)+'%':'';},_labelColor:'#fff',_labelInside:true},
+        {label:'Débito',data:debData,backgroundColor:'rgba(34,197,94,.75)',
+          _labelFmt:(v,i)=>{const t=totaisPorPosto[i];return v/t>=0.06?(v/t*100).toFixed(0)+'%':'';},_labelColor:'#fff',_labelInside:true},
+        {label:'Pix',data:pixData,backgroundColor:'rgba(245,158,11,.75)',
+          _labelFmt:(v,i)=>{const t=totaisPorPosto[i];return v/t>=0.06?(v/t*100).toFixed(0)+'%':'';},_labelColor:'#fff',_labelInside:true}
       ]},
-      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{size:11}}}},scales:{
-        x:{stacked:true,ticks:{font:{size:9}}},
-        y:{stacked:true,ticks:{font:{size:11},callback:v=>v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}}
-      }}
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{labels:{font:{size:11}}}},
+        scales:{
+          x:{stacked:true,ticks:{font:{size:9}}},
+          y:{stacked:true,ticks:{font:{size:10},callback:v=>v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}}
+        }
+      },
+      plugins:[PosCanalLabels]
     });
   },150)));
 }
 
 function posDestroyChart(ch){ try{if(ch) ch.destroy();}catch(e){} return null; }
+
+
 
 // ─── MODAIS ──────────────────────────────────────────────────────
 function abrirModalImportPOS(){
