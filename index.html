@@ -8739,176 +8739,85 @@ async function confirmarImportPOS(){
   const dataFormatada = dataRef ? new Date(dataRef+'T12:00:00').toLocaleDateString('pt-BR') : '';
   const btn = document.getElementById('pos-import-btn');
   btn.textContent='Importando...'; btn.disabled=true;
+
+  const POS_LOJA_MAP = {
+    'SAO JOSE DO V. DO RIO PRETO':'SAO JOSE DO VALE DO RIO PRETO',
+    'SAO JOSE DO VALE DO R.PRETO':'SAO JOSE DO VALE DO RIO PRETO',
+    'VARRE SAI':'VARRE-SAI',
+  };
+  function normPosLoja(str){
+    const n=(str||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+    return POS_LOJA_MAP[n]||n;
+  }
+  const MESES_NOME=['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
   try {
     const buf = await fileInput.files[0].arrayBuffer();
     const wb  = XLSX.read(buf,{type:'array'});
-    const ws  = wb.Sheets[wb.SheetNames[0]];
-    const rows= XLSX.utils.sheet_to_json(ws,{defval:''});
-    const cols= Object.keys(rows[0]||{});
-    function findCol(kws){ return cols.find(c=>kws.some(k=>(c+'').toUpperCase().includes(k.toUpperCase())))||null; }
-    const colPosto = findCol(['loja','posto','unidade']);
-    const colValor = findCol(['valor','negoci','realiz','total','r$']);
-    const colQtd   = findCol(['qtd','quant','trans','operac']);
-    const colCred  = findCol(['credi']);
-    const colDeb   = findCol(['debit']);
-    const colPix   = findCol(['pix']);
-    if(!colPosto||!colValor){ alert(`Colunas não identificadas. Encontradas: ${cols.join(', ')}`); btn.textContent='Importar'; btn.disabled=false; return; }
-    // Determinar mês de referência
-    const dataInput = dataRef ? new Date(dataRef+'T12:00:00') : new Date();
-    const mesRef = `${dataInput.getFullYear()}-${String(dataInput.getMonth()+1).padStart(2,'0')}`;
-    const parseBRL=s=>parseFloat(String(s||0).replace(/[R$\s.]/g,'').replace(',','.'))||0;
-    const batch = db.batch();
-    let count=0;
+    if(!wb.SheetNames.includes('Base')){
+      alert('Sheet "Base" não encontrada. Verifique se é o arquivo correto da Neobpo.');
+      btn.textContent='Importar'; btn.disabled=false; return;
+    }
+
+    const ws   = wb.Sheets['Base'];
+    const rows = XLSX.utils.sheet_to_json(ws,{defval:'',range:4});
+
+    // Agrupar por mesRef + posto — TODOS os meses do arquivo
+    const grupos = {};
+    let anosEncontrados = new Set();
     rows.forEach(row=>{
-      const nome=(row[colPosto]||'').toString().trim().toUpperCase();
-      if(!nome||nome==='TOTAL'||nome==='GERAL'||nome.length<3) return;
-      const valor= parseBRL(row[colValor]);
-      const qtd  = parseInt(row[colQtd]||0)||0;
-      const cred = parseBRL(row[colCred]);
-      const deb  = parseBRL(row[colDeb]);
-      const pix  = parseBRL(row[colPix]);
-      const docId= `${mesRef}_${nome.replace(/\s+/g,'_')}`;
-      batch.set(db.collection('pos_resultados').doc(docId),{mesRef,postoNome:nome,valor,qtd,credito:cred,debito:deb,pix,updatedAt:new Date().toISOString()});
-      count++;
+      const loja=(row['Loja.1']||row['Loja']||'').toString().trim();
+      if(!loja.startsWith('Posto ')) return;
+      const mesNum=parseInt(row['Mês']||row['Mes']||0);
+      if(!mesNum) return;
+      // Determinar ano: usar dataRef como base ou ano atual
+      const anoBase = dataRef ? new Date(dataRef+'T12:00:00').getFullYear() : new Date().getFullYear();
+      const mesRef=`${anoBase}-${String(mesNum).padStart(2,'0')}`;
+      anosEncontrados.add(anoBase);
+      const postoNome=normPosLoja(loja.replace(/^Posto\s+/,''));
+      const key=`${mesRef}|${postoNome}`;
+      const valor=parseFloat(row['Valor do pedido']||0)||0;
+      const modal=(row['Modalidade']||'').toUpperCase();
+      if(!grupos[key]) grupos[key]={mesRef,postoNome,valor:0,qtd:0,credito:0,debito:0,pix:0};
+      const g=grupos[key];
+      g.valor+=valor; g.qtd++;
+      if(modal==='CRÉDITO'||modal==='CREDITO') g.credito+=valor;
+      else if(modal==='DÉBITO'||modal==='DEBITO') g.debito+=valor;
+      else if(modal==='PIX') g.pix+=valor;
+    });
+
+    const total=Object.keys(grupos).length;
+    if(!total){
+      alert('Nenhum posto RG encontrado no arquivo. Verifique se é o arquivo correto.');
+      btn.textContent='Importar'; btn.disabled=false; return;
+    }
+
+    // Salvar no Firestore — merge:true para nunca apagar histórico
+    const batch=db.batch();
+    Object.values(grupos).forEach(g=>{
+      const docId=`${g.mesRef}_${g.postoNome.replace(/\s+/g,'_')}`;
+      batch.set(db.collection('pos_resultados').doc(docId),{
+        mesRef:g.mesRef, postoNome:g.postoNome,
+        valor:+g.valor.toFixed(2), qtd:g.qtd,
+        credito:+g.credito.toFixed(2), debito:+g.debito.toFixed(2), pix:+g.pix.toFixed(2),
+        updatedAt:new Date().toISOString()
+      },{merge:true});
     });
     await batch.commit();
-    const importLog = `${count} postos importados — ${mesRef}${dataFormatada?' ('+dataFormatada+')':''} — ${new Date().toLocaleString('pt-BR')}`;
+
+    // Registrar última atualização
+    const mesesImportados=[...new Set(Object.values(grupos).map(g=>g.mesRef))].sort();
+    const mesesLabel=mesesImportados.map(m=>{const[,mo]=m.split('-');return MESES_NOME[+mo];}).join(', ');
+    const importLog=`${total} registros (${mesesLabel}) — atualizado em ${new Date().toLocaleString('pt-BR')}${dataFormatada?' — dados até '+dataFormatada:''}`;
     await db.collection('pos_config').doc('geral').set({ultimoImport:importLog,dataRef:dataFormatada},{merge:true});
-    document.getElementById('pos-import-log').textContent = importLog;
+    document.getElementById('pos-import-log').textContent=importLog;
     posAtualizarBadge(dataFormatada);
     document.getElementById('modal-pos-import').classList.remove('open');
     fileInput.value='';
     await initPOS();
-    toast(`${count} postos importados!`,'ok');
-  } catch(e){ alert('Erro: '+e.message); }
+    toast(`Histórico importado: ${mesesLabel}!`,'ok');
+  } catch(e){ alert('Erro: '+e.message); console.error(e); }
   btn.textContent='Importar'; btn.disabled=false;
 }
 
-function abrirModalMetaPOS(){
-  const el = document.getElementById('pos-meta-lista');
-  if(!el) return;
-  const postos = Object.keys(POS_METAS_FIXAS).sort();
-  el.innerHTML = postos.map(p=>`
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-      <span style="font-size:12px;color:var(--text2);flex:1">${p}</span>
-      <input type="number" id="pos-meta-${p.replace(/\s/g,'_')}" value="${getPOSMeta(p)}" style="width:100px;padding:4px 8px;background:var(--surface3);border:1px solid var(--border);border-radius:6px;color:var(--text1);font-size:12px;text-align:right">
-    </div>`).join('');
-  document.getElementById('modal-pos-meta').classList.add('open');
-}
-async function salvarMetaPOS(){
-  const postos = Object.keys(POS_METAS_FIXAS);
-  const novasMetas={};
-  postos.forEach(p=>{ const el=document.getElementById('pos-meta-'+p.replace(/\s/g,'_')); if(el) novasMetas[p]=parseFloat(el.value)||POS_METAS_FIXAS[p]; });
-  await db.collection('pos_config').doc('metas').set({metas:novasMetas});
-  posMetasCustom=novasMetas;
-  document.getElementById('modal-pos-meta').classList.remove('open');
-  renderPOS();
-  toast('Metas atualizadas!','ok');
-}
 
-function verHistoricoPOS(){
-  const el = document.getElementById('pos-hist-content');
-  if(!el) return;
-  const resumo = posMesesDisponiveis.map(m=>{
-    const d=posAllResultados.filter(r=>r.mesRef===m);
-    const val=d.reduce((s,r)=>s+(r.valor||0),0);
-    const meta=d.reduce((s,r)=>s+getPOSMeta(r.postoNome),0);
-    const [a,mo]=m.split('-');
-    return {label:`${['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][+mo]}/${a.slice(2)}`,val,meta,pct:meta>0?val/meta*100:0};
-  });
-  el.innerHTML=resumo.length?`<table style="width:100%;border-collapse:collapse;font-size:13px">
-    <thead><tr style="background:var(--surface2)"><th style="padding:8px;text-align:left;color:var(--text3)">Mês</th><th style="padding:8px;text-align:right;color:var(--text3)">Negociado</th><th style="padding:8px;text-align:right;color:var(--text3)">Meta</th><th style="padding:8px;text-align:center;color:var(--text3)">%</th></tr></thead>
-    <tbody>${resumo.map(r=>{const cor=r.pct>=100?'#22c55e':r.pct>=60?'#f97316':'#ef4444';return `<tr style="border-bottom:1px solid var(--border)"><td style="padding:8px">${r.label}</td><td style="padding:8px;text-align:right">${r.val.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</td><td style="padding:8px;text-align:right">${r.meta.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</td><td style="padding:8px;text-align:center;font-weight:700;color:${cor}">${r.pct.toFixed(1)}%</td></tr>`;}).join('')}</tbody>
-  </table>`:'<div style="text-align:center;padding:20px;color:var(--text3)">Nenhum histórico disponível.</div>';
-  document.getElementById('modal-pos-historico').classList.add('open');
-}
-// FIM MÓDULO POS
-
-
-initSystem();
-</script>
-<!-- MODAL: HOLERITE — VER ASSINADO (ADM) -->
-<div class="modal-overlay" id="modal-ver-assinado">
-  <div class="modal" style="max-width:560px">
-    <div class="modal-header"><div class="modal-title">📄 Holerite Assinado</div><button class="close-btn" onclick="closeModal('modal-ver-assinado')">✕</button></div>
-    <div id="ver-assinado-info" style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px"></div>
-    <div id="ver-assinado-preview" style="text-align:center;margin-bottom:16px"></div>
-    <input type="hidden" id="ver-assinado-id">
-    <div style="display:flex;gap:10px;margin-top:8px">
-      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-ver-assinado')">Fechar</button>
-      <button class="btn btn-primary" style="flex:1" onclick="downloadAssinado()">⬇ Baixar Assinado</button>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL: HOLERITE — ENVIAR ASSINADO (COLABORADOR) -->
-<div class="modal-overlay" id="modal-enviar-assinado">
-  <div class="modal" style="max-width:480px">
-    <div class="modal-header"><div class="modal-title">✍️ Enviar Holerite Assinado</div><button class="close-btn" onclick="closeModal('modal-enviar-assinado')">✕</button></div>
-    <div id="enviar-assinado-info" style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px"></div>
-    <div class="form-group">
-      <label class="form-label">PDF do holerite assinado</label>
-      <div class="rh-drop-zone" style="padding:24px" onclick="document.getElementById('assinado-file-input').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="handleAssinadoDrop(event)">
-        <div class="dz-ico" style="font-size:28px">✍️</div>
-        <div class="dz-title" style="font-size:13px" id="assinado-file-label">Selecionar PDF assinado</div>
-        <div class="dz-sub">Imprima, assine e escaneie/fotografe como PDF</div>
-        <input type="file" id="assinado-file-input" accept=".pdf" style="display:none" onchange="handleAssinadoFile(this.files[0])">
-      </div>
-    </div>
-    <input type="hidden" id="enviar-assinado-id">
-    <div style="display:flex;gap:10px;margin-top:8px">
-      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-enviar-assinado')">Cancelar</button>
-      <button class="btn btn-primary" style="flex:1" onclick="confirmarEnvioAssinado()">📤 Enviar</button>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL: ATESTADO — VER PDF (ADM) -->
-<div class="modal-overlay" id="modal-ver-atestado">
-  <div class="modal" style="max-width:520px">
-    <div class="modal-header"><div class="modal-title">🏥 Atestado Médico</div><button class="close-btn" onclick="closeModal('modal-ver-atestado')">✕</button></div>
-    <div id="ver-atestado-info" style="background:var(--surface2);border-radius:8px;padding:14px;margin-bottom:16px;font-size:13px"></div>
-    <input type="hidden" id="ver-atestado-id">
-    <div style="display:flex;gap:10px;margin-top:8px">
-      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-ver-atestado')">Fechar</button>
-      <button class="btn btn-primary" style="flex:1" onclick="downloadAtestadoPdf()">⬇ Baixar PDF</button>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL: FOLHA — VER ASSINADA (MANAGER) -->
-<div class="modal-overlay" id="modal-ver-folha-assinada">
-  <div class="modal" style="max-width:560px">
-    <div class="modal-header"><div class="modal-title">📋 Folha de Ponto Assinada</div><button class="close-btn" onclick="closeModal('modal-ver-folha-assinada')">✕</button></div>
-    <div id="ver-folha-assinada-info" style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px"></div>
-    <input type="hidden" id="ver-folha-assinada-id">
-    <div style="display:flex;gap:10px;margin-top:8px">
-      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-ver-folha-assinada')">Fechar</button>
-      <button class="btn btn-primary" style="flex:1" onclick="downloadFolhaAssinada()">⬇ Baixar Assinada</button>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL: FOLHA — ENVIAR ASSINADA (COLABORADOR) -->
-<div class="modal-overlay" id="modal-enviar-folha-assinada">
-  <div class="modal" style="max-width:480px">
-    <div class="modal-header"><div class="modal-title">✍️ Enviar Folha Assinada</div><button class="close-btn" onclick="closeModal('modal-enviar-folha-assinada')">✕</button></div>
-    <div id="enviar-folha-assinada-info" style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px"></div>
-    <div class="form-group">
-      <label class="form-label">PDF da folha assinada</label>
-      <div class="rh-drop-zone" style="padding:24px" onclick="document.getElementById('folha-assinada-file-input').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="handleFolhaAssinadaDrop(event)">
-        <div class="dz-ico" style="font-size:28px">✍️</div>
-        <div class="dz-title" style="font-size:13px" id="folha-assinada-file-label">Selecionar PDF assinado</div>
-        <input type="file" id="folha-assinada-file-input" accept=".pdf" style="display:none" onchange="handleFolhaAssinadaFile(this.files[0])">
-      </div>
-    </div>
-    <input type="hidden" id="enviar-folha-assinada-id">
-    <div style="display:flex;gap:10px;margin-top:8px">
-      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-enviar-folha-assinada')">Cancelar</button>
-      <button class="btn btn-primary" style="flex:1" onclick="confirmarEnvioFolhaAssinada()">📤 Enviar</button>
-    </div>
-  </div>
-</div>
-
-</body>
-</html>
