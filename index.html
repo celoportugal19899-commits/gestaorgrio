@@ -672,6 +672,7 @@
           <div class="sidebar-item sidebar-sub" id="nav-postos-adm" onclick="showView('adm-postos',this)"><span class="icon">📡</span> Horários Postos</div>
           <div class="sidebar-item sidebar-sub" id="nav-indicadores-adm" onclick="showView('adm-indicadores',this)"><span class="icon">📊</span> Indicadores</div>
           <div class="sidebar-item sidebar-sub" id="nav-csat-adm" onclick="showView('adm-csat',this)"><span class="icon">⭐</span> Pesquisa CSAT</div>
+          <div class="sidebar-item sidebar-sub" id="nav-pos-adm" onclick="showView('adm-pos',this)"><span class="icon">💳</span> Máquina Cartão POS</div>
         </div>
         <div class="sidebar-item" id="nav-inc-adm" onclick="showView('adm-incidencias',this)"><span class="icon">📋</span> Incidências <span id="inc-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
         <div class="sidebar-item" id="nav-caixas-adm" onclick="showView('adm-caixas',this)"><span class="icon">💰</span> Caixas Rotativos <span id="caixa-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
@@ -712,7 +713,7 @@
         <div class="sidebar-item" onclick="showView('col-tasks',this)"><span class="icon">◈</span> Minhas Tarefas</div>
         <div class="sidebar-item" onclick="showView('sup-demandas-equipe',this)"><span class="icon">◈</span> Demandas da Equipe</div>
         <div class="sidebar-item" onclick="showView('col-ponto',this)"><span class="icon">⏱</span> Meu Ponto</div>
-        <div class="sidebar-item" onclick="showView('col-incidencias',this)"><span class="icon">📋</span> Incidências</div>
+        <div class="sidebar-item" onclick="showView('adm-incidencias',this)"><span class="icon">📋</span> Incidências <span id="inc-badge-sup" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
         <div class="sidebar-item" onclick="showView('sup-caixa',this)"><span class="icon">💰</span> Caixa Rotativo</div>
         <div class="sidebar-item" onclick="showView('sup-combustivel',this)"><span class="icon">⛽</span> Recarga Combustível</div>
       </div>
@@ -728,6 +729,7 @@
         <div class="sidebar-group" id="sup-postos-group" style="display:none">
           <div class="sidebar-item sidebar-sub" id="nav-indicadores-sup" onclick="showView('adm-indicadores',this)"><span class="icon">📊</span> Indicadores</div>
           <div class="sidebar-item sidebar-sub" id="nav-csat-sup" onclick="showView('adm-csat',this)"><span class="icon">⭐</span> Pesquisa CSAT</div>
+          <div class="sidebar-item sidebar-sub" id="nav-pos-sup" onclick="showView('adm-pos',this)"><span class="icon">💳</span> Máquina Cartão POS</div>
         </div>
       </div>
     </div>
@@ -1115,13 +1117,57 @@
     </div>
 
     <!-- MODAL: COMENTÁRIOS CSAT -->
-    <div id="modal-csat-comentarios" class="modal">
-      <div class="modal-box" style="max-width:640px;max-height:80vh;display:flex;flex-direction:column">
-        <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border)">
+    <div id="modal-csat-comentarios" class="modal-overlay">
+      <div class="modal" style="max-width:640px;max-height:80vh;display:flex;flex-direction:column;padding:0;overflow:hidden">
+        <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border);margin-bottom:0">
           <h3 id="csat-coment-titulo" style="margin:0;font-size:15px;color:var(--text1)">💬 Comentários</h3>
-          <button onclick="document.getElementById('modal-csat-comentarios').classList.remove('open')" style="background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer;padding:0 4px">×</button>
+          <button onclick="document.getElementById('modal-csat-comentarios').classList.remove('open')" style="background:none;border:none;color:var(--text3);font-size:22px;cursor:pointer;padding:0 4px;line-height:1">×</button>
         </div>
         <div id="csat-coment-body" style="overflow-y:auto;padding:16px 20px;flex:1"></div>
+      </div>
+    </div>
+
+    <!-- MÁQUINA CARTÃO POS -->
+    <div id="view-adm-pos" class="view">
+      <div class="topbar" style="flex-wrap:wrap;gap:10px;align-items:flex-start">
+        <div class="page-header" style="margin:0"><h1>Máquina Cartão POS</h1><p id="pos-subtitle">Negociação de Débitos — Postos de Atendimento</p></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <div style="display:flex;gap:4px;background:var(--surface2);border-radius:8px;padding:3px;border:1px solid var(--border)">
+            <button class="ind-tab-btn active" id="posTab-painel" onclick="switchPosTab('painel')">📊 Painel</button>
+            <button class="ind-tab-btn" id="posTab-importar" onclick="switchPosTab('importar')">📥 Importar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- seletor de campanha -->
+      <div id="pos-campanha-wrap" style="display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 18px;align-items:center">
+        <span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;font-weight:700;margin-right:4px">Campanha:</span>
+        <div id="pos-campanha-btns" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+      </div>
+
+      <div id="posTabContent-painel"><div id="pos-painel-content"></div></div>
+      <div id="posTabContent-importar" style="display:none">
+        <div style="max-width:600px">
+          <div class="card" style="padding:24px">
+            <h3 style="margin:0 0 6px;font-size:15px">📥 Importar Excel — Campanha POS</h3>
+            <p style="color:var(--text3);font-size:13px;margin:0 0 16px">Selecione o arquivo Excel com os dados de negociação. O sistema extrai posto, valor negociado e meta.</p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+              <div>
+                <label style="font-size:12px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px">Nome da Campanha</label>
+                <input type="text" id="pos-campanha-nome" class="form-control" placeholder="Ex: Maio/2026" />
+              </div>
+              <div>
+                <label style="font-size:12px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px">Data de Referência</label>
+                <input type="date" id="pos-data-ref" class="form-control" />
+              </div>
+            </div>
+            <input type="file" id="pos-file-input" accept=".xlsx,.xls" style="display:none" onchange="importarPOS(this)">
+            <button class="btn btn-primary" onclick="document.getElementById('pos-file-input').click()">📂 Selecionar e Importar</button>
+          </div>
+          <div style="margin-top:14px;font-size:13px;color:var(--text3)">
+            <strong style="color:var(--text2)">Último import:</strong> <span id="pos-import-log-txt">Nenhum import realizado nesta sessão.</span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -2945,7 +2991,7 @@ function showView(name, el) {
   document.getElementById('view-' + name).classList.add('active');
   document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
   if (el) el.classList.add('active');
-  if (name === 'adm-postos' || name === 'adm-indicadores' || name === 'adm-csat') {
+  if (name === 'adm-postos' || name === 'adm-indicadores' || name === 'adm-csat' || name === 'adm-pos') {
     const grp = document.getElementById('postos-group');
     const arr = document.getElementById('arrow-postos-group');
     if (grp) grp.style.display = 'block';
@@ -2957,6 +3003,7 @@ function showView(name, el) {
     if (arrSup) arrSup.classList.add('open');
   }
   if (name === 'adm-csat') { (async()=>{ await initCsatMesFiltro(); await renderCSAT(); })(); }
+  if (name === 'adm-pos') { (async()=>{ await initPOS(); })(); }
   if (name === 'supervisor-postos') renderSupervisorPostos();
   if (name === 'sup-caixa') renderSupCaixa();
   if (name === 'adm-caixas') renderAdmCaixas();
@@ -4318,6 +4365,14 @@ async function carregarTodosIndicadores() {
 
 // ── Init completo ──
 async function initIndicadoresMesFiltro() {
+  // 0. Restaurar info do último import
+  try {
+    const cfg = await db.collection('indicadores_config').doc('geral').get();
+    if (cfg.exists) {
+      const logTxt = document.getElementById('ind-import-log-txt');
+      if(logTxt && cfg.data().ultimoImport) logTxt.textContent = cfg.data().ultimoImport;
+    }
+  } catch(e){}
   // 1. Buscar Firestore
   const snap=await db.collection('indicadores').get();
   allIndicadores=snap.docs.map(d=>({id:d.id,...d.data()}));
@@ -4825,11 +4880,14 @@ async function importarExcelIndicadores() {
         },{merge:true}); count++;
       });
       await batch.commit();
+      // Salvar info do último import no Firestore
+      const importInfo=`${count} postos — ${mesRef}${dataRef?' (D-1: '+new Date(dataRef+'T12:00:00').toLocaleDateString('pt-BR')+')':''} — ${new Date().toLocaleString('pt-BR')}`;
+      try{ await db.collection('indicadores_config').doc('geral').set({ultimoImport:importInfo},{merge:true}); }catch(e){}
       indicadoresCarregados=false;
       await carregarTodosIndicadores();
       toast(`${count} postos importados!`,'ok');
       const logTxt=document.getElementById('ind-import-log-txt');
-      if(logTxt) logTxt.textContent=`${count} postos — ${mesRef}${dataRef?' (D-1: '+new Date(dataRef+'T12:00:00').toLocaleDateString('pt-BR')+')':''} — ${new Date().toLocaleTimeString('pt-BR')}`;
+      if(logTxt) logTxt.textContent=importInfo;
       btn.textContent=`✅ ${count} postos importados`; fileInput.value='';
       mesesSelecionados=[mesRef]; indTabAtual='painel';
       document.querySelectorAll('.ind-tab-btn').forEach(b=>b.classList.remove('active'));
@@ -8329,6 +8387,225 @@ async function importarCSAT(input) {
 }
 // FIM MÓDULO CSAT
 // ══════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════
+// MÓDULO: MÁQUINA CARTÃO POS
+// ══════════════════════════════════════════════════════
+let posAllData      = [];   // [{campanhaId, campanhaLabel, postoNome, valorNeg, meta, dataRef}]
+let posCampanhas    = [];   // [{id, label, dataRef}]
+let posCampanhaAtiva = null;
+let posPainelChart  = null;
+
+function posNorm(s){ return (s||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim(); }
+
+async function initPOS() {
+  try {
+    const snap = await db.collection('pos_campanha').get();
+    posAllData  = [];
+    posCampanhas = [];
+    snap.forEach(doc=>{
+      const d = doc.data();
+      posCampanhas.push({id:doc.id, label:d.campanhaLabel||doc.id, dataRef:d.dataRef||''});
+      (d.postos||[]).forEach(p=>posAllData.push({...p, campanhaId:doc.id, campanhaLabel:d.campanhaLabel||doc.id}));
+    });
+    posCampanhas.sort((a,b)=>a.label.localeCompare(b.label));
+    // Restaurar log
+    try {
+      const cfg = await db.collection('pos_config').doc('geral').get();
+      if(cfg.exists){ const l=document.getElementById('pos-import-log-txt'); if(l&&cfg.data().ultimoImport) l.textContent=cfg.data().ultimoImport; }
+    }catch(e){}
+    // Subtitle
+    const sub = document.getElementById('pos-subtitle');
+    if(sub && posCampanhas.length) sub.innerHTML = `Negociação de Débitos &nbsp;|&nbsp; <span style="color:var(--yellow);font-weight:700">📅 ${posCampanhas[posCampanhas.length-1].label}</span>`;
+    if(!posCampanhaAtiva && posCampanhas.length) posCampanhaAtiva = posCampanhas[posCampanhas.length-1].id;
+    renderPosCampanhaBtns();
+    renderPosPainel();
+  } catch(e){ console.error('initPOS',e); }
+}
+
+function renderPosCampanhaBtns(){
+  const wrap = document.getElementById('pos-campanha-btns');
+  if(!wrap) return;
+  wrap.innerHTML = posCampanhas.map(c=>`
+    <button class="ind-mes-btn${c.id===posCampanhaAtiva?' active':''}" onclick="selectPosCampanha('${c.id}',this)">${c.label}</button>`).join('');
+}
+
+function selectPosCampanha(id, el){
+  posCampanhaAtiva = id;
+  document.querySelectorAll('#pos-campanha-btns .ind-mes-btn').forEach(b=>b.classList.remove('active'));
+  if(el) el.classList.add('active');
+  renderPosPainel();
+}
+
+function switchPosTab(tab){
+  ['painel','importar'].forEach(t=>{
+    document.getElementById('posTab-'+t)?.classList.toggle('active',t===tab);
+    const c=document.getElementById('posTabContent-'+t);
+    if(c) c.style.display=t===tab?'':'none';
+  });
+  const cw=document.getElementById('pos-campanha-wrap');
+  if(cw) cw.style.display=tab==='importar'?'none':'';
+  if(tab==='painel') renderPosPainel();
+}
+
+function renderPosPainel(){
+  const el = document.getElementById('pos-painel-content');
+  if(!el) return;
+  const campanha = posCampanhas.find(c=>c.id===posCampanhaAtiva);
+  const dados = posAllData.filter(d=>d.campanhaId===posCampanhaAtiva);
+
+  if(!campanha || !dados.length){
+    el.innerHTML=`<div style="text-align:center;padding:60px;color:var(--text3)">Nenhum dado para esta campanha.<br><small>Importe o Excel na aba Importar.</small></div>`;
+    return;
+  }
+
+  const totalNeg  = dados.reduce((s,d)=>s+(d.valorNeg||0),0);
+  const totalMeta = dados.reduce((s,d)=>s+(d.meta||0),0);
+  const pctGeral  = totalMeta>0?(totalNeg/totalMeta*100):0;
+  const acimaMeta = dados.filter(d=>d.meta>0&&(d.valorNeg/d.meta)>=1).length;
+
+  // Ranking por % individual
+  const ranking = dados.map(d=>({
+    ...d,
+    pct: d.meta>0 ? (d.valorNeg/d.meta*100) : 0
+  })).sort((a,b)=>b.pct-a.pct||b.valorNeg-a.valorNeg);
+
+  const top3 = ranking.slice(0,3);
+  const medalhas = ['🥇','🥈','🥉'];
+  const coresPodium = ['#FFD700','#C0C0C0','#CD7F32'];
+
+  el.innerHTML = `
+  <!-- Data info -->
+  ${campanha.dataRef?`<div style="display:inline-flex;align-items:center;gap:6px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:5px 12px;font-size:12px;font-weight:600;color:#f59e0b;margin-bottom:16px">📅 Referência: ${campanha.dataRef}</div>`:''}
+
+  <!-- KPIs -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px">
+    <div class="card" style="padding:16px 20px;border-left:4px solid var(--primary)">
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">Total Negociado</div>
+      <div style="font-size:22px;font-weight:700;color:var(--text1)">${totalNeg.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</div>
+    </div>
+    <div class="card" style="padding:16px 20px;border-left:4px solid ${pctGeral>=100?'#22c55e':'#f59e0b'}">
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">% da Meta Geral</div>
+      <div style="font-size:28px;font-weight:700;color:${pctGeral>=100?'#22c55e':'#f59e0b'}">${pctGeral.toFixed(1)}%</div>
+      <div style="font-size:11px;color:var(--text3)">Meta: ${totalMeta.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</div>
+    </div>
+    <div class="card" style="padding:16px 20px;border-left:4px solid #22c55e">
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">Postos c/ Meta</div>
+      <div style="font-size:28px;font-weight:700;color:#22c55e">${acimaMeta}<span style="font-size:14px;color:var(--text3)">/${dados.length}</span></div>
+    </div>
+  </div>
+
+  <!-- Pódio Top 3 -->
+  <div class="card" style="padding:20px;margin-bottom:20px">
+    <div style="font-weight:700;font-size:13px;margin-bottom:18px;color:var(--text2)">🏆 Top 3 — Maior % de Meta Individual</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+      ${top3.map((p,i)=>`
+      <div style="text-align:center;padding:20px 12px;background:var(--surface2);border-radius:12px;border:2px solid ${coresPodium[i]}20;position:relative">
+        <div style="font-size:36px;margin-bottom:6px">${medalhas[i]}</div>
+        <div style="font-weight:800;font-size:22px;color:${coresPodium[i]}">${p.pct.toFixed(1)}%</div>
+        <div style="font-weight:700;font-size:13px;color:var(--text1);margin:6px 0 4px">${p.postoNome}</div>
+        <div style="font-size:12px;color:var(--text3)">${p.valorNeg.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">Meta: ${p.meta.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</div>
+      </div>`).join('')}
+    </div>
+  </div>
+
+  <!-- Ranking completo -->
+  <div class="card" style="padding:18px">
+    <div style="font-weight:700;font-size:13px;margin-bottom:14px;color:var(--text2)">📋 Ranking Completo — ${campanha.label}</div>
+    <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead>
+        <tr style="background:var(--surface2)">
+          <th style="padding:8px 12px;text-align:left;color:var(--text3);font-weight:600">#</th>
+          <th style="padding:8px 12px;text-align:left;color:var(--text3);font-weight:600">Posto</th>
+          <th style="padding:8px 12px;text-align:right;color:var(--text3);font-weight:600">Meta</th>
+          <th style="padding:8px 12px;text-align:right;color:var(--text3);font-weight:600">Negociado</th>
+          <th style="padding:8px 12px;text-align:center;color:var(--text3);font-weight:600">% Meta</th>
+          <th style="padding:8px 12px;text-align:center;color:var(--text3);font-weight:600">Situação</th>
+        </tr>
+      </thead>
+      <tbody>${ranking.map((p,i)=>{
+        const cor = p.pct>=100?'#22c55e':p.pct>=70?'#f59e0b':'#ef4444';
+        const ico = p.pct>=100?'✅':p.pct>=70?'🟡':'❌';
+        const bg  = p.pct>=100?'rgba(34,197,94,.05)':p.pct<50?'rgba(239,68,68,.04)':'';
+        return `<tr style="border-bottom:1px solid var(--border);${bg?'background:'+bg:''}">
+          <td style="padding:8px 12px;color:var(--text3)">${i<3?medalhas[i]:i+1}</td>
+          <td style="padding:8px 12px;font-weight:600;color:var(--text1)">${p.postoNome}</td>
+          <td style="padding:8px 12px;text-align:right;color:var(--text3)">${p.meta.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</td>
+          <td style="padding:8px 12px;text-align:right;font-weight:600;color:var(--text1)">${p.valorNeg.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}</td>
+          <td style="padding:8px 12px;text-align:center;font-weight:700;color:${cor}">${p.pct.toFixed(1)}%</td>
+          <td style="padding:8px 12px;text-align:center">${ico}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>
+    </div>
+  </div>`;
+}
+
+// ─── IMPORTAR POS ─────────────────────────────────────────────────
+async function importarPOS(input) {
+  const file = input.files[0];
+  if(!file) return;
+  const logEl = document.getElementById('pos-import-log-txt');
+  const nomeCampanha = document.getElementById('pos-campanha-nome')?.value.trim();
+  const dataRef = document.getElementById('pos-data-ref')?.value;
+  if(!nomeCampanha){ if(logEl) logEl.textContent='❌ Informe o nome da campanha.'; return; }
+
+  if(logEl) logEl.textContent = 'Lendo arquivo...';
+  try {
+    const buf = await file.arrayBuffer();
+    const wb  = XLSX.read(buf,{type:'array'});
+    const ws  = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws,{defval:''});
+
+    // Tentar detectar colunas automaticamente
+    const sample = rows[0]||{};
+    const cols = Object.keys(sample);
+
+    // Heurística: coluna com "loja" ou "posto" = nome, coluna com "meta" = meta, coluna com "neg" ou "valor" ou "real" = negociado
+    function findCol(keywords){ return cols.find(c=>keywords.some(k=>posNorm(c).includes(posNorm(k))))||null; }
+    const colPosto = findCol(['loja','posto','unidade','agencia']);
+    const colMeta  = findCol(['meta']);
+    const colNeg   = findCol(['negociado','realizado','valor negoc','neg','real','atingido']);
+
+    if(!colPosto||!colMeta||!colNeg){
+      if(logEl) logEl.textContent=`❌ Colunas não identificadas. Encontradas: ${cols.join(', ')}. Esperado: posto/loja, meta, negociado.`;
+      return;
+    }
+
+    const postos = [];
+    rows.forEach(row=>{
+      const nome = posNorm(String(row[colPosto]||''));
+      if(!nome || nome==='TOTAL' || nome==='GERAL') return;
+      const meta   = parseFloat(String(row[colMeta]||'0').replace(/[R$\s.]/g,'').replace(',','.')) || 0;
+      const valorNeg = parseFloat(String(row[colNeg]||'0').replace(/[R$\s.]/g,'').replace(',','.')) || 0;
+      postos.push({postoNome:nome, meta, valorNeg});
+    });
+
+    if(!postos.length){ if(logEl) logEl.textContent='❌ Nenhum dado encontrado.'; return; }
+
+    const campanhaId = nomeCampanha.toLowerCase().replace(/[^a-z0-9]/g,'_');
+    const dataFormatada = dataRef ? new Date(dataRef+'T12:00:00').toLocaleDateString('pt-BR') : '';
+    await db.collection('pos_campanha').doc(campanhaId).set({
+      campanhaLabel:nomeCampanha, dataRef:dataFormatada,
+      postos, updatedAt:new Date().toISOString()
+    });
+
+    const importInfo = `${postos.length} postos — ${nomeCampanha} — ${new Date().toLocaleString('pt-BR')}`;
+    await db.collection('pos_config').doc('geral').set({ultimoImport:importInfo},{merge:true});
+    if(logEl) logEl.textContent=importInfo;
+    input.value='';
+
+    posCampanhaAtiva = campanhaId;
+    await initPOS();
+    switchPosTab('painel');
+  } catch(e){
+    console.error('importarPOS',e);
+    if(logEl) logEl.textContent=`❌ Erro: ${e.message}`;
+  }
+}
+// FIM MÓDULO POS
 
 initSystem();
 </script>
