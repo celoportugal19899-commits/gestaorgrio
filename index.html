@@ -8740,6 +8740,7 @@ async function confirmarImportPOS(){
   const btn = document.getElementById('pos-import-btn');
   btn.textContent='Importando...'; btn.disabled=true;
 
+  // Normalização de nomes de postos (remove acentos, upper)
   const POS_LOJA_MAP = {
     'SAO JOSE DO V. DO RIO PRETO':'SAO JOSE DO VALE DO RIO PRETO',
     'SAO JOSE DO VALE DO R.PRETO':'SAO JOSE DO VALE DO RIO PRETO',
@@ -8754,46 +8755,55 @@ async function confirmarImportPOS(){
   try {
     const buf = await fileInput.files[0].arrayBuffer();
     const wb  = XLSX.read(buf,{type:'array'});
+
     if(!wb.SheetNames.includes('Base')){
       alert('Sheet "Base" não encontrada. Verifique se é o arquivo correto da Neobpo.');
       btn.textContent='Importar'; btn.disabled=false; return;
     }
 
+    // Ler com header:"A" — acesso por letra de coluna (robusto para colunas duplicadas)
+    // Pular as 4 linhas iniciais (range:4 = começa na linha 5 do Excel = header real)
     const ws   = wb.Sheets['Base'];
-    const rows = XLSX.utils.sheet_to_json(ws,{defval:'',range:4});
+    const rows = XLSX.utils.sheet_to_json(ws, {header:'A', range:4, defval:''});
 
-    // Agrupar por mesRef + posto — TODOS os meses do arquivo
+    // Colunas mapeadas por letra:
+    // AD = Loja (postos RG, ex: "Posto Aperibé")
+    // E  = Valor do pedido
+    // F  = Modalidade (CRÉDITO/DÉBITO/PIX)
+    // AE = Mês (número 1-12)
+    // Linha 1 do range é o header — pular
+    const dataRows = rows.slice(1); // pula a linha de header
+
+    const anoBase = dataRef ? new Date(dataRef+'T12:00:00').getFullYear() : new Date().getFullYear();
+
     const grupos = {};
-    let anosEncontrados = new Set();
-    rows.forEach(row=>{
-      const loja=(row['Loja.1']||row['Loja']||'').toString().trim();
+    dataRows.forEach(row=>{
+      const loja = (row['AD']||'').toString().trim();
       if(!loja.startsWith('Posto ')) return;
-      const mesNum=parseInt(row['Mês']||row['Mes']||0);
-      if(!mesNum) return;
-      // Determinar ano: usar dataRef como base ou ano atual
-      const anoBase = dataRef ? new Date(dataRef+'T12:00:00').getFullYear() : new Date().getFullYear();
-      const mesRef=`${anoBase}-${String(mesNum).padStart(2,'0')}`;
-      anosEncontrados.add(anoBase);
-      const postoNome=normPosLoja(loja.replace(/^Posto\s+/,''));
-      const key=`${mesRef}|${postoNome}`;
-      const valor=parseFloat(row['Valor do pedido']||0)||0;
-      const modal=(row['Modalidade']||'').toUpperCase();
+      const mesNum = parseInt(row['AE'])||0;
+      if(!mesNum || mesNum < 1 || mesNum > 12) return;
+      const mesRef = `${anoBase}-${String(mesNum).padStart(2,'0')}`;
+      const postoNome = normPosLoja(loja.replace(/^Posto\s+/,''));
+      const key = `${mesRef}|${postoNome}`;
+      const valor = parseFloat((row['E']||'0').toString().replace(',','.'))||0;
+      const modal = (row['F']||'').toString().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
       if(!grupos[key]) grupos[key]={mesRef,postoNome,valor:0,qtd:0,credito:0,debito:0,pix:0};
       const g=grupos[key];
       g.valor+=valor; g.qtd++;
-      if(modal==='CRÉDITO'||modal==='CREDITO') g.credito+=valor;
-      else if(modal==='DÉBITO'||modal==='DEBITO') g.debito+=valor;
+      if(modal.includes('CREDITO')) g.credito+=valor;
+      else if(modal.includes('DEBITO')) g.debito+=valor;
       else if(modal==='PIX') g.pix+=valor;
     });
 
-    const total=Object.keys(grupos).length;
+    const total = Object.keys(grupos).length;
     if(!total){
-      alert('Nenhum posto RG encontrado no arquivo. Verifique se é o arquivo correto.');
+      const mesesFound=[...new Set(dataRows.map(r=>r['AE']).filter(Boolean))].sort();
+      alert(`Nenhum posto RG encontrado.\nVerifique se é o arquivo correto da Neobpo.\nMeses no arquivo: ${mesesFound.join(', ')}`);
       btn.textContent='Importar'; btn.disabled=false; return;
     }
 
-    // Salvar no Firestore — merge:true para nunca apagar histórico
-    const batch=db.batch();
+    // Salvar no Firestore — merge:true = histórico nunca apagado
+    const batch = db.batch();
     Object.values(grupos).forEach(g=>{
       const docId=`${g.mesRef}_${g.postoNome.replace(/\s+/g,'_')}`;
       batch.set(db.collection('pos_resultados').doc(docId),{
@@ -8805,10 +8815,9 @@ async function confirmarImportPOS(){
     });
     await batch.commit();
 
-    // Registrar última atualização
     const mesesImportados=[...new Set(Object.values(grupos).map(g=>g.mesRef))].sort();
     const mesesLabel=mesesImportados.map(m=>{const[,mo]=m.split('-');return MESES_NOME[+mo];}).join(', ');
-    const importLog=`${total} registros (${mesesLabel}) — atualizado em ${new Date().toLocaleString('pt-BR')}${dataFormatada?' — dados até '+dataFormatada:''}`;
+    const importLog=`${total} registros (${mesesLabel}) — ${new Date().toLocaleString('pt-BR')}${dataFormatada?' — dados até '+dataFormatada:''}`;
     await db.collection('pos_config').doc('geral').set({ultimoImport:importLog,dataRef:dataFormatada},{merge:true});
     document.getElementById('pos-import-log').textContent=importLog;
     posAtualizarBadge(dataFormatada);
