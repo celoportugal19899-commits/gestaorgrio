@@ -1062,8 +1062,14 @@ const PosCanalLabels = {
 
       <!-- ABA MULTAS -->
       <div id="ind-view-multas" style="display:none">
-        <div style="margin-bottom:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
           <button class="btn btn-secondary btn-sm" onclick="switchIndTab('painel')">← Voltar ao Painel</button>
+          <div style="display:flex;align-items:center;gap:8px">
+            <label style="font-size:12px;color:var(--text3);font-weight:600">Competência:</label>
+            <select id="ind-multas-mes" class="form-select" style="width:150px;font-size:12px" onchange="renderMultasIndicadores()">
+              <option value="">Todos os meses</option>
+            </select>
+          </div>
         </div>
         <div id="ind-multas-body"></div>
       </div>
@@ -2468,6 +2474,11 @@ function renderDashboardIncidencias() {
     selPosto.innerHTML = '<option value="">Todos os postos</option>' +
       postosUnicos.map(p=>`<option value="${p}"${p===prevPosto?' selected':''}>${p}</option>`).join('');
   }
+
+  // Definir hoje/ontem no escopo local (evitar dependência de variáveis externas)
+  const _agora = new Date();
+  const hoje  = _agora.toISOString().split('T')[0];
+  const ontem = new Date(_agora.getTime() - 86400000).toISOString().split('T')[0];
 
   let filtered = [...allIncidencias];
 
@@ -4770,7 +4781,17 @@ function renderAnalisesCompletas(dados,postos,totalDiasUteis) {
       const dadosMesAnt=allIndicadores.filter(d=>d.mesRef===mesAnt);
       const duAtual=diasUteisMesComDados(mesAtual, dadosMesAtual);
       const duAnt=diasUteisMesComDados(mesAnt, dadosMesAnt);
-      const postosList=[...new Set([...dados,...indAnt].map(d=>d.postoNome))].sort();
+      const postosListRaw=[...new Set([...dados,...indAnt].map(d=>d.postoNome))];
+      // Pré-calcular delta para ordenar do maior para o menor Δ%
+      const postosComDelta=postosListRaw.map(nome=>{
+        const vA=(dados.find(x=>x.postoNome===nome)?.senhasAtendidas)||0;
+        const vB=(indAnt.find(x=>x.postoNome===nome)?.senhasAtendidas)||0;
+        const mdA=duAtual>0?Math.round(vA/duAtual):0;
+        const mdB=duAnt>0?Math.round(vB/duAnt):0;
+        const dlt=mdA-mdB; const dpp=mdB>0?(dlt/mdB)*100:0;
+        return{nome,dpp};
+      }).sort((a,b)=>b.dpp-a.dpp);
+      const postosList=postosComDelta.map(p=>p.nome);
       const linhas=postosList.map(nome=>{
         const vA=(dados.find(x=>x.postoNome===nome)?.senhasAtendidas)||0;
         const vB=(indAnt.find(x=>x.postoNome===nome)?.senhasAtendidas)||0;
@@ -4852,34 +4873,37 @@ function renderAnalisesCompletas(dados,postos,totalDiasUteis) {
       </div>`;
     }).join('')}`;
 
-  // ── 4. Postos em alerta (abaixo da média de volume) ──
-  const mediaVolPosto=Object.keys(porPosto).length>0&&totalDiasUteis>0
-    ?Object.values(porPosto).reduce((a,b)=>a+b,0)/(Object.keys(porPosto).length*totalDiasUteis):0;
-
-  const agrupAlerta={};
+  // ── 4. Análise de TMA (meta: 00:04:48 = 288s) ──
+  const META_TMA_ANALISE = 288; // 00:04:48 em segundos
+  const tmaAgrup={};
   dados.forEach(d=>{
-    if(!agrupAlerta[d.postoNome]) agrupAlerta[d.postoNome]={atend:0,meses:[]};
-    agrupAlerta[d.postoNome].atend+=parseInt(d.senhasAtendidas)||0;
-    agrupAlerta[d.postoNome].meses.push(d.mesRef);
+    const t=parseTempo(d.tma);
+    if(t!==null){
+      if(!tmaAgrup[d.postoNome]) tmaAgrup[d.postoNome]=[];
+      tmaAgrup[d.postoNome].push(t);
+    }
   });
-  const alertas=Object.entries(agrupAlerta).map(([nome,g])=>{
-    const mesesDoPosto=[...new Set(g.meses)];
-    const duPosto=mesesDoPosto.reduce((a,m)=>{
-      const dadosMes=allIndicadores.filter(dd=>dd.mesRef===m&&dd.postoNome===nome);
-      return a+diasUteisMesComDados(m,dadosMes);
-    },0);
-    const mediaDia=duPosto>0?g.atend/duPosto:0;
-    return{nome,mediaDia:Math.round(mediaDia),baixoVol:mediaDia<mediaVolPosto};
-  }).filter(a=>a.baixoVol).sort((a,b)=>a.mediaDia-b.mediaDia);
+  const tmaLinhas=Object.entries(tmaAgrup).map(([nome,ts])=>{
+    const med=Math.round(ts.reduce((a,b)=>a+b,0)/ts.length);
+    const diff=med-META_TMA_ANALISE;
+    const dentroMeta=med<=META_TMA_ANALISE;
+    const cor=dentroMeta?'#22c55e':'#ef4444';
+    const diffStr=(diff>=0?'+':'')+fmtTempo(Math.abs(diff))+(diff>0?' acima':''+diff<0?' abaixo':'');
+    return{nome,med,diff,dentroMeta,cor,diffStr};
+  }).sort((a,b)=>a.med-b.med);
 
-  const alertaHTML=alertas.length?alertas.map(a=>`
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid var(--border)">
-      <span style="font-size:12px;font-weight:600;color:var(--text1)">${a.nome}</span>
-      <div style="text-align:right">
-        <span style="font-size:12px;color:var(--red);font-weight:700">${a.mediaDia}/dia</span>
-        <span style="font-size:11px;color:var(--text3);margin-left:6px">média: ${Math.round(mediaVolPosto)}/dia</span>
-      </div>
-    </div>`).join(''):`<div class="ind-empty" style="padding:16px">✅ Todos os postos acima da média.</div>`;
+  const alertaHTML=tmaLinhas.length?`
+    <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3);padding:4px 10px;border-bottom:1px solid var(--border);text-transform:uppercase;letter-spacing:.5px">
+      <span>Posto</span><span>TMA Atual</span><span>Diferença</span><span>Status</span>
+    </div>
+    ${tmaLinhas.map(a=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;border-bottom:1px solid var(--border);gap:8px">
+      <span style="font-size:12px;font-weight:600;color:var(--text1);flex:1;min-width:120px">${a.nome}</span>
+      <span style="font-size:12px;font-weight:700;color:${a.cor};min-width:55px;text-align:right">${fmtTempo(a.med)}</span>
+      <span style="font-size:11px;color:${a.cor};min-width:70px;text-align:right">${a.diff===0?'=':a.diff>0?'+'+fmtTempo(a.diff):'-'+fmtTempo(Math.abs(a.diff))}</span>
+      <span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;background:${a.cor}20;color:${a.cor};min-width:80px;text-align:center">${a.dentroMeta?'✅ Na Meta':'❌ Fora'}</span>
+    </div>`).join('')}`
+  :`<div class="ind-empty" style="padding:16px">Sem dados de TMA.</div>`;
 
   // ── 5. NS30 por posto ──
   const nsAgrup={};
@@ -4908,7 +4932,7 @@ function renderAnalisesCompletas(dados,postos,totalDiasUteis) {
       </div>
       ${mediaCompHTML}
     </div>
-    <div class="ind-analise-card"><h3>🔴 Postos em Alerta <span style="font-size:11px;font-weight:400;color:var(--text3)">(abaixo da média de volume)</span></h3>${alertaHTML}</div>
+    <div class="ind-analise-card"><h3>⏱️ Análise de TMA <span style="font-size:11px;font-weight:400;color:var(--text3)">Meta: 00:04:48</span></h3>${alertaHTML}</div>
     <div class="ind-analise-card"><h3>⏱ NS30 por Posto</h3>${nsHTML||'<div class="ind-empty">Sem dados.</div>'}</div>
   `;
 }
@@ -4965,7 +4989,18 @@ function renderTabelaDetalhada(dados,postos,totalDiasUteis,postoFiltro) {
 
 // ── MULTAS ──
 function renderMultasIndicadores() {
-  const ofensores=allIndicadores.filter(d=>(parseInt(d.apos30min)||0)>0||(parseInt(d.apos45min)||0)>0);
+  // Popular e ler seletor de mês
+  const selMes = document.getElementById('ind-multas-mes');
+  if(selMes){
+    const todosMesesDisp=[...new Set(allIndicadores.map(d=>d.mesRef))].sort();
+    const prev=selMes.value;
+    selMes.innerHTML='<option value="">Todos os meses</option>'+
+      todosMesesDisp.map(m=>`<option value="${m}"${m===prev?' selected':''}>${mesLabel(m)}</option>`).join('');
+    if(prev && todosMesesDisp.includes(prev)) selMes.value=prev;
+  }
+  const mesFiltro=selMes?.value||'';
+  const baseIndicadores=mesFiltro?allIndicadores.filter(d=>d.mesRef===mesFiltro):allIndicadores;
+  const ofensores=baseIndicadores.filter(d=>(parseInt(d.apos30min)||0)>0||(parseInt(d.apos45min)||0)>0);
   const todosMeses=[...new Set(allIndicadores.map(d=>d.mesRef))].sort();
   const totalApos30=ofensores.reduce((a,d)=>a+(parseInt(d.apos30min)||0),0);
   const totalApos45=ofensores.reduce((a,d)=>a+(parseInt(d.apos45min)||0),0);
@@ -8677,6 +8712,20 @@ const POS_METAS_FIXAS = {
   'CAMBUCI':1500,'LAJE DO MURIAE':1500
 };
 
+// Metas específicas por competência (sobrepõem POS_METAS_FIXAS para aquele mês)
+const POS_METAS_POR_MES = {
+  '2026-06': {
+    'SILVA JARDIM':12000,'BOM JESUS DO ITABAPOANA':14000,'VARRE-SAI':8000,
+    'SAO JOSE DO VALE DO RIO PRETO':15000,'SAO JOSE DO V. DO RIO PRETO':15000,'BOM JARDIM':36000,'QUISSAMA':10000,
+    'CARAPEBUS':7500,'CONCEICAO DE MACABU':8000,'APERIBE':11500,'GUARUS':4500,
+    'PORCIUNCULA':4500,'TANGUA':24000,'ITALVA':8000,'NOVA FRIBURGO':2600,
+    'TRAJANO DE MORAES':5000,'MIRACEMA':23000,'SUMIDOURO':2000,'CARDOSO MOREIRA':2900,
+    'SANTA MARIA MADALENA':2000,'PORTO REAL':2500,'CANTAGALO':1500,
+    'SAO SEBASTIAO DO ALTO':1900,'SAO JOSE DE UBA':2000,'AREAL':9500,
+    'NATIVIDADE':5500,'LAJE DO MURIAE':2600,'MACUCO':2500,'CAMBUCI':2000,'DUAS BARRAS':2000
+  }
+};
+
 let posMetasCustom = {};  // sobrescritas pelo ADM via modal
 let posAllResultados = []; // [{mesRef,postoNome,valor,qtd,credito,debito,pix}]
 let posMesSelecionado = null;
@@ -8686,8 +8735,11 @@ let posChartEvo = null;
 let posChartCanal = null;
 
 function posNormKey(s){ return (s||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim(); }
-function getPOSMeta(posto){
+function getPOSMeta(posto, mesRef){
   const k = posNormKey(posto);
+  // Prioridade: 1) meta do mês específico; 2) custom do admin; 3) fixa global
+  if(mesRef && POS_METAS_POR_MES[mesRef] && POS_METAS_POR_MES[mesRef][k] !== undefined)
+    return POS_METAS_POR_MES[mesRef][k];
   return posMetasCustom[k] ?? POS_METAS_FIXAS[k] ?? 1500;
 }
 
@@ -8758,9 +8810,9 @@ function renderPOSKPIs(dados){
   if(!dados.length){ el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text3)">Importe um arquivo Excel para visualizar os dados.</div>'; return; }
   const totalValor = dados.reduce((s,d)=>s+(d.valor||0),0);
   const totalQtd   = dados.reduce((s,d)=>s+(d.qtd||0),0);
-  const totalMeta  = dados.reduce((s,d)=>s+getPOSMeta(d.postoNome),0);
+  const totalMeta  = dados.reduce((s,d)=>s+getPOSMeta(d.postoNome, posMesSelecionado),0);
   const pctGeral   = totalMeta>0?(totalValor/totalMeta*100):0;
-  const aptos      = dados.filter(d=>d.valor>=getPOSMeta(d.postoNome)).length;
+  const aptos      = dados.filter(d=>d.valor>=getPOSMeta(d.postoNome, posMesSelecionado)).length;
   const cor = pctGeral>=100?'#22c55e':pctGeral>=60?'#f97316':'#ef4444';
   el.innerHTML=`
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px">
@@ -8805,7 +8857,7 @@ function renderPOSRanking(dadosMes){
 
   const lista = todasChaves.map(k=>{
     const d = dadosMap[k];
-    const meta = getPOSMeta(k);
+    const meta = getPOSMeta(k, posMesSelecionado);
     const valor = d ? (d.valor||0) : 0;
     const qtd   = d ? (d.qtd||0)   : 0;
     const pct   = meta>0 ? (valor/meta*100) : 0;
@@ -8864,7 +8916,7 @@ function renderPOSCampanha(dados){
 
   const listaCompleta = todasChaves.map(k=>{
     const d = dadosMap[k];
-    const meta = getPOSMeta(k);
+    const meta = getPOSMeta(k, posMesSelecionado);
     const valor = d ? (d.valor||0) : 0;
     const pct   = meta>0 ? (valor/meta*100) : 0;
     return { postoNome: d ? d.postoNome : k, meta, valor, pct, semDados: !d };
@@ -8991,7 +9043,7 @@ function renderPOSEvolucao(){
   if(isTodos){
     const valEvo  = meses.map(m=>posAllResultados.filter(r=>r.mesRef===m).reduce((s,r)=>s+(r.valor||0),0));
     const qtdEvo  = meses.map(m=>posAllResultados.filter(r=>r.mesRef===m).reduce((s,r)=>s+(r.qtd||0),0));
-    const metaEvo = meses.map(m=>{ const d=posAllResultados.filter(r=>r.mesRef===m); return d.length?d.reduce((s,r)=>s+getPOSMeta(r.postoNome),0):null; });
+    const metaEvo = meses.map(m=>{ const d=posAllResultados.filter(r=>r.mesRef===m); return d.length?d.reduce((s,r)=>s+getPOSMeta(r.postoNome, m),0):null; });
     datasets = [
       {type:'bar',label:'Valor Negociado',data:valEvo,backgroundColor:'rgba(79,120,255,.65)',yAxisID:'yValor',
         _labelFmt:v=>v>0?v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0}):'',_labelColor:'var(--text2)'},
@@ -9006,7 +9058,7 @@ function renderPOSEvolucao(){
       const cor = cores[idx%cores.length];
       const valEvo  = meses.map(m=>{ const d=posAllResultados.find(r=>r.mesRef===m&&r.postoNome===postoNome); return d?(d.valor||0):0; });
       const qtdEvo  = meses.map(m=>{ const d=posAllResultados.find(r=>r.mesRef===m&&r.postoNome===postoNome); return d?(d.qtd||0):0; });
-      const metaNome = getPOSMeta(postoNome);
+      const metaNome = getPOSMeta(postoNome, posMesSelecionado);
       datasets.push(
         {type:'bar',label:`${postoNome} — Valor`,data:valEvo,backgroundColor:cor,yAxisID:'yValor',
           _labelFmt:v=>v>0?v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0}):'',_labelColor:'var(--text2)'},
