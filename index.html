@@ -13,6 +13,11 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 <script>
 // Plugin inline de rótulos para charts CSAT/POS (não registrado globalmente)
+// ── REGRA GLOBAL DE RÓTULOS ─────────────────────────────────────────────────
+// Todo gráfico deve ter rótulos visíveis. Nunca usar preto ou CSS vars em canvas.
+// Cor padrão: #a0aec0 (cinza claro) — contraste garantido em fundo escuro.
+// Para suprimir rótulo em um dataset específico: _noLabels:true
+// ────────────────────────────────────────────────────────────────────────────
 const CsatDataLabels = {
   id: 'csatDataLabels',
   afterDatasetsDraw(chart) {
@@ -25,9 +30,12 @@ const CsatDataLabels = {
         if(val === null || val === undefined || val === 0) return;
         const txt = dataset._labelFmt ? dataset._labelFmt(val, j) : String(val);
         if(!txt) return;
+        // Resolver cor: nunca aceitar CSS vars (não funcionam em Canvas)
+        let cor = dataset._labelColor || '#a0aec0';
+        if(cor.startsWith('var(') || cor === '#000' || cor === 'black' || cor === '#000000') cor = '#a0aec0';
         ctx.save();
         ctx.font = 'bold 11px sans-serif';
-        ctx.fillStyle = dataset._labelColor || '#888';
+        ctx.fillStyle = cor;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
         const {x, y} = el.tooltipPosition ? el.tooltipPosition() : {x: el.x, y: el.y};
@@ -8512,7 +8520,7 @@ function renderCsatSupervisor() {
         options:{responsive:true,maintainAspectRatio:false,
           plugins:{legend:{labels:{font:{size:11},color:'#a0aec0'}}},
           scales:{
-            y:{min:3.5,max:5.5,ticks:{font:{size:11},stepSize:.25},grid:{color:'rgba(128,128,128,.1)'}}
+            y:{min:3.5,max:5.5,ticks:{font:{size:11},stepSize:.25},grid:{color:'rgba(255,255,255,.06)'}}
           }}
       });
     }
@@ -8716,14 +8724,36 @@ const POS_METAS_FIXAS = {
 // Metas específicas por competência (sobrepõem POS_METAS_FIXAS para aquele mês)
 const POS_METAS_POR_MES = {
   '2026-06': {
-    'SILVA JARDIM':12000,'BOM JESUS DO ITABAPOANA':14000,'VARRE-SAI':8000,
-    'SAO JOSE DO VALE DO RIO PRETO':15000,'SAO JOSE DO V. DO RIO PRETO':15000,'BOM JARDIM':36000,'QUISSAMA':10000,
-    'CARAPEBUS':7500,'CONCEICAO DE MACABU':8000,'APERIBE':11500,'GUARUS':4500,
-    'PORCIUNCULA':4500,'TANGUA':24000,'ITALVA':8000,'NOVA FRIBURGO':2600,
-    'TRAJANO DE MORAES':5000,'MIRACEMA':23000,'SUMIDOURO':2000,'CARDOSO MOREIRA':2900,
-    'SANTA MARIA MADALENA':2000,'PORTO REAL':2500,'CANTAGALO':1500,
-    'SAO SEBASTIAO DO ALTO':1900,'SAO JOSE DE UBA':2000,'AREAL':9500,
-    'NATIVIDADE':5500,'LAJE DO MURIAE':2600,'MACUCO':2500,'CAMBUCI':2000,'DUAS BARRAS':2000
+    'SILVA JARDIM':5253.23,
+    'BOM JESUS DO ITABAPOANA':11230.44,
+    'VARRE-SAI':6047.35,
+    'SAO JOSE DO VALE DO RIO PRETO':6461.06,
+    'SAO JOSE DO V. DO RIO PRETO':6461.06,
+    'BOM JARDIM':29290.32,
+    'QUISSAMA':6232.21,
+    'CARAPEBUS':6712.48,
+    'CONCEICAO DE MACABU':3770.47,
+    'APERIBE':9807.26,
+    'GUARUS':4312.3,
+    'PORCIUNCULA':3661.32,
+    'TANGUA':18272.74,
+    'ITALVA':5800.34,
+    'NOVA FRIBURGO':2556.82,
+    'TRAJANO DE MORAES':3902.05,
+    'MIRACEMA':23501.18,
+    'SUMIDOURO':2000,
+    'CARDOSO MOREIRA':3696.71,
+    'SANTA MARIA MADALENA':2500,
+    'PORTO REAL':2500,
+    'CANTAGALO':2000,
+    'SAO SEBASTIAO DO ALTO':2000,
+    'SAO JOSE DE UBA':2066.74,
+    'AREAL':5480.06,
+    'NATIVIDADE':5676.62,
+    'LAJE DO MURIAE':2260.79,
+    'MACUCO':2500,
+    'CAMBUCI':2000,
+    'DUAS BARRAS':2000
   }
 };
 
@@ -9080,7 +9110,7 @@ function renderPOSEvolucao(){
     const metaEvo = meses.map(m=>{ const d=posAllResultados.filter(r=>r.mesRef===m); return d.length?d.reduce((s,r)=>s+getPOSMeta(r.postoNome, m),0):null; });
     datasets = [
       {type:'bar',label:'Valor Negociado',data:valEvo,backgroundColor:'rgba(79,120,255,.65)',yAxisID:'yValor',
-        _labelFmt:v=>v>0?v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0}):'',_labelColor:'var(--text2)'},
+        _labelFmt:v=>v>0?v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0}):'',_labelColor:'#94a3b8'},
       {type:'bar',label:'Qtd Negociações',data:qtdEvo,backgroundColor:'rgba(34,197,94,.55)',yAxisID:'yQtd',
         _labelFmt:v=>v>0?v.toLocaleString('pt-BR'):'',_labelColor:'#22c55e'},
       {type:'line',label:'Meta',data:metaEvo,borderColor:'rgba(239,68,68,.7)',borderDash:[6,4],backgroundColor:'transparent',pointRadius:4,yAxisID:'yValor',spanGaps:true,
@@ -9095,7 +9125,7 @@ function renderPOSEvolucao(){
       const metaNome = getPOSMeta(postoNome, posMesSelecionado);
       datasets.push(
         {type:'bar',label:`${postoNome} — Valor`,data:valEvo,backgroundColor:cor,yAxisID:'yValor',
-          _labelFmt:v=>v>0?v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0}):'',_labelColor:'var(--text2)'},
+          _labelFmt:v=>v>0?v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0}):'',_labelColor:'#94a3b8'},
         {type:'bar',label:`${postoNome} — Qtd`,data:qtdEvo,backgroundColor:cor.replace('.7','.35'),yAxisID:'yQtd',
           _labelFmt:v=>v>0?v.toLocaleString('pt-BR'):''},
         {type:'line',label:`Meta ${postoNome}`,data:meses.map(()=>metaNome),borderColor:cor.replace('.7','.5'),borderDash:[4,3],backgroundColor:'transparent',pointRadius:0,yAxisID:'yValor',
@@ -9343,8 +9373,10 @@ async function confirmarImportPOS(){
   } catch(e){ alert('Erro: '+e.message); console.error(e); }
   btn.textContent='Importar'; btn.disabled=false;
 }
-  // ── REGRA DE OURO — Gráficos em fundo escuro: zero preto ──
-  // Aplica globalmente a TODOS os charts do sistema
+  // ── REGRA DE OURO — Gráficos em fundo escuro: zero preto, rótulos sempre visíveis ──
+  // Aplica globalmente a TODOS os charts do sistema (atuais e futuros)
+  // NUNCA usar: preto (#000), CSS vars (var(--x)) em Canvas, rótulos ocultos
+  // SEMPRE usar: hex direto, contraste adequado (#a0aec0 padrão)
   (function applyDarkChartDefaults(){
     if(typeof Chart === 'undefined') return;
     Chart.defaults.color = '#a0aec0';                    // texto/labels: cinza claro
