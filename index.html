@@ -2039,6 +2039,79 @@ const PosCanalLabels = {
   </div>
 </div>
 
+<!-- MODAL: VER HOLERITE ASSINADO (ADM) -->
+<div class="modal-overlay" id="modal-ver-assinado">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header"><div class="modal-title">📄 Holerite Assinado</div><button class="close-btn" onclick="closeModal('modal-ver-assinado')">✕</button></div>
+    <input type="hidden" id="ver-assinado-id">
+    <div id="ver-assinado-info" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;line-height:1.6"></div>
+    <div id="ver-assinado-preview" style="margin-bottom:16px;font-size:13px;color:var(--text3)"></div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-ver-assinado')">Fechar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="downloadAssinado()">⬇ Baixar Assinado</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ENVIAR HOLERITE ASSINADO (COLABORADOR) -->
+<div class="modal-overlay" id="modal-enviar-assinado">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header"><div class="modal-title">✍️ Enviar Holerite Assinado</div><button class="close-btn" onclick="closeModal('modal-enviar-assinado')">✕</button></div>
+    <input type="hidden" id="enviar-assinado-id">
+    <div id="enviar-assinado-info" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;line-height:1.6"></div>
+    <div class="form-group">
+      <label class="form-label">Arquivo PDF assinado</label>
+      <div class="rh-drop-zone" style="padding:20px" onclick="document.getElementById('assinado-file-input').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="handleAssinadoDrop(event)">
+        <div style="font-size:24px">📄</div>
+        <div style="font-size:13px;margin-top:6px" id="assinado-file-label">Selecionar PDF assinado</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">Máx: 700KB — reduza a qualidade no CamScanner se necessário</div>
+        <input type="file" id="assinado-file-input" accept=".pdf" style="display:none" onchange="handleAssinadoFile(this.files[0])">
+      </div>
+    </div>
+    <div id="enviar-assinado-feedback" style="display:none;padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:12px;text-align:center"></div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-enviar-assinado')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" id="btn-confirmar-assinado" onclick="confirmarEnvioAssinado()">✅ Confirmar Envio</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: VER FOLHA DE PONTO ASSINADA (ADM) -->
+<div class="modal-overlay" id="modal-ver-folha-assinada">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header"><div class="modal-title">📋 Folha Assinada</div><button class="close-btn" onclick="closeModal('modal-ver-folha-assinada')">✕</button></div>
+    <input type="hidden" id="ver-folha-assinada-id">
+    <div id="ver-folha-assinada-info" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;line-height:1.6"></div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-ver-folha-assinada')">Fechar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="downloadFolhaAssinada()">⬇ Baixar Assinada</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ENVIAR FOLHA DE PONTO ASSINADA (COLABORADOR) -->
+<div class="modal-overlay" id="modal-enviar-folha-assinada">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header"><div class="modal-title">✍️ Enviar Folha Assinada</div><button class="close-btn" onclick="closeModal('modal-enviar-folha-assinada')">✕</button></div>
+    <input type="hidden" id="enviar-folha-assinada-id">
+    <div id="enviar-folha-assinada-info" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;line-height:1.6"></div>
+    <div class="form-group">
+      <label class="form-label">Arquivo PDF assinado</label>
+      <div class="rh-drop-zone" style="padding:20px" onclick="document.getElementById('folha-assinada-file-input').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="handleFolhaAssinadaDrop(event)">
+        <div style="font-size:24px">📋</div>
+        <div style="font-size:13px;margin-top:6px" id="folha-assinada-file-label">Selecionar PDF assinado</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">Máx: 700KB — reduza a qualidade no CamScanner se necessário</div>
+        <input type="file" id="folha-assinada-file-input" accept=".pdf" style="display:none" onchange="handleFolhaAssinadaFile(this.files[0])">
+      </div>
+    </div>
+    <div id="enviar-folha-assinada-feedback" style="display:none;padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:12px;text-align:center"></div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-enviar-folha-assinada')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" id="btn-confirmar-folha-assinada" onclick="confirmarEnvioFolhaAssinada()">✅ Confirmar Envio</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 
@@ -4128,7 +4201,8 @@ async function renderAdmPonto() {
     if (atestadoHoje) {
       statusHtml = `<span class="semaforo" style="background:rgba(245,158,11,0.12);color:var(--yellow);border:1px solid rgba(245,158,11,0.25)"><span class="sem-dot" style="background:var(--yellow)"></span>Atestado</span>`;
       avClass = 'av-lunch';
-    } else if (!reg || !reg.entrada) { statusHtml = `<span class="semaforo sem-red"><span class="sem-dot"></span>Ausente</span>`; avClass = 'av-absent'; }
+    } else if (reg?.faltaAbonada) { statusHtml = `<span class="semaforo" style="background:rgba(79,120,255,0.12);color:var(--accent);border:1px solid rgba(79,120,255,0.25)"><span class="sem-dot" style="background:var(--accent)"></span>Falta Abonada</span>`; avClass = 'av-done'; }
+    else if (!reg || !reg.entrada) { statusHtml = `<span class="semaforo sem-red"><span class="sem-dot"></span>Ausente</span>`; avClass = 'av-absent'; }
     else if (reg.saida) { statusHtml = `<span class="semaforo" style="background:rgba(108,108,255,0.12);color:var(--accent);border:1px solid rgba(108,108,255,0.25)"><span class="sem-dot" style="background:var(--accent)"></span>Encerrado</span>`; avClass = 'av-done'; }
     else if (reg.saida_almoco && !reg.retorno_almoco) { statusHtml = `<span class="semaforo sem-yellow"><span class="sem-dot"></span>Almoço</span>`; avClass = 'av-lunch'; }
     else { statusHtml = `<span class="semaforo sem-green"><span class="sem-dot"></span>No Posto</span>`; avClass = 'av-work'; }
@@ -5325,6 +5399,8 @@ const SUPERVISORES_CAIXA = ['victor.simoes@gruporgbrasil.com','leonardo.costa@gr
 const VALOR_CAIXA_INICIAL = 1000;
 let allCaixas = [];
 let unsubCaixas = null;
+let allCaixaLancamentos = [];
+let unsubCaixaLancamentos = null;
 
 function isSupervisorCaixa() {
   return currentUser && SUPERVISORES_CAIXA.includes(currentUser.email);
@@ -5346,6 +5422,12 @@ function initCaixas() {
     if (active?.id === 'view-adm-caixas') renderAdmCaixas();
     if (active?.id === 'view-sup-caixa') renderSupCaixa();
   });
+  if (unsubCaixaLancamentos) unsubCaixaLancamentos();
+  unsubCaixaLancamentos = db.collection('caixa_lancamentos').orderBy('createdAt','desc').onSnapshot(snap => {
+    allCaixaLancamentos = snap.docs.map(d => ({id:d.id,...d.data()}));
+    const active = document.querySelector('.view.active');
+    if (active?.id === 'view-sup-caixa') renderSupCaixa();
+  });
 }
 
 // ─── SUPERVISOR VIEW ───
@@ -5361,11 +5443,22 @@ async function renderSupCaixa() {
       id: ref.id, supervisorEmail: currentUser.email,
       supervisorNome: currentUser.name, saldoInicial: VALOR_CAIXA_INICIAL,
       saldoAtual: VALOR_CAIXA_INICIAL, totalGasto: 0,
+      saldoOperacional: VALOR_CAIXA_INICIAL, totalLancamentos: 0,
       status: 'em_uso', createdAt: new Date().toISOString()
     };
     await ref.set(novoCaixa);
     caixa = novoCaixa;
   }
+
+  // Saldo operacional: usa campo dedicado (independente do Excel)
+  const saldoOp = caixa.saldoOperacional !== undefined ? caixa.saldoOperacional : VALOR_CAIXA_INICIAL;
+  const totalLanc = caixa.totalLancamentos || 0;
+  const pctOp = Math.round(((caixa.saldoInicial - saldoOp) / caixa.saldoInicial) * 100);
+  const pbClsOp = pctOp >= 75 ? 'cpb-red' : pctOp >= 50 ? 'cpb-yellow' : 'cpb-green';
+  const saldoClsOp = pctOp >= 75 ? 'saldo-low' : pctOp >= 50 ? 'saldo-warn' : 'saldo-ok';
+
+  // Saldo oficial (Excel) — só exibe se já houve validação
+  const temSaldoOficial = caixa.validadoEm || caixa.status === 'validado' || caixa.status === 'aguarda_aprovacao' || caixa.status === 'aprovado';
 
   const pct = Math.round(((caixa.saldoInicial - caixa.saldoAtual) / caixa.saldoInicial) * 100);
   const pbCls = pct >= 75 ? 'cpb-red' : pct >= 50 ? 'cpb-yellow' : 'cpb-green';
@@ -5374,6 +5467,9 @@ async function renderSupCaixa() {
   const podeEnviar = caixa.status === 'validado';
   const aguardando = caixa.status === 'aguarda_aprovacao';
   const aprovado = caixa.status === 'aprovado';
+
+  // Lançamentos deste caixa
+  const lancamentos = allCaixaLancamentos.filter(l => l.caixaId === caixa.id);
 
   el.innerHTML = `
     <div class="caixa-card">
@@ -5426,6 +5522,79 @@ async function renderSupCaixa() {
       </div>` : ''}
     </div>
 
+    <!-- SALDO OPERACIONAL (lançamentos avulsos) -->
+    <div class="caixa-card" style="margin-top:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div style="font-size:13px;font-weight:700;color:var(--text2)">📊 Controle Operacional</div>
+        <span style="font-size:11px;color:var(--text3);background:var(--surface3);padding:3px 10px;border-radius:20px">lançamentos no sistema</span>
+      </div>
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:8px">
+        <div>
+          <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Saldo Operacional</div>
+          <div class="caixa-saldo-big ${saldoClsOp}" style="font-size:26px">${fmtBRL(saldoOp)}</div>
+        </div>
+        ${temSaldoOficial ? `<div style="text-align:right">
+          <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Saldo Oficial (Excel)</div>
+          <div style="font-size:20px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--text2)">${fmtBRL(caixa.saldoAtual)}</div>
+        </div>` : ''}
+      </div>
+      <div class="caixa-progress"><div class="caixa-progress-bar ${pbClsOp}" style="width:${Math.min(100,pctOp)}%"></div></div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:16px">
+        Consumido: ${fmtBRL(totalLanc)} (${pctOp}%) · ${lancamentos.length} lançamento(s)
+        ${temSaldoOficial ? `<span style="color:var(--accent);margin-left:8px">· Saldo oficial calculado pelo Excel</span>` : ''}
+      </div>
+
+      <!-- Formulário de lançamento -->
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:16px">
+        <div style="font-size:13px;font-weight:700;color:var(--text2);margin-bottom:12px">💸 Registrar Consumo</div>
+        <div style="display:grid;grid-template-columns:120px 1fr;gap:10px;margin-bottom:10px">
+          <div>
+            <label class="form-label">Valor (R$)</label>
+            <input class="form-input" id="lanc-valor" type="number" step="0.01" min="0.01" placeholder="0,00">
+          </div>
+          <div>
+            <label class="form-label">Descrição</label>
+            <input class="form-input" id="lanc-desc" placeholder="Ex: Impressão de relatórios, material de escritório...">
+          </div>
+        </div>
+        <div style="margin-bottom:10px">
+          <label class="form-label">Data</label>
+          <input class="form-input" id="lanc-data" type="date" value="${todayKey()}" style="width:160px">
+        </div>
+        <button class="btn btn-primary btn-block" onclick="registrarLancamentoCaixa('${caixa.id}')">💸 Registrar Consumo</button>
+      </div>
+
+      <!-- Histórico de lançamentos -->
+      ${lancamentos.length > 0 ? `
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Histórico de Lançamentos</div>
+        <div style="max-height:260px;overflow-y:auto">
+          <table style="width:100%;border-collapse:collapse">
+            <thead>
+              <tr style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">
+                <th style="padding:6px 8px;text-align:left;border-bottom:1px solid var(--border)">Data</th>
+                <th style="padding:6px 8px;text-align:left;border-bottom:1px solid var(--border)">Descrição</th>
+                <th style="padding:6px 8px;text-align:right;border-bottom:1px solid var(--border)">Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${lancamentos.map(l => `<tr>
+                <td style="padding:7px 8px;font-size:12px;font-family:'IBM Plex Mono',monospace;border-bottom:1px solid var(--border);white-space:nowrap">${(l.data||'').split('-').reverse().join('/')}</td>
+                <td style="padding:7px 8px;font-size:12px;color:var(--text2);border-bottom:1px solid var(--border)">${l.descricao||'—'}</td>
+                <td style="padding:7px 8px;font-size:12px;font-family:'IBM Plex Mono',monospace;text-align:right;color:var(--red);font-weight:600;border-bottom:1px solid var(--border);white-space:nowrap">- ${fmtBRL(l.valor)}</td>
+              </tr>`).join('')}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="2" style="padding:8px;font-size:12px;font-weight:700;color:var(--text2)">Total consumido</td>
+                <td style="padding:8px;font-size:13px;font-family:'IBM Plex Mono',monospace;text-align:right;font-weight:700;color:var(--red)">- ${fmtBRL(totalLanc)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>` : `<div style="text-align:center;padding:16px;color:var(--text3);font-size:13px">Nenhum lançamento registrado ainda</div>`}
+    </div>
+
     <div class="card">
       <div class="card-title">Histórico de Prestações</div>
       <div id="historico-caixa-sup">${await getHistoricoHtml(currentUser.email)}</div>
@@ -5438,6 +5607,37 @@ let excelNomeLocal = '';
 let pdfsNomesLocal = [];
 let validacaoResultadoHtml = '';
 let validacaoCaixaId = '';
+
+async function registrarLancamentoCaixa(caixaId) {
+  const valorRaw = document.getElementById('lanc-valor').value;
+  const desc = document.getElementById('lanc-desc').value.trim();
+  const data = document.getElementById('lanc-data').value;
+  const valor = parseFloat(valorRaw);
+  if (!valor || valor <= 0) { toast('Informe um valor válido', 'err'); return; }
+  if (!desc) { toast('Informe uma descrição', 'err'); return; }
+  if (!data) { toast('Informe a data', 'err'); return; }
+  const caixa = allCaixas.find(c => c.id === caixaId);
+  if (!caixa) { toast('Caixa não encontrado', 'err'); return; }
+  const saldoAtual = caixa.saldoOperacional !== undefined ? caixa.saldoOperacional : VALOR_CAIXA_INICIAL;
+  if (valor > saldoAtual + 0.01) { toast(`Valor maior que o saldo operacional disponível (${fmtBRL(saldoAtual)})`, 'err'); return; }
+  try {
+    const ref = db.collection('caixa_lancamentos').doc();
+    await ref.set({
+      id: ref.id, caixaId, supervisorEmail: currentUser.email,
+      supervisorNome: currentUser.name, valor, descricao: desc,
+      data, createdAt: new Date().toISOString()
+    });
+    const novoSaldoOp = Math.max(0, saldoAtual - valor);
+    const novoTotal = (caixa.totalLancamentos || 0) + valor;
+    await db.collection('caixas').doc(caixaId).update({
+      saldoOperacional: novoSaldoOp,
+      totalLancamentos: novoTotal
+    });
+    document.getElementById('lanc-valor').value = '';
+    document.getElementById('lanc-desc').value = '';
+    toast(`💸 Consumo de ${fmtBRL(valor)} registrado! Saldo operacional: ${fmtBRL(novoSaldoOp)}`, 'ok');
+  } catch(e) { toast('Erro ao registrar: ' + e.message, 'err'); }
+}
 
 function uploadArquivo(input, tipo) {
   const files = Array.from(input.files);
@@ -5878,6 +6078,7 @@ async function confirmarReabastecimento() {
     const novoRef = db.collection('caixas').doc();
     await novoRef.set({id:novoRef.id, supervisorEmail:caixa.supervisorEmail, supervisorNome:caixa.supervisorNome,
       saldoInicial:VALOR_CAIXA_INICIAL, saldoAtual:VALOR_CAIXA_INICIAL, totalGasto:0,
+      saldoOperacional:VALOR_CAIXA_INICIAL, totalLancamentos:0,
       status:'em_uso', createdAt:new Date().toISOString()});
     // Remover caixa antigo
     await db.collection('caixas').doc(id).delete();
@@ -7530,6 +7731,11 @@ async function confirmarEnvioAssinado() {
     toast(`PDF muito grande (${(sizeBytes/1024).toFixed(0)}KB). Reduza a qualidade no CamScanner.`, 'err');
     return;
   }
+  const btn = document.getElementById('btn-confirmar-assinado');
+  const feedback = document.getElementById('enviar-assinado-feedback');
+  // Estado: enviando
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Enviando...'; }
+  if (feedback) { feedback.style.display = 'block'; feedback.style.background = 'rgba(79,120,255,0.12)'; feedback.style.color = 'var(--accent)'; feedback.style.border = '1px solid rgba(79,120,255,0.25)'; feedback.textContent = '⏳ Enviando holerite... aguarde.'; }
   try {
     await db.collection('holerites').doc(id).update({
       status: 'assinado',
@@ -7540,10 +7746,22 @@ async function confirmarEnvioAssinado() {
     // Notificar ADM
     const adm = allUsers.find(u => u.role === 'admin');
     if (adm) await addNotificacao(adm.email, '✍️ Holerite Assinado', `${currentUser.name} enviou o holerite assinado.`, '✍️', 'green');
-    closeModal('modal-enviar-assinado');
-    assinadoFileBase64 = null;
+    // Feedback de sucesso visível antes de fechar
+    if (feedback) { feedback.style.background = 'var(--green-bg)'; feedback.style.color = 'var(--green)'; feedback.style.border = '1px solid rgba(34,197,94,0.3)'; feedback.textContent = '✅ Holerite enviado com sucesso!'; }
+    if (btn) btn.textContent = '✅ Enviado!';
+    setTimeout(() => {
+      closeModal('modal-enviar-assinado');
+      assinadoFileBase64 = null;
+      if (btn) { btn.disabled = false; btn.textContent = '✅ Confirmar Envio'; }
+      if (feedback) feedback.style.display = 'none';
+    }, 1500);
     toast('✅ Holerite assinado enviado com sucesso!', 'ok');
-  } catch(e) { toast('Erro ao enviar: ' + e.message, 'err'); }
+  } catch(e) {
+    // Feedback de erro claro
+    if (feedback) { feedback.style.background = 'rgba(239,68,68,0.1)'; feedback.style.color = 'var(--red)'; feedback.style.border = '1px solid rgba(239,68,68,0.3)'; feedback.textContent = `❌ Erro ao enviar: ${e.message}`; }
+    if (btn) { btn.disabled = false; btn.textContent = '✅ Confirmar Envio'; }
+    toast('Erro ao enviar: ' + e.message, 'err');
+  }
 }
 
 // ── ATESTADO ──
@@ -7957,14 +8175,24 @@ async function confirmarEnvioFolhaAssinada(){
   if(!folhaAssinadaFileBase64){toast('Selecione o PDF assinado','err');return;}
   const sizeBytes=Math.ceil(folhaAssinadaFileBase64.length*0.75);
   if(sizeBytes>700*1024){toast(`PDF muito grande (${(sizeBytes/1024).toFixed(0)}KB). Reduza a qualidade no CamScanner.`,'err');return;}
+  const btn=document.getElementById('btn-confirmar-folha-assinada');
+  const feedback=document.getElementById('enviar-folha-assinada-feedback');
+  if(btn){btn.disabled=true;btn.textContent='⏳ Enviando...';}
+  if(feedback){feedback.style.display='block';feedback.style.background='rgba(79,120,255,0.12)';feedback.style.color='var(--accent)';feedback.style.border='1px solid rgba(79,120,255,0.25)';feedback.textContent='⏳ Enviando folha... aguarde.';}
   try{
     await db.collection('folhasPonto').doc(id).update({status:'assinado',assinadoBase64:folhaAssinadaFileBase64,assinadoEm:new Date().toISOString(),vistoManager:false});
     const adm=allUsers.find(u=>u.role==='admin');
     if(adm)await addNotificacao(adm.email,'📋 Folha Assinada',`${currentUser.name} enviou a folha de ponto assinada.`,'📋','green');
     await addNotificacao('plicila.silva@gruporgbrasil.com','📋 Folha Assinada',`${currentUser.name} enviou a folha de ponto assinada.`,'📋','green');
-    closeModal('modal-enviar-folha-assinada');folhaAssinadaFileBase64=null;
+    if(feedback){feedback.style.background='var(--green-bg)';feedback.style.color='var(--green)';feedback.style.border='1px solid rgba(34,197,94,0.3)';feedback.textContent='✅ Folha assinada enviada com sucesso!';}
+    if(btn)btn.textContent='✅ Enviado!';
+    setTimeout(()=>{closeModal('modal-enviar-folha-assinada');folhaAssinadaFileBase64=null;if(btn){btn.disabled=false;btn.textContent='✅ Confirmar Envio';}if(feedback)feedback.style.display='none';},1500);
     toast('✅ Folha assinada enviada!','ok');
-  }catch(e){toast('Erro: '+e.message,'err');}
+  }catch(e){
+    if(feedback){feedback.style.background='rgba(239,68,68,0.1)';feedback.style.color='var(--red)';feedback.style.border='1px solid rgba(239,68,68,0.3)';feedback.textContent=`❌ Erro ao enviar: ${e.message}`;}
+    if(btn){btn.disabled=false;btn.textContent='✅ Confirmar Envio';}
+    toast('Erro: '+e.message,'err');
+  }
 }
 
 // ══════════════════════════════════════
