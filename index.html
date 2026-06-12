@@ -2840,8 +2840,9 @@ function renderChartsIncidencias(incidencias) {
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: {legend: {display: true, position: 'top'}},
-        scales: {y: {beginAtZero: true, ticks: {stepSize: 1}}}
+        plugins: {legend: {display: true, position: 'top', labels: {color:'#a0aec0'}}},
+        scales: {y: {beginAtZero: true, ticks: {stepSize: 1, color:'#a0aec0'}, grid: {color:'rgba(255,255,255,.06)'}},
+                 x: {ticks: {color:'#a0aec0'}, grid: {color:'rgba(255,255,255,.06)'}}}
       }
     });
   }
@@ -2872,7 +2873,7 @@ function renderChartsIncidencias(incidencias) {
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: {legend: {display: true, position: 'right'}}
+        plugins: {legend: {display: true, position: 'right', labels: {color:'#a0aec0', padding:12}}}
       }
     });
   }
@@ -8285,9 +8286,9 @@ function renderCsatPainel() {
           {type:'line',label:'Meta 4,50',data:labEvo.map(()=>CSAT_META),borderColor:'rgba(239,68,68,.5)',borderDash:[6,4],backgroundColor:'transparent',pointRadius:0,yAxisID:'y2',
            _noLabels:true}
         ]},
-        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{size:11}}}},scales:{
-          y:{position:'left',ticks:{font:{size:11}},grid:{color:'rgba(128,128,128,.1)'}},
-          y2:{position:'right',min:3.5,max:5.6,ticks:{font:{size:11},stepSize:.5},grid:{drawOnChartArea:false}}
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{size:11},color:'#a0aec0'}}},scales:{
+          y:{position:'left',ticks:{font:{size:11},color:'#a0aec0'},grid:{color:'rgba(255,255,255,.06)'}},
+          y2:{position:'right',min:3.5,max:5.6,ticks:{font:{size:11},stepSize:.5,color:'#a0aec0'},grid:{drawOnChartArea:false}}
         }}
       });
     }
@@ -8302,9 +8303,9 @@ function renderCsatPainel() {
           {type:'line',label:'Nota',data:notaAno,borderColor:'#f59e0b',backgroundColor:'transparent',pointBackgroundColor:'#f59e0b',yAxisID:'y2',tension:.3,pointRadius:5,
            _labelColor:'#f59e0b',_labelFmt:v=>v>0?v.toFixed(2):''}
         ]},
-        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{size:11}}}},scales:{
-          y:{position:'left',ticks:{font:{size:11}},grid:{color:'rgba(128,128,128,.1)'}},
-          y2:{position:'right',min:3.5,max:5.7,ticks:{font:{size:11},stepSize:.25},grid:{drawOnChartArea:false}}
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{size:11},color:'#a0aec0'}}},scales:{
+          y:{position:'left',ticks:{font:{size:11},color:'#a0aec0'},grid:{color:'rgba(255,255,255,.06)'}},
+          y2:{position:'right',min:3.5,max:5.7,ticks:{font:{size:11},stepSize:.25,color:'#a0aec0'},grid:{drawOnChartArea:false}}
         }}
       });
     }
@@ -8509,7 +8510,7 @@ function renderCsatSupervisor() {
            _noLabels:true}
         ]},
         options:{responsive:true,maintainAspectRatio:false,
-          plugins:{legend:{labels:{font:{size:11}}}},
+          plugins:{legend:{labels:{font:{size:11},color:'#a0aec0'}}},
           scales:{
             y:{min:3.5,max:5.5,ticks:{font:{size:11},stepSize:.25},grid:{color:'rgba(128,128,128,.1)'}}
           }}
@@ -8846,16 +8847,27 @@ function posPopularFiltroRanking(dados){
   if(prev && prev!=='TODOS' && postos.includes(prev)) sel.value=prev;
 }
 
+// Estado de ordenação do ranking POS
+let _posRankSort = {col:'pct', dir:'desc'};
+
+function sortPOSRanking(col){
+  if(_posRankSort.col===col){ _posRankSort.dir = _posRankSort.dir==='desc'?'asc':'desc'; }
+  else { _posRankSort = {col, dir:'desc'}; }
+  renderPOSRanking(_posRankLastDados||[]);
+}
+
+let _posRankLastDados = [];
+
 function renderPOSRanking(dadosMes){
   const el = document.getElementById('pos-ranking');
   if(!el) return;
+  _posRankLastDados = dadosMes;
 
-  // Montar lista completa: todos os 29 postos conhecidos, incluindo sem negociação
   const todasChaves = Object.keys(POS_METAS_FIXAS);
   const dadosMap = {};
   dadosMes.forEach(d=>{ dadosMap[posNormKey(d.postoNome)] = d; });
 
-  const lista = todasChaves.map(k=>{
+  let lista = todasChaves.map(k=>{
     const d = dadosMap[k];
     const meta = getPOSMeta(k, posMesSelecionado);
     const valor = d ? (d.valor||0) : 0;
@@ -8863,7 +8875,20 @@ function renderPOSRanking(dadosMes){
     const pct   = meta>0 ? (valor/meta*100) : 0;
     const falta = Math.max(0, meta - valor);
     return { postoNome: d ? d.postoNome : k, meta, valor, qtd, pct, falta, semDados: !d };
-  }).sort((a,b)=>b.pct-a.pct||b.valor-a.valor);
+  });
+
+  // Aplicar ordenação por coluna
+  const {col, dir} = _posRankSort;
+  const mult = dir==='desc' ? -1 : 1;
+  lista.sort((a,b)=>{
+    if(col==='posto') return mult * a.postoNome.localeCompare(b.postoNome);
+    if(col==='meta')      return mult * (a.meta - b.meta);
+    if(col==='valor')     return mult * (a.valor - b.valor);
+    if(col==='qtd')       return mult * (a.qtd - b.qtd);
+    if(col==='pct')       return mult * (a.pct - b.pct) || mult * (a.valor - b.valor);
+    if(col==='falta')     return mult * (a.falta - b.falta);
+    return 0;
+  });
 
   posPopularFiltroRanking(dadosMes);
   const filtro = document.getElementById('pos-ranking-posto-select')?.value || 'TODOS';
@@ -8871,16 +8896,25 @@ function renderPOSRanking(dadosMes){
 
   if(!listaFiltrada.length){ el.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3)">Sem dados.</div>'; return; }
 
+  const arrow = (c) => {
+    if(_posRankSort.col!==c) return '<span style="opacity:.3;font-size:10px;margin-left:3px">⇅</span>';
+    return _posRankSort.dir==='desc'
+      ? '<span style="color:#4F78FF;font-size:10px;margin-left:3px">▼</span>'
+      : '<span style="color:#4F78FF;font-size:10px;margin-left:3px">▲</span>';
+  };
+  const th = (label, col, align='right') =>
+    `<th onclick="sortPOSRanking('${col}')" style="padding:8px 12px;text-align:${align};color:var(--text3);cursor:pointer;user-select:none;white-space:nowrap" title="Clique para ordenar">${label}${arrow(col)}</th>`;
+
   el.innerHTML=`<div style="overflow-x:auto">
   <table style="width:100%;border-collapse:collapse;font-size:13px">
     <thead><tr style="background:var(--surface2)">
       <th style="padding:8px 12px;text-align:left;color:var(--text3)">#</th>
-      <th style="padding:8px 12px;text-align:left;color:var(--text3)">Posto</th>
-      <th style="padding:8px 12px;text-align:right;color:var(--text3)">Meta</th>
-      <th style="padding:8px 12px;text-align:right;color:var(--text3)">Negociado</th>
-      <th style="padding:8px 12px;text-align:right;color:var(--text3)">Qtd</th>
-      <th style="padding:8px 12px;text-align:center;color:var(--text3)">% Meta</th>
-      <th style="padding:8px 12px;text-align:right;color:var(--text3)">Falta para Meta</th>
+      ${th('Posto','posto','left')}
+      ${th('Meta','meta')}
+      ${th('Negociado','valor')}
+      ${th('Qtd','qtd')}
+      ${th('% Meta','pct','center')}
+      ${th('Falta para Meta','falta')}
     </tr></thead>
     <tbody>${listaFiltrada.map((p,i)=>{
       const cor = p.semDados?'#6b7280':p.pct>=100?'#22c55e':p.pct>=60?'#f97316':'#ef4444';
@@ -9083,8 +9117,8 @@ function renderPOSEvolucao(){
           csatDataLabels:{display:false}
         },
         scales:{
-          yValor:{position:'left',ticks:{font:{size:10},callback:v=>v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})},grid:{color:'rgba(128,128,128,.1)'}},
-          yQtd:{position:'right',ticks:{font:{size:10}},grid:{drawOnChartArea:false}}
+          yValor:{position:'left',ticks:{font:{size:10},color:'#a0aec0',callback:v=>v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})},grid:{color:'rgba(255,255,255,.06)'}},
+          yQtd:{position:'right',ticks:{font:{size:10},color:'#a0aec0'},grid:{drawOnChartArea:false}}
         }
       },
       plugins:[CsatDataLabels]
@@ -9133,10 +9167,10 @@ function renderPOSCanal(){
           _labelFmt:(v,i)=>{const t=totaisPorPosto[i];return v/t>=0.06?(v/t*100).toFixed(0)+'%':'';},_labelColor:'#fff',_labelInside:true}
       ]},
       options:{responsive:true,maintainAspectRatio:false,
-        plugins:{legend:{labels:{font:{size:11}}}},
+        plugins:{legend:{labels:{font:{size:11},color:'#a0aec0'}}},
         scales:{
-          x:{stacked:true,ticks:{font:{size:9}}},
-          y:{stacked:true,ticks:{font:{size:10},callback:v=>v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}}
+          x:{stacked:true,ticks:{font:{size:9},color:'#a0aec0'},grid:{color:'rgba(255,255,255,.06)'}},
+          y:{stacked:true,ticks:{font:{size:10},color:'#a0aec0',callback:v=>v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})}}
         }
       },
       plugins:[PosCanalLabels]
@@ -9309,6 +9343,23 @@ async function confirmarImportPOS(){
   } catch(e){ alert('Erro: '+e.message); console.error(e); }
   btn.textContent='Importar'; btn.disabled=false;
 }
+  // ── REGRA DE OURO — Gráficos em fundo escuro: zero preto ──
+  // Aplica globalmente a TODOS os charts do sistema
+  (function applyDarkChartDefaults(){
+    if(typeof Chart === 'undefined') return;
+    Chart.defaults.color = '#a0aec0';                    // texto/labels: cinza claro
+    Chart.defaults.borderColor = 'rgba(255,255,255,.08)';// grade: quase invisível
+    Chart.defaults.plugins.legend.labels.color = '#a0aec0';
+    Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(15,20,40,.92)';
+    Chart.defaults.plugins.tooltip.titleColor  = '#e2e8f0';
+    Chart.defaults.plugins.tooltip.bodyColor   = '#a0aec0';
+    Chart.defaults.plugins.tooltip.borderColor = 'rgba(255,255,255,.12)';
+    Chart.defaults.plugins.tooltip.borderWidth = 1;
+    Chart.defaults.scale.ticks.color   = '#a0aec0';
+    Chart.defaults.scale.grid.color    = 'rgba(255,255,255,.06)';
+    Chart.defaults.scale.title.color   = '#a0aec0';
+  })();
+
 initSystem();
 </script>
 </body>
