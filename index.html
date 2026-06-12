@@ -987,22 +987,11 @@ const PosCanalLabels = {
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <button class="btn btn-primary" onclick="abrirModalNovaIncidencia()">+ Nova Incidência</button>
           <button class="btn btn-sm btn-secondary" onclick="exportarIncidenciasExcel()">📊 Exportar</button>
-          <select class="form-select" id="inc-filtro-status" onchange="renderDashboardIncidencias()" style="width:130px">
-            <option value="todas">Todas</option>
-            <option value="aberta">Abertas</option>
-            <option value="normalizada">Normalizadas</option>
-          </select>
-          <select class="form-select" id="inc-filtro-periodo" onchange="renderDashboardIncidencias()" style="width:130px">
-            <option value="hoje">Hoje</option>
-            <option value="semana">Esta Semana</option>
-            <option value="mes">Este Mês</option>
-            <option value="todos">Todos</option>
-          </select>
-          <input type="date" id="inc-filtro-data-ini" class="form-control" style="width:140px;font-size:12px" onchange="renderDashboardIncidencias()" title="Data inicial">
-          <input type="date" id="inc-filtro-data-fim" class="form-control" style="width:140px;font-size:12px" onchange="renderDashboardIncidencias()" title="Data final">
+          <input type="date" id="inc-filtro-data" class="form-control" style="width:145px;font-size:12px" onchange="renderDashboardIncidencias()" title="Filtrar por data">
           <select class="form-select" id="inc-filtro-posto" onchange="renderDashboardIncidencias()" style="width:180px">
             <option value="">Todos os postos</option>
           </select>
+          <button class="btn btn-sm btn-secondary" onclick="limparFiltrosInc()" title="Limpar filtros">✕ Limpar</button>
         </div>
       </div>
       <div id="inc-dash-stats" class="ponto-adm-stats"></div>
@@ -1197,6 +1186,7 @@ const PosCanalLabels = {
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <select id="pos-mes-select" class="form-select" style="width:130px" onchange="onPosMesChange(this.value)"></select>
+          <button id="btn-corrigir-maio" class="btn btn-secondary" style="font-size:11px;border:1px solid rgba(201,168,76,.5);color:rgba(201,168,76,.9)" onclick="corrigirMaioOficial()" title="Sobrescreve Maio com dados oficiais homologados">🔒 Corrigir Maio Oficial</button>
           <div style="display:flex;gap:4px;background:var(--surface2);border-radius:8px;padding:3px;border:1px solid var(--border)">
             <button class="ind-tab-btn active" id="pos-btn-ranking" onclick="switchPosTab('ranking')">📋 Ranking</button>
             <button class="ind-tab-btn" id="pos-btn-campanha" onclick="switchPosTab('campanha')">🏆 Campanha</button>
@@ -2065,7 +2055,12 @@ let allPostos = [];
 let allRegistros = [];
 let unsubUsers = null;
 let unsubTasks = null;
+let _refreshTimer = null; // debounce para refreshCurrentView
 let unsubRegistros = null;
+// Flags de prontidão — garantem render só quando dados essenciais chegaram
+let _readyUsers = false;
+let _readyTasks = false;
+let _readyPostos = false;
 
 const SENHA_PADRAO = 'rg@2026';
 const TOLERANCIA_MIN = 5;
@@ -2461,14 +2456,11 @@ function renderDashboardIncidencias() {
   const content = document.getElementById('inc-dash-content');
   if (!stats || !content) return;
   
-  // Filtros
-  const filtroStatus  = document.getElementById('inc-filtro-status')?.value || 'todas';
-  const filtroPeriodo = document.getElementById('inc-filtro-periodo')?.value || 'todos';
-  const filtroDataIni = document.getElementById('inc-filtro-data-ini')?.value || '';
-  const filtroDataFim = document.getElementById('inc-filtro-data-fim')?.value || '';
-  const filtroPosto   = document.getElementById('inc-filtro-posto')?.value   || '';
+  // Filtros simplificados: Data única + Posto
+  const filtroData  = document.getElementById('inc-filtro-data')?.value  || '';
+  const filtroPosto = document.getElementById('inc-filtro-posto')?.value  || '';
 
-  // Popular select de postos
+  // Popular select de postos (auto-atualiza com postos reais)
   const selPosto = document.getElementById('inc-filtro-posto');
   if(selPosto){
     const postosUnicos = [...new Set(allIncidencias.map(i=>i.posto).filter(Boolean))].sort();
@@ -2479,33 +2471,11 @@ function renderDashboardIncidencias() {
 
   let filtered = [...allIncidencias];
 
-  // Filtrar por status
-  if (filtroStatus !== 'todas') filtered = filtered.filter(i => i.status === filtroStatus);
+  // Filtrar por data única
+  if(filtroData) filtered = filtered.filter(i => (i.abertoEm||'').startsWith(filtroData));
 
   // Filtrar por posto
-  if (filtroPosto) filtered = filtered.filter(i => i.posto === filtroPosto);
-
-  // Filtrar por datas customizadas (prioridade sobre período)
-  const now = new Date();
-  const hoje = now.toISOString().split('T')[0];
-  const ontem = new Date(now.getTime() - 86400000).toISOString().split('T')[0];
-
-  if (filtroDataIni || filtroDataFim) {
-    filtered = filtered.filter(i => {
-      const d = (i.abertoEm||'').substring(0,10);
-      if (filtroDataIni && d < filtroDataIni) return false;
-      if (filtroDataFim && d > filtroDataFim) return false;
-      return true;
-    });
-  } else if (filtroPeriodo === 'hoje') {
-    filtered = filtered.filter(i => i.abertoEm.startsWith(hoje));
-  } else if (filtroPeriodo === 'semana') {
-    const lim = new Date(now.getTime() - 7*86400000);
-    filtered = filtered.filter(i => new Date(i.abertoEm) >= lim);
-  } else if (filtroPeriodo === 'mes') {
-    const lim = new Date(now.getTime() - 30*86400000);
-    filtered = filtered.filter(i => new Date(i.abertoEm) >= lim);
-  }
+  if(filtroPosto) filtered = filtered.filter(i => i.posto === filtroPosto);
   
   // Métricas
   const abertas = filtered.filter(inc => inc.status === 'aberta');
@@ -2530,7 +2500,7 @@ function renderDashboardIncidencias() {
     <div class="pas-card">
       <div class="pas-lbl">Normalizadas</div>
       <div class="pas-val" style="color:var(--green)">${normalizadas.length}</div>
-      <div class="pas-sub">${filtroPeriodo === 'todos' ? 'total' : filtroPeriodo}</div>
+      <div class="pas-sub">${filtroData ? filtroData : (filtroPosto ? filtroPosto : 'todos')}</div>
     </div>
     <div class="pas-card">
       <div class="pas-lbl">Tempo Médio</div>
@@ -2540,7 +2510,7 @@ function renderDashboardIncidencias() {
     <div class="pas-card">
       <div class="pas-lbl">Total Registros</div>
       <div class="pas-val">${filtered.length}</div>
-      <div class="pas-sub">${filtroPeriodo}</div>
+      <div class="pas-sub">${filtroData||filtroPosto||'todos'}</div>
     </div>
   `;
   
@@ -2638,11 +2608,54 @@ function renderDashboardIncidencias() {
   } else {
     html += `<div class="empty"><p>✅ Nenhuma incidência aberta no momento</p></div>`;
   }
-  
+
+  // ── Resultado focado quando filtro está ativo ──
+  if(filtroData || filtroPosto){
+    const label = filtroData
+      ? `Ocorrências de ${filtroData.split('-').reverse().join('/')}`
+      : `Histórico: ${filtroPosto}`;
+    const ordenado = [...filtered].sort((a,b)=>(b.abertoEm||'').localeCompare(a.abertoEm||''));
+    html += `<div style="background:var(--surface2);border-radius:12px;padding:16px;margin-top:16px;border:1px solid var(--border)">
+      <div style="font-size:14px;font-weight:700;color:var(--text1);margin-bottom:12px">🔍 ${label} <span style="font-size:12px;font-weight:400;color:var(--text3)">(${ordenado.length} registro${ordenado.length!==1?'s':''})</span></div>
+      ${ordenado.length===0
+        ? '<div style="text-align:center;padding:20px;color:var(--text3);font-size:13px">Nenhuma incidência encontrada</div>'
+        : `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="background:var(--surface3)">
+            <th style="padding:8px 12px;text-align:left;color:var(--text3)">Data</th>
+            <th style="padding:8px 12px;text-align:left;color:var(--text3)">Posto</th>
+            <th style="padding:8px 12px;text-align:left;color:var(--text3)">Tipo</th>
+            <th style="padding:8px 12px;text-align:center;color:var(--text3)">Status</th>
+            <th style="padding:8px 12px;text-align:right;color:var(--text3)">Duração</th>
+          </tr></thead>
+          <tbody>${ordenado.map(i=>{
+            const cor = i.status==='aberta'?'#ef4444':'#22c55e';
+            const dataFmt = (i.abertoEm||'').substring(0,10).split('-').reverse().join('/');
+            const dur = i.tempoResolucaoMinutos?(i.tempoResolucaoMinutos>=60?Math.floor(i.tempoResolucaoMinutos/60)+'h '+(i.tempoResolucaoMinutos%60)+'min':i.tempoResolucaoMinutos+'min'):(i.status==='aberta'?'Em andamento':'—');
+            return `<tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:8px 12px;color:var(--text3);font-size:12px">${dataFmt}</td>
+              <td style="padding:8px 12px;font-weight:600;color:var(--text1)">${i.posto||'—'}</td>
+              <td style="padding:8px 12px;color:var(--text2)">${i.tipo||'—'}</td>
+              <td style="padding:8px 12px;text-align:center"><span style="background:${cor}20;color:${cor};border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700">${i.status==='aberta'?'Aberta':'Normalizada'}</span></td>
+              <td style="padding:8px 12px;text-align:right;color:var(--text3);font-size:12px">${dur}</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table></div>`
+      }
+    </div>`;
+  }
+
   content.innerHTML = html;
-  
+
   // Renderizar gráficos após DOM atualizar
   setTimeout(() => renderChartsIncidencias(filtered), 100);
+}
+
+function limparFiltrosInc(){
+  const d = document.getElementById('inc-filtro-data');
+  const p = document.getElementById('inc-filtro-posto');
+  if(d) d.value='';
+  if(p) p.value='';
+  renderDashboardIncidencias();
 }
 
 function calcularRankingPostos(incidencias) {
@@ -3071,6 +3084,8 @@ function doLogout() {
   if (unsubTasks) unsubTasks();
   if (unsubPontos) unsubPontos();
   currentUser = null; allUsers = []; allTasks = [];
+  _readyUsers = false; _readyTasks = false; _readyPostos = false;
+  clearTimeout(_refreshTimer); _refreshTimer = null;
   showPage('login');
   document.getElementById('login-email').value = '';
   document.getElementById('login-pass').value = '';
@@ -3093,15 +3108,22 @@ function startApp() {
   if (!isPosto) {
     unsubUsers = db.collection('users').onSnapshot(snap => {
       allUsers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      _readyUsers = true;
       refreshCurrentView();
     });
     unsubTasks = db.collection('tasks').orderBy('createdAt','desc').onSnapshot(snap => {
       allTasks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      _readyTasks = true;
       refreshCurrentView();
     });
+  } else {
+    // Posto não precisa de users/tasks — marcar como pronto imediatamente
+    _readyUsers = true;
+    _readyTasks = true;
   }
   db.collection('postos').onSnapshot(snap => {
     allPostos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    _readyPostos = true;
     refreshCurrentView();
   });
   unsubRegistros = db.collection('registros').onSnapshot(snap => {
@@ -3133,6 +3155,17 @@ async function renderAdmDashboardExtras() {
 }
 
 function refreshCurrentView() {
+  // Debounce 300ms: consolida múltiplos onSnapshot simultâneos num único render
+  // Evita race condition onde snapshots parciais sobrescrevem a view com dados incompletos
+  clearTimeout(_refreshTimer);
+  _refreshTimer = setTimeout(() => {
+    // Guard: só renderiza se os dados essenciais já chegaram do Firestore
+    if(!_readyUsers || !_readyPostos) return;
+    _doRefreshCurrentView();
+  }, 300);
+}
+
+function _doRefreshCurrentView() {
   const active = document.querySelector('.view.active');
   if (!active) return;
   const id = active.id.replace('view-','');
@@ -3191,6 +3224,10 @@ function showView(name, el) {
   if (name === 'col-rh-atestado') renderColRhAtestado();
   if (name === 'adm-rh-folha') renderHistoricoFolhas();
   if (name === 'col-rh-folha') renderColRhFolha();
+  // Render imediato ao navegar (cancela debounce pendente e renderiza já)
+  clearTimeout(_refreshTimer);
+  _refreshTimer = null;
+  _doRefreshCurrentView();
 }
 
 // ══════════════════════════════════════
@@ -8561,6 +8598,72 @@ async function importarCSAT(input) {
 // Meses com fechamento oficial — nunca sobrescritos por novas importações
 const POS_MESES_CONGELADOS = ['2026-05'];
 
+// Dados oficiais de Maio/2026 (planilha homologada — fechamento campanha)
+const POS_MAIO_OFICIAL = [
+  {postoNome:'APERIBE',               valor:10297.18, qtd:38},
+  {postoNome:'AREAL',                 valor:5887.22,  qtd:9},
+  {postoNome:'BOM JARDIM',            valor:22010.01, qtd:80},
+  {postoNome:'BOM JESUS DO ITABAPOANA', valor:9994.94, qtd:15},
+  {postoNome:'CAMBUCI',               valor:0,        qtd:0},
+  {postoNome:'CANTAGALO',             valor:834.78,   qtd:2},
+  {postoNome:'CARAPEBUS',             valor:5091.34,  qtd:18},
+  {postoNome:'CARDOSO MOREIRA',       valor:2352.67,  qtd:14},
+  {postoNome:'CONCEICAO DE MACABU',   valor:5183.19,  qtd:14},
+  {postoNome:'DUAS BARRAS',           valor:0,        qtd:0},
+  {postoNome:'GUARUS',                valor:2566.38,  qtd:12},
+  {postoNome:'ITALVA',                valor:6901.83,  qtd:9},
+  {postoNome:'LAJE DO MURIAE',        valor:725.26,   qtd:4},
+  {postoNome:'MACUCO',                valor:335.06,   qtd:1},
+  {postoNome:'MIRACEMA',              valor:18641.29, qtd:77},
+  {postoNome:'NATIVIDADE',            valor:3254.36,  qtd:15},
+  {postoNome:'NOVA FRIBURGO',         valor:1715.99,  qtd:9},
+  {postoNome:'PORCIUNCULA',           valor:3205.05,  qtd:20},
+  {postoNome:'PORTO REAL',            valor:1539.98,  qtd:6},
+  {postoNome:'QUISSAMA',              valor:6402.98,  qtd:19},
+  {postoNome:'SANTA MARIA MADALENA',  valor:1049.81,  qtd:2},
+  {postoNome:'SILVA JARDIM',          valor:6744.62,  qtd:18},
+  {postoNome:'SUMIDOURO',             valor:1467.94,  qtd:5},
+  {postoNome:'SAO JOSE DE UBA',       valor:819.19,   qtd:6},
+  {postoNome:'SAO JOSE DO VALE DO RIO PRETO', valor:7509.42, qtd:15},
+  {postoNome:'SAO SEBASTIAO DO ALTO', valor:783.91,   qtd:6},
+  {postoNome:'TANGUA',                valor:18174.31, qtd:36},
+  {postoNome:'TRAJANO DE MORAES',     valor:3055.39,  qtd:13},
+  {postoNome:'VARRE-SAI',             valor:4973.63,  qtd:10},
+];
+
+async function corrigirMaioOficial() {
+  const btn = document.getElementById('btn-corrigir-maio');
+  if(btn){ btn.textContent = 'Corrigindo...'; btn.disabled = true; }
+  try {
+    // Deletar todos os docs de Maio existentes
+    const snap = await db.collection('pos_resultados').where('mesRef','==','2026-05').get();
+    if(!snap.empty){
+      const del = db.batch();
+      snap.docs.forEach(d => del.delete(d.ref));
+      await del.commit();
+    }
+    // Gravar os valores oficiais
+    const batch = db.batch();
+    POS_MAIO_OFICIAL.forEach(g => {
+      const docId = `2026-05_${g.postoNome.replace(/\s+/g,'_')}`;
+      batch.set(db.collection('pos_resultados').doc(docId), {
+        mesRef:'2026-05', postoNome:g.postoNome,
+        valor:g.valor, qtd:g.qtd,
+        credito:0, debito:0, pix:0,
+        updatedAt:new Date().toISOString(), oficial:true
+      });
+    });
+    await batch.commit();
+    toast('✅ Maio corrigido com dados oficiais (R$ 151.517,73)', 'ok');
+    if(btn){ btn.textContent = '✅ Corrigido'; }
+    renderPOS();
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao corrigir Maio: ' + e.message, 'err');
+    if(btn){ btn.textContent = 'Corrigir Maio'; btn.disabled = false; }
+  }
+}
+
 const POS_METAS_FIXAS = {
   'MIRACEMA':17000,'TANGUA':15000,'AREAL':15000,'BOM JARDIM':8500,
   'APERIBE':7500,'ITALVA':6000,'CONCEICAO DE MACABU':3700,
@@ -9124,7 +9227,8 @@ async function confirmarImportPOS(){
       const oldSnap = await db.collection('pos_resultados').where('mesRef','==',mes).get();
       if(!oldSnap.empty){
         const delBatch = db.batch();
-        oldSnap.docs.forEach(d => delBatch.delete(d.ref));
+        // Também proteger documentos marcados como oficial:true no banco
+        oldSnap.docs.forEach(d => { if(!d.data().oficial) delBatch.delete(d.ref); });
         await delBatch.commit();
       }
     }
