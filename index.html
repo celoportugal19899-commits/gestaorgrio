@@ -1132,6 +1132,7 @@ const PosCanalLabels = {
             <button class="ind-tab-btn active" id="csatTab-painel" onclick="switchCsatTab('painel')">📊 Painel</button>
             <button class="ind-tab-btn" id="csatTab-supervisor" onclick="switchCsatTab('supervisor')">👤 Por Supervisor</button>
             <button class="ind-tab-btn" id="csatTab-importar" onclick="switchCsatTab('importar')">📥 Importar</button>
+            <button class="ind-tab-btn" id="csatTab-acoes" onclick="switchCsatTab('acoes')">📋 Planos de Ação</button>
           </div>
         </div>
       </div>
@@ -1176,6 +1177,26 @@ const PosCanalLabels = {
           <div id="csat-import-log" style="margin-top:14px;font-size:13px;color:var(--text3)">
             <strong style="color:var(--text2)">Último import:</strong> <span id="csat-import-log-txt">Nenhum import realizado nesta sessão.</span>
           </div>
+        </div>
+      </div>
+
+      <!-- aba PLANOS DE AÇÃO (submódulo Gestão de Ações CSAT) -->
+      <div id="csatTabContent-acoes" style="display:none">
+        <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap">
+          <button class="ind-tab-btn active" id="csatAcoesSub-pendencias" onclick="switchCsatAcoesSub('pendencias')">⚠️ Pendências</button>
+          <button class="ind-tab-btn" id="csatAcoesSub-visaogeral" onclick="switchCsatAcoesSub('visaogeral')">📊 Visão Geral</button>
+          <button class="ind-tab-btn" id="csatAcoesSub-planos" onclick="switchCsatAcoesSub('planos')">📝 Planos de Ação</button>
+          <button class="ind-tab-btn" id="csatAcoesSub-resultados" onclick="switchCsatAcoesSub('resultados')">📈 Resultados</button>
+        </div>
+        <div id="csatAcoesSubContent-pendencias"></div>
+        <div id="csatAcoesSubContent-visaogeral" style="display:none">
+          <div class="empty" style="margin-top:40px"><div class="icon">📊</div><p>Visão Geral será implementada no próximo bloco (Dashboard Gerencial).</p></div>
+        </div>
+        <div id="csatAcoesSubContent-planos" style="display:none">
+          <div class="empty" style="margin-top:40px"><div class="icon">📝</div><p>Cadastro completo de Planos de Ação será implementado no próximo bloco.</p></div>
+        </div>
+        <div id="csatAcoesSubContent-resultados" style="display:none">
+          <div class="empty" style="margin-top:40px"><div class="icon">📈</div><p>Comparação antes/depois será implementada no bloco final.</p></div>
         </div>
       </div>
     </div>
@@ -8380,6 +8401,320 @@ async function seedCsatSugestoesSeNecessario() {
   } catch (e) { console.error('seedCsatSugestoesSeNecessario', e); }
 }
 
+// ══════════════════════════════════════════════════════════════
+// MOTOR DE DETECÇÃO AUTOMÁTICA — BLOCO 1
+// Lê 'csat' e 'csat_comentarios' (somente leitura, nunca escreve nelas).
+// Escreve apenas em 'csat_motivos_detectados' e 'csat_deteccao_controle'.
+// Idempotente: chave do documento = postoNome_mesRef_criterio[_tema].
+// ══════════════════════════════════════════════════════════════
+
+function csatMotivoDocId(postoNome, mesRef, criterio, tema) {
+  const base = `${postoNome}_${mesRef}_${criterio}`.replace(/\s+/g,'_');
+  return tema ? `${base}_${tema}`.replace(/\s+/g,'_') : base;
+}
+
+// Buckets de palavras-chave para o critério 5 (comentário recorrente).
+// Mesmas categorias dos exemplos da proposta aprovada.
+const CSAT_TEMAS_COMENTARIO = {
+  demora_atendimento:    ['demora','demorou','lento','lenta','espera','esperei','atraso'],
+  falta_informacao:      ['nao sabia','não sabia','ninguem sabia','ninguém sabia','sem informacao','sem informação','desinformado','nao informou','não informou','sem saber','nao soube','não soube'],
+  baixa_cordialidade:    ['mal educado','mal educada','grosseiro','grosseira','sem educacao','sem educação','rude','antipatico','antipático'],
+  problema_nao_resolvido:['nao resolveu','não resolveu','sem solucao','sem solução','continua','voltei','retornei'],
+  tempo_espera:          ['fila','tempo de espera','muito tempo','horas esperando']
+};
+
+function csatClassificarTemaComentario(texto) {
+  const t = csatNorm(texto || '');
+  for (const [tema, palavras] of Object.entries(CSAT_TEMAS_COMENTARIO)) {
+    if (palavras.some(p => t.includes(csatNorm(p)))) return tema;
+  }
+  return null;
+}
+
+// Quantidade mínima de ocorrências do mesmo tema para considerar "recorrente"
+const CSAT_MIN_OCORRENCIAS_TEMA = 3;
+
+// Quantidade de piores postos (critério 4) considerados críticos
+const CSAT_QTD_PIORES = 5;
+
+async function detectarOportunidadesCsat(forcar) {
+  try {
+    // ── Controle de idempotência: só roda se houver mês novo a processar ──
+    const mesesDisp = [...new Set(csatAllData.map(d => d.mesRef))].sort();
+    if (!mesesDisp.length) return { executou: false, motivo: 'sem_dados_csat' };
+    const mesAtual = mesesDisp[mesesDisp.length - 1];
+    const mesAnterior = mesesDisp[mesesDisp.length - 2] || null;
+
+    const ctrlRef = db.collection('csat_deteccao_controle').doc('geral');
+    const ctrlSnap = await ctrlRef.get();
+    const ctrl = ctrlSnap.exists ? ctrlSnap.data() : {};
+    if (!forcar && ctrl.ultimoMesRefProcessado === mesAtual) {
+      return { executou: false, motivo: 'ja_processado', mesAtual };
+    }
+
+    // ── Dados-base do mês atual e do anterior, por posto ──
+    const porPostoAtual = {};
+    csatAllData.filter(d => d.mesRef === mesAtual).forEach(d => { porPostoAtual[d.postoNome] = d; });
+    const porPostoAnterior = {};
+    if (mesAnterior) csatAllData.filter(d => d.mesRef === mesAnterior).forEach(d => { porPostoAnterior[d.postoNome] = d; });
+
+    // Acumulado do ano (mesma lógica usada no painel: meses do ano de mesAtual)
+    const anoAtual = mesAtual.slice(0,4);
+    const mesesDoAno = mesesDisp.filter(m => m.startsWith(anoAtual));
+    const acumuladoPorPosto = {};
+    Object.keys(CSAT_NOME_MAP).forEach(()=>{}); // no-op, mantém referência de leitura já existente
+    const todosPostosNomes = [...new Set(csatAllData.map(d => d.postoNome))];
+    todosPostosNomes.forEach(posto => {
+      const regs = csatAllData.filter(d => d.mesRef && mesesDoAno.includes(d.mesRef) && d.postoNome === posto && d.notaMedia != null);
+      if (regs.length) {
+        const somaPond = regs.reduce((s,r)=>s+(r.notaMedia*(r.pesquisas||0)),0);
+        const totalPesq = regs.reduce((s,r)=>s+(r.pesquisas||0),0);
+        acumuladoPorPosto[posto] = totalPesq > 0 ? somaPond/totalPesq : null;
+      }
+    });
+
+    // Ranking de piores CSATs do mês atual (só postos com pesquisas > 0)
+    const ranking = todosPostosNomes
+      .map(p => porPostoAtual[p])
+      .filter(d => d && d.notaMedia != null && (d.pesquisas||0) > 0)
+      .sort((a,b) => a.notaMedia - b.notaMedia);
+    const piores = new Set(ranking.slice(0, CSAT_QTD_PIORES).map(d => d.postoNome));
+
+    // Comentários do mês atual, por posto
+    let comentariosSnap;
+    try { comentariosSnap = await db.collection('csat_comentarios').where('mesRef','==',mesAtual).get(); }
+    catch(e) { comentariosSnap = { forEach: ()=>{} }; }
+    const comentariosPorPosto = {};
+    comentariosSnap.forEach(doc => {
+      const d = doc.data();
+      if (d.postoNome) comentariosPorPosto[d.postoNome] = d.comentarios || [];
+    });
+
+    const batch = db.batch();
+    let totalMotivos = 0;
+    const motivosAtivosChaves = new Set(); // para expiração: tudo que NÃO estiver aqui pode expirar
+
+    function gravarMotivo(postoNome, criterio, descricao, detalhe, tema) {
+      const supKey = Object.keys(CSAT_SUPERVISORES).find(k => CSAT_SUPERVISORES[k].postos.includes(postoNome)) || null;
+      const docId = csatMotivoDocId(postoNome, mesAtual, criterio, tema);
+      motivosAtivosChaves.add(docId);
+      const ref = db.collection('csat_motivos_detectados').doc(docId);
+      batch.set(ref, {
+        id: docId, postoNome, supervisorKey: supKey, mesRef: mesAtual, criterio,
+        descricao, detalhe: detalhe || {}, temaComentario: tema || null,
+        status: 'pendente', planoId: null,
+        detectadoEm: new Date().toISOString(),
+        ultimaConfirmacaoEm: new Date().toISOString()
+      }, { merge: true });
+      totalMotivos++;
+    }
+
+    todosPostosNomes.forEach(posto => {
+      const atual = porPostoAtual[posto];
+      const anterior = porPostoAnterior[posto];
+      const pesquisasAtual = atual ? (atual.pesquisas || 0) : 0;
+
+      // Critério 7 (crítico): zero pesquisas no mês atual
+      if (pesquisasAtual === 0) {
+        gravarMotivo(posto, 'zero_pesquisas', 'Posto zerado de pesquisas', { pesquisas: 0 });
+        return; // sem pesquisa, os demais critérios não se aplicam (sem nota para avaliar)
+      }
+
+      // Critério adicional: amostra insuficiente (crítico, mas não zero)
+      if (pesquisasAtual > 0 && pesquisasAtual < CSAT_AMOSTRA_MINIMA) {
+        gravarMotivo(posto, 'amostra_insuficiente', `Volume de pesquisas insuficiente para análise confiável (${pesquisasAtual} pesquisa(s))`, { pesquisas: pesquisasAtual });
+      }
+
+      // Critério 1: abaixo da meta no mês anterior
+      if (anterior && anterior.notaMedia != null && anterior.notaMedia < CSAT_META) {
+        gravarMotivo(posto, 'meta_mes_anterior', `Abaixo da meta no mês anterior (${anterior.notaMedia.toFixed(2)})`, { valorAnterior: anterior.notaMedia, meta: CSAT_META });
+      }
+
+      // Critério 2: abaixo da meta acumulada do ano
+      const acum = acumuladoPorPosto[posto];
+      if (acum != null && acum < CSAT_META) {
+        gravarMotivo(posto, 'meta_acumulada_ano', `Abaixo da meta acumulada do ano (${acum.toFixed(2)})`, { valorAtual: acum, meta: CSAT_META });
+      }
+
+      // Critério 3: aumento relevante de avaliações negativas (detratores)
+      if (atual && anterior && atual.detratores != null && anterior.detratores != null) {
+        const detAtualPct = (atual.pesquisas||0) > 0 ? (atual.detratores/atual.pesquisas)*100 : 0;
+        const detAnteriorPct = (anterior.pesquisas||0) > 0 ? (anterior.detratores/anterior.pesquisas)*100 : 0;
+        const aumento = detAtualPct - detAnteriorPct;
+        if (aumento >= 10) { // aumento de 10pp ou mais no percentual de detratores
+          gravarMotivo(posto, 'queda_negativas', `Aumento de ${aumento.toFixed(0)}pp em avaliações negativas`, { valorAnterior: detAnteriorPct, valorAtual: detAtualPct, percentual: aumento });
+        }
+      }
+
+      // Critério 4: entre os piores CSATs da regional
+      if (piores.has(posto)) {
+        gravarMotivo(posto, 'piores_csat', `Entre os ${CSAT_QTD_PIORES} piores CSATs da regional (${atual.notaMedia.toFixed(2)})`, { valorAtual: atual.notaMedia, pesquisas: pesquisasAtual });
+      }
+
+      // Critério 5: comentários negativos recorrentes por tema
+      const comentarios = comentariosPorPosto[posto] || [];
+      const contagemTema = {};
+      comentarios.forEach(c => {
+        if ((c.qualificacao||'') !== 'Detrator') return;
+        const tema = csatClassificarTemaComentario(c.texto);
+        if (tema) contagemTema[tema] = (contagemTema[tema]||0) + 1;
+      });
+      Object.entries(contagemTema).forEach(([tema, qtd]) => {
+        if (qtd >= CSAT_MIN_OCORRENCIAS_TEMA) {
+          const labelTema = tema.replace(/_/g,' ');
+          gravarMotivo(posto, 'comentario_recorrente', `Comentários recorrentes sobre ${labelTema} (${qtd} ocorrências)`, { percentual: qtd }, tema);
+        }
+      });
+    });
+
+    // ── Expiração: motivos pendentes de meses anteriores que não reapareceram ──
+    // Regra aprovada: 2 meses consecutivos sem reaparecer → status muda para 'expirado'.
+    // Não apaga nada; só atualiza status para sair da lista ativa de pendências.
+    if (mesAnterior) {
+      const pendentesAntigos = allCsatMotivosDetectados.filter(m =>
+        m.status === 'pendente' && m.mesRef !== mesAtual && m.mesRef !== mesAnterior
+      );
+      pendentesAntigos.forEach(m => {
+        batch.set(db.collection('csat_motivos_detectados').doc(m.id), { status: 'expirado' }, { merge: true });
+      });
+    }
+
+    await batch.commit();
+    await ctrlRef.set({ ultimaExecucao: new Date().toISOString(), ultimoMesRefProcessado: mesAtual }, { merge: true });
+
+    return { executou: true, mesAtual, totalMotivos };
+  } catch (e) {
+    console.error('detectarOportunidadesCsat', e);
+    return { executou: false, motivo: 'erro', erro: e.message };
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// UI — ABA PLANOS DE AÇÃO / PENDÊNCIAS — BLOCO 1
+// ══════════════════════════════════════════════════════════════
+
+let csatAcoesSubAtiva = 'pendencias';
+
+function switchCsatAcoesSub(sub) {
+  csatAcoesSubAtiva = sub;
+  ['pendencias','visaogeral','planos','resultados'].forEach(s => {
+    document.getElementById('csatAcoesSub-'+s)?.classList.toggle('active', s===sub);
+    const c = document.getElementById('csatAcoesSubContent-'+s);
+    if (c) c.style.display = s===sub ? '' : 'none';
+  });
+  if (sub === 'pendencias') renderCsatPendencias();
+}
+
+async function renderCsatAcoesTab() {
+  const el = document.getElementById('csatAcoesSubContent-pendencias');
+  if (el) el.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text3)">🔄 Verificando oportunidades...</div>`;
+  await detectarOportunidadesCsat(false);
+  renderCsatPendencias();
+}
+
+function isSupervisorCsatAcoes() {
+  // Reaproveita identificação por email já usada em outros módulos (ex: Caixa)
+  return currentUser && currentUser.role !== 'admin';
+}
+
+function csatSupervisorKeyAtual() {
+  if (currentUser?.role === 'admin') return null;
+  for (const [key, sup] of Object.entries(CSAT_SUPERVISORES)) {
+    if ((sup.nome||'').toLowerCase().includes((currentUser?.name||'').toLowerCase().split(' ')[0])) return key;
+  }
+  return null;
+}
+
+function renderCsatPendencias() {
+  const el = document.getElementById('csatAcoesSubContent-pendencias');
+  if (!el) return;
+
+  const isAdm = currentUser?.role === 'admin';
+  const minhaSupKey = isAdm ? null : csatSupervisorKeyAtual();
+
+  let pendentes = allCsatMotivosDetectados.filter(m => m.status === 'pendente');
+  if (!isAdm && minhaSupKey) pendentes = pendentes.filter(m => m.supervisorKey === minhaSupKey);
+
+  if (!pendentes.length) {
+    el.innerHTML = `<div class="empty" style="margin-top:40px"><div class="icon">✅</div><p>Nenhuma pendência identificada no momento.</p></div>`;
+    return;
+  }
+
+  // Agrupar por posto
+  const porPosto = {};
+  pendentes.forEach(m => { (porPosto[m.postoNome] = porPosto[m.postoNome] || []).push(m); });
+
+  // Ordenar: postos com motivo crítico (zero_pesquisas / amostra_insuficiente) primeiro
+  const postos = Object.keys(porPosto).sort((a,b) => {
+    const critA = porPosto[a].some(m => CSAT_CRITERIOS[m.criterio]?.critico) ? 0 : 1;
+    const critB = porPosto[b].some(m => CSAT_CRITERIOS[m.criterio]?.critico) ? 0 : 1;
+    return critA - critB;
+  });
+
+  function motivoTag(m) {
+    const crit = CSAT_CRITERIOS[m.criterio];
+    const critico = crit?.critico;
+    const jaVinculado = m.status === 'vinculado';
+    return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:8px;margin-bottom:6px;background:${critico?'rgba(239,68,68,.08)':'var(--surface2)'};border:1px solid ${critico?'rgba(239,68,68,.3)':'var(--border)'}">
+      <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+        ${critico ? '<span style="font-size:14px">⚠️</span>' : '<span style="font-size:14px;opacity:.5">•</span>'}
+        <span style="font-size:12px;color:${critico?'#ef4444':'var(--text2)'};font-weight:${critico?'700':'500'}">${m.descricao}</span>
+      </div>
+      ${!jaVinculado ? `<button class="btn btn-sm btn-secondary" style="white-space:nowrap" onclick="abrirCriarPlanoDeMotivo('${m.id}')">+ Plano</button>` : ''}
+    </div>`;
+  }
+
+  el.innerHTML = `
+    <div style="font-size:12px;color:var(--text3);margin-bottom:14px">
+      ${postos.length} posto(s) com pendência identificada · critérios em destaque vermelho são tratados como críticos
+    </div>
+    ${postos.map(posto => {
+      const motivos = porPosto[posto];
+      const supKey = motivos[0]?.supervisorKey;
+      const supNome = supKey ? CSAT_SUPERVISORES[supKey]?.nome : '—';
+      const temCritico = motivos.some(m => CSAT_CRITERIOS[m.criterio]?.critico);
+      return secAcc(
+        `${temCritico?'⚠️ ':''}${posto} <span style="font-weight:400;color:var(--text3);font-size:12px">· ${supNome}</span>`,
+        motivos.length,
+        motivos.map(motivoTag).join(''),
+        temCritico,
+        temCritico ? '#ef4444' : ''
+      );
+    }).join('')}
+  `;
+}
+
+// ── Vínculo simplificado de motivo a plano (formulário completo no Bloco 2) ──
+// Por ora, cria um plano mínimo em status 'planejado' já vinculado ao motivo,
+// capturando o snapshot de CSAT na abertura. Edição completa do 5W2H+ é Bloco 2.
+async function abrirCriarPlanoDeMotivo(motivoId) {
+  const motivo = allCsatMotivosDetectados.find(m => m.id === motivoId);
+  if (!motivo) { toast('Motivo não encontrado', 'err'); return; }
+  if (!confirm(`Criar plano de ação para "${motivo.postoNome}"?\n\nMotivo: ${motivo.descricao}\n\nO formulário completo (5W2H, causa raiz, evidências) será disponibilizado no próximo bloco. Por ora será criado um plano inicial em status "Planejado".`)) return;
+
+  try {
+    const csatAtual = csatAllData.find(d => d.postoNome === motivo.postoNome && d.mesRef === motivo.mesRef);
+    const ref = db.collection('csat_planos_acao').doc();
+    const novoPlano = {
+      id: ref.id, postoNome: motivo.postoNome, supervisorKey: motivo.supervisorKey,
+      supervisorNome: motivo.supervisorKey ? CSAT_SUPERVISORES[motivo.supervisorKey]?.nome : (currentUser?.name||''),
+      oQueSeraFeito: '', porQue: motivo.descricao, causaRaiz: null, causaRaizDetalhe: '',
+      responsavel: currentUser?.name || '', prazo: null, metaEsperada: '',
+      impactoEsperado: null, impactoEsperadoDetalhe: '',
+      status: 'planejado',
+      motivosVinculados: [motivo.id],
+      csatNaAbertura: csatAtual ? { mesRef: csatAtual.mesRef, notaMedia: csatAtual.notaMedia, pesquisas: csatAtual.pesquisas } : null,
+      csatNaConclusao: null, classificacaoEfetividade: null, evidencias: [],
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), concluidoEm: null
+    };
+    await ref.set(novoPlano);
+    await db.collection('csat_motivos_detectados').doc(motivo.id).update({ status: 'vinculado', planoId: ref.id });
+    toast('✅ Plano criado! Complete os detalhes na aba Planos de Ação (disponível no próximo bloco).', 'ok');
+    renderCsatPendencias();
+  } catch (e) { toast('Erro ao criar plano: ' + e.message, 'err'); }
+}
+
+
 function csatNorm(str){ return (str||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim(); }
 function csatCorNota(n) {
   if (n === null || n === undefined || isNaN(n)) return 'var(--text3)';
@@ -8444,15 +8779,16 @@ function csatLimparMeses(){ csatMesesSelecionados=[]; renderCsatMesBtns(); rende
 
 function switchCsatTab(tab) {
   csatTabAtiva = tab;
-  ['painel','supervisor','importar'].forEach(t => {
+  ['painel','supervisor','importar','acoes'].forEach(t => {
     document.getElementById('csatTab-'+t)?.classList.toggle('active', t===tab);
     const c = document.getElementById('csatTabContent-'+t);
     if(c) c.style.display = t===tab ? '' : 'none';
   });
   const mw = document.getElementById('csat-meses-wrap');
-  if(mw) mw.style.display = tab==='importar' ? 'none' : '';
+  if(mw) mw.style.display = (tab==='importar' || tab==='acoes') ? 'none' : '';
   if(tab==='painel') renderCsatPainel();
   if(tab==='supervisor') renderCsatSupervisor();
+  if(tab==='acoes') renderCsatAcoesTab();
 }
 function selectCsatSupervisor(k, el) {
   csatSupAtivo = k;
