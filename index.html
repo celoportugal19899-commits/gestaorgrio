@@ -1182,22 +1182,24 @@ const PosCanalLabels = {
 
       <!-- aba PLANOS DE AÇÃO (submódulo Gestão de Ações CSAT) -->
       <div id="csatTabContent-acoes" style="display:none">
-        <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap">
-          <button class="ind-tab-btn active" id="csatAcoesSub-pendencias" onclick="switchCsatAcoesSub('pendencias')">⚠️ Pendências</button>
-          <button class="ind-tab-btn" id="csatAcoesSub-visaogeral" onclick="switchCsatAcoesSub('visaogeral')">📊 Visão Geral</button>
-          <button class="ind-tab-btn" id="csatAcoesSub-planos" onclick="switchCsatAcoesSub('planos')">📝 Planos de Ação</button>
-          <button class="ind-tab-btn" id="csatAcoesSub-resultados" onclick="switchCsatAcoesSub('resultados')">📈 Resultados</button>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+          <div style="display:flex;gap:6px" id="csat-acoes-filtro-status">
+            <button class="btn btn-sm btn-primary" data-filtro="todos" onclick="filtrarCsatAcoesPorStatus('todos')">Todos</button>
+            <button class="btn btn-sm btn-secondary" data-filtro="sem_plano" onclick="filtrarCsatAcoesPorStatus('sem_plano')">🔴 Sem plano</button>
+            <button class="btn btn-sm btn-secondary" data-filtro="em_andamento" onclick="filtrarCsatAcoesPorStatus('em_andamento')">🟡 Em andamento</button>
+            <button class="btn btn-sm btn-secondary" data-filtro="concluido" onclick="filtrarCsatAcoesPorStatus('concluido')">🟢 Concluído</button>
+          </div>
+          <button class="btn btn-sm btn-secondary" onclick="toast('Dashboard Gerencial (indicadores, rankings, reincidência e efetividade) será disponibilizado no próximo bloco.','ok')">📊 Dashboard Gerencial</button>
         </div>
         <div id="csatAcoesSubContent-pendencias"></div>
-        <div id="csatAcoesSubContent-visaogeral" style="display:none">
-          <div class="empty" style="margin-top:40px"><div class="icon">📊</div><p>Visão Geral será implementada no próximo bloco (Dashboard Gerencial).</p></div>
-        </div>
-        <div id="csatAcoesSubContent-planos" style="display:none">
-          <div class="empty" style="margin-top:40px"><div class="icon">📝</div><p>Cadastro completo de Planos de Ação será implementado no próximo bloco.</p></div>
-        </div>
-        <div id="csatAcoesSubContent-resultados" style="display:none">
-          <div class="empty" style="margin-top:40px"><div class="icon">📈</div><p>Comparação antes/depois será implementada no bloco final.</p></div>
-        </div>
+      </div>
+    </div>
+
+    <!-- MODAL: DETALHE DO POSTO/PLANO CSAT (Problema → Plano de Ação → Resultado) -->
+    <div class="modal-overlay" id="modal-csat-acao-detalhe">
+      <div class="modal" style="max-width:640px;max-height:85vh;overflow-y:auto">
+        <div class="modal-header"><div class="modal-title" id="csat-acao-detalhe-titulo">📋 Detalhe</div><button class="close-btn" onclick="closeModal('modal-csat-acao-detalhe')">✕</button></div>
+        <div id="csat-acao-detalhe-body"></div>
       </div>
     </div>
 
@@ -8590,20 +8592,20 @@ async function detectarOportunidadesCsat(forcar) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// UI — ABA PLANOS DE AÇÃO / PENDÊNCIAS — BLOCO 1
+// UI — TELA OPERACIONAL "PLANOS DE AÇÃO" (simplificada) — BLOCO 1
+// Uma linha por posto. Sem sub-abas, sem cards, sem rankings.
+// Toda a inteligência (critérios, idempotência, vínculo, schema)
+// permanece intacta — esta seção só decide o que/como exibir.
 // ══════════════════════════════════════════════════════════════
 
-let csatAcoesSubAtiva = 'pendencias';
+let csatAcoesFiltroStatus = 'todos'; // 'todos' | 'sem_plano' | 'em_andamento' | 'concluido'
 
-function switchCsatAcoesSub(sub) {
-  csatAcoesSubAtiva = sub;
-  ['pendencias','visaogeral','planos','resultados'].forEach(s => {
-    document.getElementById('csatAcoesSub-'+s)?.classList.toggle('active', s===sub);
-    const c = document.getElementById('csatAcoesSubContent-'+s);
-    if (c) c.style.display = s===sub ? '' : 'none';
-  });
-  if (sub === 'pendencias') renderCsatPendencias();
-}
+// Prioridade de exibição quando um posto tem múltiplos motivos pendentes —
+// o mais crítico/relevante aparece na coluna "Motivo Principal" da tabela.
+const CSAT_PRIORIDADE_CRITERIO = [
+  'zero_pesquisas', 'amostra_insuficiente', 'piores_csat',
+  'queda_negativas', 'meta_mes_anterior', 'meta_acumulada_ano', 'comentario_recorrente'
+];
 
 async function renderCsatAcoesTab() {
   const el = document.getElementById('csatAcoesSubContent-pendencias');
@@ -8613,7 +8615,6 @@ async function renderCsatAcoesTab() {
 }
 
 function isSupervisorCsatAcoes() {
-  // Reaproveita identificação por email já usada em outros módulos (ex: Caixa)
   return currentUser && currentUser.role !== 'admin';
 }
 
@@ -8625,6 +8626,36 @@ function csatSupervisorKeyAtual() {
   return null;
 }
 
+function filtrarCsatAcoesPorStatus(filtro) {
+  csatAcoesFiltroStatus = filtro;
+  document.querySelectorAll('#csat-acoes-filtro-status button').forEach(b => {
+    const ativo = b.dataset.filtro === filtro;
+    b.className = ativo ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-secondary';
+  });
+  renderCsatPendencias();
+}
+
+// Deriva, por posto, o status operacional consolidado a partir dos motivos
+// (pendentes) e planos vinculados — é o que alimenta a coluna "Status".
+function csatStatusOperacionalDoPosto(postoNome, motivosDoPosto) {
+  const planosDoPosto = allCsatPlanosAcao.filter(p => p.postoNome === postoNome);
+  // Algum motivo pendente sem nenhum plano vinculado ainda → sem plano
+  const temMotivoSemPlano = motivosDoPosto.some(m => m.status === 'pendente');
+  if (!planosDoPosto.length) return temMotivoSemPlano ? 'sem_plano' : 'sem_plano';
+  const temConcluido = planosDoPosto.some(p => p.status === 'concluido');
+  const temAndamento = planosDoPosto.some(p => p.status === 'planejado' || p.status === 'em_andamento');
+  if (temMotivoSemPlano) return 'sem_plano'; // ainda há motivo novo não tratado
+  if (temAndamento) return 'em_andamento';
+  if (temConcluido) return 'concluido';
+  return 'sem_plano';
+}
+
+function csatStatusBadge(status) {
+  if (status === 'concluido') return `<span style="font-size:12px;font-weight:700;color:#22c55e">🟢 Concluído</span>`;
+  if (status === 'em_andamento') return `<span style="font-size:12px;font-weight:700;color:#f59e0b">🟡 Em andamento</span>`;
+  return `<span style="font-size:12px;font-weight:700;color:#ef4444">🔴 Sem plano</span>`;
+}
+
 function renderCsatPendencias() {
   const el = document.getElementById('csatAcoesSubContent-pendencias');
   if (!el) return;
@@ -8632,55 +8663,90 @@ function renderCsatPendencias() {
   const isAdm = currentUser?.role === 'admin';
   const minhaSupKey = isAdm ? null : csatSupervisorKeyAtual();
 
-  let pendentes = allCsatMotivosDetectados.filter(m => m.status === 'pendente');
-  if (!isAdm && minhaSupKey) pendentes = pendentes.filter(m => m.supervisorKey === minhaSupKey);
+  // Universo: todo posto que tem motivo pendente OU motivo vinculado a plano não concluído
+  // OU plano em qualquer status (garante que planos concluídos continuem visíveis na lista).
+  let motivosRelevantes = allCsatMotivosDetectados.filter(m => m.status !== 'expirado');
+  if (!isAdm && minhaSupKey) motivosRelevantes = motivosRelevantes.filter(m => m.supervisorKey === minhaSupKey);
 
-  if (!pendentes.length) {
-    el.innerHTML = `<div class="empty" style="margin-top:40px"><div class="icon">✅</div><p>Nenhuma pendência identificada no momento.</p></div>`;
+  const porPosto = {};
+  motivosRelevantes.forEach(m => { (porPosto[m.postoNome] = porPosto[m.postoNome] || []).push(m); });
+  // Garantir que postos com plano (de qualquer status) mas sem motivo ativo no momento também apareçam
+  let planosRelevantes = allCsatPlanosAcao;
+  if (!isAdm && minhaSupKey) planosRelevantes = planosRelevantes.filter(p => p.supervisorKey === minhaSupKey);
+  planosRelevantes.forEach(p => { if (!porPosto[p.postoNome]) porPosto[p.postoNome] = []; });
+
+  let postos = Object.keys(porPosto);
+
+  if (!postos.length) {
+    el.innerHTML = `<div class="empty" style="margin-top:40px"><div class="icon">✅</div><p>Nenhum posto exige atenção no momento.</p></div>`;
     return;
   }
 
-  // Agrupar por posto
-  const porPosto = {};
-  pendentes.forEach(m => { (porPosto[m.postoNome] = porPosto[m.postoNome] || []).push(m); });
-
-  // Ordenar: postos com motivo crítico (zero_pesquisas / amostra_insuficiente) primeiro
-  const postos = Object.keys(porPosto).sort((a,b) => {
-    const critA = porPosto[a].some(m => CSAT_CRITERIOS[m.criterio]?.critico) ? 0 : 1;
-    const critB = porPosto[b].some(m => CSAT_CRITERIOS[m.criterio]?.critico) ? 0 : 1;
-    return critA - critB;
+  // Monta linha por posto: motivo principal (mais crítico), status consolidado, supervisor
+  let linhas = postos.map(posto => {
+    const motivos = porPosto[posto];
+    const motivosPendentes = motivos.filter(m => m.status === 'pendente');
+    const ordenados = [...motivosPendentes].sort((a,b) => {
+      const ia = CSAT_PRIORIDADE_CRITERIO.indexOf(a.criterio);
+      const ib = CSAT_PRIORIDADE_CRITERIO.indexOf(b.criterio);
+      return (ia<0?99:ia) - (ib<0?99:ib);
+    });
+    const principal = ordenados[0] || motivos[0] || null;
+    const outrosCount = Math.max(0, motivos.length - (principal?1:0));
+    const status = csatStatusOperacionalDoPosto(posto, motivos);
+    const supKey = principal?.supervisorKey || allCsatPlanosAcao.find(p=>p.postoNome===posto)?.supervisorKey;
+    const supNome = supKey ? CSAT_SUPERVISORES[supKey]?.nome : '—';
+    const critico = principal && CSAT_CRITERIOS[principal.criterio]?.critico;
+    return { posto, principal, outrosCount, status, supNome, critico };
   });
 
-  function motivoTag(m) {
-    const crit = CSAT_CRITERIOS[m.criterio];
-    const critico = crit?.critico;
-    const jaVinculado = m.status === 'vinculado';
-    return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:8px;margin-bottom:6px;background:${critico?'rgba(239,68,68,.08)':'var(--surface2)'};border:1px solid ${critico?'rgba(239,68,68,.3)':'var(--border)'}">
-      <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
-        ${critico ? '<span style="font-size:14px">⚠️</span>' : '<span style="font-size:14px;opacity:.5">•</span>'}
-        <span style="font-size:12px;color:${critico?'#ef4444':'var(--text2)'};font-weight:${critico?'700':'500'}">${m.descricao}</span>
-      </div>
-      ${!jaVinculado ? `<button class="btn btn-sm btn-secondary" style="white-space:nowrap" onclick="abrirCriarPlanoDeMotivo('${m.id}')">+ Plano</button>` : ''}
-    </div>`;
+  if (csatAcoesFiltroStatus !== 'todos') {
+    linhas = linhas.filter(l => l.status === csatAcoesFiltroStatus);
+  }
+
+  // Ordenação: críticos sem plano primeiro, depois sem plano, depois em andamento, depois concluído
+  const ordemStatus = { sem_plano: 0, em_andamento: 1, concluido: 2 };
+  linhas.sort((a,b) => {
+    if (a.critico !== b.critico) return a.critico ? -1 : 1;
+    return (ordemStatus[a.status]??9) - (ordemStatus[b.status]??9);
+  });
+
+  if (!linhas.length) {
+    el.innerHTML = `<div class="empty" style="margin-top:40px"><div class="icon">🔎</div><p>Nenhum posto neste filtro.</p></div>`;
+    return;
   }
 
   el.innerHTML = `
-    <div style="font-size:12px;color:var(--text3);margin-bottom:14px">
-      ${postos.length} posto(s) com pendência identificada · critérios em destaque vermelho são tratados como críticos
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">
+            <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--border)">Posto</th>
+            <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--border)">Motivo Principal</th>
+            <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--border)">Status</th>
+            <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--border)">Supervisor</th>
+            <th style="padding:8px 10px;text-align:right;border-bottom:1px solid var(--border)">Ação</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${linhas.map(l => `
+          <tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="abrirCsatAcaoDetalhe('${l.posto.replace(/'/g,"\\'")}')">
+            <td style="padding:10px;font-weight:700;color:var(--text1);white-space:nowrap">${l.critico?'⚠️ ':''}${l.posto}</td>
+            <td style="padding:10px;font-size:13px;color:var(--text2)">
+              ${l.principal ? l.principal.descricao : '<span style="color:var(--text3)">—</span>'}
+              ${l.outrosCount > 0 ? `<span style="font-size:11px;color:var(--text3)"> · +${l.outrosCount} outro(s)</span>` : ''}
+            </td>
+            <td style="padding:10px;white-space:nowrap">${csatStatusBadge(l.status)}</td>
+            <td style="padding:10px;font-size:13px;color:var(--text2)">${l.supNome}</td>
+            <td style="padding:10px;text-align:right" onclick="event.stopPropagation()">
+              ${l.status === 'sem_plano'
+                ? `<button class="btn btn-sm btn-primary" onclick="abrirCriarPlanoDeMotivo('${l.principal?.id||''}')">Criar Plano</button>`
+                : `<button class="btn btn-sm btn-secondary" onclick="abrirCsatAcaoDetalhe('${l.posto.replace(/'/g,"\\'")}')">Visualizar</button>`}
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
     </div>
-    ${postos.map(posto => {
-      const motivos = porPosto[posto];
-      const supKey = motivos[0]?.supervisorKey;
-      const supNome = supKey ? CSAT_SUPERVISORES[supKey]?.nome : '—';
-      const temCritico = motivos.some(m => CSAT_CRITERIOS[m.criterio]?.critico);
-      return secAcc(
-        `${temCritico?'⚠️ ':''}${posto} <span style="font-weight:400;color:var(--text3);font-size:12px">· ${supNome}</span>`,
-        motivos.length,
-        motivos.map(motivoTag).join(''),
-        temCritico,
-        temCritico ? '#ef4444' : ''
-      );
-    }).join('')}
   `;
 }
 
@@ -8709,9 +8775,65 @@ async function abrirCriarPlanoDeMotivo(motivoId) {
     };
     await ref.set(novoPlano);
     await db.collection('csat_motivos_detectados').doc(motivo.id).update({ status: 'vinculado', planoId: ref.id });
-    toast('✅ Plano criado! Complete os detalhes na aba Planos de Ação (disponível no próximo bloco).', 'ok');
+    toast('✅ Plano criado!', 'ok');
     renderCsatPendencias();
+    abrirCsatAcaoDetalhe(motivo.postoNome);
   } catch (e) { toast('Erro ao criar plano: ' + e.message, 'err'); }
+}
+
+// ── Detalhe consolidado: Problema → Plano de Ação → Resultado, tudo no mesmo modal ──
+// Formulário de edição completo do 5W2H+ e evidências chega no Bloco 2;
+// aqui já mostramos a estrutura e os dados que existem até este bloco.
+function abrirCsatAcaoDetalhe(postoNome) {
+  const modal = document.getElementById('modal-csat-acao-detalhe');
+  if (!modal) return;
+  document.getElementById('csat-acao-detalhe-titulo').textContent = `📋 ${postoNome}`;
+
+  const motivos = allCsatMotivosDetectados.filter(m => m.postoNome === postoNome && m.status !== 'expirado');
+  const planos = allCsatPlanosAcao.filter(p => p.postoNome === postoNome).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+
+  const blocoMotivos = `
+    <div style="margin-bottom:18px">
+      <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">🔍 Problema — Motivos Identificados</div>
+      ${motivos.length ? motivos.map(m => {
+        const crit = CSAT_CRITERIOS[m.criterio];
+        return `<div style="padding:8px 10px;border-radius:8px;margin-bottom:6px;font-size:13px;background:${crit?.critico?'rgba(239,68,68,.08)':'var(--surface2)'};border:1px solid ${crit?.critico?'rgba(239,68,68,.3)':'var(--border)'};color:${crit?.critico?'#ef4444':'var(--text2)'}">
+          ${crit?.critico?'⚠️ ':'• '}${m.descricao} <span style="font-size:11px;color:var(--text3)">(${m.mesRef}${m.status==='vinculado'?' · vinculado a plano':''})</span>
+        </div>`;
+      }).join('') : '<div style="font-size:13px;color:var(--text3)">Nenhum motivo ativo registrado.</div>'}
+    </div>`;
+
+  const blocoPlanos = `
+    <div style="margin-bottom:18px">
+      <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">📝 Plano de Ação</div>
+      ${planos.length ? planos.map(p => `
+        <div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            ${csatStatusBadge(p.status === 'concluido' ? 'concluido' : (p.status==='cancelado'?'sem_plano':'em_andamento'))}
+            <span style="font-size:11px;color:var(--text3)">Aberto em ${(p.createdAt||'').slice(0,10).split('-').reverse().join('/')}</span>
+          </div>
+          <div style="font-size:13px;color:var(--text2);margin-bottom:4px"><strong>Por quê:</strong> ${p.porQue || '—'}</div>
+          <div style="font-size:13px;color:var(--text2);margin-bottom:4px"><strong>O que será feito:</strong> ${p.oQueSeraFeito || '<span style="color:var(--text3)">a definir — formulário completo no próximo bloco</span>'}</div>
+          <div style="font-size:13px;color:var(--text2);margin-bottom:4px"><strong>Responsável:</strong> ${p.responsavel || p.supervisorNome || '—'}</div>
+          <div style="font-size:13px;color:var(--text2)"><strong>Prazo:</strong> ${p.prazo ? p.prazo.split('-').reverse().join('/') : '<span style="color:var(--text3)">a definir</span>'}</div>
+        </div>
+      `).join('') : '<div style="font-size:13px;color:var(--text3)">Nenhum plano criado ainda para este posto.</div>'}
+    </div>`;
+
+  const planoConcluido = planos.find(p => p.status === 'concluido' && p.csatNaAbertura && p.csatNaConclusao);
+  const blocoResultado = `
+    <div>
+      <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">📈 Resultado</div>
+      ${planoConcluido ? `
+        <div style="display:flex;gap:16px;align-items:center">
+          <div><div style="font-size:11px;color:var(--text3)">Antes</div><div style="font-size:20px;font-weight:700;color:var(--text2)">${planoConcluido.csatNaAbertura.notaMedia?.toFixed(2)}</div></div>
+          <div style="font-size:18px;color:var(--text3)">→</div>
+          <div><div style="font-size:11px;color:var(--text3)">Depois</div><div style="font-size:20px;font-weight:700;color:var(--text2)">${planoConcluido.csatNaConclusao.notaMedia?.toFixed(2)}</div></div>
+        </div>` : '<div style="font-size:13px;color:var(--text3)">Resultado (antes/depois e classificação de efetividade) disponível quando houver plano concluído — cálculo completo chega no bloco final.</div>'}
+    </div>`;
+
+  document.getElementById('csat-acao-detalhe-body').innerHTML = blocoMotivos + blocoPlanos + blocoResultado;
+  modal.classList.add('open');
 }
 
 
