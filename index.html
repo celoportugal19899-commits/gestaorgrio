@@ -3235,6 +3235,7 @@ function startApp() {
   initCombustivel();
   initNotificacoes();
   initPropostas();
+  if (!isPosto) { initCsatAcoes(); if (isAdmin) seedCsatSugestoesSeNecessario(); }
   setTimeout(verificarAlertas, 5000);
 }
 
@@ -8246,6 +8247,138 @@ let csatUltimaAtualizacao = '';
 let csatChartEvo = null;
 let csatChartAno = null;
 let csatChartSup = null;
+
+// ══════════════════════════════════════════════════════════════
+// SUBMÓDULO: GESTÃO DE AÇÕES CSAT — ETAPA 1 (estrutura de dados)
+// Complementar ao módulo CSAT. NÃO altera collections 'csat' e
+// 'csat_comentarios' (somente leitura) nem qualquer lógica acima.
+// ══════════════════════════════════════════════════════════════
+
+// Collections novas (Firestore):
+//   csat_planos_acao        — planos 5W2H+ (ver CSAT_PLANO_SCHEMA)
+//   csat_motivos_detectados — motivos de oportunidade detectados automaticamente
+//   csat_acao_sugestoes     — sugestões de ação por tema (conteúdo de configuração)
+//   csat_deteccao_controle  — controle de idempotência do motor de detecção
+
+// Critérios de detecção suportados (Etapa 2 implementa o motor):
+const CSAT_CRITERIOS = {
+  meta_mes_anterior:    { label: 'Abaixo da meta no mês anterior',            critico: false },
+  meta_acumulada_ano:   { label: 'Abaixo da meta acumulada do ano',           critico: false },
+  queda_negativas:      { label: 'Aumento relevante de avaliações negativas', critico: false },
+  piores_csat:          { label: 'Entre os piores CSATs da regional',        critico: false },
+  comentario_recorrente:{ label: 'Comentários negativos recorrentes',        critico: false },
+  zero_pesquisas:       { label: 'Posto zerado de pesquisas',                critico: true  },
+  amostra_insuficiente: { label: 'Volume de pesquisas insuficiente',         critico: true  }
+};
+
+// Limiar de confiabilidade de amostra (qtd. mínima de pesquisas/mês para nota ser considerada confiável)
+const CSAT_AMOSTRA_MINIMA = 10;
+
+// Status possíveis de um plano de ação
+const CSAT_PLANO_STATUS = ['planejado', 'em_andamento', 'concluido', 'cancelado'];
+
+// Causa raiz — lista fechada (permite análise estatística futura)
+const CSAT_CAUSA_RAIZ = [
+  { value: 'falta_abordagem',   label: 'Falta de abordagem' },
+  { value: 'tempo_espera',      label: 'Tempo de espera elevado' },
+  { value: 'equipe_reduzida',   label: 'Equipe reduzida' },
+  { value: 'falha_operacional', label: 'Falha operacional' },
+  { value: 'problema_sistemico',label: 'Problema sistêmico' },
+  { value: 'falta_treinamento', label: 'Falta de treinamento' },
+  { value: 'outro',             label: 'Outro' }
+];
+
+// Impacto esperado — lista fechada (permite cruzar com efetividade real)
+const CSAT_IMPACTO_ESPERADO = [
+  { value: 'percepcao_atendimento',        label: 'Melhorar a percepção do atendimento' },
+  { value: 'reducao_reclamacoes_demora',   label: 'Reduzir reclamações sobre demora' },
+  { value: 'aumento_cordialidade',         label: 'Aumentar a cordialidade da equipe' },
+  { value: 'resolucao_primeiro_contato',   label: 'Melhorar a resolução no primeiro contato' },
+  { value: 'outro',                        label: 'Outro' }
+];
+
+// ⚠️ PENDÊNCIA REGISTRADA (Etapa 5): régua de classificação de efetividade
+// ainda não definitiva — escala real do CSAT é 0–5 (meta 4,50), não 0–100.
+// Referência inicial aprovada para revisão na Etapa 5:
+//   >= +0.30  → 'muito_eficaz'   (🟢)
+//   +0.10 a +0.29 → 'parcialmente_eficaz' (🟡)
+//   <= 0      → 'sem_resultado' (🔴)
+// NÃO usar estes valores em produção sem reconfirmar na Etapa 5.
+const CSAT_EFETIVIDADE_REGRA_PRELIMINAR = {
+  muito_eficaz: 0.30,
+  parcialmente_eficaz: 0.10
+};
+
+// Schema de referência (documentação — não é um construtor, apenas o formato
+// esperado dos documentos gravados pelas próximas etapas):
+//
+// csat_planos_acao/{id}:
+//   id, postoNome, supervisorKey, supervisorNome,
+//   oQueSeraFeito, porQue, causaRaiz, causaRaizDetalhe,
+//   responsavel, prazo, metaEsperada,
+//   impactoEsperado, impactoEsperadoDetalhe,
+//   status: 'planejado'|'em_andamento'|'concluido'|'cancelado',
+//   motivosVinculados: [motivoId, ...],
+//   csatNaAbertura: { mesRef, notaMedia, pesquisas },
+//   csatNaConclusao: { mesRef, notaMedia, pesquisas } | null,
+//   classificacaoEfetividade: 'muito_eficaz'|'parcialmente_eficaz'|'sem_resultado' | null,
+//   evidencias: [{ nome, base64, tipo, enviadoEm }],
+//   createdAt, updatedAt, concluidoEm
+//
+// csat_motivos_detectados/{postoNome}_{mesRef}_{criterio}[_{temaComentario}]:
+//   id, postoNome, supervisorKey, mesRef, criterio,
+//   descricao, detalhe: { valorAnterior, valorAtual, percentual, pesquisas },
+//   temaComentario, status: 'pendente'|'vinculado'|'expirado',
+//   planoId, detectadoEm, ultimaConfirmacaoEm
+//
+// csat_acao_sugestoes/{tema}:
+//   id, tema, sugestoes: [string, ...]
+//
+// csat_deteccao_controle/geral:
+//   ultimaExecucao, ultimoMesRefProcessado
+
+let allCsatPlanosAcao = [];
+let allCsatMotivosDetectados = [];
+let allCsatAcaoSugestoes = [];
+let unsubCsatPlanosAcao = null;
+let unsubCsatMotivosDetectados = null;
+
+function initCsatAcoes() {
+  if (unsubCsatPlanosAcao) unsubCsatPlanosAcao();
+  unsubCsatPlanosAcao = db.collection('csat_planos_acao').onSnapshot(snap => {
+    allCsatPlanosAcao = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  }, err => console.error('initCsatAcoes (planos)', err));
+
+  if (unsubCsatMotivosDetectados) unsubCsatMotivosDetectados();
+  unsubCsatMotivosDetectados = db.collection('csat_motivos_detectados').onSnapshot(snap => {
+    allCsatMotivosDetectados = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  }, err => console.error('initCsatAcoes (motivos)', err));
+
+  db.collection('csat_acao_sugestoes').get().then(snap => {
+    allCsatAcaoSugestoes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  }).catch(err => console.error('initCsatAcoes (sugestoes)', err));
+}
+
+// Sugestões padrão — seed inicial (idempotente via doc ID = tema; não sobrescreve se já existir)
+const CSAT_SUGESTOES_SEED = [
+  { tema: 'demora_atendimento', sugestoes: ['Revisar fluxo de atendimento.', 'Acompanhar equipe presencialmente.', 'Reforçar treinamento operacional.'] },
+  { tema: 'baixa_cordialidade', sugestoes: ['Feedback individual.', 'Reciclagem da equipe.', 'Monitoramento de atendimentos.'] },
+  { tema: 'falta_informacao', sugestoes: ['Reforçar treinamento sobre produtos/processos.', 'Criar material de apoio rápido para consulta.'] },
+  { tema: 'problema_nao_resolvido', sugestoes: ['Revisar fluxo de escalonamento.', 'Acompanhar resolução no primeiro contato.'] },
+  { tema: 'tempo_espera', sugestoes: ['Avaliar dimensionamento da equipe.', 'Revisar processo de fila/senha.'] }
+];
+
+async function seedCsatSugestoesSeNecessario() {
+  try {
+    const snap = await db.collection('csat_acao_sugestoes').limit(1).get();
+    if (!snap.empty) return; // já existe seed — nunca sobrescreve
+    const batch = db.batch();
+    CSAT_SUGESTOES_SEED.forEach(s => {
+      batch.set(db.collection('csat_acao_sugestoes').doc(s.tema), s);
+    });
+    await batch.commit();
+  } catch (e) { console.error('seedCsatSugestoesSeNecessario', e); }
+}
 
 function csatNorm(str){ return (str||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim(); }
 function csatCorNota(n) {
