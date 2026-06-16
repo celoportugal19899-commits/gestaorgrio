@@ -8361,6 +8361,8 @@ const CSAT_EFETIVIDADE_REGRA_PRELIMINAR = {
 //   ultimaExecucao, ultimoMesRefProcessado
 
 let allCsatPlanosAcao = [];
+// Estado local: planos em modo de edição expandida (id => true) — Bloco 2
+let csatPlanosExpandidos = {};
 let allCsatMotivosDetectados = [];
 let allCsatAcaoSugestoes = [];
 let unsubCsatPlanosAcao = null;
@@ -8775,9 +8777,10 @@ async function abrirCriarPlanoDeMotivo(motivoId) {
     };
     await ref.set(novoPlano);
     await db.collection('csat_motivos_detectados').doc(motivo.id).update({ status: 'vinculado', planoId: ref.id });
-    toast('✅ Plano criado!', 'ok');
+    csatPlanosExpandidos[ref.id] = true;
+    toast('✅ Plano criado! Preencha os detalhes abaixo.', 'ok');
     renderCsatPendencias();
-    abrirCsatAcaoDetalhe(motivo.postoNome);
+    setTimeout(() => abrirCsatAcaoDetalhe(motivo.postoNome), 300);
   } catch (e) { toast('Erro ao criar plano: ' + e.message, 'err'); }
 }
 
@@ -8806,18 +8809,7 @@ function abrirCsatAcaoDetalhe(postoNome) {
   const blocoPlanos = `
     <div style="margin-bottom:18px">
       <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">📝 Plano de Ação</div>
-      ${planos.length ? planos.map(p => `
-        <div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            ${csatStatusBadge(p.status === 'concluido' ? 'concluido' : (p.status==='cancelado'?'sem_plano':'em_andamento'))}
-            <span style="font-size:11px;color:var(--text3)">Aberto em ${(p.createdAt||'').slice(0,10).split('-').reverse().join('/')}</span>
-          </div>
-          <div style="font-size:13px;color:var(--text2);margin-bottom:4px"><strong>Por quê:</strong> ${p.porQue || '—'}</div>
-          <div style="font-size:13px;color:var(--text2);margin-bottom:4px"><strong>O que será feito:</strong> ${p.oQueSeraFeito || '<span style="color:var(--text3)">a definir — formulário completo no próximo bloco</span>'}</div>
-          <div style="font-size:13px;color:var(--text2);margin-bottom:4px"><strong>Responsável:</strong> ${p.responsavel || p.supervisorNome || '—'}</div>
-          <div style="font-size:13px;color:var(--text2)"><strong>Prazo:</strong> ${p.prazo ? p.prazo.split('-').reverse().join('/') : '<span style="color:var(--text3)">a definir</span>'}</div>
-        </div>
-      `).join('') : '<div style="font-size:13px;color:var(--text3)">Nenhum plano criado ainda para este posto.</div>'}
+      ${planos.length ? planos.map(p => csatRenderPlanoCard(p)).join('') : '<div style="font-size:13px;color:var(--text3)">Nenhum plano criado ainda para este posto.</div>'}
     </div>`;
 
   const planoConcluido = planos.find(p => p.status === 'concluido' && p.csatNaAbertura && p.csatNaConclusao);
@@ -8834,6 +8826,218 @@ function abrirCsatAcaoDetalhe(postoNome) {
 
   document.getElementById('csat-acao-detalhe-body').innerHTML = blocoMotivos + blocoPlanos + blocoResultado;
   modal.classList.add('open');
+}
+
+// ══════════════════════════════════════════════════════════════
+// BLOCO 2 — FORMULÁRIO 5W2H+ COMPLETO, EVIDÊNCIAS E AÇÕES DE STATUS
+// Preenche o card de plano dentro do modal de detalhe já existente
+// (mesmo modal do Bloco 1 — nenhuma tela nova foi criada).
+// ══════════════════════════════════════════════════════════════
+
+// Estado local: planos em modo de edição expandida e buffer de evidências
+// já estão declarados no bloco de estado da Etapa 1 (logo após allCsatPlanosAcao).
+
+function csatOptionsHtml(lista, selecionado) {
+  return lista.map(o => `<option value="${o.value}" ${o.value===selecionado?'selected':''}>${o.label}</option>`).join('');
+}
+
+function csatRenderPlanoCard(p) {
+  const expandido = !!csatPlanosExpandidos[p.id];
+  const podeEditar = p.status !== 'concluido' && p.status !== 'cancelado';
+  const statusVisual = p.status === 'concluido' ? 'concluido' : (p.status==='cancelado'?'sem_plano':'em_andamento');
+
+  // Sugestões inteligentes — busca por tema vinculado ao(s) motivo(s) do plano
+  const motivoVinc = allCsatMotivosDetectados.find(m => p.motivosVinculados?.includes(m.id) && m.temaComentario);
+  const sugestaoObj = motivoVinc ? allCsatAcaoSugestoes.find(s => s.id === motivoVinc.temaComentario) : null;
+
+  if (!expandido) {
+    // Visão compacta (igual ao Bloco 1, só com botão de expandir)
+    return `
+    <div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        ${csatStatusBadge(statusVisual)}
+        <span style="font-size:11px;color:var(--text3)">Aberto em ${(p.createdAt||'').slice(0,10).split('-').reverse().join('/')}</span>
+      </div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:4px"><strong>O que será feito:</strong> ${p.oQueSeraFeito || '<span style="color:var(--text3)">não preenchido</span>'}</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:8px"><strong>Prazo:</strong> ${p.prazo ? p.prazo.split('-').reverse().join('/') : '<span style="color:var(--text3)">a definir</span>'}</div>
+      <button class="btn btn-sm btn-secondary" onclick="csatTogglePlanoExpandido('${p.id}')">✏️ Ver/Editar detalhes</button>
+    </div>`;
+  }
+
+  return `
+    <div style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:var(--surface2)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        ${csatStatusBadge(statusVisual)}
+        <button class="btn btn-sm btn-secondary" onclick="csatTogglePlanoExpandido('${p.id}')">▾ Recolher</button>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">O que será feito?</label>
+        <textarea class="form-input" id="csat-plano-oque-${p.id}" rows="2" ${!podeEditar?'disabled':''} placeholder="Ex: Realizar reciclagem da equipe sobre abordagem ao cliente.">${p.oQueSeraFeito||''}</textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Por quê?</label>
+        <textarea class="form-input" id="csat-plano-porque-${p.id}" rows="2" ${!podeEditar?'disabled':''}>${p.porQue||''}</textarea>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="form-group">
+          <label class="form-label">Causa Raiz</label>
+          <select class="form-select" id="csat-plano-causaraiz-${p.id}" ${!podeEditar?'disabled':''} onchange="document.getElementById('csat-plano-causaraizdet-${p.id}-wrap').style.display=this.value==='outro'?'':'none'">
+            <option value="">Selecione...</option>
+            ${csatOptionsHtml(CSAT_CAUSA_RAIZ, p.causaRaiz)}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Impacto Esperado</label>
+          <select class="form-select" id="csat-plano-impacto-${p.id}" ${!podeEditar?'disabled':''} onchange="document.getElementById('csat-plano-impactodet-${p.id}-wrap').style.display=this.value==='outro'?'':'none'">
+            <option value="">Selecione...</option>
+            ${csatOptionsHtml(CSAT_IMPACTO_ESPERADO, p.impactoEsperado)}
+          </select>
+        </div>
+      </div>
+      <div id="csat-plano-causaraizdet-${p.id}-wrap" style="display:${p.causaRaiz==='outro'?'':'none'}" class="form-group">
+        <label class="form-label">Detalhe da causa raiz</label>
+        <input class="form-input" id="csat-plano-causaraizdet-${p.id}" ${!podeEditar?'disabled':''} value="${p.causaRaizDetalhe||''}">
+      </div>
+      <div id="csat-plano-impactodet-${p.id}-wrap" style="display:${p.impactoEsperado==='outro'?'':'none'}" class="form-group">
+        <label class="form-label">Detalhe do impacto esperado</label>
+        <input class="form-input" id="csat-plano-impactodet-${p.id}" ${!podeEditar?'disabled':''} value="${p.impactoEsperadoDetalhe||''}">
+      </div>
+
+      ${sugestaoObj ? `
+      <div style="background:rgba(79,120,255,.08);border:1px solid rgba(79,120,255,.25);border-radius:8px;padding:10px 12px;margin-bottom:12px">
+        <div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:6px">💡 Sugestões para este tema</div>
+        ${sugestaoObj.sugestoes.map(s=>`<div style="font-size:12px;color:var(--text2);margin-bottom:2px">• ${s}</div>`).join('')}
+      </div>` : ''}
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="form-group">
+          <label class="form-label">Responsável</label>
+          <input class="form-input" id="csat-plano-resp-${p.id}" ${!podeEditar?'disabled':''} value="${p.responsavel||''}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Prazo</label>
+          <input type="date" class="form-input" id="csat-plano-prazo-${p.id}" ${!podeEditar?'disabled':''} value="${p.prazo||''}">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Meta Esperada</label>
+        <input class="form-input" id="csat-plano-meta-${p.id}" ${!podeEditar?'disabled':''} placeholder="Ex: Aumentar o CSAT para 4,60" value="${p.metaEsperada||''}">
+      </div>
+
+      ${podeEditar ? `<button class="btn btn-sm btn-primary" style="margin-bottom:14px" onclick="csatSalvarPlano('${p.id}')">💾 Salvar Plano</button>` : ''}
+
+      <!-- Evidências -->
+      <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px">
+        <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">📎 Evidências</div>
+        ${(p.evidencias||[]).length ? `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+          ${p.evidencias.map((ev,i)=>`<div style="display:flex;align-items:center;gap:6px;background:var(--surface3);border-radius:6px;padding:4px 8px;font-size:11px">
+            ${ev.tipo?.startsWith('image')?'🖼️':'📄'} <span>${ev.nome}</span>
+            ${podeEditar?`<button onclick="csatRemoverEvidencia('${p.id}',${i})" style="background:none;border:none;cursor:pointer;color:var(--red)">✕</button>`:''}
+          </div>`).join('')}
+        </div>` : `<div style="font-size:12px;color:var(--text3);margin-bottom:10px">Nenhuma evidência anexada.</div>`}
+        ${podeEditar ? `
+        <input type="file" id="csat-evidencia-input-${p.id}" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="csatAdicionarEvidencia('${p.id}',this.files[0])">
+        <button class="btn btn-sm btn-secondary" onclick="document.getElementById('csat-evidencia-input-${p.id}').click()">+ Anexar evidência (foto, print, ata — máx 700KB)</button>` : ''}
+      </div>
+
+      <!-- Ações de status -->
+      ${podeEditar ? `
+      <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+        ${p.status==='planejado' ? `<button class="btn btn-sm btn-secondary" onclick="csatMudarStatusPlano('${p.id}','em_andamento')">▶ Iniciar Ação</button>` : ''}
+        <button class="btn btn-sm btn-primary" onclick="csatConcluirPlano('${p.id}')">✅ Concluir Plano</button>
+        <button class="btn btn-sm btn-danger" onclick="csatMudarStatusPlano('${p.id}','cancelado')">✕ Cancelar</button>
+      </div>` : p.status==='concluido' ? `<div style="margin-top:12px;font-size:12px;color:#22c55e;font-weight:600">✅ Plano concluído em ${(p.concluidoEm||'').slice(0,10).split('-').reverse().join('/')}</div>` : ''}
+    </div>`;
+}
+
+function csatTogglePlanoExpandido(planoId) {
+  csatPlanosExpandidos[planoId] = !csatPlanosExpandidos[planoId];
+  const planos = allCsatPlanosAcao.filter(p => p.id === planoId);
+  if (planos.length) abrirCsatAcaoDetalhe(planos[0].postoNome);
+}
+
+async function csatSalvarPlano(planoId) {
+  const get = id => document.getElementById(id)?.value ?? '';
+  try {
+    const causaRaiz = get(`csat-plano-causaraiz-${planoId}`) || null;
+    const impactoEsperado = get(`csat-plano-impacto-${planoId}`) || null;
+    await db.collection('csat_planos_acao').doc(planoId).update({
+      oQueSeraFeito: get(`csat-plano-oque-${planoId}`),
+      porQue: get(`csat-plano-porque-${planoId}`),
+      causaRaiz, causaRaizDetalhe: causaRaiz==='outro' ? get(`csat-plano-causaraizdet-${planoId}`) : '',
+      impactoEsperado, impactoEsperadoDetalhe: impactoEsperado==='outro' ? get(`csat-plano-impactodet-${planoId}`) : '',
+      responsavel: get(`csat-plano-resp-${planoId}`),
+      prazo: get(`csat-plano-prazo-${planoId}`) || null,
+      metaEsperada: get(`csat-plano-meta-${planoId}`),
+      updatedAt: new Date().toISOString()
+    });
+    toast('✅ Plano atualizado!', 'ok');
+    renderCsatPendencias();
+  } catch (e) { toast('Erro ao salvar plano: ' + e.message, 'err'); }
+}
+
+function csatAdicionarEvidencia(planoId, file) {
+  if (!file) return;
+  const maxBytes = 700 * 1024;
+  if (file.size > maxBytes) { toast(`Arquivo muito grande (${(file.size/1024).toFixed(0)}KB). Máx: 700KB.`, 'err'); return; }
+  const reader = new FileReader();
+  reader.onload = async e => {
+    const base64 = e.target.result.split(',')[1];
+    try {
+      const plano = allCsatPlanosAcao.find(p => p.id === planoId);
+      const evidencias = [...(plano?.evidencias||[]), { nome: file.name, base64, tipo: file.type, enviadoEm: new Date().toISOString() }];
+      await db.collection('csat_planos_acao').doc(planoId).update({ evidencias, updatedAt: new Date().toISOString() });
+      toast('✅ Evidência anexada!', 'ok');
+    } catch (err) { toast('Erro ao anexar evidência: ' + err.message, 'err'); }
+  };
+  reader.readAsDataURL(file);
+}
+
+async function csatRemoverEvidencia(planoId, index) {
+  if (!confirm('Remover esta evidência?')) return;
+  try {
+    const plano = allCsatPlanosAcao.find(p => p.id === planoId);
+    const evidencias = [...(plano?.evidencias||[])];
+    evidencias.splice(index, 1);
+    await db.collection('csat_planos_acao').doc(planoId).update({ evidencias, updatedAt: new Date().toISOString() });
+    toast('Evidência removida.', 'ok');
+  } catch (e) { toast('Erro: ' + e.message, 'err'); }
+}
+
+async function csatMudarStatusPlano(planoId, novoStatus) {
+  if (novoStatus === 'cancelado' && !confirm('Cancelar este plano de ação? Esta ação não exclui o registro, apenas marca como cancelado.')) return;
+  try {
+    await db.collection('csat_planos_acao').doc(planoId).update({ status: novoStatus, updatedAt: new Date().toISOString() });
+    toast(novoStatus === 'em_andamento' ? '▶ Ação iniciada!' : '✕ Plano cancelado.', 'ok');
+    renderCsatPendencias();
+    const plano = allCsatPlanosAcao.find(p => p.id === planoId);
+    if (plano) abrirCsatAcaoDetalhe(plano.postoNome);
+  } catch (e) { toast('Erro: ' + e.message, 'err'); }
+}
+
+// Conclusão captura o snapshot de CSAT mais recente do posto automaticamente.
+// A classificação de efetividade (régua 0–5) é calculada no Bloco 3, junto
+// com o Dashboard — aqui só gravamos os dados-base (csatNaConclusao).
+async function csatConcluirPlano(planoId) {
+  const plano = allCsatPlanosAcao.find(p => p.id === planoId);
+  if (!plano) return;
+  if (!plano.oQueSeraFeito || !plano.prazo) {
+    if (!confirm('O plano ainda não tem "O que será feito" e/ou "Prazo" preenchidos. Deseja concluir assim mesmo?')) return;
+  }
+  try {
+    const mesesPosto = csatAllData.filter(d => d.postoNome === plano.postoNome && d.notaMedia != null).sort((a,b)=>(b.mesRef||'').localeCompare(a.mesRef||''));
+    const maisRecente = mesesPosto[0] || null;
+    await db.collection('csat_planos_acao').doc(planoId).update({
+      status: 'concluido',
+      concluidoEm: new Date().toISOString(),
+      csatNaConclusao: maisRecente ? { mesRef: maisRecente.mesRef, notaMedia: maisRecente.notaMedia, pesquisas: maisRecente.pesquisas } : null,
+      updatedAt: new Date().toISOString()
+    });
+    toast('✅ Plano concluído! Resultado registrado.', 'ok');
+    renderCsatPendencias();
+    abrirCsatAcaoDetalhe(plano.postoNome);
+  } catch (e) { toast('Erro ao concluir plano: ' + e.message, 'err'); }
 }
 
 
