@@ -8285,13 +8285,15 @@ let csatChartSup = null;
 
 // Critérios de detecção suportados (Etapa 2 implementa o motor):
 const CSAT_CRITERIOS = {
-  meta_mes_anterior:    { label: 'Abaixo da meta no mês anterior',            critico: false },
-  meta_acumulada_ano:   { label: 'Abaixo da meta acumulada do ano',           critico: false },
-  queda_negativas:      { label: 'Aumento relevante de avaliações negativas', critico: false },
-  piores_csat:          { label: 'Entre os piores CSATs da regional',        critico: false },
-  comentario_recorrente:{ label: 'Comentários negativos recorrentes',        critico: false },
-  zero_pesquisas:       { label: 'Posto zerado de pesquisas',                critico: true  },
-  amostra_insuficiente: { label: 'Volume de pesquisas insuficiente',         critico: true  }
+  meta_mes_anterior:    { label: 'Abaixo da meta no mês anterior',            critico: false, informativo: false },
+  meta_acumulada_ano:   { label: 'Abaixo da meta acumulada do ano',           critico: false, informativo: false },
+  queda_negativas:      { label: 'Aumento relevante de avaliações negativas', critico: false, informativo: false },
+  piores_csat:          { label: 'Entre os piores CSATs da regional',        critico: false, informativo: false },
+  comentario_recorrente:{ label: 'Comentários negativos recorrentes',        critico: false, informativo: false },
+  zero_pesquisas:       { label: 'Posto zerado de pesquisas',                critico: true,  informativo: false },
+  // amostra_insuficiente passa a ser INFORMATIVO (não crítico, não exige plano de ação) —
+  // ajuste solicitado: baixa amostragem isolada não deve gerar falso positivo de pendência.
+  amostra_insuficiente: { label: 'Volume de pesquisas insuficiente',         critico: false, informativo: true }
 };
 
 // Limiar de confiabilidade de amostra (qtd. mínima de pesquisas/mês para nota ser considerada confiável)
@@ -8502,32 +8504,88 @@ async function detectarOportunidadesCsat(forcar) {
       const supKey = Object.keys(CSAT_SUPERVISORES).find(k => CSAT_SUPERVISORES[k].postos.includes(postoNome)) || null;
       const docId = csatMotivoDocId(postoNome, mesAtual, criterio, tema);
       motivosAtivosChaves.add(docId);
+      const crit = CSAT_CRITERIOS[criterio];
       const ref = db.collection('csat_motivos_detectados').doc(docId);
       batch.set(ref, {
         id: docId, postoNome, supervisorKey: supKey, mesRef: mesAtual, criterio,
         descricao, detalhe: detalhe || {}, temaComentario: tema || null,
-        status: 'pendente', planoId: null,
+        status: crit?.informativo ? 'informativo' : 'pendente', planoId: null,
         detectadoEm: new Date().toISOString(),
         ultimaConfirmacaoEm: new Date().toISOString()
       }, { merge: true });
       totalMotivos++;
     }
 
+    // Variante explícita: força status 'informativo' independente da config do
+    // critério em CSAT_CRITERIOS. Usada quando um critério normalmente crítico
+    // (ex: zero_pesquisas) cai fora do gate de elegibilidade — o posto ainda
+    // deve ser visível (transparência), só não deve exigir/bloquear como pendência.
+    function gravarMotivoInformativo(postoNome, criterio, descricao, detalhe, tema) {
+      const supKey = Object.keys(CSAT_SUPERVISORES).find(k => CSAT_SUPERVISORES[k].postos.includes(postoNome)) || null;
+      const docId = csatMotivoDocId(postoNome, mesAtual, criterio, tema);
+      motivosAtivosChaves.add(docId);
+      const ref = db.collection('csat_motivos_detectados').doc(docId);
+      batch.set(ref, {
+        id: docId, postoNome, supervisorKey: supKey, mesRef: mesAtual, criterio,
+        descricao, detalhe: detalhe || {}, temaComentario: tema || null,
+        status: 'informativo', planoId: null,
+        detectadoEm: new Date().toISOString(),
+        ultimaConfirmacaoEm: new Date().toISOString()
+      }, { merge: true });
+      totalMotivos++;
+    }
+
+    // ── GATE DE ELEGIBILIDADE — ajuste solicitado pelo cliente ──
+    // Um posto só é considerado "pendência operacional" (exige plano de ação)
+    // quando o acumulado 2026 está abaixo da meta E pelo menos uma condição
+    // de mês atual/anterior é verdadeira. Reduz falsos positivos de baixa
+    // amostragem isolada. Critérios continuam sendo calculados normalmente
+    // (mantém toda a inteligência), mas só são gravados como 'pendente'
+    // (exigindo plano) se o gate for verdadeiro; caso contrário, postos que
+    // batam em critérios informativos (ex: amostra_insuficiente) continuam
+    // aparecendo, só que como alerta informativo, não como pendência.
+    function csatPostoExigePlano(posto, acum, atual, anterior) {
+      if (acum == null || acum >= CSAT_META) return false; // gate principal: acumulado precisa estar abaixo da meta
+      const pesqAtual = atual ? (atual.pesquisas||0) : 0;
+      const pesqAnterior = anterior ? (anterior.pesquisas||0) : 0;
+      const zeroAtual = pesqAtual === 0;
+      const baixoAtual = atual && atual.notaMedia != null && atual.notaMedia < CSAT_META;
+      const zeroAtualEAnterior = zeroAtual && anterior && pesqAnterior === 0;
+      const baixoAtualEAnterior = baixoAtual && anterior && anterior.notaMedia != null && anterior.notaMedia < CSAT_META;
+      return !!(zeroAtual || baixoAtual || zeroAtualEAnterior || baixoAtualEAnterior);
+    }
+
     todosPostosNomes.forEach(posto => {
       const atual = porPostoAtual[posto];
       const anterior = porPostoAnterior[posto];
       const pesquisasAtual = atual ? (atual.pesquisas || 0) : 0;
+      const acum = acumuladoPorPosto[posto];
+      const exigePlano = csatPostoExigePlano(posto, acum, atual, anterior);
 
-      // Critério 7 (crítico): zero pesquisas no mês atual
+      // Critério 7: zero pesquisas no mês atual.
+      // Sempre calculado/registrado (mantém visibilidade), mas só é tratado
+      // como pendência que exige plano quando o gate de elegibilidade bate.
+      // Quando o gate não bate, fica como informativo (não crítico).
       if (pesquisasAtual === 0) {
-        gravarMotivo(posto, 'zero_pesquisas', 'Posto zerado de pesquisas', { pesquisas: 0 });
-        return; // sem pesquisa, os demais critérios não se aplicam (sem nota para avaliar)
+        if (exigePlano) {
+          gravarMotivo(posto, 'zero_pesquisas', 'Posto zerado de pesquisas', { pesquisas: 0 });
+        } else {
+          gravarMotivoInformativo(posto, 'zero_pesquisas', 'Posto zerado de pesquisas (acumulado dentro da meta)', { pesquisas: 0 });
+        }
+        // Sem pesquisa não há nota para avaliar os demais critérios de nota deste mês.
+        // Amostra insuficiente não se aplica (zero já é o caso extremo).
+        return;
       }
 
-      // Critério adicional: amostra insuficiente (crítico, mas não zero)
+      // Amostra insuficiente — SEMPRE informativo (nunca exige plano, ajuste solicitado).
       if (pesquisasAtual > 0 && pesquisasAtual < CSAT_AMOSTRA_MINIMA) {
         gravarMotivo(posto, 'amostra_insuficiente', `Volume de pesquisas insuficiente para análise confiável (${pesquisasAtual} pesquisa(s))`, { pesquisas: pesquisasAtual });
       }
+
+      // Demais critérios só geram PENDÊNCIA (exigindo plano) se o gate bater.
+      // Continuam sendo avaliados normalmente — nenhuma inteligência removida,
+      // só a consequência (pendente vs informativo) é que muda.
+      if (!exigePlano) return;
 
       // Critério 1: abaixo da meta no mês anterior
       if (anterior && anterior.notaMedia != null && anterior.notaMedia < CSAT_META) {
@@ -8535,7 +8593,6 @@ async function detectarOportunidadesCsat(forcar) {
       }
 
       // Critério 2: abaixo da meta acumulada do ano
-      const acum = acumuladoPorPosto[posto];
       if (acum != null && acum < CSAT_META) {
         gravarMotivo(posto, 'meta_acumulada_ano', `Abaixo da meta acumulada do ano (${acum.toFixed(2)})`, { valorAtual: acum, meta: CSAT_META });
       }
@@ -8571,12 +8628,13 @@ async function detectarOportunidadesCsat(forcar) {
       });
     });
 
-    // ── Expiração: motivos pendentes de meses anteriores que não reapareceram ──
+    // ── Expiração: motivos pendentes/informativos de meses anteriores que não reapareceram ──
     // Regra aprovada: 2 meses consecutivos sem reaparecer → status muda para 'expirado'.
-    // Não apaga nada; só atualiza status para sair da lista ativa de pendências.
+    // Não apaga nada; só atualiza status para sair da lista ativa. Inclui 'informativo'
+    // para que alertas de amostra insuficiente também não acumulem indefinidamente.
     if (mesAnterior) {
       const pendentesAntigos = allCsatMotivosDetectados.filter(m =>
-        m.status === 'pendente' && m.mesRef !== mesAtual && m.mesRef !== mesAnterior
+        (m.status === 'pendente' || m.status === 'informativo') && m.mesRef !== mesAtual && m.mesRef !== mesAnterior
       );
       pendentesAntigos.forEach(m => {
         batch.set(db.collection('csat_motivos_detectados').doc(m.id), { status: 'expirado' }, { merge: true });
@@ -8741,9 +8799,20 @@ function renderCsatPendencias() {
             <td style="padding:10px;white-space:nowrap">${csatStatusBadge(l.status)}</td>
             <td style="padding:10px;font-size:13px;color:var(--text2)">${l.supNome}</td>
             <td style="padding:10px;text-align:right" onclick="event.stopPropagation()">
-              ${l.status === 'sem_plano'
-                ? `<button class="btn btn-sm btn-primary" onclick="abrirCriarPlanoDeMotivo('${l.principal?.id||''}')">Criar Plano</button>`
-                : `<button class="btn btn-sm btn-secondary" onclick="abrirCsatAcaoDetalhe('${l.posto.replace(/'/g,"\\'")}')">Visualizar</button>`}
+              ${(() => {
+                // Plano ATIVO = planejado ou em_andamento. Histórico (concluído/cancelado)
+                // nunca bloqueia a criação de um novo plano (ajuste solicitado).
+                const temPlanoAtivo = allCsatPlanosAcao.some(p => p.postoNome === l.posto && (p.status==='planejado'||p.status==='em_andamento'));
+                const temHistorico = allCsatPlanosAcao.some(p => p.postoNome === l.posto);
+                let botoes = '';
+                if (!temPlanoAtivo) {
+                  botoes += `<button class="btn btn-sm btn-primary" onclick="abrirCriarNovoPlanoParaPosto('${l.posto.replace(/'/g,"\\'")}')">${temHistorico?'Criar Novo Plano':'Criar Plano'}</button>`;
+                }
+                if (temHistorico || temPlanoAtivo) {
+                  botoes += `${botoes?' ':''}<button class="btn btn-sm btn-secondary" onclick="abrirCsatAcaoDetalhe('${l.posto.replace(/'/g,"\\'")}')">Visualizar</button>`;
+                }
+                return botoes || `<button class="btn btn-sm btn-secondary" onclick="abrirCsatAcaoDetalhe('${l.posto.replace(/'/g,"\\'")}')">Visualizar</button>`;
+              })()}
             </td>
           </tr>`).join('')}
         </tbody>
@@ -8758,7 +8827,7 @@ function renderCsatPendencias() {
 async function abrirCriarPlanoDeMotivo(motivoId) {
   const motivo = allCsatMotivosDetectados.find(m => m.id === motivoId);
   if (!motivo) { toast('Motivo não encontrado', 'err'); return; }
-  if (!confirm(`Criar plano de ação para "${motivo.postoNome}"?\n\nMotivo: ${motivo.descricao}\n\nO formulário completo (5W2H, causa raiz, evidências) será disponibilizado no próximo bloco. Por ora será criado um plano inicial em status "Planejado".`)) return;
+  if (!confirm(`Criar plano de ação para "${motivo.postoNome}"?\n\nMotivo: ${motivo.descricao}`)) return;
 
   try {
     const csatAtual = csatAllData.find(d => d.postoNome === motivo.postoNome && d.mesRef === motivo.mesRef);
@@ -8784,6 +8853,42 @@ async function abrirCriarPlanoDeMotivo(motivoId) {
   } catch (e) { toast('Erro ao criar plano: ' + e.message, 'err'); }
 }
 
+// ── Criar novo plano direto pelo posto, SEM depender de um motivo pendente
+// formal já existente (ajuste solicitado: múltiplos planos por posto, sem
+// esperar a próxima rodada mensal de detecção). Se houver motivo pendente/
+// informativo ativo para o posto, vincula automaticamente; senão, cria o
+// plano sem vínculo formal (motivosVinculados vazio), o que é válido —
+// o supervisor pode estar tratando um problema percebido em campo.
+async function abrirCriarNovoPlanoParaPosto(postoNome) {
+  const motivoAtivo = allCsatMotivosDetectados.find(m => m.postoNome === postoNome && (m.status === 'pendente' || m.status === 'informativo'));
+  if (motivoAtivo) { await abrirCriarPlanoDeMotivo(motivoAtivo.id); return; }
+
+  if (!confirm(`Criar novo plano de ação para "${postoNome}"?`)) return;
+  try {
+    const supKey = Object.keys(CSAT_SUPERVISORES).find(k => CSAT_SUPERVISORES[k].postos.includes(postoNome)) || null;
+    const mesesPosto = csatAllData.filter(d => d.postoNome === postoNome && d.notaMedia != null).sort((a,b)=>(b.mesRef||'').localeCompare(a.mesRef||''));
+    const csatAtual = mesesPosto[0] || null;
+    const ref = db.collection('csat_planos_acao').doc();
+    const novoPlano = {
+      id: ref.id, postoNome, supervisorKey: supKey,
+      supervisorNome: supKey ? CSAT_SUPERVISORES[supKey]?.nome : (currentUser?.name||''),
+      oQueSeraFeito: '', porQue: '', causaRaiz: null, causaRaizDetalhe: '',
+      responsavel: currentUser?.name || '', prazo: null, metaEsperada: '',
+      impactoEsperado: null, impactoEsperadoDetalhe: '',
+      status: 'planejado',
+      motivosVinculados: [],
+      csatNaAbertura: csatAtual ? { mesRef: csatAtual.mesRef, notaMedia: csatAtual.notaMedia, pesquisas: csatAtual.pesquisas } : null,
+      csatNaConclusao: null, classificacaoEfetividade: null, evidencias: [],
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), concluidoEm: null
+    };
+    await ref.set(novoPlano);
+    csatPlanosExpandidos[ref.id] = true;
+    toast('✅ Novo plano criado! Preencha os detalhes abaixo.', 'ok');
+    renderCsatPendencias();
+    setTimeout(() => abrirCsatAcaoDetalhe(postoNome), 300);
+  } catch (e) { toast('Erro ao criar plano: ' + e.message, 'err'); }
+}
+
 // ── Detalhe consolidado: Problema → Plano de Ação → Resultado, tudo no mesmo modal ──
 // Formulário de edição completo do 5W2H+ e evidências chega no Bloco 2;
 // aqui já mostramos a estrutura e os dados que existem até este bloco.
@@ -8793,7 +8898,7 @@ function abrirCsatAcaoDetalhe(postoNome) {
   document.getElementById('csat-acao-detalhe-titulo').textContent = `📋 ${postoNome}`;
 
   const motivos = allCsatMotivosDetectados.filter(m => m.postoNome === postoNome && m.status !== 'expirado');
-  const planos = allCsatPlanosAcao.filter(p => p.postoNome === postoNome).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+  const planos = allCsatPlanosAcao.filter(p => p.postoNome === postoNome).sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
 
   const blocoMotivos = `
     <div style="margin-bottom:18px">
@@ -8809,7 +8914,7 @@ function abrirCsatAcaoDetalhe(postoNome) {
   const blocoPlanos = `
     <div style="margin-bottom:18px">
       <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">📝 Plano de Ação</div>
-      ${planos.length ? planos.map(p => csatRenderPlanoCard(p)).join('') : '<div style="font-size:13px;color:var(--text3)">Nenhum plano criado ainda para este posto.</div>'}
+      ${planos.length ? planos.map((p,i) => csatRenderPlanoCard(p, i+1)).join('') : '<div style="font-size:13px;color:var(--text3)">Nenhum plano criado ainda para este posto.</div>'}
     </div>`;
 
   const planoConcluido = planos.find(p => p.status === 'concluido' && p.csatNaAbertura && p.csatNaConclusao);
@@ -8841,10 +8946,11 @@ function csatOptionsHtml(lista, selecionado) {
   return lista.map(o => `<option value="${o.value}" ${o.value===selecionado?'selected':''}>${o.label}</option>`).join('');
 }
 
-function csatRenderPlanoCard(p) {
+function csatRenderPlanoCard(p, numero) {
   const expandido = !!csatPlanosExpandidos[p.id];
   const podeEditar = p.status !== 'concluido' && p.status !== 'cancelado';
   const statusVisual = p.status === 'concluido' ? 'concluido' : (p.status==='cancelado'?'sem_plano':'em_andamento');
+  const rotulo = numero ? `Plano ${numero}` : '';
 
   // Sugestões inteligentes — busca por tema vinculado ao(s) motivo(s) do plano
   const motivoVinc = allCsatMotivosDetectados.find(m => p.motivosVinculados?.includes(m.id) && m.temaComentario);
@@ -8855,7 +8961,10 @@ function csatRenderPlanoCard(p) {
     return `
     <div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        ${csatStatusBadge(statusVisual)}
+        <div style="display:flex;align-items:center;gap:8px">
+          ${rotulo ? `<span style="font-size:11px;font-weight:700;color:var(--text3)">${rotulo}</span>` : ''}
+          ${csatStatusBadge(statusVisual)}
+        </div>
         <span style="font-size:11px;color:var(--text3)">Aberto em ${(p.createdAt||'').slice(0,10).split('-').reverse().join('/')}</span>
       </div>
       <div style="font-size:13px;color:var(--text2);margin-bottom:4px"><strong>O que será feito:</strong> ${p.oQueSeraFeito || '<span style="color:var(--text3)">não preenchido</span>'}</div>
@@ -8867,7 +8976,10 @@ function csatRenderPlanoCard(p) {
   return `
     <div style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:var(--surface2)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        ${csatStatusBadge(statusVisual)}
+        <div style="display:flex;align-items:center;gap:8px">
+          ${rotulo ? `<span style="font-size:11px;font-weight:700;color:var(--text3)">${rotulo}</span>` : ''}
+          ${csatStatusBadge(statusVisual)}
+        </div>
         <button class="btn btn-sm btn-secondary" onclick="csatTogglePlanoExpandido('${p.id}')">▾ Recolher</button>
       </div>
 
@@ -8946,8 +9058,14 @@ function csatRenderPlanoCard(p) {
       <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
         ${p.status==='planejado' ? `<button class="btn btn-sm btn-secondary" onclick="csatMudarStatusPlano('${p.id}','em_andamento')">▶ Iniciar Ação</button>` : ''}
         <button class="btn btn-sm btn-primary" onclick="csatConcluirPlano('${p.id}')">✅ Concluir Plano</button>
-        <button class="btn btn-sm btn-danger" onclick="csatMudarStatusPlano('${p.id}','cancelado')">✕ Cancelar</button>
-      </div>` : p.status==='concluido' ? `<div style="margin-top:12px;font-size:12px;color:#22c55e;font-weight:600">✅ Plano concluído em ${(p.concluidoEm||'').slice(0,10).split('-').reverse().join('/')}</div>` : ''}
+        <button class="btn btn-sm btn-danger" onclick="csatMudarStatusPlano('${p.id}','cancelado')">✕ Cancelar Plano</button>
+        ${currentUser?.role==='admin' ? `<button class="btn btn-sm btn-danger" style="opacity:.85" onclick="csatExcluirPlano('${p.id}')">🗑 Excluir Plano</button>` : ''}
+      </div>` : `<div style="border-top:1px solid var(--border);padding-top:12px;margin-top:14px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+        <div style="font-size:12px;color:${p.status==='concluido'?'#22c55e':'var(--text3)'};font-weight:600">
+          ${p.status==='concluido' ? `✅ Plano concluído em ${(p.concluidoEm||'').slice(0,10).split('-').reverse().join('/')}` : '✕ Plano cancelado'}
+        </div>
+        ${currentUser?.role==='admin' ? `<button class="btn btn-sm btn-danger" style="opacity:.85" onclick="csatExcluirPlano('${p.id}')">🗑 Excluir Plano</button>` : ''}
+      </div>`}
     </div>`;
 }
 
@@ -9014,6 +9132,38 @@ async function csatMudarStatusPlano(planoId, novoStatus) {
     const plano = allCsatPlanosAcao.find(p => p.id === planoId);
     if (plano) abrirCsatAcaoDetalhe(plano.postoNome);
   } catch (e) { toast('Erro: ' + e.message, 'err'); }
+}
+
+// Exclusão DEFINITIVA — restrita a admin. Diferente de cancelar (que só muda
+// status e preserva o registro para histórico), esta ação remove o documento
+// do Firestore. Trata corretamente os motivos vinculados ao plano excluído
+// para evitar referência órfã (planoId apontando para documento inexistente):
+// cada motivo volta ao seu status anterior (pendente, se o critério original
+// não era informativo; informativo, caso contrário) e tem planoId limpo,
+// voltando a aparecer corretamente na lista em vez de ficar "preso".
+async function csatExcluirPlano(planoId) {
+  if (currentUser?.role !== 'admin') { toast('Apenas administradores podem excluir planos.', 'err'); return; }
+  const plano = allCsatPlanosAcao.find(p => p.id === planoId);
+  if (!plano) { toast('Plano não encontrado', 'err'); return; }
+  if (!confirm(`Excluir definitivamente este plano de "${plano.postoNome}"?\n\nEsta ação NÃO pode ser desfeita. O histórico deste plano será perdido. Se preferir manter o registro, use "Cancelar Plano" em vez de excluir.`)) return;
+  if (!confirm('Confirmação final: tem certeza que deseja excluir este plano permanentemente?')) return;
+
+  try {
+    const batch = db.batch();
+    const motivosVinculados = allCsatMotivosDetectados.filter(m => m.planoId === planoId);
+    motivosVinculados.forEach(m => {
+      const crit = CSAT_CRITERIOS[m.criterio];
+      batch.set(db.collection('csat_motivos_detectados').doc(m.id), {
+        status: crit?.informativo ? 'informativo' : 'pendente',
+        planoId: null
+      }, { merge: true });
+    });
+    batch.delete(db.collection('csat_planos_acao').doc(planoId));
+    await batch.commit();
+    toast('🗑 Plano excluído.', 'ok');
+    renderCsatPendencias();
+    closeModal('modal-csat-acao-detalhe');
+  } catch (e) { toast('Erro ao excluir plano: ' + e.message, 'err'); }
 }
 
 // Conclusão captura o snapshot de CSAT mais recente do posto automaticamente.
