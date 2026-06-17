@@ -1188,8 +1188,9 @@ const PosCanalLabels = {
             <button class="btn btn-sm btn-secondary" data-filtro="sem_plano" onclick="filtrarCsatAcoesPorStatus('sem_plano')">🔴 Sem plano</button>
             <button class="btn btn-sm btn-secondary" data-filtro="em_andamento" onclick="filtrarCsatAcoesPorStatus('em_andamento')">🟡 Em andamento</button>
             <button class="btn btn-sm btn-secondary" data-filtro="concluido" onclick="filtrarCsatAcoesPorStatus('concluido')">🟢 Concluído</button>
+            <button class="btn btn-sm btn-secondary" data-filtro="informativo" onclick="filtrarCsatAcoesPorStatus('informativo')">⚪ Informativo</button>
           </div>
-          <button class="btn btn-sm btn-secondary" onclick="toast('Dashboard Gerencial (indicadores, rankings, reincidência e efetividade) será disponibilizado no próximo bloco.','ok')">📊 Dashboard Gerencial</button>
+          <button class="btn btn-sm btn-secondary" onclick="abrirCsatDashboardGerencial()">📊 Dashboard Gerencial</button>
         </div>
         <div id="csatAcoesSubContent-pendencias"></div>
       </div>
@@ -1200,6 +1201,14 @@ const PosCanalLabels = {
       <div class="modal" style="max-width:640px;max-height:85vh;overflow-y:auto">
         <div class="modal-header"><div class="modal-title" id="csat-acao-detalhe-titulo">📋 Detalhe</div><button class="close-btn" onclick="closeModal('modal-csat-acao-detalhe')">✕</button></div>
         <div id="csat-acao-detalhe-body"></div>
+      </div>
+    </div>
+
+    <!-- MODAL: DASHBOARD GERENCIAL CSAT (Bloco 3) — área separada do fluxo operacional -->
+    <div class="modal-overlay" id="modal-csat-dashboard-gerencial">
+      <div class="modal" style="max-width:780px;max-height:85vh;overflow-y:auto">
+        <div class="modal-header"><div class="modal-title">📊 Dashboard Gerencial — Planos de Ação CSAT</div><button class="close-btn" onclick="closeModal('modal-csat-dashboard-gerencial')">✕</button></div>
+        <div id="csat-dashboard-gerencial-body"></div>
       </div>
     </div>
 
@@ -8322,17 +8331,45 @@ const CSAT_IMPACTO_ESPERADO = [
   { value: 'outro',                        label: 'Outro' }
 ];
 
-// ⚠️ PENDÊNCIA REGISTRADA (Etapa 5): régua de classificação de efetividade
-// ainda não definitiva — escala real do CSAT é 0–5 (meta 4,50), não 0–100.
-// Referência inicial aprovada para revisão na Etapa 5:
-//   >= +0.30  → 'muito_eficaz'   (🟢)
-//   +0.10 a +0.29 → 'parcialmente_eficaz' (🟡)
-//   <= 0      → 'sem_resultado' (🔴)
-// NÃO usar estes valores em produção sem reconfirmar na Etapa 5.
-const CSAT_EFETIVIDADE_REGRA_PRELIMINAR = {
-  muito_eficaz: 0.30,
-  parcialmente_eficaz: 0.10
+// RÉGUA DE EFETIVIDADE — DEFINITIVA (confirmada pelo cliente no Bloco 3).
+// Escala real do CSAT é 0–5 (meta 4,50). Delta = csatNaConclusao - csatNaAbertura.
+//   >= +0.20        → 🟢 muito_eficaz
+//   +0.05 a +0.19   → 🟡 parcialmente_eficaz
+//    0  a +0.04     → ⚪ estavel
+//   <  0             → 🔴 sem_resultado
+// Só é calculada se o mês de conclusão tiver pesquisas >= CSAT_AMOSTRA_MINIMA;
+// caso contrário, classificacaoEfetividade fica 'amostra_insuficiente' (exibida
+// como "Amostra insuficiente para avaliação", sem inferir resultado indevido).
+const CSAT_EFETIVIDADE_REGRA = {
+  muito_eficaz: 0.20,
+  parcialmente_eficaz: 0.05,
+  estavel: 0
 };
+
+function csatClassificarEfetividade(notaAbertura, notaConclusao, pesquisasConclusao) {
+  if (pesquisasConclusao == null || pesquisasConclusao < CSAT_AMOSTRA_MINIMA) return 'amostra_insuficiente';
+  if (notaAbertura == null || notaConclusao == null) return null;
+  // Arredonda para 2 casas decimais antes de comparar — evita erro de
+  // precisão de ponto flutuante em JS (ex: 4.25-4.20 = 0.0499999...).
+  const delta = Math.round((notaConclusao - notaAbertura) * 100) / 100;
+  if (delta >= CSAT_EFETIVIDADE_REGRA.muito_eficaz) return 'muito_eficaz';
+  if (delta >= CSAT_EFETIVIDADE_REGRA.parcialmente_eficaz) return 'parcialmente_eficaz';
+  if (delta >= CSAT_EFETIVIDADE_REGRA.estavel) return 'estavel';
+  return 'sem_resultado';
+}
+
+function csatEfetividadeBadge(classificacao) {
+  const map = {
+    muito_eficaz: { emoji: '🟢', label: 'Muito eficaz', cor: '#22c55e' },
+    parcialmente_eficaz: { emoji: '🟡', label: 'Parcialmente eficaz', cor: '#f59e0b' },
+    estavel: { emoji: '⚪', label: 'Estável', cor: 'var(--text3)' },
+    sem_resultado: { emoji: '🔴', label: 'Sem resultado', cor: '#ef4444' },
+    amostra_insuficiente: { emoji: '🟠', label: 'Amostra insuficiente para avaliação', cor: '#f97316' }
+  };
+  const m = map[classificacao];
+  if (!m) return '';
+  return `<span style="font-size:12px;font-weight:700;color:${m.cor}">${m.emoji} ${m.label}</span>`;
+}
 
 // Schema de referência (documentação — não é um construtor, apenas o formato
 // esperado dos documentos gravados pelas próximas etapas):
@@ -8697,22 +8734,30 @@ function filtrarCsatAcoesPorStatus(filtro) {
 
 // Deriva, por posto, o status operacional consolidado a partir dos motivos
 // (pendentes) e planos vinculados — é o que alimenta a coluna "Status".
+// Regra (corrigida): o status vermelho deve representar EXCLUSIVAMENTE
+// situações que realmente exigem ação do supervisor. Motivos 'informativo'
+// (amostra insuficiente, zero pesquisas com acumulado dentro da meta etc)
+// NUNCA fazem um posto cair em 'sem_plano' — só motivo com status 'pendente'
+// real é que conta como pendência de ação.
 function csatStatusOperacionalDoPosto(postoNome, motivosDoPosto) {
   const planosDoPosto = allCsatPlanosAcao.filter(p => p.postoNome === postoNome);
-  // Algum motivo pendente sem nenhum plano vinculado ainda → sem plano
-  const temMotivoSemPlano = motivosDoPosto.some(m => m.status === 'pendente');
-  if (!planosDoPosto.length) return temMotivoSemPlano ? 'sem_plano' : 'sem_plano';
+  const temMotivoPendenteReal = motivosDoPosto.some(m => m.status === 'pendente');
   const temConcluido = planosDoPosto.some(p => p.status === 'concluido');
   const temAndamento = planosDoPosto.some(p => p.status === 'planejado' || p.status === 'em_andamento');
-  if (temMotivoSemPlano) return 'sem_plano'; // ainda há motivo novo não tratado
+
+  if (temMotivoPendenteReal) return 'sem_plano'; // pendência real exige ação, independente de histórico
   if (temAndamento) return 'em_andamento';
   if (temConcluido) return 'concluido';
-  return 'sem_plano';
+  // Sem pendência real, sem plano ativo, sem histórico concluído: se chegou
+  // até aqui só pode ter motivo informativo (a tela principal já filtra fora
+  // postos sem motivo algum antes de chamar esta função).
+  return 'informativo';
 }
 
 function csatStatusBadge(status) {
   if (status === 'concluido') return `<span style="font-size:12px;font-weight:700;color:#22c55e">🟢 Concluído</span>`;
   if (status === 'em_andamento') return `<span style="font-size:12px;font-weight:700;color:#f59e0b">🟡 Em andamento</span>`;
+  if (status === 'informativo') return `<span style="font-size:12px;font-weight:700;color:var(--text3)">⚪ Informativo</span>`;
   return `<span style="font-size:12px;font-weight:700;color:#ef4444">🔴 Sem plano</span>`;
 }
 
@@ -8765,7 +8810,7 @@ function renderCsatPendencias() {
   }
 
   // Ordenação: críticos sem plano primeiro, depois sem plano, depois em andamento, depois concluído
-  const ordemStatus = { sem_plano: 0, em_andamento: 1, concluido: 2 };
+  const ordemStatus = { sem_plano: 0, em_andamento: 1, concluido: 2, informativo: 3 };
   linhas.sort((a,b) => {
     if (a.critico !== b.critico) return a.critico ? -1 : 1;
     return (ordemStatus[a.status]??9) - (ordemStatus[b.status]??9);
@@ -8917,16 +8962,26 @@ function abrirCsatAcaoDetalhe(postoNome) {
       ${planos.length ? planos.map((p,i) => csatRenderPlanoCard(p, i+1)).join('') : '<div style="font-size:13px;color:var(--text3)">Nenhum plano criado ainda para este posto.</div>'}
     </div>`;
 
-  const planoConcluido = planos.find(p => p.status === 'concluido' && p.csatNaAbertura && p.csatNaConclusao);
+  const planosConcluidos = planos.filter(p => p.status === 'concluido' && p.csatNaAbertura && p.csatNaConclusao);
   const blocoResultado = `
     <div>
       <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">📈 Resultado</div>
-      ${planoConcluido ? `
-        <div style="display:flex;gap:16px;align-items:center">
-          <div><div style="font-size:11px;color:var(--text3)">Antes</div><div style="font-size:20px;font-weight:700;color:var(--text2)">${planoConcluido.csatNaAbertura.notaMedia?.toFixed(2)}</div></div>
-          <div style="font-size:18px;color:var(--text3)">→</div>
-          <div><div style="font-size:11px;color:var(--text3)">Depois</div><div style="font-size:20px;font-weight:700;color:var(--text2)">${planoConcluido.csatNaConclusao.notaMedia?.toFixed(2)}</div></div>
-        </div>` : '<div style="font-size:13px;color:var(--text3)">Resultado (antes/depois e classificação de efetividade) disponível quando houver plano concluído — cálculo completo chega no bloco final.</div>'}
+      ${planosConcluidos.length ? planosConcluidos.map((pc) => {
+        const numeroPlano = planos.indexOf(pc) + 1;
+        const delta = (pc.csatNaConclusao.notaMedia - pc.csatNaAbertura.notaMedia);
+        const deltaTxt = (delta >= 0 ? '+' : '') + delta.toFixed(2);
+        return `
+        <div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px">
+          <div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:8px">Plano ${numeroPlano}</div>
+          <div style="display:flex;gap:16px;align-items:center;margin-bottom:8px">
+            <div><div style="font-size:11px;color:var(--text3)">Antes</div><div style="font-size:20px;font-weight:700;color:var(--text2)">${pc.csatNaAbertura.notaMedia?.toFixed(2)}</div></div>
+            <div style="font-size:18px;color:var(--text3)">→</div>
+            <div><div style="font-size:11px;color:var(--text3)">Depois</div><div style="font-size:20px;font-weight:700;color:var(--text2)">${pc.csatNaConclusao.notaMedia?.toFixed(2)}</div></div>
+            <div style="font-size:13px;color:var(--text3);margin-left:4px">(${deltaTxt})</div>
+          </div>
+          ${csatEfetividadeBadge(pc.classificacaoEfetividade)}
+        </div>`;
+      }).join('') : '<div style="font-size:13px;color:var(--text3)">Resultado (antes/depois e classificação de efetividade) disponível quando houver plano concluído.</div>'}
     </div>`;
 
   document.getElementById('csat-acao-detalhe-body').innerHTML = blocoMotivos + blocoPlanos + blocoResultado;
@@ -9053,18 +9108,22 @@ function csatRenderPlanoCard(p, numero) {
         <button class="btn btn-sm btn-secondary" onclick="document.getElementById('csat-evidencia-input-${p.id}').click()">+ Anexar evidência (foto, print, ata — máx 700KB)</button>` : ''}
       </div>
 
-      <!-- Ações de status -->
+      <!-- Ações de status — hierarquia visual: Concluir (destaque) > Cancelar (secundária) > Excluir (discreta, admin-only, isolada) -->
       ${podeEditar ? `
-      <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
-        ${p.status==='planejado' ? `<button class="btn btn-sm btn-secondary" onclick="csatMudarStatusPlano('${p.id}','em_andamento')">▶ Iniciar Ação</button>` : ''}
-        <button class="btn btn-sm btn-primary" onclick="csatConcluirPlano('${p.id}')">✅ Concluir Plano</button>
-        <button class="btn btn-sm btn-danger" onclick="csatMudarStatusPlano('${p.id}','cancelado')">✕ Cancelar Plano</button>
-        ${currentUser?.role==='admin' ? `<button class="btn btn-sm btn-danger" style="opacity:.85" onclick="csatExcluirPlano('${p.id}')">🗑 Excluir Plano</button>` : ''}
+      <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            ${p.status==='planejado' ? `<button class="btn btn-sm btn-secondary" onclick="csatMudarStatusPlano('${p.id}','em_andamento')">▶ Iniciar Ação</button>` : ''}
+            <button class="btn btn-sm btn-primary" onclick="csatConcluirPlano('${p.id}')" style="font-weight:700">✅ Concluir Plano</button>
+            <button class="btn btn-sm" style="background:transparent;border:1px solid var(--border);color:var(--text3)" onclick="csatMudarStatusPlano('${p.id}','cancelado')">Cancelar Plano</button>
+          </div>
+          ${currentUser?.role==='admin' ? `<button style="background:none;border:none;cursor:pointer;font-size:11px;color:var(--red);opacity:.7;text-decoration:underline;padding:4px" onclick="csatExcluirPlano('${p.id}')" title="Ação irreversível — apenas administrador">🗑 Excluir definitivamente</button>` : ''}
+        </div>
       </div>` : `<div style="border-top:1px solid var(--border);padding-top:12px;margin-top:14px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
         <div style="font-size:12px;color:${p.status==='concluido'?'#22c55e':'var(--text3)'};font-weight:600">
           ${p.status==='concluido' ? `✅ Plano concluído em ${(p.concluidoEm||'').slice(0,10).split('-').reverse().join('/')}` : '✕ Plano cancelado'}
         </div>
-        ${currentUser?.role==='admin' ? `<button class="btn btn-sm btn-danger" style="opacity:.85" onclick="csatExcluirPlano('${p.id}')">🗑 Excluir Plano</button>` : ''}
+        ${currentUser?.role==='admin' ? `<button style="background:none;border:none;cursor:pointer;font-size:11px;color:var(--red);opacity:.7;text-decoration:underline;padding:4px" onclick="csatExcluirPlano('${p.id}')" title="Ação irreversível — apenas administrador">🗑 Excluir definitivamente</button>` : ''}
       </div>`}
     </div>`;
 }
@@ -9166,6 +9225,164 @@ async function csatExcluirPlano(planoId) {
   } catch (e) { toast('Erro ao excluir plano: ' + e.message, 'err'); }
 }
 
+// ══════════════════════════════════════════════════════════════
+// DASHBOARD GERENCIAL — BLOCO 3
+// Área separada do fluxo operacional (modal próprio, não compete
+// visualmente com a tela principal de Planos de Ação). Reúne todos os
+// indicadores aprovados na proposta original: status, atrasados, postos
+// críticos sem plano, postos com plano em andamento, reincidência (12m),
+// ranking de supervisores (volume + taxa de conclusão + tempo médio de
+// resolução), taxa de efetividade por causa raiz e por supervisor.
+// Somente leitura — não grava nada, só agrega allCsatPlanosAcao/
+// allCsatMotivosDetectados já carregados em memória.
+// ══════════════════════════════════════════════════════════════
+
+function csatDiasEntre(isoInicio, isoFim) {
+  if (!isoInicio || !isoFim) return null;
+  const ms = new Date(isoFim).getTime() - new Date(isoInicio).getTime();
+  return ms >= 0 ? ms / (1000*60*60*24) : null;
+}
+
+function abrirCsatDashboardGerencial() {
+  const modal = document.getElementById('modal-csat-dashboard-gerencial');
+  if (!modal) return;
+
+  const isAdm = currentUser?.role === 'admin';
+  const minhaSupKey = isAdm ? null : csatSupervisorKeyAtual();
+  let planos = allCsatPlanosAcao;
+  let motivos = allCsatMotivosDetectados.filter(m => m.status !== 'expirado');
+  if (!isAdm && minhaSupKey) { planos = planos.filter(p => p.supervisorKey === minhaSupKey); motivos = motivos.filter(m => m.supervisorKey === minhaSupKey); }
+
+  const hoje = new Date().toISOString().slice(0,10);
+
+  // ── Cards de status ──
+  const qtdPlanejado = planos.filter(p=>p.status==='planejado').length;
+  const qtdAndamento = planos.filter(p=>p.status==='em_andamento').length;
+  const qtdConcluido = planos.filter(p=>p.status==='concluido').length;
+  const qtdCancelado = planos.filter(p=>p.status==='cancelado').length;
+  const qtdAtrasados = planos.filter(p => (p.status==='planejado'||p.status==='em_andamento') && p.prazo && p.prazo < hoje).length;
+
+  // Postos críticos sem plano vs com plano em andamento (motivos pendentes)
+  const postosComMotivoPendente = [...new Set(motivos.filter(m=>m.status==='pendente').map(m=>m.postoNome))];
+  const postosSemPlanoAtivo = postosComMotivoPendente.filter(posto => !planos.some(p=>p.postoNome===posto && (p.status==='planejado'||p.status==='em_andamento')));
+  const postosComPlanoAndamento = postosComMotivoPendente.filter(posto => planos.some(p=>p.postoNome===posto && (p.status==='planejado'||p.status==='em_andamento')));
+
+  // ── Reincidência (12 meses) ──
+  const limite12m = new Date(); limite12m.setMonth(limite12m.getMonth()-12);
+  const limite12mIso = limite12m.toISOString();
+  const contagemPorPosto = {};
+  planos.forEach(p => { if ((p.createdAt||'') >= limite12mIso) contagemPorPosto[p.postoNome] = (contagemPorPosto[p.postoNome]||0)+1; });
+  const reincidentes = Object.entries(contagemPorPosto).filter(([,qtd])=>qtd>=2).sort((a,b)=>b[1]-a[1]);
+
+  // ── Ranking de supervisores: volume, taxa de conclusão, tempo médio de resolução ──
+  const porSupervisor = {};
+  planos.forEach(p => {
+    const key = p.supervisorKey || '_sem_supervisor';
+    if (!porSupervisor[key]) porSupervisor[key] = { nome: p.supervisorNome || CSAT_SUPERVISORES[key]?.nome || '—', total: 0, concluidos: 0, somaDias: 0, qtdComTempo: 0 };
+    porSupervisor[key].total++;
+    if (p.status === 'concluido') {
+      porSupervisor[key].concluidos++;
+      const dias = csatDiasEntre(p.createdAt, p.concluidoEm);
+      if (dias != null) { porSupervisor[key].somaDias += dias; porSupervisor[key].qtdComTempo++; }
+    }
+  });
+  const rankingSupervisores = Object.values(porSupervisor).map(s => ({
+    ...s,
+    taxaConclusao: s.total > 0 ? (s.concluidos/s.total)*100 : 0,
+    tempoMedio: s.qtdComTempo > 0 ? s.somaDias/s.qtdComTempo : null
+  })).sort((a,b) => b.total - a.total);
+
+  // Tempo médio geral (todos os supervisores)
+  const concluidosComTempo = planos.filter(p=>p.status==='concluido').map(p=>csatDiasEntre(p.createdAt,p.concluidoEm)).filter(d=>d!=null);
+  const tempoMedioGeral = concluidosComTempo.length ? concluidosComTempo.reduce((s,d)=>s+d,0)/concluidosComTempo.length : null;
+
+  // ── Taxa de efetividade por causa raiz e por supervisor ──
+  const concluidosComEfetividade = planos.filter(p => p.status==='concluido' && p.classificacaoEfetividade && p.classificacaoEfetividade !== 'amostra_insuficiente');
+  function taxaEficaz(lista) {
+    if (!lista.length) return null;
+    const eficazes = lista.filter(p => p.classificacaoEfetividade==='muito_eficaz' || p.classificacaoEfetividade==='parcialmente_eficaz').length;
+    return (eficazes/lista.length)*100;
+  }
+  const porCausaRaiz = {};
+  concluidosComEfetividade.forEach(p => { const c = p.causaRaiz||'outro'; (porCausaRaiz[c]=porCausaRaiz[c]||[]).push(p); });
+  const efetividadePorCausa = Object.entries(porCausaRaiz).map(([causa,lista]) => ({
+    label: CSAT_CAUSA_RAIZ.find(c=>c.value===causa)?.label || causa,
+    taxa: taxaEficaz(lista), total: lista.length
+  })).sort((a,b)=>(b.taxa??0)-(a.taxa??0));
+
+  const porSupervisorEf = {};
+  concluidosComEfetividade.forEach(p => { const k = p.supervisorKey||'_sem'; (porSupervisorEf[k]=porSupervisorEf[k]||[]).push(p); });
+  const efetividadePorSupervisor = Object.entries(porSupervisorEf).map(([key,lista]) => ({
+    label: CSAT_SUPERVISORES[key]?.nome || lista[0]?.supervisorNome || '—',
+    taxa: taxaEficaz(lista), total: lista.length
+  })).sort((a,b)=>(b.taxa??0)-(a.taxa??0));
+
+  function cardMini(label, valor, cor) {
+    return `<div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;flex:1;min-width:130px">
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">${label}</div>
+      <div style="font-size:22px;font-weight:700;color:${cor||'var(--text1)'}">${valor}</div>
+    </div>`;
+  }
+
+  const body = `
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+      ${cardMini('🔴 Críticos sem plano', postosSemPlanoAtivo.length, postosSemPlanoAtivo.length>0?'#ef4444':undefined)}
+      ${cardMini('⚠ Atrasados', qtdAtrasados, qtdAtrasados>0?'#ef4444':undefined)}
+      ${cardMini('🟡 Em andamento', qtdAndamento, '#f59e0b')}
+      ${cardMini('⏱ Tempo médio de resolução', tempoMedioGeral!=null?tempoMedioGeral.toFixed(1)+' dias':'—')}
+    </div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:18px">
+      ${qtdPlanejado} planejado(s) · ${qtdConcluido} concluído(s) · ${qtdCancelado} cancelado(s) · ${postosComPlanoAndamento.length} posto(s) crítico(s) já com plano em andamento
+    </div>
+
+    <div style="margin-bottom:18px">
+      <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px">🔁 Postos Reincidentes (últimos 12 meses)</div>
+      ${reincidentes.length ? `<table style="width:100%;border-collapse:collapse">
+        <tbody>
+          ${reincidentes.map(([posto,qtd]) => `<tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:6px 8px;font-size:13px;color:var(--text2);cursor:pointer" onclick="closeModal('modal-csat-dashboard-gerencial');abrirCsatAcaoDetalhe('${posto.replace(/'/g,"\\'")}')">${posto}</td>
+            <td style="padding:6px 8px;font-size:13px;text-align:right;color:var(--text2)">${qtd} plano(s)</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>` : '<div style="font-size:13px;color:var(--text3)">Nenhum posto com 2 ou mais planos no período.</div>'}
+    </div>
+
+    <div style="margin-bottom:18px">
+      <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px">👤 Ranking de Supervisores</div>
+      ${rankingSupervisores.length ? `<table style="width:100%;border-collapse:collapse">
+        <thead><tr style="font-size:11px;color:var(--text3);text-transform:uppercase">
+          <th style="padding:6px 8px;text-align:left;border-bottom:1px solid var(--border)">Supervisor</th>
+          <th style="padding:6px 8px;text-align:center;border-bottom:1px solid var(--border)">Planos</th>
+          <th style="padding:6px 8px;text-align:center;border-bottom:1px solid var(--border)">Taxa conclusão</th>
+          <th style="padding:6px 8px;text-align:center;border-bottom:1px solid var(--border)">Tempo médio</th>
+        </tr></thead>
+        <tbody>
+          ${rankingSupervisores.map(s => `<tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:6px 8px;font-size:13px;color:var(--text2)">${s.nome}</td>
+            <td style="padding:6px 8px;font-size:13px;text-align:center;color:var(--text2)">${s.total}</td>
+            <td style="padding:6px 8px;font-size:13px;text-align:center;color:var(--text2)">${s.taxaConclusao.toFixed(0)}%</td>
+            <td style="padding:6px 8px;font-size:13px;text-align:center;color:var(--text2)">${s.tempoMedio!=null?s.tempoMedio.toFixed(1)+'d':'—'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>` : '<div style="font-size:13px;color:var(--text3)">Sem planos registrados ainda.</div>'}
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px">🎯 Efetividade por Causa Raiz</div>
+        ${efetividadePorCausa.length ? efetividadePorCausa.map(e => `<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text2)">${e.label}</span><span style="color:var(--text2);font-weight:600">${e.taxa.toFixed(0)}% <span style="color:var(--text3);font-weight:400">(${e.total})</span></span></div>`).join('') : '<div style="font-size:13px;color:var(--text3)">Sem dados suficientes (precisa de planos concluídos com amostra confiável).</div>'}
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px">🎯 Efetividade por Supervisor</div>
+        ${efetividadePorSupervisor.length ? efetividadePorSupervisor.map(e => `<div style="display:flex;justify-content:space-between;font-size:13px;padding:5px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text2)">${e.label}</span><span style="color:var(--text2);font-weight:600">${e.taxa.toFixed(0)}% <span style="color:var(--text3);font-weight:400">(${e.total})</span></span></div>`).join('') : '<div style="font-size:13px;color:var(--text3)">Sem dados suficientes.</div>'}
+      </div>
+    </div>
+  `;
+
+  document.getElementById('csat-dashboard-gerencial-body').innerHTML = body;
+  modal.classList.add('open');
+}
+
 // Conclusão captura o snapshot de CSAT mais recente do posto automaticamente.
 // A classificação de efetividade (régua 0–5) é calculada no Bloco 3, junto
 // com o Dashboard — aqui só gravamos os dados-base (csatNaConclusao).
@@ -9178,10 +9395,17 @@ async function csatConcluirPlano(planoId) {
   try {
     const mesesPosto = csatAllData.filter(d => d.postoNome === plano.postoNome && d.notaMedia != null).sort((a,b)=>(b.mesRef||'').localeCompare(a.mesRef||''));
     const maisRecente = mesesPosto[0] || null;
+    const csatNaConclusao = maisRecente ? { mesRef: maisRecente.mesRef, notaMedia: maisRecente.notaMedia, pesquisas: maisRecente.pesquisas } : null;
+    const classificacaoEfetividade = csatClassificarEfetividade(
+      plano.csatNaAbertura?.notaMedia ?? null,
+      csatNaConclusao?.notaMedia ?? null,
+      csatNaConclusao?.pesquisas ?? null
+    );
     await db.collection('csat_planos_acao').doc(planoId).update({
       status: 'concluido',
       concluidoEm: new Date().toISOString(),
-      csatNaConclusao: maisRecente ? { mesRef: maisRecente.mesRef, notaMedia: maisRecente.notaMedia, pesquisas: maisRecente.pesquisas } : null,
+      csatNaConclusao,
+      classificacaoEfetividade,
       updatedAt: new Date().toISOString()
     });
     toast('✅ Plano concluído! Resultado registrado.', 'ok');
