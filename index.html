@@ -2144,6 +2144,48 @@ const PosCanalLabels = {
   </div>
 </div>
 
+<!-- MODAL: VER ATESTADO -->
+<div class="modal-overlay" id="modal-ver-atestado">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header"><div class="modal-title">🏥 Atestado</div><button class="close-btn" onclick="closeModal('modal-ver-atestado')">✕</button></div>
+    <input type="hidden" id="ver-atestado-id">
+    <div id="ver-atestado-info" style="margin-bottom:16px"></div>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-ver-atestado')">Fechar</button>
+      <button class="btn btn-secondary" style="flex:1" onclick="downloadAtestadoPdf()">👁 Visualizar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="downloadAtestadoById(document.getElementById('ver-atestado-id').value)">⬇ Baixar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: EDITAR ATESTADO (admin) -->
+<div class="modal-overlay" id="modal-editar-atestado">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header"><div class="modal-title">✏️ Editar Atestado</div><button class="close-btn" onclick="closeModal('modal-editar-atestado')">✕</button></div>
+    <input type="hidden" id="editar-atestado-id">
+    <div id="editar-atestado-colaborador" style="font-size:13px;color:var(--text3);margin-bottom:14px"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div class="form-group">
+        <label class="form-label">Início do afastamento</label>
+        <input type="date" class="form-input" id="editar-atestado-inicio">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Retorno</label>
+        <input type="date" class="form-input" id="editar-atestado-fim">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Observação</label>
+      <input class="form-input" id="editar-atestado-obs">
+    </div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:14px">⚠️ Alterar as datas atualiza diretamente os dias considerados como "Atestado" no relatório de ponto deste colaborador.</div>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-editar-atestado')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="salvarEdicaoAtestado()">💾 Salvar Alterações</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 
@@ -7910,7 +7952,11 @@ function renderAdmRhAtestado() {
       </div>
       <div style="display:flex;gap:8px;align-items:center">
         <span style="font-size:11px;color:var(--text3)">Enviado em ${fmtDT(a.enviadoEm)}</span>
-        <button class="btn btn-sm btn-secondary" style="margin-left:auto" onclick="abrirVerAtestado('${a.id}')">🏥 Ver Atestado</button>
+        <div style="margin-left:auto;display:flex;gap:6px">
+          <button class="btn btn-sm btn-secondary" onclick="abrirVerAtestado('${a.id}')">🏥 Ver Atestado</button>
+          ${currentUser?.role==='admin' ? `<button class="btn btn-sm btn-secondary" onclick="abrirEditarAtestado('${a.id}')">✏️ Editar</button>
+          <button class="btn btn-sm btn-danger" onclick="excluirAtestado('${a.id}')">🗑 Excluir</button>` : ''}
+        </div>
       </div>
     </div>`;
   }
@@ -7954,8 +8000,14 @@ function downloadAtestadoPdf() {
   const id = document.getElementById('ver-atestado-id').value;
   const a = allAtestados.find(x => x.id === id);
   if (!a || !a.pdfBase64) { toast('PDF não encontrado', 'err'); return; }
-  downloadAtestadoById(id);
-  closeModal('modal-ver-atestado');
+  try {
+    const bytes = base64ToArrayBuffer(a.pdfBase64);
+    const blob = new Blob([bytes], {type: 'application/pdf'});
+    const url = URL.createObjectURL(blob);
+    // Abre em nova aba para visualização nativa do navegador.
+    window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch(e) { toast('Erro ao abrir PDF: ' + e.message, 'err'); }
 }
 
 function downloadAtestadoById(id) {
@@ -7967,6 +8019,49 @@ function downloadAtestadoById(id) {
   const el = document.createElement('a');
   el.href = url; el.download = `atestado_${a.colaboradorNome.replace(/ /g,'_')}_${a.dataInicio}.pdf`;
   el.click(); URL.revokeObjectURL(url);
+}
+
+// ── Edição e exclusão de atestado — restrito ao perfil admin ──
+function abrirEditarAtestado(id) {
+  if (currentUser?.role !== 'admin') { toast('Apenas administradores podem editar atestados.', 'err'); return; }
+  const a = allAtestados.find(x => x.id === id);
+  if (!a) { toast('Atestado não encontrado', 'err'); return; }
+  document.getElementById('editar-atestado-id').value = id;
+  document.getElementById('editar-atestado-colaborador').textContent = `🏥 ${a.colaboradorNome} (${a.colaboradorEmail})`;
+  document.getElementById('editar-atestado-inicio').value = a.dataInicio || '';
+  document.getElementById('editar-atestado-fim').value = a.dataFim || '';
+  document.getElementById('editar-atestado-obs').value = a.observacao || '';
+  document.getElementById('modal-editar-atestado').classList.add('open');
+}
+
+async function salvarEdicaoAtestado() {
+  if (currentUser?.role !== 'admin') { toast('Apenas administradores podem editar atestados.', 'err'); return; }
+  const id = document.getElementById('editar-atestado-id').value;
+  const dataInicio = document.getElementById('editar-atestado-inicio').value;
+  const dataFim = document.getElementById('editar-atestado-fim').value;
+  const observacao = document.getElementById('editar-atestado-obs').value.trim();
+  if (!dataInicio || !dataFim) { toast('Informe as datas do afastamento', 'err'); return; }
+  if (dataFim < dataInicio) { toast('Data de retorno não pode ser anterior ao início', 'err'); return; }
+  try {
+    await db.collection('atestados').doc(id).update({
+      dataInicio, dataFim, observacao,
+      editadoEm: new Date().toISOString(),
+      editadoPor: currentUser.email
+    });
+    toast('✅ Atestado atualizado!', 'ok');
+    closeModal('modal-editar-atestado');
+  } catch (e) { toast('Erro ao salvar: ' + e.message, 'err'); }
+}
+
+async function excluirAtestado(id) {
+  if (currentUser?.role !== 'admin') { toast('Apenas administradores podem excluir atestados.', 'err'); return; }
+  const a = allAtestados.find(x => x.id === id);
+  if (!a) { toast('Atestado não encontrado', 'err'); return; }
+  if (!confirm(`Excluir definitivamente o atestado de "${a.colaboradorNome}" (${fmtD(a.dataInicio)} a ${fmtD(a.dataFim)})?\n\nEsta ação NÃO pode ser desfeita. Os dias deste período deixarão de ser considerados "Atestado" no relatório de ponto.`)) return;
+  try {
+    await db.collection('atestados').doc(id).delete();
+    toast('🗑 Atestado excluído.', 'ok');
+  } catch (e) { toast('Erro ao excluir: ' + e.message, 'err'); }
 }
 
 // ══════════════════════════════════════
