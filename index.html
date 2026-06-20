@@ -11,6 +11,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
 <script>
 // Plugin inline de rótulos para charts CSAT/POS (não registrado globalmente)
 // ── REGRA GLOBAL DE RÓTULOS ─────────────────────────────────────────────────
@@ -1147,15 +1148,21 @@ const PosCanalLabels = {
 
       <!-- aba painel -->
       <div id="csatTabContent-painel">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+          <button class="btn btn-sm btn-secondary" onclick="exportarCsatPainelPptx(this)">📊 Exportar Apresentação</button>
+        </div>
         <div id="csat-painel-content"></div>
       </div>
 
       <!-- aba supervisor -->
       <div id="csatTabContent-supervisor" style="display:none">
-        <div style="display:flex;gap:10px;margin-bottom:18px;align-items:center">
-          <span style="font-size:13px;color:var(--text2);font-weight:600">Supervisor:</span>
-          <button class="ind-tab-btn active" id="csatSup-leonardo" onclick="selectCsatSupervisor('leonardo',this)">Leonardo Costa</button>
-          <button class="ind-tab-btn" id="csatSup-victor" onclick="selectCsatSupervisor('victor',this)">Victor Simões</button>
+        <div style="display:flex;gap:10px;margin-bottom:18px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+          <div style="display:flex;gap:10px;align-items:center">
+            <span style="font-size:13px;color:var(--text2);font-weight:600">Supervisor:</span>
+            <button class="ind-tab-btn active" id="csatSup-leonardo" onclick="selectCsatSupervisor('leonardo',this)">Leonardo Costa</button>
+            <button class="ind-tab-btn" id="csatSup-victor" onclick="selectCsatSupervisor('victor',this)">Victor Simões</button>
+          </div>
+          <button class="btn btn-sm btn-secondary" onclick="exportarCsatSupervisorPptx(this)">📊 Exportar Apresentação</button>
         </div>
         <div id="csat-supervisor-content"></div>
       </div>
@@ -10044,6 +10051,354 @@ function csatGerarAnalise(postosDoSup, porPostoAcum, mesesSel, allData) {
     }
   }
   return {destaques, alertas, evolucaoTxt};
+}
+
+// ══════════════════════════════════════════════════════════════
+// EXPORTAÇÃO EXECUTIVA CSAT (PPTX) — módulo isolado e somente-leitura
+// Não altera nenhuma função, cálculo, filtro ou collection existente.
+// Reutiliza exatamente os mesmos arrays (csatAllData, csatMesesSelecionados,
+// CSAT_SUPERVISORES) e a mesma lógica de agregação já usada pelas telas —
+// nenhum novo cálculo de negócio é introduzido, apenas reaplicação read-only.
+// Única exceção: busca de comentários (csat_comentarios), disparada SOMENTE
+// no clique de exportar, nunca durante o uso normal das abas.
+// ══════════════════════════════════════════════════════════════
+
+const CSAT_PPTX_CORES = { primary: '1E2761', secondary: 'CADCFC', accent: 'FFFFFF', green: '22C55E', yellow: 'F59E0B', red: 'EF4444', text: '363636', muted: '64748B' };
+
+function csatPptxNovo() {
+  if (typeof PptxGenJS === 'undefined') { toast('Biblioteca de exportação não carregada. Verifique sua conexão e tente novamente.', 'err'); return null; }
+  const p = new PptxGenJS();
+  p.layout = 'LAYOUT_WIDE';
+  p.author = 'GestãoRGRio';
+  p.title = 'CSAT — Exportação Executiva';
+  return p;
+}
+
+function csatPptxCapa(pres, titulo, subtitulo) {
+  const slide = pres.addSlide();
+  slide.background = { color: CSAT_PPTX_CORES.primary };
+  slide.addText(titulo, { x: 0.6, y: 2.3, w: 12.1, h: 1.2, fontSize: 40, bold: true, color: CSAT_PPTX_CORES.accent, fontFace: 'Calibri' });
+  slide.addText(subtitulo, { x: 0.6, y: 3.5, w: 12.1, h: 0.6, fontSize: 18, color: CSAT_PPTX_CORES.secondary, fontFace: 'Calibri' });
+  const agora = new Date();
+  const dataGeracao = `Gerado em ${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
+  slide.addText(dataGeracao, { x: 0.6, y: 4.9, w: 12.1, h: 0.4, fontSize: 12, color: CSAT_PPTX_CORES.secondary, fontFace: 'Calibri', italic: true });
+  return slide;
+}
+
+function csatPptxTituloSecao(slide, texto) {
+  slide.addText(texto, { x: 0.5, y: 0.35, w: 12.3, h: 0.7, fontSize: 28, bold: true, color: CSAT_PPTX_CORES.text, fontFace: 'Calibri' });
+}
+
+function csatPptxKpiCard(pres, slide, x, y, w, label, valor, cor) {
+  slide.addShape(pres.shapes.ROUNDED_RECTANGLE, { x, y, w, h: 1.3, rectRadius: 0.08, fill: { color: 'F8FAFC' }, shadow: { type: 'outer', color: '000000', blur: 6, offset: 2, angle: 45, opacity: 0.1 } });
+  slide.addText(label.toUpperCase(), { x: x+0.15, y: y+0.12, w: w-0.3, h: 0.35, fontSize: 10, color: CSAT_PPTX_CORES.muted, bold: true, fontFace: 'Calibri' });
+  slide.addText(String(valor), { x: x+0.15, y: y+0.45, w: w-0.3, h: 0.75, fontSize: 26, bold: true, color: cor || CSAT_PPTX_CORES.text, fontFace: 'Calibri' });
+}
+
+function csatPptxCorPorNota(nota) {
+  if (nota === null || nota === undefined) return CSAT_PPTX_CORES.muted;
+  if (nota >= CSAT_META) return CSAT_PPTX_CORES.green;
+  if (nota >= 4.30) return CSAT_PPTX_CORES.yellow;
+  return CSAT_PPTX_CORES.red;
+}
+
+// ── Slide de tabela de ranking (reaproveitado por Painel e Supervisor) ──
+function csatPptxSlideRanking(pres, titulo, linhas, colunas) {
+  const slide = pres.addSlide();
+  slide.background = { color: 'FFFFFF' };
+  csatPptxTituloSecao(slide, titulo);
+  const header = colunas.map(c => ({ text: c.label, options: { bold: true, color: 'FFFFFF', fill: { color: CSAT_PPTX_CORES.primary }, fontSize: 11, align: c.align||'left' } }));
+  const linhasFmt = linhas.map(l => colunas.map(c => ({ text: String(c.get(l)), options: { fontSize: 10, align: c.align||'left', color: c.cor ? c.cor(l) : CSAT_PPTX_CORES.text } })));
+  slide.addTable([header, ...linhasFmt], {
+    x: 0.5, y: 1.25, w: 12.3, colW: colunas.map(c=>c.w),
+    border: { pt: 0.5, color: 'E2E8F0' }, autoPage: true, autoPageRepeatHeader: true,
+    fontFace: 'Calibri', valign: 'middle', rowH: 0.32
+  });
+  return slide;
+}
+
+// ── Slide simples de lista (Melhores Resultados / Pontos de Atenção / Destaques) ──
+function csatPptxSlideLista(pres, titulo, itens, cor, vazio) {
+  const slide = pres.addSlide();
+  slide.background = { color: 'FFFFFF' };
+  csatPptxTituloSecao(slide, titulo);
+  if (!itens.length) {
+    slide.addText(vazio || 'Nenhum item no período.', { x: 0.6, y: 1.5, w: 12, h: 0.5, fontSize: 14, color: CSAT_PPTX_CORES.muted, italic: true, fontFace: 'Calibri' });
+    return slide;
+  }
+  const textRuns = itens.map((txt, i) => ({ text: txt, options: { bullet: { code: '2022' }, color: CSAT_PPTX_CORES.text, breakLine: i < itens.length-1, paraSpaceAfter: 8 } }));
+  slide.addText(textRuns, { x: 0.6, y: 1.3, w: 12, h: 5.5, fontSize: 15, fontFace: 'Calibri', valign: 'top' });
+  // Faixa de cor lateral (tint sutil, não stripe decorativo — preenche bloco de fundo do título)
+  slide.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: 0.5, y: 1.15, w: 0.12, h: 0.5, rectRadius: 0.02, fill: { color: cor || CSAT_PPTX_CORES.primary } });
+  return slide;
+}
+
+// Limita texto de comentário para leitura executiva rápida
+function csatPptxTruncar(txt, max) {
+  if (!txt) return '';
+  const limpo = txt.trim();
+  return limpo.length > max ? limpo.slice(0, max-1).trim() + '…' : limpo;
+}
+
+// Remove comentários duplicados/muito parecidos (normaliza e compara prefixo)
+function csatPptxDedupComentarios(lista) {
+  const vistos = new Set();
+  const resultado = [];
+  for (const c of lista) {
+    // Remove pontuação e espaços múltiplos antes de comparar — captura
+    // variações como "Demorado!!" vs "demorado." como a mesma reclamação.
+    const chave = csatNorm(c.texto || '').replace(/[^\wÀ-Ú\s]/g,'').replace(/\s+/g,' ').trim().slice(0, 60);
+    if (!chave || vistos.has(chave)) continue;
+    vistos.add(chave);
+    resultado.push(c);
+  }
+  return resultado;
+}
+
+// Busca comentários SOMENTE no momento da exportação, priorizando postos
+// abaixo da meta. Limitada a um pequeno número de postos e comentários —
+// nunca roda durante uso normal das abas Painel/Supervisor.
+async function csatPptxBuscarComentariosRelevantes(rankingRows, mesesSelecionados) {
+  const postosAbaixoMeta = rankingRows.filter(p => p.nota !== null && p.nota < CSAT_META).sort((a,b)=>a.nota-b.nota).map(p=>p.nome);
+  const postosPrioritarios = postosAbaixoMeta.slice(0, 6); // limite de postos consultados
+  if (!postosPrioritarios.length) return [];
+
+  const comentariosColetados = [];
+  for (const posto of postosPrioritarios) {
+    try {
+      const snap = await db.collection('csat_comentarios').where('postoNome','==',posto).get();
+      snap.forEach(d => {
+        const dt = d.data();
+        if (!mesesSelecionados.includes(dt.mesRef)) return;
+        (dt.comentarios||[]).forEach(c => {
+          if (c.qualificacao === 'Detrator' && c.texto && c.texto.trim().length > 8) {
+            comentariosColetados.push({ posto, texto: c.texto, nota: c.nota, mesRef: dt.mesRef });
+          }
+        });
+      });
+    } catch(e) { /* falha isolada de um posto não interrompe a exportação */ }
+    if (comentariosColetados.length >= 20) break; // limite de segurança
+  }
+  return csatPptxDedupComentarios(comentariosColetados).slice(0, 8); // limite final para leitura executiva
+}
+
+function csatPptxSlideComentarios(pres, comentarios) {
+  const slide = pres.addSlide();
+  slide.background = { color: 'FFFFFF' };
+  csatPptxTituloSecao(slide, 'Comentários Relevantes');
+  if (!comentarios.length) {
+    slide.addText('Não foram identificados comentários relevantes para o período selecionado.', { x: 0.6, y: 1.5, w: 12, h: 0.6, fontSize: 15, color: CSAT_PPTX_CORES.muted, italic: true, fontFace: 'Calibri' });
+    return slide;
+  }
+  let y = 1.25;
+  const alturaCard = comentarios.length > 5 ? 0.62 : 0.78;
+  comentarios.slice(0, 8).forEach(c => {
+    slide.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: 0.5, y, w: 12.3, h: alturaCard-0.08, rectRadius: 0.06, fill: { color: 'F8FAFC' } });
+    slide.addText([
+      { text: `${c.posto}`, options: { bold: true, color: CSAT_PPTX_CORES.primary, fontSize: 11, breakLine: true } },
+      { text: csatPptxTruncar(c.texto, 140), options: { color: CSAT_PPTX_CORES.text, fontSize: 11, italic: true } }
+    ], { x: 0.7, y: y+0.05, w: 11.9, h: alturaCard-0.18, fontFace: 'Calibri', valign: 'top', margin: 0 });
+    y += alturaCard;
+  });
+  return slide;
+}
+
+// ══════════════════════════════════════════════════════════════
+// EXPORTAÇÃO — ABA PAINEL
+// ══════════════════════════════════════════════════════════════
+async function exportarCsatPainelPptx(btnEl) {
+  const btn = btnEl;
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Gerando apresentação...'; }
+  try {
+    // Reaplica EXATAMENTE a mesma agregação usada por renderCsatPainel,
+    // sobre os mesmos dados já carregados (csatAllData) e o mesmo filtro
+    // de meses já aplicado pelo usuário (csatMesesSelecionados).
+    const dados = csatAllData.filter(d => csatMesesSelecionados.includes(d.mesRef));
+    if (!dados.length) { toast('Nenhum dado no período selecionado para exportar.', 'err'); return; }
+
+    const totalPesq  = dados.reduce((s,d)=>s+(d.pesquisas||0),0);
+    const totalPromo = dados.reduce((s,d)=>s+(d.promotores||0),0);
+    const totalNeutro= dados.reduce((s,d)=>s+(d.neutros||0),0);
+    const totalDetr  = dados.reduce((s,d)=>s+(d.detratores||0),0);
+    const notaGeral  = totalPesq>0 ? dados.reduce((s,d)=>s+(d.notaMedia||0)*(d.pesquisas||0),0)/totalPesq : 0;
+    const pctPromo   = totalPesq>0?((totalPromo/totalPesq)*100).toFixed(1):'0.0';
+    const pctNeutro  = totalPesq>0?((totalNeutro/totalPesq)*100).toFixed(1):'0.0';
+    const pctDetr    = totalPesq>0?((totalDetr/totalPesq)*100).toFixed(1):'0.0';
+
+    const porPosto = {};
+    dados.forEach(d=>{
+      if(!porPosto[d.postoNome]) porPosto[d.postoNome]={pesquisas:0,notaSum:0,promotores:0,neutros:0,detratores:0};
+      const p=porPosto[d.postoNome];
+      p.pesquisas+=d.pesquisas||0; p.notaSum+=(d.notaMedia||0)*(d.pesquisas||0);
+      p.promotores+=d.promotores||0; p.neutros+=d.neutros||0; p.detratores+=d.detratores||0;
+    });
+    const rankingRows = TODOS_POSTOS_RG.map(nome=>{
+      const p=porPosto[nome]||{pesquisas:0,notaSum:0,promotores:0,neutros:0,detratores:0};
+      return {...p, nome, nota:p.pesquisas>0?p.notaSum/p.pesquisas:null};
+    }).sort((a,b)=>{
+      if(a.nota===null&&b.nota===null) return b.pesquisas-a.pesquisas;
+      if(a.nota===null) return 1; if(b.nota===null) return -1;
+      if(Math.abs(a.nota-b.nota)>0.001) return b.nota-a.nota;
+      return b.pesquisas-a.pesquisas;
+    });
+
+    const mesesSel = csatMesesSelecionados.slice().sort();
+    const labelPeriodo = mesesSel.map(csatLabelMes).join(', ') || 'Nenhum período selecionado';
+
+    const pres = csatPptxNovo();
+    if (!pres) return;
+
+    // Slide 1 — Capa
+    csatPptxCapa(pres, 'CSAT – Resumo Executivo', `Mês de referência: ${labelPeriodo}`);
+
+    // Slide 2 — Resumo Geral
+    const s2 = pres.addSlide();
+    s2.background = { color: 'FFFFFF' };
+    csatPptxTituloSecao(s2, 'Resumo Geral');
+    csatPptxKpiCard(pres, s2, 0.5, 1.3, 2.3, 'CSAT Médio', notaGeral.toFixed(2), csatPptxCorPorNota(notaGeral));
+    csatPptxKpiCard(pres, s2, 2.95, 1.3, 2.3, 'Total Pesquisas', totalPesq, CSAT_PPTX_CORES.primary);
+    csatPptxKpiCard(pres, s2, 5.4, 1.3, 2.3, 'Promotores', `${totalPromo} (${pctPromo}%)`, CSAT_PPTX_CORES.green);
+    csatPptxKpiCard(pres, s2, 7.85, 1.3, 2.3, 'Neutros', `${totalNeutro} (${pctNeutro}%)`, CSAT_PPTX_CORES.yellow);
+    csatPptxKpiCard(pres, s2, 10.3, 1.3, 2.3, 'Detratores', `${totalDetr} (${pctDetr}%)`, CSAT_PPTX_CORES.red);
+    // Gráfico de distribuição com rótulos de dados visíveis (percentual + quantidade)
+    s2.addChart(pres.charts.BAR, [{
+      name: 'Pesquisas', labels: ['Promotores','Neutros','Detratores'], values: [totalPromo, totalNeutro, totalDetr]
+    }], {
+      x: 0.5, y: 3.0, w: 12.3, h: 2.6, barDir: 'col',
+      chartColors: [CSAT_PPTX_CORES.green, CSAT_PPTX_CORES.yellow, CSAT_PPTX_CORES.red],
+      showValue: true, dataLabelPosition: 'outEnd', dataLabelColor: CSAT_PPTX_CORES.text, dataLabelFontSize: 12, dataLabelFontBold: true,
+      showLegend: false, showTitle: false,
+      catAxisLabelColor: CSAT_PPTX_CORES.muted, valAxisLabelColor: CSAT_PPTX_CORES.muted,
+      valGridLine: { color: 'E2E8F0', size: 0.5 }, catGridLine: { style: 'none' },
+      chartArea: { fill: { color: 'FFFFFF' } }
+    });
+
+    // Slide 3 — Ranking Geral de Postos (mesma ordenação do Painel)
+    csatPptxSlideRanking(pres, 'Ranking Geral de Postos', rankingRows, [
+      { label: '#', get: (l,i)=>rankingRows.indexOf(l)+1, w: 0.5, align: 'center' },
+      { label: 'Posto', get: l=>l.nome, w: 3.6 },
+      { label: 'Pesquisas', get: l=>l.pesquisas, w: 1.6, align: 'center' },
+      { label: 'Nota Média', get: l=>l.nota!==null?l.nota.toFixed(2):'—', w: 1.8, align: 'center', cor: l=>csatPptxCorPorNota(l.nota) },
+      { label: 'Promotores', get: l=>l.promotores, w: 1.6, align: 'center' },
+      { label: 'Detratores', get: l=>l.detratores, w: 1.6, align: 'center' },
+      { label: 'Meta', get: l=>l.nota===null?'—':(l.nota>=CSAT_META?'✓':'✗'), w: 1.5, align: 'center', cor: l=>l.nota===null?CSAT_PPTX_CORES.muted:(l.nota>=CSAT_META?CSAT_PPTX_CORES.green:CSAT_PPTX_CORES.red) }
+    ]);
+
+    // Slide 4 — Melhores Resultados (top postos com dado, ordenados por nota)
+    const comDado = rankingRows.filter(p=>p.nota!==null);
+    const melhores = comDado.slice(0, 8).map(p => `${p.nome}: ${p.nota.toFixed(2)} (${p.pesquisas} pesquisas)`);
+    csatPptxSlideLista(pres, 'Melhores Resultados', melhores, CSAT_PPTX_CORES.green, 'Sem dados suficientes no período.');
+
+    // Slide 5 — Pontos de Atenção (postos abaixo da meta)
+    const abaixoMeta = comDado.filter(p=>p.nota<CSAT_META).sort((a,b)=>a.nota-b.nota).map(p => `${p.nome}: ${p.nota.toFixed(2)} (${(CSAT_META-p.nota).toFixed(2)} abaixo da meta)`);
+    csatPptxSlideLista(pres, 'Pontos de Atenção', abaixoMeta, CSAT_PPTX_CORES.red, 'Nenhum posto abaixo da meta no período. 🎉');
+
+    // Slide 6 — Comentários Relevantes (única etapa com consulta nova, limitada e só aqui)
+    if (btn) btn.textContent = '⏳ Buscando comentários...';
+    const comentarios = await csatPptxBuscarComentariosRelevantes(rankingRows, mesesSel);
+    csatPptxSlideComentarios(pres, comentarios.map(c => ({ posto: c.posto, texto: c.texto })));
+
+    if (btn) btn.textContent = '⏳ Salvando arquivo...';
+    const nomeArquivo = `CSAT_Resumo_Executivo_${todayKey()}.pptx`;
+    await pres.writeFile({ fileName: nomeArquivo });
+    toast('✅ Apresentação exportada com sucesso!', 'ok');
+  } catch (e) {
+    console.error('exportarCsatPainelPptx', e);
+    toast('Erro ao gerar apresentação: ' + e.message, 'err');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '📊 Exportar Apresentação'; }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// EXPORTAÇÃO — ABA POR SUPERVISOR (todos os supervisores, sem seleção manual)
+// ══════════════════════════════════════════════════════════════
+async function exportarCsatSupervisorPptx(btnEl) {
+  const btn = btnEl;
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Gerando apresentação...'; }
+  try {
+    const mesesSel = csatMesesSelecionados.slice().sort();
+    const labelPeriodo = mesesSel.map(csatLabelMes).join(', ') || 'Nenhum período selecionado';
+
+    const pres = csatPptxNovo();
+    if (!pres) return;
+
+    csatPptxCapa(pres, 'CSAT por Supervisor', `Mês de referência: ${labelPeriodo}`);
+
+    // Itera todos os supervisores configurados (mesma fonte que já existe: CSAT_SUPERVISORES).
+    // Reaplica, para cada um, exatamente a mesma lógica de agregação de renderCsatSupervisor.
+    for (const supKey of Object.keys(CSAT_SUPERVISORES)) {
+      const sup = CSAT_SUPERVISORES[supKey];
+      const postosDoSup = sup.postos;
+      const dados = csatAllData.filter(d=>csatMesesSelecionados.includes(d.mesRef)&&postosDoSup.includes(d.postoNome));
+
+      const totalPesq = dados.reduce((s,d)=>s+(d.pesquisas||0),0);
+      const notaMedia = totalPesq>0?dados.reduce((s,d)=>s+(d.notaMedia||0)*(d.pesquisas||0),0)/totalPesq:0;
+      const totalPromo = dados.reduce((s,d)=>s+(d.promotores||0),0);
+      const totalNeutro = dados.reduce((s,d)=>s+(d.neutros||0),0);
+      const totalDetr = dados.reduce((s,d)=>s+(d.detratores||0),0);
+      const postosAv  = new Set(dados.map(d=>d.postoNome)).size;
+
+      const porPostoAcum = {};
+      dados.forEach(d=>{
+        if(!porPostoAcum[d.postoNome]) porPostoAcum[d.postoNome]={pesquisas:0,notaSum:0,promotores:0,detratores:0};
+        const p = porPostoAcum[d.postoNome];
+        p.pesquisas+=d.pesquisas||0; p.notaSum+=(d.notaMedia||0)*(d.pesquisas||0);
+        p.promotores+=d.promotores||0; p.detratores+=d.detratores||0;
+      });
+      const rankingSup = postosDoSup.map(nome=>{
+        const p=porPostoAcum[nome]||{pesquisas:0,notaSum:0,promotores:0,detratores:0};
+        return {...p, nome, nota:p.pesquisas>0?p.notaSum/p.pesquisas:null};
+      }).sort((a,b)=>{
+        if(a.nota===null&&b.nota===null) return b.pesquisas-a.pesquisas;
+        if(a.nota===null) return 1; if(b.nota===null) return -1;
+        if(Math.abs(a.nota-b.nota)>0.001) return b.nota-a.nota;
+        return b.pesquisas-a.pesquisas;
+      });
+
+      // Slide — Resumo do Supervisor
+      const sResumo = pres.addSlide();
+      sResumo.background = { color: 'FFFFFF' };
+      csatPptxTituloSecao(sResumo, `Resumo — ${sup.nome}`);
+      const notaMediaTxt = totalPesq > 0 ? notaMedia.toFixed(2) : '—';
+      const notaMediaCor = totalPesq > 0 ? csatPptxCorPorNota(notaMedia) : CSAT_PPTX_CORES.muted;
+      csatPptxKpiCard(pres, sResumo, 0.5, 1.3, 2.3, 'CSAT Médio', notaMediaTxt, notaMediaCor);
+      csatPptxKpiCard(pres, sResumo, 2.95, 1.3, 2.3, 'Total Pesquisas', totalPesq, CSAT_PPTX_CORES.primary);
+      csatPptxKpiCard(pres, sResumo, 5.4, 1.3, 2.3, 'Promotores', totalPromo, CSAT_PPTX_CORES.green);
+      csatPptxKpiCard(pres, sResumo, 7.85, 1.3, 2.3, 'Neutros', totalNeutro, CSAT_PPTX_CORES.yellow);
+      csatPptxKpiCard(pres, sResumo, 10.3, 1.3, 2.3, 'Detratores', totalDetr, CSAT_PPTX_CORES.red);
+      csatPptxKpiCard(pres, sResumo, 0.5, 2.85, 2.3, 'Qtd. Postos', `${postosAv}/${postosDoSup.length}`, CSAT_PPTX_CORES.primary);
+
+      // Slide — Postos do Supervisor (tabela: Posto, Pesquisas, CSAT, Status da Meta)
+      csatPptxSlideRanking(pres, `Postos — ${sup.nome}`, rankingSup, [
+        { label: 'Posto', get: l=>l.nome, w: 4.5 },
+        { label: 'Pesquisas', get: l=>l.pesquisas, w: 2.5, align: 'center' },
+        { label: 'CSAT', get: l=>l.nota!==null?l.nota.toFixed(2):'—', w: 2.5, align: 'center', cor: l=>csatPptxCorPorNota(l.nota) },
+        { label: 'Status da Meta', get: l=>l.nota===null?'Sem dados':(l.nota>=CSAT_META?'Dentro da meta':'Abaixo da meta'), w: 2.8, align: 'center', cor: l=>l.nota===null?CSAT_PPTX_CORES.muted:(l.nota>=CSAT_META?CSAT_PPTX_CORES.green:CSAT_PPTX_CORES.red) }
+      ]);
+
+      // Slide — Destaques Positivos (postos acima da meta)
+      const comDadoSup = rankingSup.filter(p=>p.nota!==null);
+      const destaquesSup = comDadoSup.filter(p=>p.nota>=CSAT_META).sort((a,b)=>b.nota-a.nota).map(p => `${p.nome}: ${p.nota.toFixed(2)} (${p.pesquisas} pesquisas)`);
+      const msgVaziaDestaques = comDadoSup.length === 0 ? 'Nenhum posto deste supervisor possui pesquisas no período selecionado.' : 'Nenhum posto atingiu a meta no período.';
+      csatPptxSlideLista(pres, `Destaques Positivos — ${sup.nome}`, destaquesSup, CSAT_PPTX_CORES.green, msgVaziaDestaques);
+
+      // Slide — Oportunidades de Melhoria (postos abaixo da meta)
+      const oportunidadesSup = comDadoSup.filter(p=>p.nota<CSAT_META).sort((a,b)=>a.nota-b.nota).map(p => `${p.nome}: ${p.nota.toFixed(2)} (${(CSAT_META-p.nota).toFixed(2)} abaixo da meta)`);
+      const msgVaziaOportunidades = comDadoSup.length === 0 ? 'Nenhum posto deste supervisor possui pesquisas no período selecionado.' : 'Nenhum posto abaixo da meta no período. 🎉';
+      csatPptxSlideLista(pres, `Oportunidades de Melhoria — ${sup.nome}`, oportunidadesSup, CSAT_PPTX_CORES.red, msgVaziaOportunidades);
+    }
+
+    if (btn) btn.textContent = '⏳ Salvando arquivo...';
+    const nomeArquivo = `CSAT_Por_Supervisor_${todayKey()}.pptx`;
+    await pres.writeFile({ fileName: nomeArquivo });
+    toast('✅ Apresentação exportada com sucesso!', 'ok');
+  } catch (e) {
+    console.error('exportarCsatSupervisorPptx', e);
+    toast('Erro ao gerar apresentação: ' + e.message, 'err');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '📊 Exportar Apresentação'; }
+  }
 }
 
 // ─── IMPORTAR ──────────────────────────────────────────────────────
