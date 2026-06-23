@@ -12,6 +12,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 // Plugin inline de rótulos para charts CSAT/POS (não registrado globalmente)
 // ── REGRA GLOBAL DE RÓTULOS ─────────────────────────────────────────────────
@@ -591,6 +592,24 @@ const PosCanalLabels = {
   .upload-zone{border:2px dashed var(--border2);border-radius:12px;padding:28px 20px;text-align:center;cursor:pointer;transition:all .2s;margin-bottom:12px;position:relative;}
   .upload-zone:hover{border-color:var(--accent);background:rgba(108,108,255,.04);}
   .upload-zone.has-file{border-color:var(--green);background:var(--green-bg);}
+  /* ── Seção de Anexos da Prestação ── */
+  .anexos-section{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:16px;margin-top:16px;}
+  .anexos-title{font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px;display:flex;align-items:center;gap:8px;}
+  .anexo-item{display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--surface3);border-radius:8px;margin-bottom:8px;border:1px solid var(--border);}
+  .anexo-item:last-child{margin-bottom:0;}
+  .anexo-icon{font-size:18px;flex-shrink:0;}
+  .anexo-info{flex:1;min-width:0;}
+  .anexo-nome{font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .anexo-meta{font-size:11px;color:var(--text3);margin-top:2px;}
+  .anexo-acoes{display:flex;gap:6px;flex-shrink:0;}
+  .btn-anexo{background:none;border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:11px;padding:4px 8px;cursor:pointer;transition:all .15s;}
+  .btn-anexo:hover{border-color:var(--accent);color:var(--accent);}
+  .btn-anexo-del{color:var(--red);border-color:rgba(239,68,68,.3);}
+  .btn-anexo-del:hover{background:rgba(239,68,68,.08);border-color:var(--red);}
+  .anexo-upload-btn{width:100%;border:1.5px dashed var(--border2);border-radius:8px;padding:10px;text-align:center;cursor:pointer;color:var(--text3);font-size:12px;transition:all .2s;background:none;position:relative;overflow:hidden;}
+  .anexo-upload-btn:hover{border-color:var(--accent);color:var(--accent);}
+  .anexo-upload-btn input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+  .zip-btn{display:flex;align-items:center;gap:8px;justify-content:center;}
   .upload-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
   .uz-icon{font-size:26px;margin-bottom:8px;}
   .uz-label{font-size:13px;color:var(--text2);font-weight:600;}
@@ -1849,6 +1868,22 @@ const PosCanalLabels = {
     <div style="display:flex;gap:10px;margin-top:8px">
       <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-reabastecer')">Cancelar</button>
       <button class="btn btn-primary" style="flex:1" onclick="confirmarReabastecimento()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: VISUALIZAR COMPROVANTE -->
+<div class="modal-overlay" id="modal-ver-comprovante">
+  <div class="modal" style="max-width:760px;height:90vh;display:flex;flex-direction:column;">
+    <div class="modal-header">
+      <div class="modal-title" id="ver-comp-titulo">📄 Comprovante</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-sm btn-secondary" id="ver-comp-download-btn">⬇ Baixar</button>
+        <button class="close-btn" onclick="closeModal('modal-ver-comprovante')">✕</button>
+      </div>
+    </div>
+    <div style="flex:1;overflow:hidden;border-radius:0 0 12px 12px;">
+      <iframe id="ver-comp-iframe" style="width:100%;height:100%;border:none;background:#fff;"></iframe>
     </div>
   </div>
 </div>
@@ -5588,11 +5623,11 @@ async function renderSupCaixa() {
           <div class="uz-label">${caixa.excelNome||'Excel do Caixa Rotativo'}</div>
           <div class="uz-sub">${caixa.excelNome?'✓ Arquivo carregado — clique para trocar':'Clique ou arraste o arquivo .xlsx'}</div>
         </div>
-        <div class="upload-zone ${caixa.pdfNomes?.length?'has-file':''}" id="uz-pdfs">
-          <input type="file" accept=".pdf" multiple onchange="uploadArquivo(this,'pdf')">
+        <div class="upload-zone ${(caixa.pdfNomes?.length||(_comprovantesCache[caixa.id]||[]).length)?'has-file':''}" id="uz-pdfs">
+          <input type="file" accept=".pdf" multiple data-caixa-id="${caixa.id}" onchange="uploadArquivo(this,'pdf')">
           <div class="uz-icon">📄</div>
-          <div class="uz-label">${caixa.pdfNomes?.length?caixa.pdfNomes.length+' PDF(s) registrado(s)':'Notas Fiscais em PDF'}</div>
-          <div class="uz-sub">${caixa.pdfNomes?.length?'Nomes registrados — envie os arquivos por e-mail ao ADM':'Clique ou arraste (nomes serão registrados)'}</div>
+          <div class="uz-label">${(_comprovantesCache[caixa.id]||[]).length?(_comprovantesCache[caixa.id]||[]).length+' comprovante(s) salvos':caixa.pdfNomes?.length?caixa.pdfNomes.length+' PDF(s) registrado(s)':'Notas Fiscais em PDF'}</div>
+          <div class="uz-sub">${(_comprovantesCache[caixa.id]||[]).length?'✓ Clique para adicionar mais':caixa.pdfNomes?.length?'Nomes registrados':'Clique ou arraste (múltiplos PDFs)'}</div>
         </div>
         <div id="validacao-resultado">${validacaoCaixaId === caixa.id ? validacaoResultadoHtml : ''}</div>
         <div style="display:flex;gap:10px;margin-top:14px">
@@ -5681,12 +5716,22 @@ async function renderSupCaixa() {
       <div class="card-title">Histórico de Prestações</div>
       <div id="historico-caixa-sup">${await getHistoricoHtml(currentUser.email)}</div>
     </div>`;
+
+  // Injetar seção de anexos após render
+  const anexosContainer = document.createElement('div');
+  anexosContainer.id = `anexos-section-${caixa.id}`;
+  const historicoCard = document.querySelector('#sup-caixa-body .card');
+  if (historicoCard) {
+    historicoCard.parentNode.insertBefore(anexosContainer, historicoCard);
+  }
+  renderAnexosSection(caixa.id, true);
 }
 
 let excelBase64 = null;
-let pdfsBase64 = [];
+let pdfsBase64 = [];         // LEGADO — mantido para retrocompatibilidade de leitura
 let excelNomeLocal = '';
 let pdfsNomesLocal = [];
+let _comprovantesCache = {}; // { caixaId: [{id, nome, base64, uploadedAt, tamanho}] }
 let validacaoResultadoHtml = '';
 let validacaoCaixaId = '';
 
@@ -5726,22 +5771,84 @@ function uploadArquivo(input, tipo) {
   if (!files.length) return;
   if (tipo === 'excel') {
     const file = files[0];
+    if (!['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/vnd.ms-excel',''].includes(file.type) &&
+        !file.name.match(/\.(xlsx|xls)$/i)) {
+      toast('Apenas arquivos .xlsx ou .xls são permitidos.', 'err'); return;
+    }
+    if (file.size > 700 * 1024) {
+      toast(`Excel muito grande (${(file.size/1024).toFixed(0)}KB). Máx: 700KB.`, 'err'); return;
+    }
     excelNomeLocal = file.name;
     const reader = new FileReader();
-    reader.onload = e => { excelBase64 = e.target.result; document.querySelector('#uz-excel .uz-label').textContent = file.name; document.querySelector('#uz-excel .uz-sub').textContent = '✓ Arquivo carregado'; document.getElementById('uz-excel').classList.add('has-file'); toast('Excel carregado!','ok'); };
+    reader.onload = e => {
+      excelBase64 = e.target.result;
+      document.querySelector('#uz-excel .uz-label').textContent = file.name;
+      document.querySelector('#uz-excel .uz-sub').textContent = '✓ Arquivo carregado';
+      document.getElementById('uz-excel').classList.add('has-file');
+      toast('Excel carregado!','ok');
+    };
     reader.readAsDataURL(file);
   } else {
-    pdfsBase64 = []; pdfsNomesLocal = [];
+    // PDFs — upload imediato para subcoleção Firestore
+    const caixaId = input.getAttribute('data-caixa-id');
+    if (!caixaId) { toast('Erro: caixaId não identificado.', 'err'); return; }
+    const MAX_PDF = 700 * 1024;
+    let erros = [];
+    let pendentes = 0;
+    const novosCacheItems = [];
     files.forEach(file => {
+      if (!file.name.match(/\.pdf$/i)) { erros.push(`${file.name}: apenas PDF permitido.`); return; }
+      if (file.size > MAX_PDF) { erros.push(`${file.name}: ${(file.size/1024).toFixed(0)}KB excede 700KB.`); return; }
+      pendentes++;
       const reader = new FileReader();
-      reader.onload = e => { pdfsBase64.push(e.target.result); pdfsNomesLocal.push(file.name); };
+      reader.onload = async e => {
+        const base64 = e.target.result;
+        try {
+          const ref = db.collection('caixas').doc(caixaId).collection('comprovantes').doc();
+          const doc = { id: ref.id, nome: file.name, base64, uploadedAt: new Date().toISOString(), tamanho: file.size };
+          await ref.set(doc);
+          // Atualiza cache local
+          if (!_comprovantesCache[caixaId]) _comprovantesCache[caixaId] = [];
+          _comprovantesCache[caixaId].push(doc);
+          pendentes--;
+          if (pendentes === 0) {
+            toast(`${files.length - erros.length} comprovante(s) salvos!`, 'ok');
+            renderAnexosSection(caixaId, false);
+          }
+        } catch(err) {
+          pendentes--;
+          toast('Erro ao salvar comprovante: ' + err.message, 'err');
+        }
+      };
       reader.readAsDataURL(file);
     });
-    document.querySelector('#uz-pdfs .uz-label').textContent = files.length + ' PDF(s) carregado(s)';
-    document.querySelector('#uz-pdfs .uz-sub').textContent = '✓ Clique para trocar';
-    document.getElementById('uz-pdfs').classList.add('has-file');
-    toast(files.length + ' PDF(s) carregado(s)!','ok');
+    if (erros.length) toast('Ignorados: ' + erros.join(' | '), 'err');
   }
+}
+
+// ── Etapa 1: helper para converter serial Excel → Date ──
+function _excelSerialToDate(serial) {
+  if (typeof serial === 'number' && serial > 40000) {
+    const utc = new Date(Date.UTC(1899,11,30) + serial * 86400000);
+    return utc.toISOString().substr(0,10); // YYYY-MM-DD
+  }
+  return null;
+}
+
+// ── Etapa 1: normalizar data de linha Excel → 'YYYY-MM-DD' ou null ──
+function _normalizarDataExcel(dataVal) {
+  if (!dataVal) return null;
+  if (dataVal instanceof Date) return dataVal.toISOString().substr(0,10);
+  if (typeof dataVal === 'number' && dataVal > 40000) return _excelSerialToDate(dataVal);
+  const s = String(dataVal).trim();
+  // DD/MM/YYYY
+  const m1 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m1) return `${m1[3]}-${m1[2].padStart(2,'0')}-${m1[1].padStart(2,'0')}`;
+  // YYYY-MM-DD
+  const m2 = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m2) return s.substr(0,10);
+  return null;
 }
 
 async function validarCaixa(caixaId) {
@@ -5753,22 +5860,22 @@ async function validarCaixa(caixaId) {
   el.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text3)">🔍 Analisando lançamentos...</div>`;
 
   try {
-    // Parsear Excel localmente com SheetJS
     const base64Data = excelBase64.split(',')[1];
     const binary = atob(base64Data);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const wb = XLSX.read(bytes, {type:'array'});
+    const wb = XLSX.read(bytes, {type:'array', cellDates:true});
     const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:false});
 
     const erros = [];
     let totalEntradas = 0;
     let totalSaidas = 0;
     let saldoInicial = 0;
     let dataHdrIdx = -1;
+    const hoje = todayKey(); // YYYY-MM-DD
 
-    // Encontrar linha de cabeçalho (Data | Nº Doc | Histórico | Entradas | Saídas)
+    // Encontrar cabeçalho
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i].map(c => String(c).toLowerCase());
       if (row.some(c => c.includes('data')) && row.some(c => c.includes('hist'))) {
@@ -5777,7 +5884,7 @@ async function validarCaixa(caixaId) {
     }
 
     if (dataHdrIdx === -1) {
-      erros.push({linha:'Estrutura', erro:'Não encontrei o cabeçalho padrão (Data / Nº Doc / Histórico / Entradas / Saídas). Verifique o formato do arquivo.'});
+      erros.push({tipo:'err', linha:'Estrutura', erro:'Cabeçalho padrão não encontrado (Data / Nº Doc / Histórico / Entradas / Saídas). Verifique o formato do arquivo.'});
     } else {
       const hdr = rows[dataHdrIdx].map(c => String(c).toLowerCase());
       const iData = hdr.findIndex(c=>c.includes('data'));
@@ -5785,6 +5892,16 @@ async function validarCaixa(caixaId) {
       const iHist = hdr.findIndex(c=>c.includes('hist'));
       const iEnt  = hdr.findIndex(c=>c.includes('entr'));
       const iSai  = hdr.findIndex(c=>c.includes('sa'));
+
+      // Inferir período da prestação: createdAt do caixa
+      const caixa = allCaixas.find(c=>c.id===caixaId);
+      const periodoInicio = caixa?.createdAt ? caixa.createdAt.substr(0,10) : null;
+
+      // Para detecção de duplicidade
+      const docsVistos = new Set();
+      const chaveVistos = new Set();
+
+      const lancamentosExcel = []; // para conciliação Etapa 2
 
       for (let i = dataHdrIdx+1; i < rows.length; i++) {
         const row = rows[i];
@@ -5796,41 +5913,64 @@ async function validarCaixa(caixaId) {
         const entRaw  = String(row[iEnt]  || '').trim();
         const saiRaw  = String(row[iSai]  || '').trim();
 
-        // Linha do saldo inicial (primeira linha após cabeçalho, sem data, com entrada)
+        // Saldo inicial (1ª linha sem data após cabeçalho)
         if (!dataVal && i === dataHdrIdx+1) {
           try { saldoInicial = parseFloat(entRaw.replace(',','.')) || 0; } catch(e){}
           continue;
         }
 
-        // Pular linhas sem data
         if (!dataVal || String(dataVal).trim() === '') continue;
-
-        // Pular linhas cuja "data" é texto (rodapé como "Observações gerencia")
         const dataStr = String(dataVal).trim();
-        const temDigitoNoInicio = /^\d/.test(dataStr) || (dataVal instanceof Date) || (typeof dataVal === 'number' && dataVal > 40000);
-        if (!temDigitoNoInicio) continue;
-
-        // Pular fórmulas
+        const temDigito = /^\d/.test(dataStr) || (dataVal instanceof Date) || (typeof dataVal === 'number' && dataVal > 40000);
+        if (!temDigito) continue;
         if (entRaw.startsWith('=') || saiRaw.startsWith('=')) continue;
 
-        const sai = parseFloat(saiRaw.replace(',','.')) || 0;
-        const ent = parseFloat(entRaw.replace(',','.')) || 0;
+        const sai = parseFloat(saiRaw.replace(',','.').replace(/[^\d.]/g,'')) || 0;
+        const ent = parseFloat(entRaw.replace(',','.').replace(/[^\d.]/g,'')) || 0;
         if (sai === 0 && ent === 0) continue;
 
-        // Validar lançamento
-        if (!docVal)  erros.push({linha:`Linha ${i+1}`, erro:`Lançamento "${histVal||'sem histórico'}" sem número de documento.`});
-        if (!histVal) erros.push({linha:`Linha ${i+1}`, erro:`Lançamento sem histórico preenchido.`});
-        if (sai > 0) totalSaidas += sai;
+        const dataISO = _normalizarDataExcel(dataVal);
+
+        // ── V1: Data futura ──
+        if (dataISO && dataISO > hoje) {
+          erros.push({tipo:'err', linha:`Linha ${i+1}`, erro:`Data futura: ${dataISO.split('-').reverse().join('/')} — ${histVal||'sem histórico'} — ${fmtBRL(sai||ent)}`});
+        }
+
+        // ── V2: Data fora do período da prestação ──
+        if (dataISO && periodoInicio && dataISO < periodoInicio) {
+          erros.push({tipo:'err', linha:`Linha ${i+1}`, erro:`Data anterior à abertura do caixa (${periodoInicio.split('-').reverse().join('/')}): ${dataISO.split('-').reverse().join('/')} — ${histVal||'sem histórico'}`});
+        }
+
+        // ── V3: Duplicidade ──
+        if (docVal) {
+          if (docsVistos.has(docVal)) {
+            erros.push({tipo:'err', linha:`Linha ${i+1}`, erro:`Documento duplicado: Nº ${docVal} — "${histVal}" já aparece em linha anterior.`});
+          }
+          docsVistos.add(docVal);
+        }
+        if (sai > 0) {
+          const chave = `${dataISO||dataStr}|${sai.toFixed(2)}|${histVal.toLowerCase()}`;
+          if (chaveVistos.has(chave)) {
+            erros.push({tipo:'err', linha:`Linha ${i+1}`, erro:`Possível duplicidade: mesma data + valor + histórico já registrados (${dataStr} / ${fmtBRL(sai)} / "${histVal}").`});
+          }
+          chaveVistos.add(chave);
+        }
+
+        // Acumular
+        if (!docVal)  erros.push({tipo:'err', linha:`Linha ${i+1}`, erro:`Lançamento "${histVal||'sem histórico'}" sem número de documento.`});
+        if (!histVal) erros.push({tipo:'err', linha:`Linha ${i+1}`, erro:`Lançamento sem histórico preenchido.`});
+        if (sai > 0) { totalSaidas += sai; lancamentosExcel.push({data:dataISO||dataStr, valor:sai, hist:histVal, doc:docVal}); }
+        if (ent > 0) totalEntradas += ent;
       }
 
-      // Verificar saldo declarado na planilha
+      // ── V4 (saldo declarado) ──
       let saldoDeclarado = null;
       for (let i = rows.length-1; i >= 0; i--) {
         const row = rows[i];
         if (!row) continue;
         const txt = row.map(c=>String(c||'').toLowerCase()).join(' ');
         if (txt.includes('saldo') && !txt.includes('observa')) {
-          const vals = row.map(c=>parseFloat(String(c||'').replace(',','.'))).filter(v=>!isNaN(v)&&v>0&&v<saldoInicial);
+          const vals = row.map(c=>parseFloat(String(c||'').replace(',','.'))).filter(v=>!isNaN(v)&&v>0&&v<(saldoInicial||VALOR_CAIXA_INICIAL+1));
           if (vals.length) { saldoDeclarado = vals[vals.length-1]; break; }
         }
       }
@@ -5838,16 +5978,27 @@ async function validarCaixa(caixaId) {
         const saldoCalculado = saldoInicial - totalSaidas;
         const diff = Math.abs(saldoCalculado - saldoDeclarado);
         if (diff > 0.10) {
-          erros.push({linha:'Saldo Final', erro:`Saldo calculado (${fmtBRL(saldoCalculado)}) difere do declarado (${fmtBRL(saldoDeclarado)}) em ${fmtBRL(diff)}. Verifique os lançamentos.`});
+          erros.push({tipo:'err', linha:'Saldo Final', erro:`Saldo calculado (${fmtBRL(saldoCalculado)}) difere do declarado (${fmtBRL(saldoDeclarado)}) em ${fmtBRL(diff)}. Verifique os lançamentos.`});
         }
       }
+
+      // ── V5: Conciliação Excel x Sistema ──
+      const totalSistema = allCaixaLancamentos
+        .filter(l => l.caixaId === caixaId)
+        .reduce((acc, l) => acc + (l.valor || 0), 0);
+      const diffSistema = Math.abs(totalSaidas - totalSistema);
+      if (totalSistema > 0 && diffSistema > 0.10) {
+        erros.push({tipo:'err', linha:'Conciliação', erro:`Total do Excel (${fmtBRL(totalSaidas)}) difere do total registrado no sistema (${fmtBRL(totalSistema)}) — diferença de ${fmtBRL(diffSistema)}. Verifique se todos os lançamentos foram registrados.`});
+      }
+
+      // Guardar lançamentos para Etapa 2 (OCR)
+      window._lancamentosExcelCache = window._lancamentosExcelCache || {};
+      window._lancamentosExcelCache[caixaId] = lancamentosExcel;
     }
 
     const valido = erros.length === 0;
     const gasto = totalSaidas;
     const saldoFinal = saldoInicial > 0 ? saldoInicial - gasto : VALOR_CAIXA_INICIAL - gasto;
-
-    const linhasHtml = erros.map(e=>`<div class="validacao-linha vl-err"><div class="vl-icon">❌</div><div class="vl-text"><strong>${e.linha}</strong>${e.erro}</div></div>`).join('');
 
     const resultHtml = `
       <div style="margin-top:14px">
@@ -5861,23 +6012,33 @@ async function validarCaixa(caixaId) {
         </div>
       </div>`;
 
-    // Salvar resultado para persistir após re-render
     validacaoResultadoHtml = resultHtml;
     validacaoCaixaId = caixaId;
 
-    el.innerHTML = resultHtml;
-
     if (valido) {
-      // Salvar Excel + dados na validação (PDFs são grandes demais pro Firestore)
+      const compSnap = await db.collection('caixas').doc(caixaId).collection('comprovantes').get();
+      const nomesPdfs = compSnap.docs.map(d=>d.data().nome||'');
+      const alertaSemComp = compSnap.empty
+        ? `<div class="validacao-linha" style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:8px;padding:10px 12px;margin-bottom:8px;display:flex;gap:8px;align-items:flex-start"><div style="font-size:16px">⚠️</div><div style="font-size:12px;color:var(--yellow)"><strong>Nenhum comprovante anexado</strong><br>Não foram encontrados comprovantes PDF para esta prestação. Você ainda pode enviar, mas recomenda-se anexar as notas fiscais.</div></div>`
+        : '';
+
       await db.collection('caixas').doc(caixaId).update({
         status: 'validado',
         totalGasto: gasto,
         saldoAtual: saldoFinal,
         excelBase64: excelBase64,
         excelNome: excelNomeLocal,
-        pdfNomes: pdfsNomesLocal, // apenas nomes, não conteúdo
+        pdfNomes: nomesPdfs,
         validadoEm: new Date().toISOString()
       });
+
+      el.innerHTML = resultHtml + alertaSemComp;
+
+      // ── Etapa 2: disparar conciliação de comprovantes após validação financeira ──
+      if (!compSnap.empty) {
+        setTimeout(() => conciliarComprovantes(caixaId, compSnap.docs.map(d=>({id:d.id,...d.data()}))), 200);
+      }
+
       const btnEnviar = document.getElementById('btn-enviar-caixa');
       if (btnEnviar) {
         btnEnviar.style.opacity='1'; btnEnviar.style.cursor='pointer';
@@ -5886,6 +6047,7 @@ async function validarCaixa(caixaId) {
       }
       toast('Validação aprovada! Você pode enviar.','ok');
     } else {
+      el.innerHTML = resultHtml;
       toast(`${erros.length} erro(s) encontrado(s). Corrija e valide novamente.`,'err');
     }
   } catch(e) {
@@ -5967,8 +6129,8 @@ async function renderAdmCaixas() {
         <div style="font-size:13px;font-weight:700;color:var(--yellow);margin-bottom:10px">📥 Arquivos da Prestação</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
           ${caixa.excelBase64?`<button class="btn btn-sm btn-secondary" onclick="downloadArquivo('${caixa.id}','excel')">📊 ${caixa.excelNome||'Caixa.xlsx'}</button>`:'<span style="font-size:12px;color:var(--red)">⚠ Excel não disponível — peça ao supervisor para reenviar</span>'}
-          ${(caixa.pdfNomes||[]).length?`<div style="width:100%;margin-top:6px;padding:8px 12px;background:var(--surface3);border-radius:8px;font-size:12px;color:var(--text2)">📄 PDFs enviados pelo supervisor: <strong>${(caixa.pdfNomes||[]).join(', ')}</strong><br><span style="color:var(--text3)">Solicite os PDFs por e-mail ou WhatsApp para conferência.</span></div>`:''}
         </div>
+        <div id="adm-comprovantes-${caixa.id}" style="margin-bottom:10px"></div>
         <div style="display:flex;gap:8px">
           ${caixa.excelBase64?`<button class="btn btn-sm btn-secondary" onclick="auditarLancamentos('${caixa.id}')">🔍 Auditar Lançamentos</button>`:''}
           <button class="btn btn-primary btn-sm" style="flex:1" onclick="abrirModalAprovar('${caixa.id}','${sup.name}',${caixa.totalGasto||0})">✓ Aprovar / Recusar</button>
@@ -5981,6 +6143,7 @@ async function renderAdmCaixas() {
           <div><div style="color:var(--green);font-weight:700;font-size:13px">✅ Aprovado — Caixa Nº${caixa.numeroCaixa||'—'}</div><div style="font-size:12px;color:var(--text3)">Reposição pendente: ${fmtBRL(caixa.totalGasto||0)}</div></div>
           <div style="display:flex;gap:8px">
             <button class="btn btn-sm btn-secondary" onclick="abrirEmailCaixa('${caixa.id}')">📧 Preparar E-mail</button>
+            <button class="btn btn-sm btn-secondary zip-btn" onclick="gerarZipPrestacao('${caixa.id}',this)">🗜 Baixar ZIP</button>
             <button class="btn btn-sm btn-primary" onclick="abrirModalReabastecer('${caixa.id}','${sup.name}',${caixa.totalGasto||0})">💰 Confirmar Reabastecimento</button>
           </div>
         </div>
@@ -5995,6 +6158,25 @@ async function renderAdmCaixas() {
   for (const sup of supervisores) {
     const histEl = document.getElementById(`hist-${sup.email.replace('@','_').replace(/\./g,'_')}`);
     if (histEl) histEl.innerHTML = await getHistoricoHtml(sup.email, true);
+    // Carregar comprovantes para caixas em aguarda_aprovacao
+    const caixa = allCaixas.find(c=>c.supervisorEmail===sup.email&&c.status==='aguarda_aprovacao');
+    if (caixa) {
+      const compEl = document.getElementById(`adm-comprovantes-${caixa.id}`);
+      if (compEl) {
+        await carregarComprovantes(caixa.id);
+        const lista = _comprovantesCache[caixa.id] || [];
+        if (lista.length > 0) {
+          compEl.innerHTML = `<div style="font-size:12px;color:var(--text2);margin-bottom:6px;font-weight:600">📎 ${lista.length} comprovante(s) anexado(s):</div>` +
+            lista.map(c=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+              <span style="font-size:11px;color:var(--text2);flex:1">📄 ${c.nome} <span style="color:var(--text3)">(${_fmtBytes(c.tamanho)})</span></span>
+              <button class="btn btn-sm btn-secondary" style="font-size:11px;padding:3px 8px" onclick="verComprovante('${c.id}','${caixa.id}')">👁 Ver</button>
+              <button class="btn btn-sm btn-secondary" style="font-size:11px;padding:3px 8px" onclick="downloadArquivo('${caixa.id}','comprovante','${c.id}')">⬇</button>
+            </div>`).join('');
+        } else {
+          compEl.innerHTML = `<div style="font-size:12px;color:var(--yellow);padding:6px 0">⚠️ Nenhum comprovante PDF anexado pelo supervisor.</div>`;
+        }
+      }
+    }
   }
 }
 
@@ -6003,15 +6185,15 @@ async function auditarLancamentos(caixaId) {
   if (!el) return;
   const caixa = allCaixas.find(c=>c.id===caixaId);
   if (!caixa?.excelBase64) { el.innerHTML=`<div style="font-size:13px;color:var(--red)">Arquivo Excel não disponível.</div>`; return; }
-  el.innerHTML=`<div style="font-size:13px;color:var(--text3);padding:10px">🔍 Analisando lançamentos...</div>`;
+  el.innerHTML=`<div style="font-size:13px;color:var(--text3);padding:10px">🔍 Auditando lançamentos...</div>`;
   try {
     const base64Data = caixa.excelBase64.split(',')[1];
     const binary = atob(base64Data);
     const bytes = new Uint8Array(binary.length);
     for (let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
-    const wb = XLSX.read(bytes,{type:'array'});
+    const wb = XLSX.read(bytes,{type:'array', cellDates:true});
     const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+    const rows = XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
     let hdrIdx=-1;
     for(let i=0;i<rows.length;i++){const r=rows[i].map(c=>String(c).toLowerCase());if(r.some(c=>c.includes('data'))&&r.some(c=>c.includes('hist'))){hdrIdx=i;break;}}
     if(hdrIdx===-1){el.innerHTML=`<div class="validacao-linha vl-err"><div class="vl-icon">❌</div><div class="vl-text"><strong>Estrutura não reconhecida</strong></div></div>`;return;}
@@ -6020,6 +6202,7 @@ async function auditarLancamentos(caixaId) {
     const iDoc=hdr.findIndex(c=>c.includes('doc'));
     const iHist=hdr.findIndex(c=>c.includes('hist'));
     const iSai=hdr.findIndex(c=>c.includes('sa'));
+    const iEnt=hdr.findIndex(c=>c.includes('entr'));
     let lancamentos=[];
     let saldoInicial=0;
     let totalSaidas=0;
@@ -6027,25 +6210,157 @@ async function auditarLancamentos(caixaId) {
       const row=rows[i];
       const dataVal=row[iData];
       const saiRaw=String(row[iSai]||'').trim();
-      if(!dataVal&&i===hdrIdx+1){try{saldoInicial=parseFloat(String(row[hdr.findIndex(c=>c.includes('entr'))]||'0').replace(',','.'))||0;}catch(e){}continue;}
+      const entRaw=String(row[iEnt]||'').trim();
+      if(!dataVal&&i===hdrIdx+1){try{saldoInicial=parseFloat(entRaw.replace(',','.'))||0;}catch(e){}continue;}
       if(!dataVal||!String(dataVal).trim())continue;
       const dataStr=String(dataVal).trim();
       if(!/^\d/.test(dataStr)&&!(dataVal instanceof Date)&&!(typeof dataVal==='number'&&dataVal>40000))continue;
       if(saiRaw.startsWith('='))continue;
-      const sai=parseFloat(saiRaw.replace(',','.'))||0;
+      const sai=parseFloat(saiRaw.replace(',','.').replace(/[^\d.]/g,''))||0;
       if(sai===0)continue;
       totalSaidas+=sai;
-      lancamentos.push({linha:i+1,data:dataStr,doc:String(row[iDoc]||'').trim(),hist:String(row[iHist]||'').trim(),valor:sai});
+      const dataISO = _normalizarDataExcel(dataVal);
+      const docVal=String(row[iDoc]||'').trim();
+      const histVal=String(row[iHist]||'').trim();
+      // Extrair hora do createdAt do caixa (não temos hora por lançamento — usamos timestamp do doc caixa como proxy)
+      lancamentos.push({linha:i+1, data:dataISO||dataStr, doc:docVal, hist:histVal, valor:sai});
     }
-    const tabela=lancamentos.map(l=>`<tr><td style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px;font-family:'IBM Plex Mono',monospace">${l.data.toString().substring(0,10)}</td><td style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px">${l.doc}</td><td style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px;max-width:250px">${l.hist}</td><td style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px;font-family:'IBM Plex Mono',monospace;text-align:right;color:var(--red)">${fmtBRL(l.valor)}</td></tr>`).join('');
+
+    // ── ETAPA 4: Detecção de padrões suspeitos ──
+    const alertas = [];
+    let scoreTotal = 0;
+
+    // P1: Mesmo valor repetido 3+ vezes
+    const valoresCont = {};
+    lancamentos.forEach(l => { valoresCont[l.valor] = (valoresCont[l.valor]||0)+1; });
+    Object.entries(valoresCont).forEach(([val, cnt]) => {
+      if (cnt >= 3) {
+        scoreTotal += 15;
+        alertas.push({regra:'Valor repetido', nivel: cnt >= 5 ? 'alto' : 'medio',
+          detalhe:`${fmtBRL(parseFloat(val))} aparece ${cnt} vezes.`,
+          items: lancamentos.filter(l=>l.valor===parseFloat(val)).map(l=>`Linha ${l.linha} — ${l.data} — "${l.hist}"`)
+        });
+      }
+    });
+
+    // P2: Mesmo fornecedor/histórico em muitos lançamentos (≥ 40% do total)
+    const histCont = {};
+    lancamentos.forEach(l => {
+      const k = l.hist.toLowerCase().trim();
+      if (k) histCont[k] = (histCont[k]||0)+1;
+    });
+    Object.entries(histCont).forEach(([hist, cnt]) => {
+      const pct = lancamentos.length > 0 ? cnt/lancamentos.length : 0;
+      if (cnt >= 3 && pct >= 0.40) {
+        scoreTotal += 20;
+        alertas.push({regra:'Concentração em fornecedor', nivel:'alto',
+          detalhe:`"${hist}" representa ${(pct*100).toFixed(0)}% dos lançamentos (${cnt} ocorrências).`,
+          items: lancamentos.filter(l=>l.hist.toLowerCase().trim()===hist).map(l=>`Linha ${l.linha} — ${l.data} — ${fmtBRL(l.valor)}`)
+        });
+      }
+    });
+
+    // P3: Vários lançamentos do mesmo fornecedor no mesmo dia
+    const histDiaCont = {};
+    lancamentos.forEach(l => {
+      const k = `${l.data}|${l.hist.toLowerCase().trim()}`;
+      histDiaCont[k] = (histDiaCont[k]||[]);
+      histDiaCont[k].push(l);
+    });
+    Object.entries(histDiaCont).forEach(([key, items]) => {
+      if (items.length >= 3) {
+        const [dia, forn] = key.split('|');
+        scoreTotal += 10;
+        alertas.push({regra:'Mesmo fornecedor, mesmo dia', nivel:'medio',
+          detalhe:`"${forn}" aparece ${items.length}x no dia ${dia}.`,
+          items: items.map(l=>`Linha ${l.linha} — ${fmtBRL(l.valor)}`)
+        });
+      }
+    });
+
+    // P4: Muitos lançamentos no mesmo dia (≥ 5)
+    const diaCont = {};
+    lancamentos.forEach(l => { diaCont[l.data] = (diaCont[l.data]||0)+1; });
+    Object.entries(diaCont).forEach(([dia, cnt]) => {
+      if (cnt >= 5) {
+        scoreTotal += 10;
+        alertas.push({regra:'Concentração diária', nivel:'medio',
+          detalhe:`${cnt} lançamentos registrados em ${dia}.`,
+          items: lancamentos.filter(l=>l.data===dia).map(l=>`Linha ${l.linha} — "${l.hist}" — ${fmtBRL(l.valor)}`)
+        });
+      }
+    });
+
+    // P5: Documentos com numeração sequencial (notas fiscais seguidas)
+    const docsNum = lancamentos.map(l=>parseInt(l.doc)).filter(n=>!isNaN(n)&&n>0).sort((a,b)=>a-b);
+    let seqCount = 1, maxSeq = 1;
+    for (let i=1;i<docsNum.length;i++) {
+      if (docsNum[i]===docsNum[i-1]+1) { seqCount++; if(seqCount>maxSeq) maxSeq=seqCount; }
+      else seqCount=1;
+    }
+    if (maxSeq >= 4) {
+      scoreTotal += 15;
+      alertas.push({regra:'Documentos sequenciais', nivel:'medio',
+        detalhe:`Sequência de ${maxSeq} notas fiscais consecutivas detectada.`,
+        items:[]
+      });
+    }
+
+    // Score final
+    const score = Math.min(100, scoreTotal);
+    const nivelRisco = score >= 50 ? 'alto' : score >= 20 ? 'medio' : 'baixo';
+    const corRisco = nivelRisco==='alto' ? '#ef4444' : nivelRisco==='medio' ? '#f59e0b' : '#22c55e';
+    const emojiRisco = nivelRisco==='alto' ? '🔴' : nivelRisco==='medio' ? '🟡' : '🟢';
+    const labelRisco = nivelRisco==='alto' ? 'Alto risco' : nivelRisco==='medio' ? 'Médio risco' : 'Baixo risco';
+
+    // HTML tabela de lançamentos
+    const tabela = lancamentos.map(l=>`<tr>
+      <td style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px;font-family:'IBM Plex Mono',monospace">${l.data.toString().substring(0,10)}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px">${l.doc}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px;max-width:250px">${l.hist}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px;font-family:'IBM Plex Mono',monospace;text-align:right;color:var(--red)">${fmtBRL(l.valor)}</td>
+    </tr>`).join('');
+
+    // HTML alertas de auditoria
+    const alertasHtml = alertas.length === 0
+      ? `<div style="font-size:12px;color:var(--green);padding:8px 0">✅ Nenhum padrão suspeito detectado.</div>`
+      : alertas.map(a => {
+          const cor = a.nivel==='alto' ? '#ef4444' : '#f59e0b';
+          const emoji = a.nivel==='alto' ? '🔴' : '🟡';
+          return `<div style="background:var(--surface3);border-left:3px solid ${cor};border-radius:0 8px 8px 0;padding:10px 12px;margin-bottom:8px">
+            <div style="font-size:12px;font-weight:700;color:${cor};margin-bottom:4px">${emoji} ${a.regra}</div>
+            <div style="font-size:12px;color:var(--text2);margin-bottom:4px">${a.detalhe}</div>
+            ${a.items.length ? `<div style="font-size:11px;color:var(--text3)">${a.items.slice(0,4).join(' · ')}</div>` : ''}
+          </div>`;
+        }).join('');
+
     el.innerHTML=`<div style="margin-top:8px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;overflow:hidden">
       <div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
         <span style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.6px">${lancamentos.length} lançamentos auditados</span>
         <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--red)">Total: ${fmtBRL(totalSaidas)}</span>
       </div>
+
+      <!-- Score de risco -->
+      <div style="padding:12px 14px;border-bottom:1px solid var(--border);background:var(--surface3)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <span style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.6px">Score de Risco</span>
+          <span style="font-size:14px;font-weight:700;color:${corRisco}">${emojiRisco} ${labelRisco} (${score}/100)</span>
+        </div>
+        <div style="background:var(--surface2);border-radius:6px;height:6px;overflow:hidden">
+          <div style="width:${score}%;height:100%;background:${corRisco};border-radius:6px;transition:width .5s"></div>
+        </div>
+        <div style="margin-top:10px">${alertasHtml}</div>
+      </div>
+
+      <!-- Tabela de lançamentos -->
       <div style="max-height:250px;overflow-y:auto">
         <table style="width:100%;border-collapse:collapse">
-          <thead><tr style="background:var(--surface3)"><th style="padding:7px 10px;font-size:11px;color:var(--text3);text-align:left;font-weight:700">Data</th><th style="padding:7px 10px;font-size:11px;color:var(--text3);text-align:left;font-weight:700">Nº Doc</th><th style="padding:7px 10px;font-size:11px;color:var(--text3);text-align:left;font-weight:700">Histórico</th><th style="padding:7px 10px;font-size:11px;color:var(--text3);text-align:right;font-weight:700">Valor</th></tr></thead>
+          <thead><tr style="background:var(--surface3)">
+            <th style="padding:7px 10px;font-size:11px;color:var(--text3);text-align:left;font-weight:700">Data</th>
+            <th style="padding:7px 10px;font-size:11px;color:var(--text3);text-align:left;font-weight:700">Nº Doc</th>
+            <th style="padding:7px 10px;font-size:11px;color:var(--text3);text-align:left;font-weight:700">Histórico</th>
+            <th style="padding:7px 10px;font-size:11px;color:var(--text3);text-align:right;font-weight:700">Valor</th>
+          </tr></thead>
           <tbody>${tabela}</tbody>
         </table>
       </div>
@@ -6065,6 +6380,243 @@ async function getHistoricoHtml(email, isAdm=false) {
     <div style="font-size:12px;color:var(--text3);font-family:'IBM Plex Mono',monospace">Aprovado em ${fmtDT(h.aprovadoEm)} • Reposto em ${fmtDT(h.reabastecidoEm)}</div>
     ${h.obsAprovacao?`<div class="hi-obs">💬 ${h.obsAprovacao}</div>`:''}
   </div>`).join('');
+}
+
+// ══════════════════════════════════════════════════════
+// ETAPA 2 — Conciliação de Comprovantes (OCR pdf.js)
+// ETAPA 3 — Qualidade Documental
+// ══════════════════════════════════════════════════════
+
+// Carrega pdf.js sob demanda (CDN cdnjs — permitido)
+async function _loadPdfJs() {
+  if (window.pdfjsLib) return true;
+  return new Promise(resolve => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload = () => {
+      if (window.pdfjsLib) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        resolve(true);
+      } else resolve(false);
+    };
+    s.onerror = () => resolve(false);
+    document.head.appendChild(s);
+  });
+}
+
+// Extrai pares {data, valor} de texto de PDF digital
+function _extrairDatasValoresPdf(texto) {
+  const resultados = [];
+  // Padrão valor: R$ 1.234,56 ou 1234,56 ou 1234.56
+  const reValor = /R\$\s*([\d.,]+)|(?<!\d)([\d]{1,6}[.,][\d]{2})(?!\d)/g;
+  // Padrão data: DD/MM/YYYY ou DD-MM-YYYY ou YYYY-MM-DD
+  const reData = /(\d{2})[\/\-](\d{2})[\/\-](\d{4})|(\d{4})[\/\-](\d{2})[\/\-](\d{2})/g;
+
+  const datas = [];
+  let m;
+  while ((m = reData.exec(texto)) !== null) {
+    if (m[4]) { // YYYY-MM-DD
+      datas.push(`${m[4]}-${m[5]}-${m[6]}`);
+    } else { // DD/MM/YYYY
+      datas.push(`${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`);
+    }
+  }
+
+  const valores = [];
+  while ((m = reValor.exec(texto)) !== null) {
+    const raw = (m[1] || m[2] || '').replace(/\./g,'').replace(',','.');
+    const v = parseFloat(raw);
+    if (!isNaN(v) && v > 0.50 && v < 50000) valores.push(v);
+  }
+
+  // Criar pares data+valor (produto cartesiano simples — cada valor associado à data mais próxima no texto)
+  valores.forEach(v => {
+    resultados.push({ valor: v, datas: datas.slice() });
+  });
+  return resultados;
+}
+
+// Etapa 3: avaliar qualidade de uma página rasterizada em canvas
+function _avaliarQualidadePagina(canvas) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  if (!w || !h) return 0;
+  const img = ctx.getImageData(0, 0, w, h);
+  const data = img.data;
+  const pixels = w * h;
+
+  let somaLum = 0, somaLumSq = 0, pixelsBrancos = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i], g = data[i+1], b = data[i+2];
+    const lum = 0.299*r + 0.587*g + 0.114*b;
+    somaLum += lum;
+    somaLumSq += lum*lum;
+    if (lum > 240) pixelsBrancos++;
+  }
+
+  const mediaLum = somaLum / pixels;
+  const variancia = (somaLumSq / pixels) - (mediaLum * mediaLum);
+  const desvio = Math.sqrt(Math.max(0, variancia));
+  const cobertura = 1 - (pixelsBrancos / pixels); // 0=vazio, 1=cheio
+
+  // Score: contraste (desvio alto = bom) + cobertura razoável
+  const scoreContraste = Math.min(100, (desvio / 80) * 100);
+  const scoreCob = cobertura < 0.02 ? 0 : cobertura > 0.95 ? 60 : 100;
+  return Math.round((scoreContraste * 0.7) + (scoreCob * 0.3));
+}
+
+// Função principal: Etapa 2 + 3 juntas (chamada após validarCaixa quando há comprovantes)
+async function conciliarComprovantes(caixaId, comprovantes) {
+  const elId = `conciliacao-result-${caixaId}`;
+  let el = document.getElementById(elId);
+  if (!el) {
+    // Criar container abaixo do resultado de validação
+    const elVal = document.getElementById('validacao-resultado');
+    if (!elVal) return;
+    el = document.createElement('div');
+    el.id = elId;
+    elVal.parentNode.insertBefore(el, elVal.nextSibling);
+  }
+  el.innerHTML = `<div style="text-align:center;padding:16px;color:var(--text3);font-size:13px">🔎 Conciliando comprovantes...</div>`;
+
+  const lancamentosExcel = (window._lancamentosExcelCache || {})[caixaId] || [];
+
+  const carregou = await _loadPdfJs();
+  if (!carregou) {
+    el.innerHTML = `<div style="padding:10px;font-size:12px;color:var(--text3);border:1px solid var(--border);border-radius:8px;margin-top:10px">⚠️ Biblioteca de leitura de PDF não disponível. Conciliação e qualidade documental indisponíveis nesta sessão.</div>`;
+    return;
+  }
+
+  // Processar cada comprovante
+  const resultadosPorArquivo = [];
+  let scoreQualidadeGeral = 0;
+  let totalPaginas = 0;
+
+  for (const comp of comprovantes) {
+    if (!comp.base64) continue;
+    try {
+      const base64Data = comp.base64.split(',')[1];
+      const raw = atob(base64Data);
+      const arr = new Uint8Array(raw.length);
+      for (let i=0;i<raw.length;i++) arr[i]=raw.charCodeAt(i);
+
+      const pdf = await pdfjsLib.getDocument({data: arr}).promise;
+      let textoTotal = '';
+      let scoreArquivo = 0;
+
+      for (let p=1; p<=pdf.numPages; p++) {
+        const page = await pdf.getPage(p);
+
+        // Etapa 3: rasterizar para qualidade
+        try {
+          const viewport = page.getViewport({scale:1.0});
+          const canvas = document.createElement('canvas');
+          canvas.width = viewport.width; canvas.height = viewport.height;
+          await page.render({canvasContext: canvas.getContext('2d'), viewport}).promise;
+          const scoreP = _avaliarQualidadePagina(canvas);
+          scoreArquivo += scoreP;
+          totalPaginas++;
+        } catch(e) { totalPaginas++; }
+
+        // Etapa 2: extrair texto
+        try {
+          const content = await page.getTextContent();
+          textoTotal += content.items.map(it=>it.str).join(' ') + ' ';
+        } catch(e) {}
+      }
+
+      scoreQualidadeGeral += scoreArquivo;
+      const pares = _extrairDatasValoresPdf(textoTotal);
+      resultadosPorArquivo.push({ nome: comp.nome, pares, textoVazio: textoTotal.trim().length < 20, scoreArquivo: totalPaginas > 0 ? Math.round(scoreArquivo / pdf.numPages) : 0, paginas: pdf.numPages });
+    } catch(e) {
+      resultadosPorArquivo.push({ nome: comp.nome, pares: [], textoVazio: true, scoreArquivo: 0, paginas: 0, erro: true });
+    }
+  }
+
+  // ── Etapa 2: Conciliar Excel x Comprovantes ──
+  const TOLERANCIA_DIAS = 1;
+  const lancamentosConciliados = new Set();
+  const comprovanteSemLanc = [];
+  const lancSemComprovante = [];
+
+  lancamentosExcel.forEach((lanc, idx) => {
+    let encontrou = false;
+    for (const arq of resultadosPorArquivo) {
+      if (arq.textoVazio || arq.erro) continue;
+      for (const par of arq.pares) {
+        // Comparar valor (tolerância R$ 0,10)
+        if (Math.abs(par.valor - lanc.valor) > 0.10) continue;
+        // Comparar data (tolerância 1 dia)
+        const dataExcel = lanc.data;
+        const temDataCompativel = par.datas.length === 0 || par.datas.some(d => {
+          const diff = Math.abs((new Date(d) - new Date(dataExcel)) / 86400000);
+          return diff <= TOLERANCIA_DIAS;
+        });
+        if (temDataCompativel) { encontrou = true; lancamentosConciliados.add(idx); break; }
+      }
+      if (encontrou) break;
+    }
+    if (!encontrou) lancSemComprovante.push(lanc);
+  });
+
+  // Comprovantes com PDFs não digitais (texto vazio)
+  const naoDigitais = resultadosPorArquivo.filter(a=>a.textoVazio&&!a.erro);
+  const comErro = resultadosPorArquivo.filter(a=>a.erro);
+
+  // ── Etapa 3: Score de qualidade geral ──
+  const scoreQualPct = totalPaginas > 0 ? Math.round(scoreQualidadeGeral / totalPaginas) : 0;
+  const classQual = scoreQualPct >= 70 ? {emoji:'🟢', label:'Boa qualidade', cor:'#22c55e'}
+                  : scoreQualPct >= 40 ? {emoji:'🟡', label:'Atenção', cor:'#f59e0b'}
+                  : {emoji:'🔴', label:'Baixa qualidade', cor:'#ef4444'};
+
+  // Classificação por arquivo
+  const qualArquivos = resultadosPorArquivo.map(a => {
+    const cl = a.scoreArquivo >= 70 ? '🟢' : a.scoreArquivo >= 40 ? '🟡' : '🔴';
+    return `<span style="font-size:11px;color:var(--text2)">${cl} ${a.nome}</span>`;
+  }).join('<br>');
+
+  // ── Montar HTML resultado ──
+  const pctConciliado = lancamentosExcel.length > 0
+    ? Math.round((lancamentosConciliados.size / lancamentosExcel.length) * 100) : 100;
+
+  const statusConciliacao = lancSemComprovante.length === 0
+    ? `<div class="validacao-linha vl-ok" style="margin-bottom:8px"><div class="vl-icon">✅</div><div class="vl-text"><strong>Todos os lançamentos possuem comprovante correspondente.</strong></div></div>`
+    : `<div class="validacao-linha vl-err" style="margin-bottom:8px"><div class="vl-icon">⚠️</div><div class="vl-text"><strong>${lancSemComprovante.length} lançamento(s) sem comprovante correspondente</strong><br>${lancSemComprovante.map(l=>`${l.data} — ${fmtBRL(l.valor)} — "${l.hist}"`).join('<br>')}</div></div>`;
+
+  const avisoNaoDigital = naoDigitais.length > 0
+    ? `<div style="font-size:11px;color:var(--text3);margin-top:6px">⚠️ ${naoDigitais.length} arquivo(s) não digital(is) — texto não extraível: ${naoDigitais.map(a=>a.nome).join(', ')}</div>` : '';
+
+  el.innerHTML = `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:12px">
+      <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px">🔎 Conciliação de Comprovantes</div>
+
+      ${statusConciliacao}
+      ${avisoNaoDigital}
+      ${lancamentosExcel.length === 0 ? `<div style="font-size:12px;color:var(--text3)">Nenhum lançamento Excel disponível para conciliar.</div>` : ''}
+
+      <div style="display:flex;gap:12px;margin-top:10px;flex-wrap:wrap">
+        <div style="background:var(--surface3);border-radius:8px;padding:10px 14px;flex:1;min-width:120px;text-align:center">
+          <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Conciliados</div>
+          <div style="font-size:18px;font-weight:700;color:var(--green)">${lancamentosConciliados.size}/${lancamentosExcel.length}</div>
+          <div style="font-size:11px;color:var(--text3)">${pctConciliado}%</div>
+        </div>
+        <div style="background:var(--surface3);border-radius:8px;padding:10px 14px;flex:1;min-width:120px;text-align:center">
+          <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Sem comprovante</div>
+          <div style="font-size:18px;font-weight:700;color:${lancSemComprovante.length>0?'var(--red)':'var(--green)'}">${lancSemComprovante.length}</div>
+        </div>
+        <div style="background:var(--surface3);border-radius:8px;padding:10px 14px;flex:1;min-width:120px;text-align:center">
+          <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Qualidade Documental</div>
+          <div style="font-size:18px;font-weight:700;color:${classQual.cor}">${classQual.emoji} ${scoreQualPct}%</div>
+          <div style="font-size:10px;color:var(--text3)">${classQual.label}</div>
+        </div>
+      </div>
+
+      ${resultadosPorArquivo.length > 0 ? `
+      <div style="margin-top:10px;font-size:11px;color:var(--text3)">
+        <div style="font-weight:700;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Qualidade por arquivo:</div>
+        ${qualArquivos}
+      </div>` : ''}
+    </div>`;
 }
 
 function abrirModalAprovar(caixaId, nome, valor) {
@@ -6121,9 +6673,10 @@ function abrirEmailCaixa(caixaId) {
       <div style="font-size:12px;color:var(--text2);margin-bottom:4px"><strong>Cc:</strong> financeiro@gruporgbrasil.com.br, ivan.siqueira@gruporgbrasil.com.br</div>
       <div style="font-size:12px;color:var(--text2);margin-bottom:4px"><strong>Assunto:</strong> ${assunto}</div>
       <div style="font-size:12px;color:var(--text2);margin-bottom:10px;padding:8px;background:var(--surface3);border-radius:6px;line-height:1.7;white-space:pre-wrap">${corpo}</div>
-      <div style="font-size:12px;color:var(--yellow);margin-bottom:10px">⚠️ Lembre-se de anexar o Excel do caixa e os PDFs das notas manualmente.</div>
+      <div style="font-size:12px;color:var(--yellow);margin-bottom:10px">⚠️ Gere o arquivo ZIP abaixo e arraste para o Outlook como anexo.</div>
       <div style="display:flex;gap:8px">
         <a href="${mailto}" class="btn btn-primary btn-sm" style="text-decoration:none">📨 Abrir no Outlook</a>
+        <button class="btn btn-sm btn-secondary zip-btn" onclick="gerarZipPrestacao('${caixaId}',this)">🗜 Gerar ZIP</button>
         ${caixa.excelBase64?`<button class="btn btn-sm btn-secondary" onclick="downloadArquivo('${caixaId}','excel')">📊 Baixar Excel</button>`:''}
       </div>
     </div>`;
@@ -6172,23 +6725,227 @@ async function confirmarReabastecimento() {
 async function limparArquivos(caixaId) {
   if (!confirm('Limpar todos os arquivos anexados? Você precisará fazer o upload novamente.')) return;
   excelBase64 = null; pdfsBase64 = []; excelNomeLocal = ''; pdfsNomesLocal = [];
+  _comprovantesCache[caixaId] = [];
   try {
+    // Limpar campos do documento raiz
     await db.collection('caixas').doc(caixaId).update({
       status: 'em_uso', excelBase64: null, excelNome: null,
       pdfsBase64: [], pdfNomes: [], validadoEm: null
     });
+    // Limpar subcoleção de comprovantes
+    const snap = await db.collection('caixas').doc(caixaId).collection('comprovantes').get();
+    if (!snap.empty) {
+      const batch = db.batch();
+      snap.docs.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
     toast('Arquivos removidos! Faça o upload novamente.', 'ok');
-  } catch(e) { toast('Erro ao limpar', 'err'); }
+    renderAnexosSection(caixaId, false);
+  } catch(e) { toast('Erro ao limpar: ' + e.message, 'err'); }
 }
 
 function downloadArquivo(caixaId, tipo, idx=0) {
+  const caixa = allCaixas.find(c=>c.id===caixaId);
   if (!caixa) return;
   let data, nome;
   if (tipo==='excel') { data=caixa.excelBase64; nome=caixa.excelNome||'caixa.xlsx'; }
-  else { data=caixa.pdfsBase64?.[idx]; nome=caixa.pdfNomes?.[idx]||'nota.pdf'; }
+  else if (tipo==='comprovante') {
+    // idx = comprovanteId (string) quando chamado da seção de anexos
+    const lista = _comprovantesCache[caixaId] || [];
+    const item = lista.find(c=>c.id===idx);
+    if (!item) { toast('Arquivo não disponível','err'); return; }
+    data = item.base64; nome = item.nome;
+  } else { data=caixa.pdfsBase64?.[idx]; nome=caixa.pdfNomes?.[idx]||'nota.pdf'; }
   if (!data) { toast('Arquivo não disponível','err'); return; }
   const a=document.createElement('a'); a.href=data; a.download=nome; a.click();
   toast('Download iniciado!','ok');
+}
+
+// ══════════════════════════════════════
+// GESTÃO DE ANEXOS — SUBCOLEÇÃO comprovantes
+// ══════════════════════════════════════
+
+async function carregarComprovantes(caixaId) {
+  try {
+    const snap = await db.collection('caixas').doc(caixaId).collection('comprovantes').orderBy('uploadedAt','asc').get();
+    _comprovantesCache[caixaId] = snap.docs.map(d => ({id:d.id,...d.data()}));
+  } catch(e) {
+    _comprovantesCache[caixaId] = [];
+  }
+  return _comprovantesCache[caixaId];
+}
+
+function _fmtBytes(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024*1024) return (bytes/1024).toFixed(0) + ' KB';
+  return (bytes/(1024*1024)).toFixed(1) + ' MB';
+}
+
+function _fmtUploadedAt(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+}
+
+async function renderAnexosSection(caixaId, loadFromFirestore=true) {
+  const el = document.getElementById(`anexos-section-${caixaId}`);
+  if (!el) return;
+  const caixa = allCaixas.find(c=>c.id===caixaId);
+  if (!caixa) return;
+
+  if (loadFromFirestore) await carregarComprovantes(caixaId);
+  const lista = _comprovantesCache[caixaId] || [];
+
+  // Verificar se pode remover (apenas em_uso, rascunho, validado)
+  const podeEditar = ['em_uso','rascunho','validado'].includes(caixa.status);
+
+  // Comprovantes legados (pdfNomes sem subcoleção)
+  const legados = lista.length === 0 ? (caixa.pdfNomes || []) : [];
+
+  let html = `<div class="anexos-section" id="anexos-section-${caixaId}">`;
+  html += `<div class="anexos-title">📎 Anexos da Prestação`;
+  if (lista.length > 0) html += ` <span style="background:var(--surface3);color:var(--text3);border-radius:10px;padding:2px 8px;font-size:11px;font-weight:600">${lista.length}</span>`;
+  html += `</div>`;
+
+  // Excel
+  if (caixa.excelBase64) {
+    html += `<div class="anexo-item">
+      <div class="anexo-icon">📊</div>
+      <div class="anexo-info">
+        <div class="anexo-nome">${caixa.excelNome||'Caixa Rotativo.xlsx'}</div>
+        <div class="anexo-meta">Excel validado</div>
+      </div>
+      <div class="anexo-acoes">
+        <button class="btn-anexo" onclick="verComprovanteExcel('${caixaId}')">👁 Ver</button>
+        <button class="btn-anexo" onclick="downloadArquivo('${caixaId}','excel')">⬇ Baixar</button>
+      </div>
+    </div>`;
+  }
+
+  // Comprovantes da subcoleção
+  lista.forEach(c => {
+    html += `<div class="anexo-item">
+      <div class="anexo-icon">📄</div>
+      <div class="anexo-info">
+        <div class="anexo-nome">${c.nome}</div>
+        <div class="anexo-meta">${_fmtBytes(c.tamanho)}${c.uploadedAt?' · '+_fmtUploadedAt(c.uploadedAt):''}</div>
+      </div>
+      <div class="anexo-acoes">
+        <button class="btn-anexo" onclick="verComprovante('${c.id}','${caixaId}')">👁 Ver</button>
+        <button class="btn-anexo" onclick="downloadArquivo('${caixaId}','comprovante','${c.id}')">⬇ Baixar</button>
+        ${podeEditar?`<button class="btn-anexo btn-anexo-del" onclick="removerComprovante('${c.id}','${caixaId}')">✕</button>`:''}
+      </div>
+    </div>`;
+  });
+
+  // Comprovantes legados (apenas nomes, sem conteúdo)
+  if (legados.length > 0) {
+    html += `<div style="font-size:11px;color:var(--text3);margin:8px 0 4px;text-transform:uppercase;letter-spacing:.6px">PDFs registrados (legado)</div>`;
+    legados.forEach(nome => {
+      html += `<div class="anexo-item">
+        <div class="anexo-icon">📄</div>
+        <div class="anexo-info"><div class="anexo-nome">${nome}</div><div class="anexo-meta" style="color:var(--text3)">Nome registrado — conteúdo não disponível</div></div>
+      </div>`;
+    });
+  }
+
+  // Botão de adicionar (somente se pode editar)
+  if (podeEditar) {
+    html += `<div style="margin-top:10px">
+      <label class="anexo-upload-btn">
+        <input type="file" accept=".pdf" multiple data-caixa-id="${caixaId}" onchange="uploadArquivo(this,'pdf')">
+        ＋ Adicionar comprovante(s) PDF
+      </label>
+    </div>`;
+  }
+
+  // Aviso se nenhum comprovante
+  if (lista.length === 0 && legados.length === 0 && !caixa.excelBase64) {
+    html += `<div style="text-align:center;padding:12px;color:var(--text3);font-size:12px">Nenhum arquivo anexado ainda.</div>`;
+  }
+
+  html += `</div>`;
+  el.outerHTML = html;
+}
+
+function verComprovante(comprovanteId, caixaId) {
+  const lista = _comprovantesCache[caixaId] || [];
+  const item = lista.find(c=>c.id===comprovanteId);
+  if (!item) { toast('Comprovante não disponível','err'); return; }
+  document.getElementById('ver-comp-titulo').textContent = '📄 ' + item.nome;
+  const iframe = document.getElementById('ver-comp-iframe');
+  iframe.src = item.base64;
+  const btnDl = document.getElementById('ver-comp-download-btn');
+  btnDl.onclick = () => { const a=document.createElement('a');a.href=item.base64;a.download=item.nome;a.click(); };
+  document.getElementById('modal-ver-comprovante').classList.add('open');
+}
+
+function verComprovanteExcel(caixaId) {
+  const caixa = allCaixas.find(c=>c.id===caixaId);
+  if (!caixa?.excelBase64) { toast('Excel não disponível','err'); return; }
+  // Excel não pode ser exibido em iframe — faz download direto
+  downloadArquivo(caixaId,'excel');
+}
+
+async function removerComprovante(comprovanteId, caixaId) {
+  if (!confirm('Remover este comprovante? Esta ação não pode ser desfeita.')) return;
+  try {
+    await db.collection('caixas').doc(caixaId).collection('comprovantes').doc(comprovanteId).delete();
+    _comprovantesCache[caixaId] = (_comprovantesCache[caixaId]||[]).filter(c=>c.id!==comprovanteId);
+    toast('Comprovante removido.','ok');
+    renderAnexosSection(caixaId, false);
+  } catch(e) { toast('Erro ao remover: '+e.message,'err'); }
+}
+
+async function gerarZipPrestacao(caixaId, btnEl) {
+  const caixa = allCaixas.find(c=>c.id===caixaId);
+  if (!caixa) { toast('Caixa não encontrado','err'); return; }
+  if (typeof JSZip === 'undefined') { toast('Biblioteca ZIP não carregada. Tente recarregar a página.','err'); return; }
+
+  const txtOrig = btnEl.textContent;
+  btnEl.disabled = true; btnEl.textContent = '⏳ Gerando ZIP...';
+
+  try {
+    await carregarComprovantes(caixaId);
+    const lista = _comprovantesCache[caixaId] || [];
+
+    if (!caixa.excelBase64 && lista.length === 0) {
+      toast('Nenhum arquivo disponível para compactar.','err');
+      return;
+    }
+
+    const zip = new JSZip();
+    const numero = caixa.numeroCaixa ? String(caixa.numeroCaixa).padStart(3,'0') : '000';
+    const pasta = `Prestacao_${new Date().getFullYear()}_${numero}`;
+
+    // Adicionar Excel
+    if (caixa.excelBase64) {
+      const base64Data = caixa.excelBase64.split(',')[1];
+      const nomeExcel = caixa.excelNome || 'Prestacao.xlsx';
+      zip.file(nomeExcel, base64Data, {base64:true});
+    }
+
+    // Adicionar comprovantes
+    lista.forEach(c => {
+      const base64Data = c.base64.split(',')[1];
+      zip.file(c.nome, base64Data, {base64:true});
+    });
+
+    btnEl.textContent = '⏳ Compactando...';
+    const blob = await zip.generateAsync({type:'blob', compression:'DEFLATE', compressionOptions:{level:6}});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${pasta}.zip`;
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(url), 5000);
+    toast(`ZIP gerado: ${pasta}.zip`, 'ok');
+  } catch(e) {
+    toast('Erro ao gerar ZIP: '+e.message,'err');
+  } finally {
+    btnEl.disabled = false; btnEl.textContent = txtOrig;
+  }
 }
 
 // ══════════════════════════════════════
