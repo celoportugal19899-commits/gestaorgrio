@@ -6868,19 +6868,73 @@ function abrirEmailRecarga(recargaId) {
   const r = allRecargas.find(r=>r.id===recargaId);
   if (!r) return;
   const el = document.getElementById('email-recarga-'+recargaId);
-  const rotaStr = (r.rota||[]).join(', ');
-  const texto = `Boa tarde!\n\nPara rota de visita no(s) Posto(s): ${rotaStr}\nSupervisor: ${r.supervisorNome}\nPreciso que credite o valor de ${fmtBRL(r.valor)} no Alelo.\n\nCartão: ${r.cartao}\nPlaca: ${r.placa}`;
+  if (!el) return;
 
-  const mailtoLink = `mailto:ivan.filho@gruporgbrasil.com.br?cc=documentacao@gruporgbrasil.com.br,ivan.siqueira@gruporgbrasil.com.br&subject=Recarga Combustível - Sup. ${r.supervisorNome.split(' ')[0]}&body=${encodeURIComponent(texto)}`;
+  // Suporte a documentos legados (sem origem) e novos (com rota calculada)
+  const isNovo = !!r.origem;
+  const percursoCompleto = isNovo
+    ? (r.rotaCompleta || [r.origem, ...(r.destinos||[]), r.origem])
+    : (r.rota || []);
+  const percursoStr = percursoCompleto.join(' → ');
+
+  // Link de visualização da rota no Google Maps (coordenadas das cidades)
+  let linkMapa = '';
+  if (isNovo && percursoCompleto.length >= 2) {
+    const waypoints = percursoCompleto.map(c => {
+      const coord = COORDS_CIDADES[c];
+      return coord ? `${coord[0]},${coord[1]}` : encodeURIComponent(c + ', RJ, Brasil');
+    });
+    const origem  = waypoints[0];
+    const destino = waypoints[waypoints.length - 1];
+    const intermediarios = waypoints.slice(1, -1).join('|');
+    linkMapa = `https://www.google.com/maps/dir/${origem}/${intermediarios ? intermediarios + '/' : ''}${destino}`;
+  }
+
+  const dataHoje = new Date().toLocaleDateString('pt-BR');
+
+  const texto = isNovo
+    ? [
+        `Boa tarde!`,
+        ``,
+        `Solicitação de recarga de combustível — ${dataHoje}`,
+        ``,
+        `SUPERVISOR`,
+        `  Nome:    ${r.supervisorNome}`,
+        `  Cartão:  ${r.cartao}`,
+        `  Placa:   ${r.placa}`,
+        ``,
+        `ROTA`,
+        `  Origem:   ${r.origem}`,
+        `  Destinos: ${(r.destinos||[]).join(', ')}`,
+        `  Retorno:  ${r.origem}`,
+        `  Percurso: ${percursoStr}`,
+        ``,
+        `CÁLCULO`,
+        `  Distância total:     ${r.kmTotal} km`,
+        `  Consumo estimado:    ${r.litrosEstimados} L (10 km/L)`,
+        `  Preço do combustível: ${fmtBRL(r.precoLitro)}/L`,
+        `  Valor calculado:     ${fmtBRL(r.valor)}`,
+        ``,
+        `Preciso que credite o valor de ${fmtBRL(r.valor)} no cartão Alelo acima.`,
+        ``,
+        linkMapa ? `Visualizar rota: ${linkMapa}` : '',
+        linkMapa ? `` : '',
+        `Obrigado!`,
+      ].filter(l => l !== undefined).join('\n')
+    : `Boa tarde!\n\nPara rota de visita no(s) Posto(s): ${percursoStr}\nSupervisor: ${r.supervisorNome}\nPreciso que credite o valor de ${fmtBRL(r.valor)} no Alelo.\n\nCartão: ${r.cartao}\nPlaca: ${r.placa}`;
+
+  const assunto = `Recarga Combustível - Sup. ${r.supervisorNome.split(' ')[0]}${isNovo ? ` — ${r.kmTotal}km` : ''}`;
+  const mailtoLink = `mailto:ivan.filho@gruporgbrasil.com.br?cc=documentacao@gruporgbrasil.com.br,ivan.siqueira@gruporgbrasil.com.br&subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(texto)}`;
 
   el.style.display = 'block';
   el.innerHTML = `
-    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px">
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:10px">
       <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px">📧 Texto do E-mail</div>
-      <pre style="font-size:12px;color:var(--text2);white-space:pre-wrap;line-height:1.7;margin-bottom:12px">${texto}</pre>
-      <div style="display:flex;gap:8px">
+      <pre style="font-size:12px;color:var(--text2);white-space:pre-wrap;line-height:1.7;margin-bottom:12px;background:var(--surface3);padding:10px;border-radius:8px">${texto}</pre>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
         <a href="${mailtoLink}" class="btn btn-primary btn-sm" style="text-decoration:none">📨 Abrir no Outlook</a>
         <button class="btn btn-sm btn-secondary" onclick="navigator.clipboard.writeText(\`${texto.replace(/`/g,"'")}\`);toast('Texto copiado!','ok')">📋 Copiar texto</button>
+        ${linkMapa ? `<a href="${linkMapa}" target="_blank" class="btn btn-sm btn-secondary" style="text-decoration:none">🗺 Ver no Maps</a>` : ''}
       </div>
     </div>`;
 }
