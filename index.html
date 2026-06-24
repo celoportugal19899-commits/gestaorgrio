@@ -1840,6 +1840,49 @@ const PosCanalLabels = {
   </div>
 </div>
 
+<!-- MODAL: MAPA ROTA COMBUSTÍVEL -->
+<div class="modal-overlay" id="modal-mapa-rota">
+  <div class="modal" style="max-width:700px;height:88vh;display:flex;flex-direction:column;">
+    <div class="modal-header">
+      <div class="modal-title" id="mapa-rota-titulo">🗺 Rota</div>
+      <button class="close-btn" onclick="closeModal('modal-mapa-rota')">✕</button>
+    </div>
+    <div id="mapa-rota-info" style="padding:10px 16px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:12px;color:var(--text2);display:flex;gap:16px;flex-wrap:wrap"></div>
+    <div style="flex:1;position:relative;min-height:0">
+      <div id="mapa-rota-container" style="width:100%;height:100%;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: RECUSAR RECARGA COMBUSTÍVEL -->
+<div class="modal-overlay" id="modal-recusar-recarga">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header"><div class="modal-title">Recusar Solicitação</div><button class="close-btn" onclick="closeModal('modal-recusar-recarga')">✕</button></div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:14px;padding:10px;background:var(--surface2);border-radius:8px" id="recusar-rec-info"></div>
+    <div class="form-group"><label class="form-label">Motivo da recusa</label>
+      <textarea class="form-textarea" id="recusar-rec-motivo" placeholder="Informe o motivo da recusa..." rows="3"></textarea>
+    </div>
+    <input type="hidden" id="recusar-rec-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-recusar-recarga')">Cancelar</button>
+      <button class="btn btn-danger" style="flex:1" onclick="confirmarRecusaRecarga()">✕ Recusar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: APROVAR RECARGA COMBUSTÍVEL -->
+<div class="modal-overlay" id="modal-aprovar-recarga">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header"><div class="modal-title">Aprovar Solicitação</div><button class="close-btn" onclick="closeModal('modal-aprovar-recarga')">✕</button></div>
+    <div id="aprovar-rec-info" style="font-size:13px;color:var(--text2);margin-bottom:16px;padding:12px;background:var(--surface2);border-radius:8px;line-height:1.7"></div>
+    <input type="hidden" id="aprovar-rec-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-aprovar-recarga')">Cancelar</button>
+      <button class="btn btn-success" style="flex:1" onclick="confirmarAprovacaoRecarga()">✅ Confirmar Aprovação</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: APROVAR CAIXA -->
 <div class="modal-overlay" id="modal-aprovar">
   <div class="modal" style="max-width:420px">
@@ -5827,30 +5870,6 @@ function uploadArquivo(input, tipo) {
   }
 }
 
-// ── Etapa 1: helper para converter serial Excel → Date ──
-function _excelSerialToDate(serial) {
-  if (typeof serial === 'number' && serial > 40000) {
-    const utc = new Date(Date.UTC(1899,11,30) + serial * 86400000);
-    return utc.toISOString().substr(0,10); // YYYY-MM-DD
-  }
-  return null;
-}
-
-// ── Etapa 1: normalizar data de linha Excel → 'YYYY-MM-DD' ou null ──
-function _normalizarDataExcel(dataVal) {
-  if (!dataVal) return null;
-  if (dataVal instanceof Date) return dataVal.toISOString().substr(0,10);
-  if (typeof dataVal === 'number' && dataVal > 40000) return _excelSerialToDate(dataVal);
-  const s = String(dataVal).trim();
-  // DD/MM/YYYY
-  const m1 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  if (m1) return `${m1[3]}-${m1[2].padStart(2,'0')}-${m1[1].padStart(2,'0')}`;
-  // YYYY-MM-DD
-  const m2 = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (m2) return s.substr(0,10);
-  return null;
-}
-
 async function validarCaixa(caixaId) {
   const el = document.getElementById('validacao-resultado');
   if (!excelBase64) {
@@ -5860,22 +5879,22 @@ async function validarCaixa(caixaId) {
   el.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text3)">🔍 Analisando lançamentos...</div>`;
 
   try {
+    // Parsear Excel localmente com SheetJS
     const base64Data = excelBase64.split(',')[1];
     const binary = atob(base64Data);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const wb = XLSX.read(bytes, {type:'array', cellDates:true});
+    const wb = XLSX.read(bytes, {type:'array'});
     const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:false});
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
 
     const erros = [];
     let totalEntradas = 0;
     let totalSaidas = 0;
     let saldoInicial = 0;
     let dataHdrIdx = -1;
-    const hoje = todayKey(); // YYYY-MM-DD
 
-    // Encontrar cabeçalho
+    // Encontrar linha de cabeçalho (Data | Nº Doc | Histórico | Entradas | Saídas)
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i].map(c => String(c).toLowerCase());
       if (row.some(c => c.includes('data')) && row.some(c => c.includes('hist'))) {
@@ -5884,7 +5903,7 @@ async function validarCaixa(caixaId) {
     }
 
     if (dataHdrIdx === -1) {
-      erros.push({tipo:'err', linha:'Estrutura', erro:'Cabeçalho padrão não encontrado (Data / Nº Doc / Histórico / Entradas / Saídas). Verifique o formato do arquivo.'});
+      erros.push({linha:'Estrutura', erro:'Não encontrei o cabeçalho padrão (Data / Nº Doc / Histórico / Entradas / Saídas). Verifique o formato do arquivo.'});
     } else {
       const hdr = rows[dataHdrIdx].map(c => String(c).toLowerCase());
       const iData = hdr.findIndex(c=>c.includes('data'));
@@ -5892,16 +5911,6 @@ async function validarCaixa(caixaId) {
       const iHist = hdr.findIndex(c=>c.includes('hist'));
       const iEnt  = hdr.findIndex(c=>c.includes('entr'));
       const iSai  = hdr.findIndex(c=>c.includes('sa'));
-
-      // Inferir período da prestação: createdAt do caixa
-      const caixa = allCaixas.find(c=>c.id===caixaId);
-      const periodoInicio = caixa?.createdAt ? caixa.createdAt.substr(0,10) : null;
-
-      // Para detecção de duplicidade
-      const docsVistos = new Set();
-      const chaveVistos = new Set();
-
-      const lancamentosExcel = []; // para conciliação Etapa 2
 
       for (let i = dataHdrIdx+1; i < rows.length; i++) {
         const row = rows[i];
@@ -5913,64 +5922,41 @@ async function validarCaixa(caixaId) {
         const entRaw  = String(row[iEnt]  || '').trim();
         const saiRaw  = String(row[iSai]  || '').trim();
 
-        // Saldo inicial (1ª linha sem data após cabeçalho)
+        // Linha do saldo inicial (primeira linha após cabeçalho, sem data, com entrada)
         if (!dataVal && i === dataHdrIdx+1) {
           try { saldoInicial = parseFloat(entRaw.replace(',','.')) || 0; } catch(e){}
           continue;
         }
 
+        // Pular linhas sem data
         if (!dataVal || String(dataVal).trim() === '') continue;
+
+        // Pular linhas cuja "data" é texto (rodapé como "Observações gerencia")
         const dataStr = String(dataVal).trim();
-        const temDigito = /^\d/.test(dataStr) || (dataVal instanceof Date) || (typeof dataVal === 'number' && dataVal > 40000);
-        if (!temDigito) continue;
+        const temDigitoNoInicio = /^\d/.test(dataStr) || (dataVal instanceof Date) || (typeof dataVal === 'number' && dataVal > 40000);
+        if (!temDigitoNoInicio) continue;
+
+        // Pular fórmulas
         if (entRaw.startsWith('=') || saiRaw.startsWith('=')) continue;
 
-        const sai = parseFloat(saiRaw.replace(',','.').replace(/[^\d.]/g,'')) || 0;
-        const ent = parseFloat(entRaw.replace(',','.').replace(/[^\d.]/g,'')) || 0;
+        const sai = parseFloat(saiRaw.replace(',','.')) || 0;
+        const ent = parseFloat(entRaw.replace(',','.')) || 0;
         if (sai === 0 && ent === 0) continue;
 
-        const dataISO = _normalizarDataExcel(dataVal);
-
-        // ── V1: Data futura ──
-        if (dataISO && dataISO > hoje) {
-          erros.push({tipo:'err', linha:`Linha ${i+1}`, erro:`Data futura: ${dataISO.split('-').reverse().join('/')} — ${histVal||'sem histórico'} — ${fmtBRL(sai||ent)}`});
-        }
-
-        // ── V2: Data fora do período da prestação ──
-        if (dataISO && periodoInicio && dataISO < periodoInicio) {
-          erros.push({tipo:'err', linha:`Linha ${i+1}`, erro:`Data anterior à abertura do caixa (${periodoInicio.split('-').reverse().join('/')}): ${dataISO.split('-').reverse().join('/')} — ${histVal||'sem histórico'}`});
-        }
-
-        // ── V3: Duplicidade ──
-        if (docVal) {
-          if (docsVistos.has(docVal)) {
-            erros.push({tipo:'err', linha:`Linha ${i+1}`, erro:`Documento duplicado: Nº ${docVal} — "${histVal}" já aparece em linha anterior.`});
-          }
-          docsVistos.add(docVal);
-        }
-        if (sai > 0) {
-          const chave = `${dataISO||dataStr}|${sai.toFixed(2)}|${histVal.toLowerCase()}`;
-          if (chaveVistos.has(chave)) {
-            erros.push({tipo:'err', linha:`Linha ${i+1}`, erro:`Possível duplicidade: mesma data + valor + histórico já registrados (${dataStr} / ${fmtBRL(sai)} / "${histVal}").`});
-          }
-          chaveVistos.add(chave);
-        }
-
-        // Acumular
-        if (!docVal)  erros.push({tipo:'err', linha:`Linha ${i+1}`, erro:`Lançamento "${histVal||'sem histórico'}" sem número de documento.`});
-        if (!histVal) erros.push({tipo:'err', linha:`Linha ${i+1}`, erro:`Lançamento sem histórico preenchido.`});
-        if (sai > 0) { totalSaidas += sai; lancamentosExcel.push({data:dataISO||dataStr, valor:sai, hist:histVal, doc:docVal}); }
-        if (ent > 0) totalEntradas += ent;
+        // Validar lançamento
+        if (!docVal)  erros.push({linha:`Linha ${i+1}`, erro:`Lançamento "${histVal||'sem histórico'}" sem número de documento.`});
+        if (!histVal) erros.push({linha:`Linha ${i+1}`, erro:`Lançamento sem histórico preenchido.`});
+        if (sai > 0) totalSaidas += sai;
       }
 
-      // ── V4 (saldo declarado) ──
+      // Verificar saldo declarado na planilha
       let saldoDeclarado = null;
       for (let i = rows.length-1; i >= 0; i--) {
         const row = rows[i];
         if (!row) continue;
         const txt = row.map(c=>String(c||'').toLowerCase()).join(' ');
         if (txt.includes('saldo') && !txt.includes('observa')) {
-          const vals = row.map(c=>parseFloat(String(c||'').replace(',','.'))).filter(v=>!isNaN(v)&&v>0&&v<(saldoInicial||VALOR_CAIXA_INICIAL+1));
+          const vals = row.map(c=>parseFloat(String(c||'').replace(',','.'))).filter(v=>!isNaN(v)&&v>0&&v<saldoInicial);
           if (vals.length) { saldoDeclarado = vals[vals.length-1]; break; }
         }
       }
@@ -5978,27 +5964,16 @@ async function validarCaixa(caixaId) {
         const saldoCalculado = saldoInicial - totalSaidas;
         const diff = Math.abs(saldoCalculado - saldoDeclarado);
         if (diff > 0.10) {
-          erros.push({tipo:'err', linha:'Saldo Final', erro:`Saldo calculado (${fmtBRL(saldoCalculado)}) difere do declarado (${fmtBRL(saldoDeclarado)}) em ${fmtBRL(diff)}. Verifique os lançamentos.`});
+          erros.push({linha:'Saldo Final', erro:`Saldo calculado (${fmtBRL(saldoCalculado)}) difere do declarado (${fmtBRL(saldoDeclarado)}) em ${fmtBRL(diff)}. Verifique os lançamentos.`});
         }
       }
-
-      // ── V5: Conciliação Excel x Sistema ──
-      const totalSistema = allCaixaLancamentos
-        .filter(l => l.caixaId === caixaId)
-        .reduce((acc, l) => acc + (l.valor || 0), 0);
-      const diffSistema = Math.abs(totalSaidas - totalSistema);
-      if (totalSistema > 0 && diffSistema > 0.10) {
-        erros.push({tipo:'err', linha:'Conciliação', erro:`Total do Excel (${fmtBRL(totalSaidas)}) difere do total registrado no sistema (${fmtBRL(totalSistema)}) — diferença de ${fmtBRL(diffSistema)}. Verifique se todos os lançamentos foram registrados.`});
-      }
-
-      // Guardar lançamentos para Etapa 2 (OCR)
-      window._lancamentosExcelCache = window._lancamentosExcelCache || {};
-      window._lancamentosExcelCache[caixaId] = lancamentosExcel;
     }
 
     const valido = erros.length === 0;
     const gasto = totalSaidas;
     const saldoFinal = saldoInicial > 0 ? saldoInicial - gasto : VALOR_CAIXA_INICIAL - gasto;
+
+    const linhasHtml = erros.map(e=>`<div class="validacao-linha vl-err"><div class="vl-icon">❌</div><div class="vl-text"><strong>${e.linha}</strong>${e.erro}</div></div>`).join('');
 
     const resultHtml = `
       <div style="margin-top:14px">
@@ -6012,33 +5987,28 @@ async function validarCaixa(caixaId) {
         </div>
       </div>`;
 
+    // Salvar resultado para persistir após re-render
     validacaoResultadoHtml = resultHtml;
     validacaoCaixaId = caixaId;
 
     if (valido) {
+      // Verificar comprovantes na subcoleção para alerta (não bloqueia)
       const compSnap = await db.collection('caixas').doc(caixaId).collection('comprovantes').get();
       const nomesPdfs = compSnap.docs.map(d=>d.data().nome||'');
-      const alertaSemComp = compSnap.empty
-        ? `<div class="validacao-linha" style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:8px;padding:10px 12px;margin-bottom:8px;display:flex;gap:8px;align-items:flex-start"><div style="font-size:16px">⚠️</div><div style="font-size:12px;color:var(--yellow)"><strong>Nenhum comprovante anexado</strong><br>Não foram encontrados comprovantes PDF para esta prestação. Você ainda pode enviar, mas recomenda-se anexar as notas fiscais.</div></div>`
-        : '';
+      const alertaSemComp = compSnap.empty ? `<div class="validacao-linha" style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:8px;padding:10px 12px;margin-bottom:8px;display:flex;gap:8px;align-items:flex-start"><div style="font-size:16px">⚠️</div><div style="font-size:12px;color:var(--yellow)"><strong>Nenhum comprovante anexado</strong><br>Não foram encontrados comprovantes PDF para esta prestação. Você ainda pode enviar, mas recomenda-se anexar as notas fiscais.</div></div>` : '';
 
+      // Salvar Excel + dados na validação
       await db.collection('caixas').doc(caixaId).update({
         status: 'validado',
         totalGasto: gasto,
         saldoAtual: saldoFinal,
         excelBase64: excelBase64,
         excelNome: excelNomeLocal,
-        pdfNomes: nomesPdfs,
+        pdfNomes: nomesPdfs, // nomes dos comprovantes da subcoleção
         validadoEm: new Date().toISOString()
       });
 
       el.innerHTML = resultHtml + alertaSemComp;
-
-      // ── Etapa 2: disparar conciliação de comprovantes após validação financeira ──
-      if (!compSnap.empty) {
-        setTimeout(() => conciliarComprovantes(caixaId, compSnap.docs.map(d=>({id:d.id,...d.data()}))), 200);
-      }
-
       const btnEnviar = document.getElementById('btn-enviar-caixa');
       if (btnEnviar) {
         btnEnviar.style.opacity='1'; btnEnviar.style.cursor='pointer';
@@ -6047,7 +6017,6 @@ async function validarCaixa(caixaId) {
       }
       toast('Validação aprovada! Você pode enviar.','ok');
     } else {
-      el.innerHTML = resultHtml;
       toast(`${erros.length} erro(s) encontrado(s). Corrija e valide novamente.`,'err');
     }
   } catch(e) {
@@ -6185,15 +6154,15 @@ async function auditarLancamentos(caixaId) {
   if (!el) return;
   const caixa = allCaixas.find(c=>c.id===caixaId);
   if (!caixa?.excelBase64) { el.innerHTML=`<div style="font-size:13px;color:var(--red)">Arquivo Excel não disponível.</div>`; return; }
-  el.innerHTML=`<div style="font-size:13px;color:var(--text3);padding:10px">🔍 Auditando lançamentos...</div>`;
+  el.innerHTML=`<div style="font-size:13px;color:var(--text3);padding:10px">🔍 Analisando lançamentos...</div>`;
   try {
     const base64Data = caixa.excelBase64.split(',')[1];
     const binary = atob(base64Data);
     const bytes = new Uint8Array(binary.length);
     for (let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
-    const wb = XLSX.read(bytes,{type:'array', cellDates:true});
+    const wb = XLSX.read(bytes,{type:'array'});
     const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
+    const rows = XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
     let hdrIdx=-1;
     for(let i=0;i<rows.length;i++){const r=rows[i].map(c=>String(c).toLowerCase());if(r.some(c=>c.includes('data'))&&r.some(c=>c.includes('hist'))){hdrIdx=i;break;}}
     if(hdrIdx===-1){el.innerHTML=`<div class="validacao-linha vl-err"><div class="vl-icon">❌</div><div class="vl-text"><strong>Estrutura não reconhecida</strong></div></div>`;return;}
@@ -6202,7 +6171,6 @@ async function auditarLancamentos(caixaId) {
     const iDoc=hdr.findIndex(c=>c.includes('doc'));
     const iHist=hdr.findIndex(c=>c.includes('hist'));
     const iSai=hdr.findIndex(c=>c.includes('sa'));
-    const iEnt=hdr.findIndex(c=>c.includes('entr'));
     let lancamentos=[];
     let saldoInicial=0;
     let totalSaidas=0;
@@ -6210,157 +6178,25 @@ async function auditarLancamentos(caixaId) {
       const row=rows[i];
       const dataVal=row[iData];
       const saiRaw=String(row[iSai]||'').trim();
-      const entRaw=String(row[iEnt]||'').trim();
-      if(!dataVal&&i===hdrIdx+1){try{saldoInicial=parseFloat(entRaw.replace(',','.'))||0;}catch(e){}continue;}
+      if(!dataVal&&i===hdrIdx+1){try{saldoInicial=parseFloat(String(row[hdr.findIndex(c=>c.includes('entr'))]||'0').replace(',','.'))||0;}catch(e){}continue;}
       if(!dataVal||!String(dataVal).trim())continue;
       const dataStr=String(dataVal).trim();
       if(!/^\d/.test(dataStr)&&!(dataVal instanceof Date)&&!(typeof dataVal==='number'&&dataVal>40000))continue;
       if(saiRaw.startsWith('='))continue;
-      const sai=parseFloat(saiRaw.replace(',','.').replace(/[^\d.]/g,''))||0;
+      const sai=parseFloat(saiRaw.replace(',','.'))||0;
       if(sai===0)continue;
       totalSaidas+=sai;
-      const dataISO = _normalizarDataExcel(dataVal);
-      const docVal=String(row[iDoc]||'').trim();
-      const histVal=String(row[iHist]||'').trim();
-      // Extrair hora do createdAt do caixa (não temos hora por lançamento — usamos timestamp do doc caixa como proxy)
-      lancamentos.push({linha:i+1, data:dataISO||dataStr, doc:docVal, hist:histVal, valor:sai});
+      lancamentos.push({linha:i+1,data:dataStr,doc:String(row[iDoc]||'').trim(),hist:String(row[iHist]||'').trim(),valor:sai});
     }
-
-    // ── ETAPA 4: Detecção de padrões suspeitos ──
-    const alertas = [];
-    let scoreTotal = 0;
-
-    // P1: Mesmo valor repetido 3+ vezes
-    const valoresCont = {};
-    lancamentos.forEach(l => { valoresCont[l.valor] = (valoresCont[l.valor]||0)+1; });
-    Object.entries(valoresCont).forEach(([val, cnt]) => {
-      if (cnt >= 3) {
-        scoreTotal += 15;
-        alertas.push({regra:'Valor repetido', nivel: cnt >= 5 ? 'alto' : 'medio',
-          detalhe:`${fmtBRL(parseFloat(val))} aparece ${cnt} vezes.`,
-          items: lancamentos.filter(l=>l.valor===parseFloat(val)).map(l=>`Linha ${l.linha} — ${l.data} — "${l.hist}"`)
-        });
-      }
-    });
-
-    // P2: Mesmo fornecedor/histórico em muitos lançamentos (≥ 40% do total)
-    const histCont = {};
-    lancamentos.forEach(l => {
-      const k = l.hist.toLowerCase().trim();
-      if (k) histCont[k] = (histCont[k]||0)+1;
-    });
-    Object.entries(histCont).forEach(([hist, cnt]) => {
-      const pct = lancamentos.length > 0 ? cnt/lancamentos.length : 0;
-      if (cnt >= 3 && pct >= 0.40) {
-        scoreTotal += 20;
-        alertas.push({regra:'Concentração em fornecedor', nivel:'alto',
-          detalhe:`"${hist}" representa ${(pct*100).toFixed(0)}% dos lançamentos (${cnt} ocorrências).`,
-          items: lancamentos.filter(l=>l.hist.toLowerCase().trim()===hist).map(l=>`Linha ${l.linha} — ${l.data} — ${fmtBRL(l.valor)}`)
-        });
-      }
-    });
-
-    // P3: Vários lançamentos do mesmo fornecedor no mesmo dia
-    const histDiaCont = {};
-    lancamentos.forEach(l => {
-      const k = `${l.data}|${l.hist.toLowerCase().trim()}`;
-      histDiaCont[k] = (histDiaCont[k]||[]);
-      histDiaCont[k].push(l);
-    });
-    Object.entries(histDiaCont).forEach(([key, items]) => {
-      if (items.length >= 3) {
-        const [dia, forn] = key.split('|');
-        scoreTotal += 10;
-        alertas.push({regra:'Mesmo fornecedor, mesmo dia', nivel:'medio',
-          detalhe:`"${forn}" aparece ${items.length}x no dia ${dia}.`,
-          items: items.map(l=>`Linha ${l.linha} — ${fmtBRL(l.valor)}`)
-        });
-      }
-    });
-
-    // P4: Muitos lançamentos no mesmo dia (≥ 5)
-    const diaCont = {};
-    lancamentos.forEach(l => { diaCont[l.data] = (diaCont[l.data]||0)+1; });
-    Object.entries(diaCont).forEach(([dia, cnt]) => {
-      if (cnt >= 5) {
-        scoreTotal += 10;
-        alertas.push({regra:'Concentração diária', nivel:'medio',
-          detalhe:`${cnt} lançamentos registrados em ${dia}.`,
-          items: lancamentos.filter(l=>l.data===dia).map(l=>`Linha ${l.linha} — "${l.hist}" — ${fmtBRL(l.valor)}`)
-        });
-      }
-    });
-
-    // P5: Documentos com numeração sequencial (notas fiscais seguidas)
-    const docsNum = lancamentos.map(l=>parseInt(l.doc)).filter(n=>!isNaN(n)&&n>0).sort((a,b)=>a-b);
-    let seqCount = 1, maxSeq = 1;
-    for (let i=1;i<docsNum.length;i++) {
-      if (docsNum[i]===docsNum[i-1]+1) { seqCount++; if(seqCount>maxSeq) maxSeq=seqCount; }
-      else seqCount=1;
-    }
-    if (maxSeq >= 4) {
-      scoreTotal += 15;
-      alertas.push({regra:'Documentos sequenciais', nivel:'medio',
-        detalhe:`Sequência de ${maxSeq} notas fiscais consecutivas detectada.`,
-        items:[]
-      });
-    }
-
-    // Score final
-    const score = Math.min(100, scoreTotal);
-    const nivelRisco = score >= 50 ? 'alto' : score >= 20 ? 'medio' : 'baixo';
-    const corRisco = nivelRisco==='alto' ? '#ef4444' : nivelRisco==='medio' ? '#f59e0b' : '#22c55e';
-    const emojiRisco = nivelRisco==='alto' ? '🔴' : nivelRisco==='medio' ? '🟡' : '🟢';
-    const labelRisco = nivelRisco==='alto' ? 'Alto risco' : nivelRisco==='medio' ? 'Médio risco' : 'Baixo risco';
-
-    // HTML tabela de lançamentos
-    const tabela = lancamentos.map(l=>`<tr>
-      <td style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px;font-family:'IBM Plex Mono',monospace">${l.data.toString().substring(0,10)}</td>
-      <td style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px">${l.doc}</td>
-      <td style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px;max-width:250px">${l.hist}</td>
-      <td style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px;font-family:'IBM Plex Mono',monospace;text-align:right;color:var(--red)">${fmtBRL(l.valor)}</td>
-    </tr>`).join('');
-
-    // HTML alertas de auditoria
-    const alertasHtml = alertas.length === 0
-      ? `<div style="font-size:12px;color:var(--green);padding:8px 0">✅ Nenhum padrão suspeito detectado.</div>`
-      : alertas.map(a => {
-          const cor = a.nivel==='alto' ? '#ef4444' : '#f59e0b';
-          const emoji = a.nivel==='alto' ? '🔴' : '🟡';
-          return `<div style="background:var(--surface3);border-left:3px solid ${cor};border-radius:0 8px 8px 0;padding:10px 12px;margin-bottom:8px">
-            <div style="font-size:12px;font-weight:700;color:${cor};margin-bottom:4px">${emoji} ${a.regra}</div>
-            <div style="font-size:12px;color:var(--text2);margin-bottom:4px">${a.detalhe}</div>
-            ${a.items.length ? `<div style="font-size:11px;color:var(--text3)">${a.items.slice(0,4).join(' · ')}</div>` : ''}
-          </div>`;
-        }).join('');
-
+    const tabela=lancamentos.map(l=>`<tr><td style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px;font-family:'IBM Plex Mono',monospace">${l.data.toString().substring(0,10)}</td><td style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px">${l.doc}</td><td style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px;max-width:250px">${l.hist}</td><td style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px;font-family:'IBM Plex Mono',monospace;text-align:right;color:var(--red)">${fmtBRL(l.valor)}</td></tr>`).join('');
     el.innerHTML=`<div style="margin-top:8px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;overflow:hidden">
       <div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
         <span style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.6px">${lancamentos.length} lançamentos auditados</span>
         <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--red)">Total: ${fmtBRL(totalSaidas)}</span>
       </div>
-
-      <!-- Score de risco -->
-      <div style="padding:12px 14px;border-bottom:1px solid var(--border);background:var(--surface3)">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <span style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.6px">Score de Risco</span>
-          <span style="font-size:14px;font-weight:700;color:${corRisco}">${emojiRisco} ${labelRisco} (${score}/100)</span>
-        </div>
-        <div style="background:var(--surface2);border-radius:6px;height:6px;overflow:hidden">
-          <div style="width:${score}%;height:100%;background:${corRisco};border-radius:6px;transition:width .5s"></div>
-        </div>
-        <div style="margin-top:10px">${alertasHtml}</div>
-      </div>
-
-      <!-- Tabela de lançamentos -->
       <div style="max-height:250px;overflow-y:auto">
         <table style="width:100%;border-collapse:collapse">
-          <thead><tr style="background:var(--surface3)">
-            <th style="padding:7px 10px;font-size:11px;color:var(--text3);text-align:left;font-weight:700">Data</th>
-            <th style="padding:7px 10px;font-size:11px;color:var(--text3);text-align:left;font-weight:700">Nº Doc</th>
-            <th style="padding:7px 10px;font-size:11px;color:var(--text3);text-align:left;font-weight:700">Histórico</th>
-            <th style="padding:7px 10px;font-size:11px;color:var(--text3);text-align:right;font-weight:700">Valor</th>
-          </tr></thead>
+          <thead><tr style="background:var(--surface3)"><th style="padding:7px 10px;font-size:11px;color:var(--text3);text-align:left;font-weight:700">Data</th><th style="padding:7px 10px;font-size:11px;color:var(--text3);text-align:left;font-weight:700">Nº Doc</th><th style="padding:7px 10px;font-size:11px;color:var(--text3);text-align:left;font-weight:700">Histórico</th><th style="padding:7px 10px;font-size:11px;color:var(--text3);text-align:right;font-weight:700">Valor</th></tr></thead>
           <tbody>${tabela}</tbody>
         </table>
       </div>
@@ -6380,243 +6216,6 @@ async function getHistoricoHtml(email, isAdm=false) {
     <div style="font-size:12px;color:var(--text3);font-family:'IBM Plex Mono',monospace">Aprovado em ${fmtDT(h.aprovadoEm)} • Reposto em ${fmtDT(h.reabastecidoEm)}</div>
     ${h.obsAprovacao?`<div class="hi-obs">💬 ${h.obsAprovacao}</div>`:''}
   </div>`).join('');
-}
-
-// ══════════════════════════════════════════════════════
-// ETAPA 2 — Conciliação de Comprovantes (OCR pdf.js)
-// ETAPA 3 — Qualidade Documental
-// ══════════════════════════════════════════════════════
-
-// Carrega pdf.js sob demanda (CDN cdnjs — permitido)
-async function _loadPdfJs() {
-  if (window.pdfjsLib) return true;
-  return new Promise(resolve => {
-    const s = document.createElement('script');
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-    s.onload = () => {
-      if (window.pdfjsLib) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-        resolve(true);
-      } else resolve(false);
-    };
-    s.onerror = () => resolve(false);
-    document.head.appendChild(s);
-  });
-}
-
-// Extrai pares {data, valor} de texto de PDF digital
-function _extrairDatasValoresPdf(texto) {
-  const resultados = [];
-  // Padrão valor: R$ 1.234,56 ou 1234,56 ou 1234.56
-  const reValor = /R\$\s*([\d.,]+)|(?<!\d)([\d]{1,6}[.,][\d]{2})(?!\d)/g;
-  // Padrão data: DD/MM/YYYY ou DD-MM-YYYY ou YYYY-MM-DD
-  const reData = /(\d{2})[\/\-](\d{2})[\/\-](\d{4})|(\d{4})[\/\-](\d{2})[\/\-](\d{2})/g;
-
-  const datas = [];
-  let m;
-  while ((m = reData.exec(texto)) !== null) {
-    if (m[4]) { // YYYY-MM-DD
-      datas.push(`${m[4]}-${m[5]}-${m[6]}`);
-    } else { // DD/MM/YYYY
-      datas.push(`${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`);
-    }
-  }
-
-  const valores = [];
-  while ((m = reValor.exec(texto)) !== null) {
-    const raw = (m[1] || m[2] || '').replace(/\./g,'').replace(',','.');
-    const v = parseFloat(raw);
-    if (!isNaN(v) && v > 0.50 && v < 50000) valores.push(v);
-  }
-
-  // Criar pares data+valor (produto cartesiano simples — cada valor associado à data mais próxima no texto)
-  valores.forEach(v => {
-    resultados.push({ valor: v, datas: datas.slice() });
-  });
-  return resultados;
-}
-
-// Etapa 3: avaliar qualidade de uma página rasterizada em canvas
-function _avaliarQualidadePagina(canvas) {
-  const ctx = canvas.getContext('2d');
-  const w = canvas.width, h = canvas.height;
-  if (!w || !h) return 0;
-  const img = ctx.getImageData(0, 0, w, h);
-  const data = img.data;
-  const pixels = w * h;
-
-  let somaLum = 0, somaLumSq = 0, pixelsBrancos = 0;
-  for (let i = 0; i < data.length; i += 4) {
-    const r = data[i], g = data[i+1], b = data[i+2];
-    const lum = 0.299*r + 0.587*g + 0.114*b;
-    somaLum += lum;
-    somaLumSq += lum*lum;
-    if (lum > 240) pixelsBrancos++;
-  }
-
-  const mediaLum = somaLum / pixels;
-  const variancia = (somaLumSq / pixels) - (mediaLum * mediaLum);
-  const desvio = Math.sqrt(Math.max(0, variancia));
-  const cobertura = 1 - (pixelsBrancos / pixels); // 0=vazio, 1=cheio
-
-  // Score: contraste (desvio alto = bom) + cobertura razoável
-  const scoreContraste = Math.min(100, (desvio / 80) * 100);
-  const scoreCob = cobertura < 0.02 ? 0 : cobertura > 0.95 ? 60 : 100;
-  return Math.round((scoreContraste * 0.7) + (scoreCob * 0.3));
-}
-
-// Função principal: Etapa 2 + 3 juntas (chamada após validarCaixa quando há comprovantes)
-async function conciliarComprovantes(caixaId, comprovantes) {
-  const elId = `conciliacao-result-${caixaId}`;
-  let el = document.getElementById(elId);
-  if (!el) {
-    // Criar container abaixo do resultado de validação
-    const elVal = document.getElementById('validacao-resultado');
-    if (!elVal) return;
-    el = document.createElement('div');
-    el.id = elId;
-    elVal.parentNode.insertBefore(el, elVal.nextSibling);
-  }
-  el.innerHTML = `<div style="text-align:center;padding:16px;color:var(--text3);font-size:13px">🔎 Conciliando comprovantes...</div>`;
-
-  const lancamentosExcel = (window._lancamentosExcelCache || {})[caixaId] || [];
-
-  const carregou = await _loadPdfJs();
-  if (!carregou) {
-    el.innerHTML = `<div style="padding:10px;font-size:12px;color:var(--text3);border:1px solid var(--border);border-radius:8px;margin-top:10px">⚠️ Biblioteca de leitura de PDF não disponível. Conciliação e qualidade documental indisponíveis nesta sessão.</div>`;
-    return;
-  }
-
-  // Processar cada comprovante
-  const resultadosPorArquivo = [];
-  let scoreQualidadeGeral = 0;
-  let totalPaginas = 0;
-
-  for (const comp of comprovantes) {
-    if (!comp.base64) continue;
-    try {
-      const base64Data = comp.base64.split(',')[1];
-      const raw = atob(base64Data);
-      const arr = new Uint8Array(raw.length);
-      for (let i=0;i<raw.length;i++) arr[i]=raw.charCodeAt(i);
-
-      const pdf = await pdfjsLib.getDocument({data: arr}).promise;
-      let textoTotal = '';
-      let scoreArquivo = 0;
-
-      for (let p=1; p<=pdf.numPages; p++) {
-        const page = await pdf.getPage(p);
-
-        // Etapa 3: rasterizar para qualidade
-        try {
-          const viewport = page.getViewport({scale:1.0});
-          const canvas = document.createElement('canvas');
-          canvas.width = viewport.width; canvas.height = viewport.height;
-          await page.render({canvasContext: canvas.getContext('2d'), viewport}).promise;
-          const scoreP = _avaliarQualidadePagina(canvas);
-          scoreArquivo += scoreP;
-          totalPaginas++;
-        } catch(e) { totalPaginas++; }
-
-        // Etapa 2: extrair texto
-        try {
-          const content = await page.getTextContent();
-          textoTotal += content.items.map(it=>it.str).join(' ') + ' ';
-        } catch(e) {}
-      }
-
-      scoreQualidadeGeral += scoreArquivo;
-      const pares = _extrairDatasValoresPdf(textoTotal);
-      resultadosPorArquivo.push({ nome: comp.nome, pares, textoVazio: textoTotal.trim().length < 20, scoreArquivo: totalPaginas > 0 ? Math.round(scoreArquivo / pdf.numPages) : 0, paginas: pdf.numPages });
-    } catch(e) {
-      resultadosPorArquivo.push({ nome: comp.nome, pares: [], textoVazio: true, scoreArquivo: 0, paginas: 0, erro: true });
-    }
-  }
-
-  // ── Etapa 2: Conciliar Excel x Comprovantes ──
-  const TOLERANCIA_DIAS = 1;
-  const lancamentosConciliados = new Set();
-  const comprovanteSemLanc = [];
-  const lancSemComprovante = [];
-
-  lancamentosExcel.forEach((lanc, idx) => {
-    let encontrou = false;
-    for (const arq of resultadosPorArquivo) {
-      if (arq.textoVazio || arq.erro) continue;
-      for (const par of arq.pares) {
-        // Comparar valor (tolerância R$ 0,10)
-        if (Math.abs(par.valor - lanc.valor) > 0.10) continue;
-        // Comparar data (tolerância 1 dia)
-        const dataExcel = lanc.data;
-        const temDataCompativel = par.datas.length === 0 || par.datas.some(d => {
-          const diff = Math.abs((new Date(d) - new Date(dataExcel)) / 86400000);
-          return diff <= TOLERANCIA_DIAS;
-        });
-        if (temDataCompativel) { encontrou = true; lancamentosConciliados.add(idx); break; }
-      }
-      if (encontrou) break;
-    }
-    if (!encontrou) lancSemComprovante.push(lanc);
-  });
-
-  // Comprovantes com PDFs não digitais (texto vazio)
-  const naoDigitais = resultadosPorArquivo.filter(a=>a.textoVazio&&!a.erro);
-  const comErro = resultadosPorArquivo.filter(a=>a.erro);
-
-  // ── Etapa 3: Score de qualidade geral ──
-  const scoreQualPct = totalPaginas > 0 ? Math.round(scoreQualidadeGeral / totalPaginas) : 0;
-  const classQual = scoreQualPct >= 70 ? {emoji:'🟢', label:'Boa qualidade', cor:'#22c55e'}
-                  : scoreQualPct >= 40 ? {emoji:'🟡', label:'Atenção', cor:'#f59e0b'}
-                  : {emoji:'🔴', label:'Baixa qualidade', cor:'#ef4444'};
-
-  // Classificação por arquivo
-  const qualArquivos = resultadosPorArquivo.map(a => {
-    const cl = a.scoreArquivo >= 70 ? '🟢' : a.scoreArquivo >= 40 ? '🟡' : '🔴';
-    return `<span style="font-size:11px;color:var(--text2)">${cl} ${a.nome}</span>`;
-  }).join('<br>');
-
-  // ── Montar HTML resultado ──
-  const pctConciliado = lancamentosExcel.length > 0
-    ? Math.round((lancamentosConciliados.size / lancamentosExcel.length) * 100) : 100;
-
-  const statusConciliacao = lancSemComprovante.length === 0
-    ? `<div class="validacao-linha vl-ok" style="margin-bottom:8px"><div class="vl-icon">✅</div><div class="vl-text"><strong>Todos os lançamentos possuem comprovante correspondente.</strong></div></div>`
-    : `<div class="validacao-linha vl-err" style="margin-bottom:8px"><div class="vl-icon">⚠️</div><div class="vl-text"><strong>${lancSemComprovante.length} lançamento(s) sem comprovante correspondente</strong><br>${lancSemComprovante.map(l=>`${l.data} — ${fmtBRL(l.valor)} — "${l.hist}"`).join('<br>')}</div></div>`;
-
-  const avisoNaoDigital = naoDigitais.length > 0
-    ? `<div style="font-size:11px;color:var(--text3);margin-top:6px">⚠️ ${naoDigitais.length} arquivo(s) não digital(is) — texto não extraível: ${naoDigitais.map(a=>a.nome).join(', ')}</div>` : '';
-
-  el.innerHTML = `
-    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:12px">
-      <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px">🔎 Conciliação de Comprovantes</div>
-
-      ${statusConciliacao}
-      ${avisoNaoDigital}
-      ${lancamentosExcel.length === 0 ? `<div style="font-size:12px;color:var(--text3)">Nenhum lançamento Excel disponível para conciliar.</div>` : ''}
-
-      <div style="display:flex;gap:12px;margin-top:10px;flex-wrap:wrap">
-        <div style="background:var(--surface3);border-radius:8px;padding:10px 14px;flex:1;min-width:120px;text-align:center">
-          <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Conciliados</div>
-          <div style="font-size:18px;font-weight:700;color:var(--green)">${lancamentosConciliados.size}/${lancamentosExcel.length}</div>
-          <div style="font-size:11px;color:var(--text3)">${pctConciliado}%</div>
-        </div>
-        <div style="background:var(--surface3);border-radius:8px;padding:10px 14px;flex:1;min-width:120px;text-align:center">
-          <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Sem comprovante</div>
-          <div style="font-size:18px;font-weight:700;color:${lancSemComprovante.length>0?'var(--red)':'var(--green)'}">${lancSemComprovante.length}</div>
-        </div>
-        <div style="background:var(--surface3);border-radius:8px;padding:10px 14px;flex:1;min-width:120px;text-align:center">
-          <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Qualidade Documental</div>
-          <div style="font-size:18px;font-weight:700;color:${classQual.cor}">${classQual.emoji} ${scoreQualPct}%</div>
-          <div style="font-size:10px;color:var(--text3)">${classQual.label}</div>
-        </div>
-      </div>
-
-      ${resultadosPorArquivo.length > 0 ? `
-      <div style="margin-top:10px;font-size:11px;color:var(--text3)">
-        <div style="font-weight:700;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Qualidade por arquivo:</div>
-        ${qualArquivos}
-      </div>` : ''}
-    </div>`;
 }
 
 function abrirModalAprovar(caixaId, nome, valor) {
@@ -7053,32 +6652,42 @@ async function renderSupCombustivel() {
       <button class="btn btn-primary btn-block" onclick="registrarUso()">💳 Registrar Uso</button>
     </div>
 
-    <!-- SOLICITAR RECARGA -->
+    <!-- SOLICITAR RECARGA — NOVO FLUXO POR ROTA -->
     ${!pendente?`
     <div class="comb-form-section">
-      <div style="font-size:13px;font-weight:700;margin-bottom:14px;color:var(--text2)">⛽ Solicitar Recarga</div>
+      <div style="font-size:13px;font-weight:700;margin-bottom:14px;color:var(--text2)">⛽ Solicitar Recarga por Rota</div>
+
       <div class="form-group">
-        <label class="form-label">Rota — Postos a visitar</label>
-        <div style="display:flex;gap:8px;margin-bottom:10px">
-          <select class="form-select" id="comb-cidade-sel">
-            <option value="">Selecione uma cidade...</option>
+        <label class="form-label">Origem</label>
+        <select class="form-select" id="comb-origem-sel" onchange="comb_origemAtual=this.value;comb_resultadoAtual=null;comb_renderPrevia(null)">
+          <option value="">Selecione a cidade de origem...</option>
+          ${CIDADES_POSTOS.map(c=>`<option value="${c}">${c}</option>`).join('')}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Destinos (em ordem de visita)</label>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <select class="form-select" id="comb-dest-sel">
+            <option value="">Selecione um destino...</option>
             ${CIDADES_POSTOS.map(c=>`<option value="${c}">${c}</option>`).join('')}
           </select>
-          <button class="btn btn-primary btn-sm" style="flex-shrink:0" onclick="addCidadeComb()">+ Adicionar</button>
+          <button class="btn btn-primary btn-sm" style="flex-shrink:0" onclick="comb_addDestino()">+ Adicionar</button>
         </div>
-        <div id="comb-cidades-chips" style="min-height:36px;padding:4px 0"></div>
+        <div id="comb-destinos-lista" style="margin-bottom:8px"></div>
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Valor Solicitado (R$)</label>
-          <input class="form-input" id="comb-valor" type="number" step="0.01" placeholder="0,00">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Observação (opcional)</label>
-          <input class="form-input" id="comb-obs" placeholder="Ex: Saldo insuficiente para a rota">
-        </div>
+
+      <div class="form-group">
+        <label class="form-label">Preço do combustível (R$/L)</label>
+        <input class="form-input" id="comb-preco-litro" type="number" step="0.01"
+          value="${(()=>{try{return localStorage.getItem('comb_preco_litro')||COMB_PRECO_PADRAO}catch(e){return COMB_PRECO_PADRAO}})()}"
+          style="max-width:160px">
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">O valor da recarga é calculado automaticamente — não editável.</div>
       </div>
-      <button class="btn btn-secondary btn-block" onclick="solicitarRecarga()">⛽ Solicitar Recarga</button>
+
+      <button class="btn btn-secondary btn-block" onclick="comb_acaoCalcular()">📍 Calcular Rota</button>
+      <div id="comb-previa-rota"></div>
+      <button class="btn btn-primary btn-block" id="btn-comb-solicitar" style="display:none;margin-top:10px" onclick="comb_solicitarRecarga()">⛽ Solicitar Recarga</button>
     </div>`:''}
 
     <!-- HISTÓRICO -->
@@ -7103,13 +6712,19 @@ async function renderSupCombustivel() {
             <div style="font-size:11px;color:var(--text3);font-family:'IBM Plex Mono',monospace">${fmtDT(r.createdAt)}</div></div>
             ${{aguarda_aprovacao:`<span class="comb-pending">⏳ Aguardando</span>`,aprovada:`<span class="caixa-status cs-aprovado">✅ Aprovada</span>`,confirmada:`<span class="caixa-status cs-aprovado">✅ Confirmada</span>`,recusada:`<span class="caixa-status cs-pendente">❌ Recusada</span>`}[r.status]||''}
           </div>
-          <div class="comb-rota-tags">${(r.rota||[]).map(c=>`<span class="rota-tag">${c}</span>`).join('')}</div>
+          ${r.origem
+            ? `<div style="font-size:12px;color:var(--text2);margin-top:4px">${(r.rotaCompleta||r.rota||[]).join(' → ')}</div>
+               <div style="font-size:11px;color:var(--text3);margin-top:3px">${r.kmTotal||'—'} km · ${r.litrosEstimados||'—'}L · R$/L ${r.precoLitro||'—'}</div>`
+            : `<div class="comb-rota-tags">${(r.rota||[]).map(c=>`<span class="rota-tag">${c}</span>`).join('')}</div>`
+          }
           ${r.obsAdm?`<div style="font-size:12px;color:var(--yellow);margin-top:6px">📋 ADM: ${r.obsAdm}</div>`:''}
         </div>`).join('') || '<div style="font-size:13px;color:var(--text3)">Nenhuma solicitação este mês.</div>'}
     </div>`;
 
-  cidadesSelecionadas = [];
-  renderCidadesChips();
+  comb_origemAtual    = '';
+  comb_destinosAtual  = [];
+  comb_resultadoAtual = null;
+  setTimeout(() => { comb_renderDestinos(); }, 0);
 }
 
 function addCidadeComb() {
@@ -7189,7 +6804,7 @@ async function renderAdmCombustivel() {
     const recsSupMes = allRecargas.filter(r=>r.supervisorEmail===sup.email&&r.mes===mes);
     const totalConf = recsSupMes.filter(r=>r.status==='confirmada').reduce((a,r)=>a+(r.valor||0),0);
     const pendSup = recsSupMes.filter(r=>r.status==='aguarda_aprovacao');
-    const saldo = LIMITE_COMB_MENSAL + totalConf;
+    const saldo = getSaldoCombustivel(sup.email); // ← ÚNICO cálculo de saldo (bug corrigido)
     const saldoCls = saldo<100?'saldo-low':saldo<300?'saldo-warn':'saldo-ok';
 
     html += `<div class="caixa-card">
@@ -7206,18 +6821,25 @@ async function renderAdmCombustivel() {
       </div>
       ${pendSup.map(r=>`
       <div style="background:var(--yellow-bg);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:14px;margin-bottom:12px">
-        <div style="font-size:13px;font-weight:700;color:var(--yellow);margin-bottom:10px">⛽ Solicitação de Recarga — ${fmtBRL(r.valor)}</div>
+        <div style="font-size:13px;font-weight:700;color:var(--yellow);margin-bottom:8px">⛽ Solicitação de Recarga — ${fmtBRL(r.valor)}</div>
         <div style="font-size:12px;color:var(--text2);margin-bottom:8px">Solicitado em: ${fmtDT(r.createdAt)}</div>
-        <div style="margin-bottom:8px"><span style="font-size:12px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.6px">Rota:</span>
-          <div class="comb-rota-tags" style="margin-top:6px">${(r.rota||[]).map(c=>`<span class="rota-tag">${c}</span>`).join('')}</div>
+        ${r.origem ? `
+          <div style="font-size:12px;color:var(--text2);margin-bottom:6px;line-height:1.8">${(r.rotaCompleta||r.rota||[]).join(' → ')}</div>
+          <div style="display:flex;gap:12px;font-size:12px;color:var(--text3);margin-bottom:10px;font-family:'IBM Plex Mono',monospace">
+            <span>📏 ${r.kmTotal} km</span>
+            <span>⛽ ${r.litrosEstimados}L</span>
+            <span>💰 ${fmtBRL(r.valor)}</span>
+            <span>R$/L ${r.precoLitro}</span>
+          </div>` :
+          `<div style="margin-bottom:10px"><span style="font-size:12px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.6px">Rota:</span>
+            <div class="comb-rota-tags" style="margin-top:6px">${(r.rota||[]).map(c=>`<span class="rota-tag">${c}</span>`).join('')}</div>
+          </div>`
+        }
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${r.origem ? `<button class="btn btn-sm btn-secondary" onclick="comb_abrirMapa('${r.id}')">🗺 Ver Mapa</button>` : ''}
+          <button class="btn btn-sm btn-success" style="flex:1" onclick="comb_abrirAprovacao('${r.id}')">✅ Aprovar</button>
+          <button class="btn btn-sm btn-danger" onclick="comb_abrirRecusa('${r.id}')">✕ Recusar</button>
         </div>
-        ${r.obs?`<div style="font-size:12px;color:var(--text2);margin-bottom:10px">💬 ${r.obs}</div>`:''}
-        <div style="display:flex;gap:8px;margin-top:12px">
-          <button class="btn btn-sm btn-secondary" onclick="abrirEmailRecarga('${r.id}')">📧 Preparar E-mail</button>
-          <button class="btn btn-sm btn-success" style="flex:1" onclick="aprovarRecarga('${r.id}')">✅ Aprovar</button>
-          <button class="btn btn-sm btn-danger" onclick="recusarRecarga('${r.id}')">✕ Recusar</button>
-        </div>
-        <div id="email-recarga-${r.id}" style="display:none;margin-top:14px"></div>
       </div>`).join('')}
       <div style="margin-top:8px">
         <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">Histórico ${nomeMes(new Date().getMonth())}</div>
@@ -7227,7 +6849,11 @@ async function renderAdmCombustivel() {
               <div><div style="font-size:13px;font-weight:600">${fmtBRL(r.valor)}</div><div style="font-size:11px;color:var(--text3);font-family:'IBM Plex Mono',monospace">${fmtDT(r.createdAt)}</div></div>
               ${{aprovada:`<span class="caixa-status cs-aprovado">✅ Aprovada</span>`,confirmada:`<span class="caixa-status cs-aprovado">✅ Confirmada</span>`,recusada:`<span class="caixa-status cs-pendente">❌ Recusada</span>`}[r.status]||''}
             </div>
-            <div class="comb-rota-tags">${(r.rota||[]).map(c=>`<span class="rota-tag">${c}</span>`).join('')}</div>
+            ${r.origem
+              ? `<div style="font-size:12px;color:var(--text2);margin-top:4px">${(r.rotaCompleta||r.rota||[]).join(' → ')}</div>
+                 <div style="font-size:11px;color:var(--text3);margin-top:2px">${r.kmTotal||'—'} km · ${r.litrosEstimados||'—'}L</div>`
+              : `<div class="comb-rota-tags">${(r.rota||[]).map(c=>`<span class="rota-tag">${c}</span>`).join('')}</div>`
+            }
             ${r.status==='aprovada'?`<button class="btn btn-sm btn-success" style="margin-top:10px" onclick="confirmarRecarga('${r.id}')">💳 Confirmar Recarga Efetuada</button>`:''}
           </div>`).join('') || '<div style="font-size:13px;color:var(--text3)">Nenhuma recarga este mês.</div>'}
       </div>
@@ -7358,15 +6984,545 @@ async function renderRelatorioComb() {
       ${recsConf.length?`<div style="margin-top:10px">
         <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Recargas confirmadas</div>
         ${recsConf.sort((a,b)=>b.createdAt?.localeCompare(a.createdAt)).map(r=>`
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--green-bg);border-radius:8px;margin-bottom:6px;font-size:13px">
-            <div><div class="comb-rota-tags" style="margin:0">${(r.rota||[]).map(c=>`<span class="rota-tag">${c}</span>`).join('')}</div><div style="font-size:11px;color:var(--text3);font-family:'IBM Plex Mono',monospace;margin-top:4px">${fmtDT(r.createdAt)}</div></div>
-            <div style="color:var(--green);font-family:'IBM Plex Mono',monospace;font-weight:700">+${fmtBRL(r.valor)}</div>
+          <div style="padding:8px 12px;background:var(--green-bg);border-radius:8px;margin-bottom:6px;font-size:13px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start">
+              <div>
+                ${r.origem
+                  ? `<div style="font-size:12px;color:var(--text2)">${(r.rotaCompleta||r.rota||[]).join(' → ')}</div>
+                     <div style="font-size:11px;color:var(--text3);font-family:'IBM Plex Mono',monospace;margin-top:2px">${r.kmTotal||'—'} km · ${r.litrosEstimados||'—'}L · R$/L ${r.precoLitro||'—'}</div>`
+                  : `<div class="comb-rota-tags" style="margin:0">${(r.rota||[]).map(c=>`<span class="rota-tag">${c}</span>`).join('')}</div>`
+                }
+                <div style="font-size:11px;color:var(--text3);font-family:'IBM Plex Mono',monospace;margin-top:4px">${fmtDT(r.createdAt)}</div>
+              </div>
+              <div style="color:var(--green);font-family:'IBM Plex Mono',monospace;font-weight:700;white-space:nowrap;margin-left:12px">+${fmtBRL(r.valor)}</div>
+            </div>
           </div>`).join('')}
       </div>`:''}
     </div>`;
   });
 
   el.innerHTML = html;
+}
+
+// ══════════════════════════════════════
+// MÓDULO COMBUSTÍVEL — EVOLUÇÃO (comb_*)
+// Fase 1: Matriz de distâncias + cálculo
+// Fase 2: UI supervisor (novo fluxo)
+// Fase 3: Mapa Leaflet
+// Fase 4: ADM atualizado + saldo unificado
+// ══════════════════════════════════════
+
+const CONSUMO_KM_POR_LITRO = 10;
+const COMB_PRECO_PADRAO = 6.50;
+
+// Coordenadas [lat, lng] de cada cidade para o mapa
+const COORDS_CIDADES = {
+  'Aperibé':                    [-21.8578, -42.1056],
+  'Bom Jardim':                 [-22.1567, -42.4189],
+  'Bom Jesus do Itabapoana':    [-21.1317, -41.6817],
+  'Cambuci':                    [-21.5714, -41.9103],
+  'Cantagalo':                  [-21.9828, -42.3681],
+  'Carapebus':                  [-22.1883, -41.6611],
+  'Cardoso Moreira':            [-21.4928, -41.6122],
+  'Conceição de Macabu':        [-22.0872, -41.8672],
+  'Duas Barras':                [-22.0508, -42.5228],
+  'Guarus':                     [-21.7461, -41.3261],
+  'Italva':                     [-21.4269, -41.6950],
+  'Laje de Muriaé':             [-21.2158, -42.0381],
+  'Macuco':                     [-21.9978, -42.2028],
+  'Miracema':                   [-21.4628, -42.1961],
+  'Natividade':                 [-21.0403, -41.9728],
+  'Nova Friburgo':              [-22.2822, -42.5311],
+  'Porciúncula':                [-20.9611, -42.0439],
+  'Porto Real':                 [-22.4169, -43.0008],
+  'Quissamã':                   [-22.1061, -41.4728],
+  'Santa Maria Madalena':       [-21.9572, -42.0100],
+  'São José de Ubá':            [-21.3689, -41.9461],
+  'São José do Vale do Rio Preto': [-22.1597, -43.0133],
+  'São Sebastião do Alto':      [-21.9739, -42.1333],
+  'Silva Jardim':               [-22.6481, -42.3922],
+  'Sumidouro':                  [-22.0439, -42.6778],
+  'Tanguá':                     [-22.7361, -42.7186],
+  'Trajano de Moraes':          [-22.0658, -42.0286],
+  'Varre-Sai':                  [-20.9283, -41.8694],
+  'Areal':                      [-22.2336, -43.1028],
+  'Campos dos Goytacazes':      [-21.7542, -41.3244],
+  'Campos':                     [-21.7542, -41.3244],
+};
+
+// Matriz de distâncias rodoviárias estimadas (km) — fonte: Google Maps
+// Acesso simétrico via comb_getDistKm(a, b)
+const DISTANCIAS_KM = {
+  'Aperibé|Bom Jardim':              68,
+  'Aperibé|Bom Jesus do Itabapoana': 98,
+  'Aperibé|Cambuci':                 44,
+  'Aperibé|Cantagalo':               43,
+  'Aperibé|Cardoso Moreira':         92,
+  'Aperibé|Italva':                  30,
+  'Aperibé|Laje de Muriaé':          88,
+  'Aperibé|Macuco':                  22,
+  'Aperibé|Miracema':                28,
+  'Aperibé|Natividade':              70,
+  'Aperibé|Nova Friburgo':           92,
+  'Aperibé|Porciúncula':             82,
+  'Aperibé|Santa Maria Madalena':    52,
+  'Aperibé|São José de Ubá':         62,
+  'Aperibé|São Sebastião do Alto':   48,
+  'Aperibé|Sumidouro':               78,
+  'Aperibé|Trajano de Moraes':       56,
+  'Aperibé|Varre-Sai':               98,
+  'Aperibé|Duas Barras':             82,
+  'Aperibé|Cantagalo':               43,
+  'Bom Jardim|Nova Friburgo':        38,
+  'Bom Jardim|Cantagalo':            52,
+  'Bom Jardim|Duas Barras':          36,
+  'Bom Jardim|Sumidouro':            48,
+  'Bom Jardim|Trajano de Moraes':    72,
+  'Bom Jardim|Santa Maria Madalena': 58,
+  'Bom Jardim|São Sebastião do Alto':52,
+  'Bom Jardim|Macuco':               68,
+  'Bom Jesus do Itabapoana|Natividade': 28,
+  'Bom Jesus do Itabapoana|Porciúncula': 48,
+  'Bom Jesus do Itabapoana|Varre-Sai':   42,
+  'Bom Jesus do Itabapoana|Cardoso Moreira': 68,
+  'Bom Jesus do Itabapoana|Italva':  72,
+  'Bom Jesus do Itabapoana|Cambuci': 58,
+  'Cambuci|Italva':                  22,
+  'Cambuci|Cardoso Moreira':         52,
+  'Cambuci|Natividade':              88,
+  'Cambuci|São José de Ubá':         32,
+  'Cambuci|Miracema':                58,
+  'Cantagalo|Macuco':                22,
+  'Cantagalo|Nova Friburgo':         62,
+  'Cantagalo|Santa Maria Madalena':  32,
+  'Cantagalo|São Sebastião do Alto': 28,
+  'Cantagalo|Duas Barras':           48,
+  'Cantagalo|Sumidouro':             58,
+  'Carapebus|Conceição de Macabu':   38,
+  'Carapebus|Guarus':                52,
+  'Carapebus|Quissamã':              28,
+  'Cardoso Moreira|Guarus':          42,
+  'Cardoso Moreira|Italva':          48,
+  'Cardoso Moreira|Cambuci':         52,
+  'Conceição de Macabu|Guarus':      68,
+  'Conceição de Macabu|Carapebus':   38,
+  'Conceição de Macabu|Quissamã':    52,
+  'Conceição de Macabu|Silva Jardim':72,
+  'Duas Barras|Sumidouro':           28,
+  'Duas Barras|Nova Friburgo':       42,
+  'Duas Barras|Bom Jardim':          36,
+  'Guarus|Campos':                   8,
+  'Guarus|Cardoso Moreira':          42,
+  'Guarus|Quissamã':                 68,
+  'Italva|São José de Ubá':          38,
+  'Italva|Cardoso Moreira':          48,
+  'Italva|Cambuci':                  22,
+  'Italva|Natividade':               62,
+  'Laje de Muriaé|Miracema':         62,
+  'Laje de Muriaé|Porciúncula':      42,
+  'Laje de Muriaé|Natividade':       52,
+  'Macuco|Cantagalo':                22,
+  'Macuco|Santa Maria Madalena':     32,
+  'Macuco|São Sebastião do Alto':    28,
+  'Miracema|Aperibé':                28,
+  'Miracema|Laje de Muriaé':         62,
+  'Miracema|Porciúncula':            88,
+  'Miracema|Natividade':             48,
+  'Miracema|São José de Ubá':        58,
+  'Natividade|Porciúncula':          42,
+  'Natividade|Varre-Sai':            52,
+  'Natividade|Bom Jesus do Itabapoana': 28,
+  'Nova Friburgo|Bom Jardim':        38,
+  'Nova Friburgo|Cantagalo':         62,
+  'Nova Friburgo|Duas Barras':       42,
+  'Nova Friburgo|Sumidouro':         52,
+  'Nova Friburgo|São José do Vale do Rio Preto': 58,
+  'Porciúncula|Natividade':          42,
+  'Porciúncula|Varre-Sai':           28,
+  'Porciúncula|Laje de Muriaé':      42,
+  'Porto Real|São José do Vale do Rio Preto': 22,
+  'Porto Real|Areal':                28,
+  'Quissamã|Carapebus':              28,
+  'Quissamã|Conceição de Macabu':    52,
+  'Santa Maria Madalena|Macuco':     32,
+  'Santa Maria Madalena|Cantagalo':  32,
+  'Santa Maria Madalena|Trajano de Moraes': 22,
+  'Santa Maria Madalena|São Sebastião do Alto': 28,
+  'São José de Ubá|Italva':          38,
+  'São José de Ubá|Cambuci':         32,
+  'São José de Ubá|Miracema':        58,
+  'São José do Vale do Rio Preto|Porto Real': 22,
+  'São José do Vale do Rio Preto|Nova Friburgo': 58,
+  'São José do Vale do Rio Preto|Areal': 18,
+  'São Sebastião do Alto|Macuco':    28,
+  'São Sebastião do Alto|Cantagalo': 28,
+  'São Sebastião do Alto|Trajano de Moraes': 32,
+  'Silva Jardim|Conceição de Macabu':72,
+  'Silva Jardim|Tanguá':             62,
+  'Sumidouro|Duas Barras':           28,
+  'Sumidouro|Nova Friburgo':         52,
+  'Sumidouro|Bom Jardim':            48,
+  'Tanguá|Silva Jardim':             62,
+  'Tanguá|Porto Real':               88,
+  'Trajano de Moraes|Santa Maria Madalena': 22,
+  'Trajano de Moraes|São Sebastião do Alto': 32,
+  'Trajano de Moraes|Aperibé':       56,
+  'Varre-Sai|Porciúncula':           28,
+  'Varre-Sai|Natividade':            52,
+  'Varre-Sai|Bom Jesus do Itabapoana': 42,
+  'Areal|Porto Real':                28,
+  'Areal|São José do Vale do Rio Preto': 18,
+  'Campos|Guarus':                   8,
+  'Campos|Cardoso Moreira':          42,
+  'Campos|Carapebus':                60,
+  'Campos|Conceição de Macabu':      72,
+};
+
+// ── Acesso simétrico à matriz ──
+function comb_getDistKm(a, b) {
+  return DISTANCIAS_KM[`${a}|${b}`] || DISTANCIAS_KM[`${b}|${a}`] || null;
+}
+
+// ── Motor de cálculo de rota ──
+// Retorna { percurso, kmTotal, litros, valor, precoLitro, erros[] }
+function comb_calcularRota(origem, destinos, precoLitro) {
+  const erros = [];
+  if (!origem) { erros.push('Selecione a cidade de origem.'); return { erros }; }
+  if (!destinos.length) { erros.push('Adicione pelo menos um destino.'); return { erros }; }
+
+  const percurso = [origem, ...destinos, origem];
+  let kmTotal = 0;
+
+  for (let i = 0; i < percurso.length - 1; i++) {
+    const a = percurso[i], b = percurso[i + 1];
+    if (a === b) continue; // mesmo ponto consecutivo — pular
+    const km = comb_getDistKm(a, b);
+    if (km === null) {
+      erros.push(`Trecho não mapeado: ${a} → ${b}. Informe ao administrador para cadastrar esta distância.`);
+    } else {
+      kmTotal += km;
+    }
+  }
+
+  if (erros.length) return { percurso, erros };
+
+  const litros = parseFloat((kmTotal / CONSUMO_KM_POR_LITRO).toFixed(2));
+  const valor  = parseFloat((litros * precoLitro).toFixed(2));
+  return { percurso, kmTotal, litros, valor, precoLitro, erros: [] };
+}
+
+// ── Estado isolado do formulário de rota ──
+let comb_origemAtual   = '';
+let comb_destinosAtual = [];
+let comb_resultadoAtual = null;
+
+// ── Adicionar destino à lista ──
+function comb_addDestino() {
+  const sel = document.getElementById('comb-dest-sel');
+  const cidade = sel.value;
+  if (!cidade) return;
+  if (comb_destinosAtual.includes(cidade)) { toast('Cidade já está na rota.', 'err'); return; }
+  comb_destinosAtual.push(cidade);
+  sel.value = '';
+  comb_renderDestinos();
+}
+
+// ── Remover destino da lista ──
+function comb_removeDestino(idx) {
+  comb_destinosAtual.splice(idx, 1);
+  comb_resultadoAtual = null;
+  comb_renderDestinos();
+  comb_renderPrevia(null);
+}
+
+// ── Renderizar lista de destinos com numeração sequencial ──
+function comb_renderDestinos() {
+  const el = document.getElementById('comb-destinos-lista');
+  if (!el) return;
+  if (!comb_destinosAtual.length) {
+    el.innerHTML = `<div style="font-size:12px;color:var(--text3);padding:8px 0">Nenhum destino adicionado.</div>`;
+    return;
+  }
+  el.innerHTML = comb_destinosAtual.map((c, i) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--surface3);border-radius:8px;margin-bottom:6px">
+      <span style="font-size:11px;font-weight:700;color:var(--accent);min-width:18px">${i + 1}.</span>
+      <span style="font-size:13px;flex:1;color:var(--text)">${c}</span>
+      <button onclick="comb_removeDestino(${i})" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:0 4px">✕</button>
+    </div>`).join('');
+}
+
+// ── Calcular rota e exibir prévia ──
+function comb_acaoCalcular() {
+  comb_origemAtual = document.getElementById('comb-origem-sel')?.value || '';
+  const precoRaw = parseFloat(document.getElementById('comb-preco-litro')?.value || COMB_PRECO_PADRAO);
+  const precoLitro = isNaN(precoRaw) || precoRaw <= 0 ? COMB_PRECO_PADRAO : precoRaw;
+
+  // Salvar preço no localStorage
+  try { localStorage.setItem('comb_preco_litro', precoLitro); } catch(e) {}
+
+  const resultado = comb_calcularRota(comb_origemAtual, comb_destinosAtual, precoLitro);
+  comb_resultadoAtual = resultado.erros.length ? null : resultado;
+  comb_renderPrevia(resultado);
+}
+
+// ── Renderizar card de prévia após cálculo ──
+function comb_renderPrevia(resultado) {
+  const el = document.getElementById('comb-previa-rota');
+  const btnSolicitar = document.getElementById('btn-comb-solicitar');
+  if (!el) return;
+
+  if (!resultado) {
+    el.innerHTML = '';
+    if (btnSolicitar) btnSolicitar.style.display = 'none';
+    return;
+  }
+
+  if (resultado.erros.length) {
+    el.innerHTML = `<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:10px;padding:12px 14px;margin-top:12px">
+      ${resultado.erros.map(e => `<div style="font-size:12px;color:var(--red);margin-bottom:4px">❌ ${e}</div>`).join('')}
+    </div>`;
+    if (btnSolicitar) btnSolicitar.style.display = 'none';
+    return;
+  }
+
+  const percursoTexto = resultado.percurso.join(' → ');
+  el.innerHTML = `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:12px">
+      <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:10px">📍 Prévia da Rota</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.8;margin-bottom:12px;word-break:break-word">${percursoTexto}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px">
+        <div style="background:var(--surface3);border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Distância</div>
+          <div style="font-size:17px;font-weight:700;font-family:'IBM Plex Mono',monospace">${resultado.kmTotal} km</div>
+        </div>
+        <div style="background:var(--surface3);border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Litros</div>
+          <div style="font-size:17px;font-weight:700;font-family:'IBM Plex Mono',monospace">${resultado.litros}L</div>
+        </div>
+        <div style="background:var(--green-bg);border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:10px;color:var(--green);text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Valor</div>
+          <div style="font-size:17px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--green)">${fmtBRL(resultado.valor)}</div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:10px">
+        Preço/L: ${fmtBRL(resultado.precoLitro)} · Consumo fixo: ${CONSUMO_KM_POR_LITRO} km/L · Valor 100% calculado pelo sistema
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="comb_abrirMapa()">🗺 Ver rota no mapa</button>
+    </div>`;
+
+  if (btnSolicitar) btnSolicitar.style.display = 'block';
+}
+
+// ── Enviar solicitação com dados calculados ──
+async function comb_solicitarRecarga() {
+  if (!comb_resultadoAtual) { toast('Calcule a rota primeiro.', 'err'); return; }
+  const dados = DADOS_CARTAO[currentUser.email] || {};
+  const r = comb_resultadoAtual;
+  try {
+    const ref = db.collection('recargas').doc();
+    await ref.set({
+      id: ref.id,
+      supervisorEmail: currentUser.email,
+      supervisorNome:  currentUser.name,
+      cartao: dados.cartao || '—',
+      placa:  dados.placa  || '—',
+      // Campos novos
+      origem:          comb_origemAtual,
+      destinos:        [...comb_destinosAtual],
+      rotaCompleta:    [...r.percurso],
+      kmTotal:         r.kmTotal,
+      litrosEstimados: r.litros,
+      precoLitro:      r.precoLitro,
+      valor:           r.valor,
+      // Legado (mantido para retrocompatibilidade de leitura)
+      rota: [...r.percurso],
+      mes:    mesAtualKey(),
+      status: 'aguarda_aprovacao',
+      createdAt: new Date().toISOString()
+    });
+    comb_origemAtual    = '';
+    comb_destinosAtual  = [];
+    comb_resultadoAtual = null;
+    toast('Solicitação enviada! Valor calculado automaticamente.', 'ok');
+  } catch(e) { toast('Erro ao solicitar: ' + e.message, 'err'); }
+}
+
+// ── Carregar Leaflet sob demanda ──
+async function comb_loadLeaflet() {
+  if (window.L) return true;
+  return new Promise(resolve => {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+    document.head.appendChild(link);
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+    s.onload = () => resolve(!!window.L);
+    s.onerror = () => resolve(false);
+    document.head.appendChild(s);
+  });
+}
+
+// Instância do mapa Leaflet (singleton)
+let _combMapInstance = null;
+
+// ── Abrir modal do mapa com a rota atual ──
+async function comb_abrirMapa(recargaId) {
+  let rotaObj = null;
+
+  if (recargaId) {
+    // Chamado pelo ADM — busca nos dados em memória
+    const r = allRecargas.find(x => x.id === recargaId);
+    if (!r) { toast('Solicitação não encontrada.', 'err'); return; }
+    rotaObj = {
+      percurso:   r.rotaCompleta || r.rota || [],
+      kmTotal:    r.kmTotal || null,
+      litros:     r.litrosEstimados || null,
+      valor:      r.valor || null,
+      supervisor: r.supervisorNome || ''
+    };
+  } else {
+    // Chamado pelo supervisor após cálculo
+    if (!comb_resultadoAtual) { toast('Calcule a rota primeiro.', 'err'); return; }
+    rotaObj = {
+      percurso: comb_resultadoAtual.percurso,
+      kmTotal:  comb_resultadoAtual.kmTotal,
+      litros:   comb_resultadoAtual.litros,
+      valor:    comb_resultadoAtual.valor,
+      supervisor: ''
+    };
+  }
+
+  if (!rotaObj.percurso.length) { toast('Rota sem pontos para exibir.', 'err'); return; }
+
+  // Preencher info do header do modal
+  const infoEl = document.getElementById('mapa-rota-info');
+  const tituloEl = document.getElementById('mapa-rota-titulo');
+  if (tituloEl) tituloEl.textContent = rotaObj.supervisor ? `🗺 Rota — ${rotaObj.supervisor}` : '🗺 Prévia da Rota';
+  if (infoEl) {
+    const parts = [];
+    if (rotaObj.kmTotal) parts.push(`<span>📏 <strong>${rotaObj.kmTotal} km</strong></span>`);
+    if (rotaObj.litros)  parts.push(`<span>⛽ <strong>${rotaObj.litros}L</strong></span>`);
+    if (rotaObj.valor)   parts.push(`<span>💰 <strong>${fmtBRL(rotaObj.valor)}</strong></span>`);
+    parts.push(`<span style="color:var(--text3)">${rotaObj.percurso.join(' → ')}</span>`);
+    infoEl.innerHTML = parts.join('');
+  }
+
+  // Abrir modal
+  document.getElementById('modal-mapa-rota').classList.add('open');
+
+  // Carregar Leaflet
+  const ok = await comb_loadLeaflet();
+  if (!ok) {
+    document.getElementById('mapa-rota-container').innerHTML =
+      `<div style="padding:24px;color:var(--text3);text-align:center">⚠️ Não foi possível carregar o mapa. Verifique sua conexão.</div>`;
+    return;
+  }
+
+  // Destruir mapa anterior se existir
+  if (_combMapInstance) { _combMapInstance.remove(); _combMapInstance = null; }
+
+  // Coletar coordenadas da rota
+  const coords = rotaObj.percurso.map(c => COORDS_CIDADES[c]).filter(Boolean);
+  if (coords.length < 2) {
+    document.getElementById('mapa-rota-container').innerHTML =
+      `<div style="padding:24px;color:var(--text3);text-align:center">⚠️ Coordenadas insuficientes para exibir a rota no mapa.</div>`;
+    return;
+  }
+
+  // Aguardar modal renderizar antes de iniciar o mapa
+  await new Promise(r => setTimeout(r, 80));
+
+  const container = document.getElementById('mapa-rota-container');
+  container.innerHTML = '';
+
+  const map = L.map(container, { zoomControl: true });
+  _combMapInstance = map;
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors',
+    maxZoom: 18
+  }).addTo(map);
+
+  // Desenhar polyline
+  L.polyline(coords, { color: '#6c6cff', weight: 3, opacity: 0.85 }).addTo(map);
+
+  // Marcadores numerados
+  rotaObj.percurso.forEach((cidade, idx) => {
+    const coord = COORDS_CIDADES[cidade];
+    if (!coord) return;
+    const isOrigem  = idx === 0;
+    const isRetorno = idx === rotaObj.percurso.length - 1 && cidade === rotaObj.percurso[0];
+    const cor = isOrigem ? '#22c55e' : isRetorno ? '#22c55e' : '#6c6cff';
+    const label = isOrigem ? 'O' : isRetorno ? '↩' : String(idx);
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="background:${cor};color:#fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.3)">${label}</div>`,
+      iconSize: [24, 24],
+      iconAnchor: [12, 12]
+    });
+    L.marker(coord, { icon }).addTo(map).bindPopup(`<strong>${cidade}</strong>`);
+  });
+
+  // Ajustar zoom para enquadrar todos os pontos
+  map.fitBounds(L.latLngBounds(coords), { padding: [24, 24] });
+  map.invalidateSize();
+}
+
+// ── Abrir modal de recusa (ADM) ──
+function comb_abrirRecusa(recargaId) {
+  const r = allRecargas.find(x => x.id === recargaId);
+  if (!r) return;
+  document.getElementById('recusar-rec-id').value = recargaId;
+  document.getElementById('recusar-rec-motivo').value = '';
+  const info = document.getElementById('recusar-rec-info');
+  if (info) info.textContent = `Recusar solicitação de ${r.supervisorNome} — ${fmtBRL(r.valor)}`;
+  document.getElementById('modal-recusar-recarga').classList.add('open');
+}
+
+async function confirmarRecusaRecarga() {
+  const id     = document.getElementById('recusar-rec-id').value;
+  const motivo = document.getElementById('recusar-rec-motivo').value.trim();
+  if (!motivo) { toast('Informe o motivo da recusa.', 'err'); return; }
+  try {
+    await db.collection('recargas').doc(id).update({
+      status: 'recusada',
+      obsAdm: motivo,
+      recusadaEm: new Date().toISOString()
+    });
+    closeModal('modal-recusar-recarga');
+    toast('Solicitação recusada.', 'ok');
+  } catch(e) { toast('Erro ao recusar: ' + e.message, 'err'); }
+}
+
+// ── Abrir modal de aprovação (ADM) ──
+function comb_abrirAprovacao(recargaId) {
+  const r = allRecargas.find(x => x.id === recargaId);
+  if (!r) return;
+  document.getElementById('aprovar-rec-id').value = recargaId;
+  const info = document.getElementById('aprovar-rec-info');
+  if (info) {
+    const isNovo = !!r.origem;
+    info.innerHTML = isNovo
+      ? `<strong>${r.supervisorNome}</strong><br>
+         Rota: ${(r.rotaCompleta || r.rota || []).join(' → ')}<br>
+         Distância: <strong>${r.kmTotal} km</strong> · Litros: <strong>${r.litrosEstimados}L</strong><br>
+         Valor calculado: <strong style="color:var(--green)">${fmtBRL(r.valor)}</strong>`
+      : `<strong>${r.supervisorNome}</strong><br>Valor: <strong>${fmtBRL(r.valor)}</strong>`;
+  }
+  document.getElementById('modal-aprovar-recarga').classList.add('open');
+}
+
+async function confirmarAprovacaoRecarga() {
+  const id = document.getElementById('aprovar-rec-id').value;
+  try {
+    await db.collection('recargas').doc(id).update({
+      status: 'aprovada',
+      aprovadaEm: new Date().toISOString()
+    });
+    closeModal('modal-aprovar-recarga');
+    toast('Recarga aprovada! Confirme após creditar no Alelo.', 'ok');
+  } catch(e) { toast('Erro ao aprovar: ' + e.message, 'err'); }
 }
 
 // ══════════════════════════════════════
