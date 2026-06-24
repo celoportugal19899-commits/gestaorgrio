@@ -6837,9 +6837,11 @@ async function renderAdmCombustivel() {
         }
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           ${r.origem ? `<button class="btn btn-sm btn-secondary" onclick="comb_abrirMapa('${r.id}')">🗺 Ver Mapa</button>` : ''}
+          <button class="btn btn-sm btn-secondary" onclick="abrirEmailRecarga('${r.id}')">📧 Preparar E-mail</button>
           <button class="btn btn-sm btn-success" style="flex:1" onclick="comb_abrirAprovacao('${r.id}')">✅ Aprovar</button>
           <button class="btn btn-sm btn-danger" onclick="comb_abrirRecusa('${r.id}')">✕ Recusar</button>
         </div>
+        <div id="email-recarga-${r.id}" style="display:none;margin-top:14px"></div>
       </div>`).join('')}
       <div style="margin-top:8px">
         <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">Histórico ${nomeMes(new Date().getMonth())}</div>
