@@ -7050,165 +7050,66 @@ const COORDS_CIDADES = {
   'Campos':                     [-21.7542, -41.3244],
 };
 
-// Matriz de distâncias rodoviárias estimadas (km) — fonte: Google Maps
-// Acesso simétrico via comb_getDistKm(a, b)
-const DISTANCIAS_KM = {
-  'Aperibé|Bom Jardim':              68,
-  'Aperibé|Bom Jesus do Itabapoana': 98,
-  'Aperibé|Cambuci':                 44,
-  'Aperibé|Cantagalo':               43,
-  'Aperibé|Cardoso Moreira':         92,
-  'Aperibé|Italva':                  30,
-  'Aperibé|Laje de Muriaé':          88,
-  'Aperibé|Macuco':                  22,
-  'Aperibé|Miracema':                28,
-  'Aperibé|Natividade':              70,
-  'Aperibé|Nova Friburgo':           92,
-  'Aperibé|Porciúncula':             82,
-  'Aperibé|Santa Maria Madalena':    52,
-  'Aperibé|São José de Ubá':         62,
-  'Aperibé|São Sebastião do Alto':   48,
-  'Aperibé|Sumidouro':               78,
-  'Aperibé|Trajano de Moraes':       56,
-  'Aperibé|Varre-Sai':               98,
-  'Aperibé|Duas Barras':             82,
-  'Aperibé|Cantagalo':               43,
-  'Bom Jardim|Nova Friburgo':        38,
-  'Bom Jardim|Cantagalo':            52,
-  'Bom Jardim|Duas Barras':          36,
-  'Bom Jardim|Sumidouro':            48,
-  'Bom Jardim|Trajano de Moraes':    72,
-  'Bom Jardim|Santa Maria Madalena': 58,
-  'Bom Jardim|São Sebastião do Alto':52,
-  'Bom Jardim|Macuco':               68,
-  'Bom Jesus do Itabapoana|Natividade': 28,
-  'Bom Jesus do Itabapoana|Porciúncula': 48,
-  'Bom Jesus do Itabapoana|Varre-Sai':   42,
-  'Bom Jesus do Itabapoana|Cardoso Moreira': 68,
-  'Bom Jesus do Itabapoana|Italva':  72,
-  'Bom Jesus do Itabapoana|Cambuci': 58,
-  'Cambuci|Italva':                  22,
-  'Cambuci|Cardoso Moreira':         52,
-  'Cambuci|Natividade':              88,
-  'Cambuci|São José de Ubá':         32,
-  'Cambuci|Miracema':                58,
-  'Cantagalo|Macuco':                22,
-  'Cantagalo|Nova Friburgo':         62,
-  'Cantagalo|Santa Maria Madalena':  32,
-  'Cantagalo|São Sebastião do Alto': 28,
-  'Cantagalo|Duas Barras':           48,
-  'Cantagalo|Sumidouro':             58,
-  'Carapebus|Conceição de Macabu':   38,
-  'Carapebus|Guarus':                52,
-  'Carapebus|Quissamã':              28,
-  'Cardoso Moreira|Guarus':          42,
-  'Cardoso Moreira|Italva':          48,
-  'Cardoso Moreira|Cambuci':         52,
-  'Conceição de Macabu|Guarus':      68,
-  'Conceição de Macabu|Carapebus':   38,
-  'Conceição de Macabu|Quissamã':    52,
-  'Conceição de Macabu|Silva Jardim':72,
-  'Duas Barras|Sumidouro':           28,
-  'Duas Barras|Nova Friburgo':       42,
-  'Duas Barras|Bom Jardim':          36,
-  'Guarus|Campos':                   8,
-  'Guarus|Cardoso Moreira':          42,
-  'Guarus|Quissamã':                 68,
-  'Italva|São José de Ubá':          38,
-  'Italva|Cardoso Moreira':          48,
-  'Italva|Cambuci':                  22,
-  'Italva|Natividade':               62,
-  'Laje de Muriaé|Miracema':         62,
-  'Laje de Muriaé|Porciúncula':      42,
-  'Laje de Muriaé|Natividade':       52,
-  'Macuco|Cantagalo':                22,
-  'Macuco|Santa Maria Madalena':     32,
-  'Macuco|São Sebastião do Alto':    28,
-  'Miracema|Aperibé':                28,
-  'Miracema|Laje de Muriaé':         62,
-  'Miracema|Porciúncula':            88,
-  'Miracema|Natividade':             48,
-  'Miracema|São José de Ubá':        58,
-  'Natividade|Porciúncula':          42,
-  'Natividade|Varre-Sai':            52,
-  'Natividade|Bom Jesus do Itabapoana': 28,
-  'Nova Friburgo|Bom Jardim':        38,
-  'Nova Friburgo|Cantagalo':         62,
-  'Nova Friburgo|Duas Barras':       42,
-  'Nova Friburgo|Sumidouro':         52,
-  'Nova Friburgo|São José do Vale do Rio Preto': 58,
-  'Porciúncula|Natividade':          42,
-  'Porciúncula|Varre-Sai':           28,
-  'Porciúncula|Laje de Muriaé':      42,
-  'Porto Real|São José do Vale do Rio Preto': 22,
-  'Porto Real|Areal':                28,
-  'Quissamã|Carapebus':              28,
-  'Quissamã|Conceição de Macabu':    52,
-  'Santa Maria Madalena|Macuco':     32,
-  'Santa Maria Madalena|Cantagalo':  32,
-  'Santa Maria Madalena|Trajano de Moraes': 22,
-  'Santa Maria Madalena|São Sebastião do Alto': 28,
-  'São José de Ubá|Italva':          38,
-  'São José de Ubá|Cambuci':         32,
-  'São José de Ubá|Miracema':        58,
-  'São José do Vale do Rio Preto|Porto Real': 22,
-  'São José do Vale do Rio Preto|Nova Friburgo': 58,
-  'São José do Vale do Rio Preto|Areal': 18,
-  'São Sebastião do Alto|Macuco':    28,
-  'São Sebastião do Alto|Cantagalo': 28,
-  'São Sebastião do Alto|Trajano de Moraes': 32,
-  'Silva Jardim|Conceição de Macabu':72,
-  'Silva Jardim|Tanguá':             62,
-  'Sumidouro|Duas Barras':           28,
-  'Sumidouro|Nova Friburgo':         52,
-  'Sumidouro|Bom Jardim':            48,
-  'Tanguá|Silva Jardim':             62,
-  'Tanguá|Porto Real':               88,
-  'Trajano de Moraes|Santa Maria Madalena': 22,
-  'Trajano de Moraes|São Sebastião do Alto': 32,
-  'Trajano de Moraes|Aperibé':       56,
-  'Varre-Sai|Porciúncula':           28,
-  'Varre-Sai|Natividade':            52,
-  'Varre-Sai|Bom Jesus do Itabapoana': 42,
-  'Areal|Porto Real':                28,
-  'Areal|São José do Vale do Rio Preto': 18,
-  'Campos|Guarus':                   8,
-  'Campos|Cardoso Moreira':          42,
-  'Campos|Carapebus':                60,
-  'Campos|Conceição de Macabu':      72,
-};
+// ── Cache de rotas OSRM (sessão) ──
+// Chave: "Cidade A|Cidade B|...|Cidade N" (percurso completo serializado)
+const _combRotaCache = {};
 
-// ── Acesso simétrico à matriz ──
-function comb_getDistKm(a, b) {
-  return DISTANCIAS_KM[`${a}|${b}`] || DISTANCIAS_KM[`${b}|${a}`] || null;
+// ── Chamar OSRM e retornar { kmTotal, polyline } ──
+async function comb_fetchOSRM(percurso) {
+  // Verificar cache
+  const cacheKey = percurso.join('|');
+  if (_combRotaCache[cacheKey]) return _combRotaCache[cacheKey];
+
+  // Montar coordenadas: OSRM espera "lng,lat;lng,lat;..."
+  const coords = percurso.map(c => {
+    const pt = COORDS_CIDADES[c];
+    if (!pt) throw new Error(`Coordenadas não encontradas para: ${c}`);
+    return `${pt[1]},${pt[0]}`; // [lat,lng] → "lng,lat"
+  }).join(';');
+
+  const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`;
+
+  const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
+  if (!res.ok) throw new Error(`OSRM retornou status ${res.status}`);
+
+  const data = await res.json();
+  if (!data.routes || !data.routes.length) throw new Error('OSRM não retornou rotas válidas.');
+
+  const route = data.routes[0];
+  const kmTotal = parseFloat((route.distance / 1000).toFixed(1));
+  // GeoJSON coordinates: [[lng,lat], ...] → converter para [[lat,lng]] para o Leaflet
+  const polyline = route.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+
+  const resultado = { kmTotal, polyline };
+  _combRotaCache[cacheKey] = resultado; // salvar no cache
+  return resultado;
 }
 
-// ── Motor de cálculo de rota ──
-// Retorna { percurso, kmTotal, litros, valor, precoLitro, erros[] }
-function comb_calcularRota(origem, destinos, precoLitro) {
-  const erros = [];
-  if (!origem) { erros.push('Selecione a cidade de origem.'); return { erros }; }
-  if (!destinos.length) { erros.push('Adicione pelo menos um destino.'); return { erros }; }
+// ── Motor de cálculo de rota (OSRM async) ──
+// Retorna { percurso, kmTotal, litros, valor, precoLitro, polyline, erros[] }
+async function comb_calcularRota(origem, destinos, precoLitro) {
+  if (!origem) return { erros: ['Selecione a cidade de origem.'] };
+  if (!destinos.length) return { erros: ['Adicione pelo menos um destino.'] };
 
+  // Verificar coordenadas antes de chamar a API
   const percurso = [origem, ...destinos, origem];
-  let kmTotal = 0;
-
-  for (let i = 0; i < percurso.length - 1; i++) {
-    const a = percurso[i], b = percurso[i + 1];
-    if (a === b) continue; // mesmo ponto consecutivo — pular
-    const km = comb_getDistKm(a, b);
-    if (km === null) {
-      erros.push(`Trecho não mapeado: ${a} → ${b}. Informe ao administrador para cadastrar esta distância.`);
-    } else {
-      kmTotal += km;
-    }
+  const semCoord = percurso.filter(c => !COORDS_CIDADES[c]);
+  if (semCoord.length) {
+    return { erros: [`Cidades sem coordenadas cadastradas: ${[...new Set(semCoord)].join(', ')}. Informe ao administrador.`] };
   }
 
-  if (erros.length) return { percurso, erros };
-
-  const litros = parseFloat((kmTotal / CONSUMO_KM_POR_LITRO).toFixed(2));
-  const valor  = parseFloat((litros * precoLitro).toFixed(2));
-  return { percurso, kmTotal, litros, valor, precoLitro, erros: [] };
+  try {
+    const { kmTotal, polyline } = await comb_fetchOSRM(percurso);
+    const litros = parseFloat((kmTotal / CONSUMO_KM_POR_LITRO).toFixed(2));
+    const valor  = parseFloat((litros * precoLitro).toFixed(2));
+    return { percurso, kmTotal, litros, valor, precoLitro, polyline, erros: [] };
+  } catch(e) {
+    console.error('[OSRM] Erro ao calcular rota:', e);
+    return {
+      erros: [`Não foi possível calcular a rota automaticamente. Verifique sua conexão e tente novamente. (${e.message})`],
+      osrmFalhou: true
+    };
+  }
 }
 
 // ── Estado isolado do formulário de rota ──
@@ -7252,39 +7153,60 @@ function comb_renderDestinos() {
 }
 
 // ── Calcular rota e exibir prévia ──
-function comb_acaoCalcular() {
+async function comb_acaoCalcular() {
   comb_origemAtual = document.getElementById('comb-origem-sel')?.value || '';
   const precoRaw = parseFloat(document.getElementById('comb-preco-litro')?.value || COMB_PRECO_PADRAO);
   const precoLitro = isNaN(precoRaw) || precoRaw <= 0 ? COMB_PRECO_PADRAO : precoRaw;
 
-  // Salvar preço no localStorage
   try { localStorage.setItem('comb_preco_litro', precoLitro); } catch(e) {}
 
-  const resultado = comb_calcularRota(comb_origemAtual, comb_destinosAtual, precoLitro);
+  // Feedback visual de loading
+  const btn = document.querySelector('[onclick="comb_acaoCalcular()"]');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Calculando rota...'; }
+  comb_renderPrevia({ loading: true });
+
+  const resultado = await comb_calcularRota(comb_origemAtual, comb_destinosAtual, precoLitro);
   comb_resultadoAtual = resultado.erros.length ? null : resultado;
   comb_renderPrevia(resultado);
+
+  if (btn) { btn.disabled = false; btn.textContent = '📍 Calcular Rota'; }
 }
 
-// ── Renderizar card de prévia após cálculo ──
 function comb_renderPrevia(resultado) {
   const el = document.getElementById('comb-previa-rota');
   const btnSolicitar = document.getElementById('btn-comb-solicitar');
   if (!el) return;
 
+  // Estado: nenhum resultado ainda
   if (!resultado) {
     el.innerHTML = '';
     if (btnSolicitar) btnSolicitar.style.display = 'none';
     return;
   }
 
-  if (resultado.erros.length) {
-    el.innerHTML = `<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:10px;padding:12px 14px;margin-top:12px">
-      ${resultado.erros.map(e => `<div style="font-size:12px;color:var(--red);margin-bottom:4px">❌ ${e}</div>`).join('')}
+  // Estado: carregando
+  if (resultado.loading) {
+    el.innerHTML = `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:20px 14px;margin-top:12px;text-align:center;color:var(--text3);font-size:13px">
+      <div style="font-size:22px;margin-bottom:8px">🗺️</div>
+      Consultando serviço de rotas...<br>
+      <span style="font-size:11px">Calculando distância rodoviária real via OpenStreetMap</span>
     </div>`;
     if (btnSolicitar) btnSolicitar.style.display = 'none';
     return;
   }
 
+  // Estado: erro
+  if (resultado.erros.length) {
+    const isOsrm = resultado.osrmFalhou;
+    el.innerHTML = `<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:10px;padding:12px 14px;margin-top:12px">
+      ${resultado.erros.map(e => `<div style="font-size:12px;color:var(--red);margin-bottom:6px">❌ ${e}</div>`).join('')}
+      ${isOsrm ? `<button class="btn btn-secondary btn-sm" style="margin-top:6px" onclick="comb_acaoCalcular()">🔄 Tentar novamente</button>` : ''}
+    </div>`;
+    if (btnSolicitar) btnSolicitar.style.display = 'none';
+    return;
+  }
+
+  // Estado: sucesso
   const percursoTexto = resultado.percurso.join(' → ');
   el.innerHTML = `
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:12px">
@@ -7305,7 +7227,7 @@ function comb_renderPrevia(resultado) {
         </div>
       </div>
       <div style="font-size:11px;color:var(--text3);margin-bottom:10px">
-        Preço/L: ${fmtBRL(resultado.precoLitro)} · Consumo fixo: ${CONSUMO_KM_POR_LITRO} km/L · Valor 100% calculado pelo sistema
+        Preço/L: ${fmtBRL(resultado.precoLitro)} · Consumo fixo: ${CONSUMO_KM_POR_LITRO} km/L · Distância via OpenStreetMap · Valor calculado automaticamente
       </div>
       <button class="btn btn-secondary btn-sm" onclick="comb_abrirMapa()">🗺 Ver rota no mapa</button>
     </div>`;
@@ -7371,7 +7293,6 @@ async function comb_abrirMapa(recargaId) {
   let rotaObj = null;
 
   if (recargaId) {
-    // Chamado pelo ADM — busca nos dados em memória
     const r = allRecargas.find(x => x.id === recargaId);
     if (!r) { toast('Solicitação não encontrada.', 'err'); return; }
     rotaObj = {
@@ -7379,24 +7300,25 @@ async function comb_abrirMapa(recargaId) {
       kmTotal:    r.kmTotal || null,
       litros:     r.litrosEstimados || null,
       valor:      r.valor || null,
-      supervisor: r.supervisorNome || ''
+      supervisor: r.supervisorNome || '',
+      polyline:   null // será obtida via cache OSRM abaixo
     };
   } else {
-    // Chamado pelo supervisor após cálculo
     if (!comb_resultadoAtual) { toast('Calcule a rota primeiro.', 'err'); return; }
     rotaObj = {
-      percurso: comb_resultadoAtual.percurso,
-      kmTotal:  comb_resultadoAtual.kmTotal,
-      litros:   comb_resultadoAtual.litros,
-      valor:    comb_resultadoAtual.valor,
-      supervisor: ''
+      percurso:  comb_resultadoAtual.percurso,
+      kmTotal:   comb_resultadoAtual.kmTotal,
+      litros:    comb_resultadoAtual.litros,
+      valor:     comb_resultadoAtual.valor,
+      supervisor: '',
+      polyline:  comb_resultadoAtual.polyline || null
     };
   }
 
   if (!rotaObj.percurso.length) { toast('Rota sem pontos para exibir.', 'err'); return; }
 
-  // Preencher info do header do modal
-  const infoEl = document.getElementById('mapa-rota-info');
+  // Preencher header do modal
+  const infoEl   = document.getElementById('mapa-rota-info');
   const tituloEl = document.getElementById('mapa-rota-titulo');
   if (tituloEl) tituloEl.textContent = rotaObj.supervisor ? `🗺 Rota — ${rotaObj.supervisor}` : '🗺 Prévia da Rota';
   if (infoEl) {
@@ -7404,68 +7326,100 @@ async function comb_abrirMapa(recargaId) {
     if (rotaObj.kmTotal) parts.push(`<span>📏 <strong>${rotaObj.kmTotal} km</strong></span>`);
     if (rotaObj.litros)  parts.push(`<span>⛽ <strong>${rotaObj.litros}L</strong></span>`);
     if (rotaObj.valor)   parts.push(`<span>💰 <strong>${fmtBRL(rotaObj.valor)}</strong></span>`);
-    parts.push(`<span style="color:var(--text3)">${rotaObj.percurso.join(' → ')}</span>`);
+    parts.push(`<span style="color:var(--text3);font-size:11px">${rotaObj.percurso.join(' → ')}</span>`);
     infoEl.innerHTML = parts.join('');
   }
 
-  // Abrir modal
+  // Abrir modal antes de carregar (não trava a tela)
   document.getElementById('modal-mapa-rota').classList.add('open');
 
-  // Carregar Leaflet
-  const ok = await comb_loadLeaflet();
-  if (!ok) {
-    document.getElementById('mapa-rota-container').innerHTML =
-      `<div style="padding:24px;color:var(--text3);text-align:center">⚠️ Não foi possível carregar o mapa. Verifique sua conexão.</div>`;
-    return;
-  }
-
-  // Destruir mapa anterior se existir
-  if (_combMapInstance) { _combMapInstance.remove(); _combMapInstance = null; }
-
-  // Coletar coordenadas da rota
-  const coords = rotaObj.percurso.map(c => COORDS_CIDADES[c]).filter(Boolean);
-  if (coords.length < 2) {
-    document.getElementById('mapa-rota-container').innerHTML =
-      `<div style="padding:24px;color:var(--text3);text-align:center">⚠️ Coordenadas insuficientes para exibir a rota no mapa.</div>`;
-    return;
-  }
-
-  // Aguardar modal renderizar antes de iniciar o mapa
-  await new Promise(r => setTimeout(r, 80));
-
   const container = document.getElementById('mapa-rota-container');
+  container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:13px;flex-direction:column;gap:8px">
+    <div style="font-size:24px">🗺️</div>Carregando mapa...
+  </div>`;
+
+  // Carregar Leaflet
+  const leafletOk = await comb_loadLeaflet();
+  if (!leafletOk) {
+    container.innerHTML = `<div style="padding:24px;color:var(--red);text-align:center;font-size:13px">
+      ⚠️ Não foi possível carregar o mapa.<br>Verifique sua conexão e feche/reabra o modal.
+    </div>`;
+    return;
+  }
+
+  // Obter polyline via cache — se não disponível ainda, recalcular via OSRM
+  let polyline = rotaObj.polyline;
+  if (!polyline) {
+    const cacheKey = rotaObj.percurso.join('|');
+    if (_combRotaCache[cacheKey]) {
+      polyline = _combRotaCache[cacheKey].polyline;
+    } else {
+      // Recalcular — ocorre quando ADM abre o mapa (sem polyline em memória)
+      container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:13px;flex-direction:column;gap:8px">
+        <div style="font-size:24px">🗺️</div>Calculando traçado da rota...
+      </div>`;
+      try {
+        const osrm = await comb_fetchOSRM(rotaObj.percurso);
+        polyline = osrm.polyline;
+      } catch(e) {
+        console.error('[OSRM] Falha ao obter polyline para o mapa:', e);
+        // Fallback: usar coordenadas fixas (linha reta entre marcadores)
+        polyline = null;
+      }
+    }
+  }
+
+  // Destruir mapa anterior
+  if (_combMapInstance) { try { _combMapInstance.remove(); } catch(e){} _combMapInstance = null; }
+
+  await new Promise(r => setTimeout(r, 60));
   container.innerHTML = '';
 
   const map = L.map(container, { zoomControl: true });
   _combMapInstance = map;
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap contributors',
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     maxZoom: 18
   }).addTo(map);
 
-  // Desenhar polyline
-  L.polyline(coords, { color: '#6c6cff', weight: 3, opacity: 0.85 }).addTo(map);
+  // Coordenadas dos marcadores (fixas — para fitBounds e fallback)
+  const coordsMarcadores = rotaObj.percurso.map(c => COORDS_CIDADES[c]).filter(Boolean);
+
+  // Desenhar traçado: polyline OSRM se disponível, linha reta como fallback
+  if (polyline && polyline.length >= 2) {
+    L.polyline(polyline, { color: '#6c6cff', weight: 4, opacity: 0.9 }).addTo(map);
+  } else {
+    // Fallback visual com aviso
+    L.polyline(coordsMarcadores, { color: '#6c6cff', weight: 3, opacity: 0.6, dashArray: '8,6' }).addTo(map);
+    L.control.scale().addTo(map);
+    const avisoDiv = L.DomUtil.create('div');
+    avisoDiv.innerHTML = `<div style="background:rgba(245,158,11,.9);color:#fff;font-size:11px;padding:4px 8px;border-radius:6px">Traçado aproximado (serviço de rota indisponível)</div>`;
+    const aviso = L.control({ position: 'bottomleft' });
+    aviso.onAdd = () => avisoDiv;
+    aviso.addTo(map);
+  }
 
   // Marcadores numerados
   rotaObj.percurso.forEach((cidade, idx) => {
     const coord = COORDS_CIDADES[cidade];
     if (!coord) return;
     const isOrigem  = idx === 0;
-    const isRetorno = idx === rotaObj.percurso.length - 1 && cidade === rotaObj.percurso[0];
-    const cor = isOrigem ? '#22c55e' : isRetorno ? '#22c55e' : '#6c6cff';
+    const isUltimo  = idx === rotaObj.percurso.length - 1;
+    const isRetorno = isUltimo && cidade === rotaObj.percurso[0];
+    const cor   = (isOrigem || isRetorno) ? '#22c55e' : '#6c6cff';
     const label = isOrigem ? 'O' : isRetorno ? '↩' : String(idx);
     const icon = L.divIcon({
       className: '',
-      html: `<div style="background:${cor};color:#fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.3)">${label}</div>`,
-      iconSize: [24, 24],
-      iconAnchor: [12, 12]
+      html: `<div style="background:${cor};color:#fff;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.35)">${label}</div>`,
+      iconSize: [26, 26], iconAnchor: [13, 13]
     });
     L.marker(coord, { icon }).addTo(map).bindPopup(`<strong>${cidade}</strong>`);
   });
 
-  // Ajustar zoom para enquadrar todos os pontos
-  map.fitBounds(L.latLngBounds(coords), { padding: [24, 24] });
+  if (coordsMarcadores.length >= 2) {
+    map.fitBounds(L.latLngBounds(coordsMarcadores), { padding: [28, 28] });
+  }
   map.invalidateSize();
 }
 
