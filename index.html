@@ -1632,6 +1632,53 @@ const PosCanalLabels = {
   </div>
 </div>
 
+<!-- MODAL: CORRIGIR PONTO (ADM) -->
+<div class="modal-overlay" id="modal-corrigir-ponto">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header">
+      <div class="modal-title">✏️ Corrigir Batida</div>
+      <button class="close-btn" onclick="closeModal('modal-corrigir-ponto')">✕</button>
+    </div>
+    <div id="corrigir-ponto-info" style="font-size:13px;color:var(--text2);margin-bottom:14px;padding:10px;background:var(--surface2);border-radius:8px;line-height:1.7"></div>
+    <div class="form-group">
+      <label class="form-label">Horário Original</label>
+      <input class="form-input" id="cp-horario-original" type="time" disabled style="opacity:.6;cursor:not-allowed">
+      <div style="font-size:11px;color:var(--text3);margin-top:3px">Mantido para auditoria — não editável</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Horário Corrigido</label>
+      <input class="form-input" id="cp-horario-corrigido" type="time">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Motivo da Correção <span style="color:var(--red)">*</span></label>
+      <textarea class="form-textarea" id="cp-motivo" rows="3" placeholder="Ex: Colaborador esqueceu de bater na saída. Confirmado pelo supervisor local."></textarea>
+    </div>
+    <input type="hidden" id="cp-ponto-id">
+    <input type="hidden" id="cp-tipo-batida">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-corrigir-ponto')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="salvarCorrecaoPonto()">✏️ Salvar Correção</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: DESATIVAR USUÁRIO -->
+<div class="modal-overlay" id="modal-desativar-user">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header">
+      <div class="modal-title" id="desativar-user-titulo">Desativar Colaborador</div>
+      <button class="close-btn" onclick="closeModal('modal-desativar-user')">✕</button>
+    </div>
+    <div id="desativar-user-info" style="font-size:13px;color:var(--text2);margin-bottom:16px;padding:12px;background:var(--surface2);border-radius:8px;line-height:1.7"></div>
+    <input type="hidden" id="desativar-user-id">
+    <input type="hidden" id="desativar-user-acao">
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-desativar-user')">Cancelar</button>
+      <button class="btn btn-danger" style="flex:1" id="desativar-user-btn-confirmar" onclick="confirmarDesativarUser()">Desativar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: PROPOR DEMANDA (colaborador/supervisor) -->
 <div class="modal-overlay" id="modal-propor-demanda">
   <div class="modal">
@@ -3272,6 +3319,12 @@ async function doLogin() {
     const snap = await db.collection('users').where('email','==',email).where('password','==',pass).get();
     if (!snap.empty) {
       currentUser = { id: snap.docs[0].id, ...snap.docs[0].data() };
+      if (currentUser.ativo === false) {
+        document.getElementById('login-error').textContent = 'Conta desativada. Entre em contato com o administrador.';
+        document.getElementById('login-error').style.display = 'block';
+        currentUser = null;
+        return;
+      }
       if (currentUser.mustChangePassword) { showPage('change-password'); return; }
       startApp(); return;
     }
@@ -3526,29 +3579,52 @@ function openCreateCollab() {
   document.getElementById('nc-horario-inicio').value = '08:00';
   document.getElementById('nc-horario-fim').value = '17:00';
   document.getElementById('nc-user-id').value = '';
+  document.getElementById('modal-collab').querySelector('.modal-title').textContent = 'Novo Colaborador';
+  document.getElementById('modal-collab').classList.add('open');
+}
+
+function openEditCollab(userId) {
+  const c = allUsers.find(u => u.id === userId);
+  if (!c) return;
+  document.getElementById('nc-name').value = c.name || '';
+  document.getElementById('nc-email').value = c.email || '';
+  document.getElementById('nc-pass').value = '';
+  document.getElementById('nc-role').value = c.cargo || '';
+  document.getElementById('nc-horario-inicio').value = c.horarioInicio || '08:00';
+  document.getElementById('nc-horario-fim').value = c.horarioFim || '17:00';
+  document.getElementById('nc-user-id').value = userId;
+  document.getElementById('modal-collab').querySelector('.modal-title').textContent = 'Editar Colaborador';
   document.getElementById('modal-collab').classList.add('open');
 }
 
 async function saveCollab() {
+  const userId = document.getElementById('nc-user-id').value;
   const name = document.getElementById('nc-name').value.trim();
   const email = document.getElementById('nc-email').value.trim();
   const pass = document.getElementById('nc-pass').value;
   const cargo = document.getElementById('nc-role').value.trim();
   const horarioInicio = document.getElementById('nc-horario-inicio').value;
   const horarioFim = document.getElementById('nc-horario-fim').value;
-  if (!name || !email || !pass) { toast('Preencha todos os campos', 'err'); return; }
-  if (allUsers.find(u => u.email === email)) { toast('E-mail já cadastrado', 'err'); return; }
+  if (!name || !email) { toast('Preencha nome e e-mail', 'err'); return; }
   try {
-    const ref = db.collection('users').doc();
-    await ref.set({ 
-      id: ref.id, name, email, password: pass, role: 'collaborator', cargo, 
-      horarioInicio: horarioInicio || '08:00', 
-      horarioFim: horarioFim || '17:00',
-      emCurso: false,
-      createdAt: new Date().toISOString() 
-    });
-    closeModal('modal-collab');
-    toast('Colaborador cadastrado!', 'ok');
+    if (userId) {
+      const dados = { name, email, cargo, horarioInicio: horarioInicio||'08:00', horarioFim: horarioFim||'17:00' };
+      if (pass) dados.password = pass;
+      await db.collection('users').doc(userId).update(dados);
+      closeModal('modal-collab');
+      toast('Colaborador atualizado!', 'ok');
+    } else {
+      if (!pass) { toast('Defina uma senha para o novo colaborador', 'err'); return; }
+      if (allUsers.find(u => u.email === email)) { toast('E-mail já cadastrado', 'err'); return; }
+      const ref = db.collection('users').doc();
+      await ref.set({
+        id: ref.id, name, email, password: pass, role: 'collaborator', cargo,
+        horarioInicio: horarioInicio||'08:00', horarioFim: horarioFim||'17:00',
+        emCurso: false, ativo: true, createdAt: new Date().toISOString()
+      });
+      closeModal('modal-collab');
+      toast('Colaborador cadastrado!', 'ok');
+    }
   } catch(e) { toast('Erro ao salvar', 'err'); }
 }
 
@@ -3633,12 +3709,35 @@ async function deleteTask(taskId) {
   } catch(e) { toast('Erro ao excluir', 'err'); }
 }
 
-async function deleteCollab(userId) {
-  if (!confirm('Excluir este colaborador?')) return;
+function abrirDesativarUser(userId, acao) {
+  const c = allUsers.find(u => u.id === userId);
+  if (!c) return;
+  const desativando = acao === 'desativar';
+  document.getElementById('desativar-user-id').value = userId;
+  document.getElementById('desativar-user-acao').value = acao;
+  document.getElementById('desativar-user-titulo').textContent = desativando ? '🚫 Desativar Colaborador' : '✅ Reativar Colaborador';
+  document.getElementById('desativar-user-info').innerHTML = desativando
+    ? `Desativar <strong>${c.name}</strong>?<br><br>O colaborador <strong>não poderá mais fazer login</strong>, mas todo o histórico de pontos, tarefas e registros será mantido. É possível reativar a qualquer momento.`
+    : `Reativar <strong>${c.name}</strong>?<br><br>O colaborador voltará a ter acesso ao sistema normalmente.`;
+  const btn = document.getElementById('desativar-user-btn-confirmar');
+  btn.textContent = desativando ? '🚫 Desativar' : '✅ Reativar';
+  btn.className = `btn ${desativando ? 'btn-danger' : 'btn-success'}`;
+  document.getElementById('modal-desativar-user').classList.add('open');
+}
+
+async function confirmarDesativarUser() {
+  const userId = document.getElementById('desativar-user-id').value;
+  const acao = document.getElementById('desativar-user-acao').value;
   try {
-    await db.collection('users').doc(userId).delete();
-    toast('Colaborador removido', 'ok');
-  } catch(e) { toast('Erro ao excluir', 'err'); }
+    await db.collection('users').doc(userId).update({ ativo: acao === 'reativar' });
+    closeModal('modal-desativar-user');
+    toast(acao === 'reativar' ? 'Colaborador reativado!' : 'Colaborador desativado.', 'ok');
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+}
+
+async function deleteCollab(userId) {
+  // Substituído por desativação — preserva todo o histórico
+  abrirDesativarUser(userId, 'desativar');
 }
 
 // ══════════════════════════════════════
@@ -3850,9 +3949,11 @@ async function renderColPonto() {
     return;
   }
 
-  // Verifica autorização: primeiro no doc do usuário (persiste mesmo após limpeza de cache),
-  // depois na coleção devices (fallback para usuários ainda não migrados)
-  let autorizado = currentUser.deviceAuthorized === true;
+  // Verifica autorização: checa se o deviceAuthorized está ativo E se o deviceId atual
+  // é o mesmo que foi autorizado. Isso impede que um colaborador acesse de outra máquina
+  // apenas por ter sido autorizado anteriormente em outro dispositivo.
+  let autorizado = currentUser.deviceAuthorized === true
+                && currentUser.authorizedDeviceId === did;
   if (!autorizado) {
     const devSnap = await db.collection('devices').doc(did).get();
     if (!devSnap.exists) {
@@ -4355,7 +4456,6 @@ async function renderAdmPonto() {
   // Tabela do dia
   const rows = collabs.map(c => {
     const reg = todayPontos.find(p => p.userId === c.id);
-    // Verificar atestado ativo hoje
     const atestadoHoje = allAtestados.find(a => a.colaboradorId === c.id && a.dataInicio <= today && a.dataFim >= today);
     let statusHtml, avClass;
     if (atestadoHoje) {
@@ -4366,12 +4466,23 @@ async function renderAdmPonto() {
     else if (reg.saida) { statusHtml = `<span class="semaforo" style="background:rgba(108,108,255,0.12);color:var(--accent);border:1px solid rgba(108,108,255,0.25)"><span class="sem-dot" style="background:var(--accent)"></span>Encerrado</span>`; avClass = 'av-done'; }
     else if (reg.saida_almoco && !reg.retorno_almoco) { statusHtml = `<span class="semaforo sem-yellow"><span class="sem-dot"></span>Almoço</span>`; avClass = 'av-lunch'; }
     else { statusHtml = `<span class="semaforo sem-green"><span class="sem-dot"></span>No Posto</span>`; avClass = 'av-work'; }
+
+    // Gerar célula de batida com indicador de correção e botão
+    function celulaPonto(tipo, valor) {
+      if (atestadoHoje && tipo === 'entrada') return `<div class="ptt-mono">🏥</div>`;
+      const corrigido = reg?.correcoes?.[tipo];
+      const titulo = corrigido ? `title="✏️ Corrigido: ${fmtHHMM(corrigido.horarioOriginal)} → ${fmtHHMM(valor)}\nMotivo: ${corrigido.motivoCorrecao}\nPor: ${corrigido.corrigidoPor}"` : '';
+      const badge = corrigido ? `<span style="font-size:9px;color:var(--yellow);margin-left:3px">✏️</span>` : '';
+      const btnCorrigir = reg ? `<button onclick="abrirCorrecaoPonto('${reg.id}','${tipo}')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:10px;padding:0 2px;opacity:0" class="ptt-edit-btn" title="Corrigir batida">✏</button>` : '';
+      return `<div class="ptt-mono ${valor?'':'empty'}" ${titulo} style="position:relative" onmouseenter="this.querySelector('.ptt-edit-btn')&&(this.querySelector('.ptt-edit-btn').style.opacity='1')" onmouseleave="this.querySelector('.ptt-edit-btn')&&(this.querySelector('.ptt-edit-btn').style.opacity='0')">${valor?fmtHHMM(valor):'—'}${badge}${btnCorrigir}</div>`;
+    }
+
     return `<div class="ptt-row">
       <div class="ptt-name"><div class="ptt-av ${avClass}">${c.name[0]}</div><div><div style="font-size:13px;font-weight:600">${c.name}</div><div style="font-size:11px;color:var(--text3)">${c.cargo||''}</div></div></div>
-      <div class="ptt-mono ${reg?.entrada?'':'empty'}">${atestadoHoje ? '🏥' : reg?.entrada?fmtHHMM(reg.entrada):'—'}</div>
-      <div class="ptt-mono ${reg?.saida_almoco?'':'empty'}">${reg?.saida_almoco?fmtHHMM(reg.saida_almoco):'—'}</div>
-      <div class="ptt-mono ${reg?.retorno_almoco?'':'empty'}">${reg?.retorno_almoco?fmtHHMM(reg.retorno_almoco):'—'}</div>
-      <div class="ptt-mono ${reg?.saida?'':'empty'}">${reg?.saida?fmtHHMM(reg.saida):'—'}</div>
+      ${celulaPonto('entrada', reg?.entrada)}
+      ${celulaPonto('saida_almoco', reg?.saida_almoco)}
+      ${celulaPonto('retorno_almoco', reg?.retorno_almoco)}
+      ${celulaPonto('saida', reg?.saida)}
       <div>${statusHtml}</div>
     </div>`;
   }).join('');
@@ -4384,7 +4495,10 @@ async function autorizarDevice(did) {
   const devSnap = await db.collection('devices').doc(did).get();
   if (devSnap.exists) {
     const userId = devSnap.data().userId;
-    if (userId) await db.collection('users').doc(userId).update({ deviceAuthorized: true });
+    if (userId) await db.collection('users').doc(userId).update({
+      deviceAuthorized: true,
+      authorizedDeviceId: did   // registra qual dispositivo foi autorizado
+    });
   }
   toast('Dispositivo autorizado!', 'ok');
   renderAdmPonto();
@@ -4393,6 +4507,75 @@ async function negarDevice(did) {
   await db.collection('devices').doc(did).delete();
   toast('Dispositivo negado e removido', 'ok');
   renderAdmPonto();
+}
+
+// ── Correção de batida pelo ADM ──
+function abrirCorrecaoPonto(pontoId, tipo) {
+  const ponto = allPontos.find(p => p.id === pontoId);
+  if (!ponto) return;
+  const tipoLabels = {entrada:'Entrada',saida_almoco:'Saída p/ Almoço',retorno_almoco:'Retorno do Almoço',saida:'Saída'};
+  const user = allUsers.find(u => u.id === ponto.userId);
+  const valorAtual = ponto[tipo];
+  if (!valorAtual) { toast('Não há batida registrada neste campo.', 'err'); return; }
+
+  document.getElementById('cp-ponto-id').value = pontoId;
+  document.getElementById('cp-tipo-batida').value = tipo;
+  document.getElementById('cp-motivo').value = '';
+
+  // Horário original: se já foi corrigido antes, mostrar o original histórico
+  const correcaoAnterior = ponto.correcoes?.[tipo];
+  const horarioOriginal = correcaoAnterior ? correcaoAnterior.horarioOriginal : valorAtual;
+  const horaStr = fmtHHMM(horarioOriginal);
+  document.getElementById('cp-horario-original').value = horaStr;
+  document.getElementById('cp-horario-corrigido').value = fmtHHMM(valorAtual);
+
+  document.getElementById('corrigir-ponto-info').innerHTML =
+    `<strong>${user?.name || 'Colaborador'}</strong><br>
+     Data: ${ponto.data?.split('-').reverse().join('/')}<br>
+     Batida: <strong>${tipoLabels[tipo]}</strong><br>
+     ${correcaoAnterior ? `<span style="color:var(--yellow);font-size:11px">⚠️ Esta batida já foi corrigida anteriormente.</span>` : ''}`;
+
+  document.getElementById('modal-corrigir-ponto').classList.add('open');
+}
+
+async function salvarCorrecaoPonto() {
+  const pontoId = document.getElementById('cp-ponto-id').value;
+  const tipo = document.getElementById('cp-tipo-batida').value;
+  const horarioCorrigido = document.getElementById('cp-horario-corrigido').value;
+  const motivo = document.getElementById('cp-motivo').value.trim();
+  const horarioOriginalStr = document.getElementById('cp-horario-original').value;
+
+  if (!horarioCorrigido) { toast('Informe o horário corrigido.', 'err'); return; }
+  if (!motivo) { toast('O motivo da correção é obrigatório.', 'err'); return; }
+
+  const ponto = allPontos.find(p => p.id === pontoId);
+  if (!ponto) { toast('Registro não encontrado.', 'err'); return; }
+
+  // Converter HH:MM para ISO usando a data do ponto
+  const [h, m] = horarioCorrigido.split(':').map(Number);
+  const novaData = new Date(`${ponto.data}T${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`);
+  const novoISO = novaData.toISOString();
+
+  // Horário original: preservar o original de sempre (não sobrescrever com correção anterior)
+  const horarioOriginalISO = ponto.correcoes?.[tipo]?.horarioOriginal || ponto[tipo];
+
+  const correcao = {
+    horarioOriginal: horarioOriginalISO,
+    horarioCorrigido: novoISO,
+    motivoCorrecao: motivo,
+    corrigidoPor: currentUser.name,
+    corrigidoEm: new Date().toISOString()
+  };
+
+  try {
+    await db.collection('pontos').doc(pontoId).update({
+      [tipo]: novoISO,
+      [`correcoes.${tipo}`]: correcao,
+      updatedAt: new Date().toISOString()
+    });
+    closeModal('modal-corrigir-ponto');
+    toast('Batida corrigida com sucesso!', 'ok');
+  } catch(e) { toast('Erro ao salvar correção: ' + e.message, 'err'); }
 }
 
 function exportarPontoExcel() {
@@ -7848,10 +8031,29 @@ function renderTeam() {
   const mainEl = document.getElementById('adm-team-cards');
   const tbodyEl = document.getElementById('team-tbody');
   if (!mainEl) return;
-  const collabs = allUsers.filter(u=>u.role!=='admin');
-  if (!collabs.length) { mainEl.innerHTML=`<div class="empty"><div class="icon">👥</div><p>Nenhum colaborador cadastrado.</p><p style="font-size:13px;color:var(--text3);margin-top:8px">Clique em <strong>+ Novo Colaborador</strong> para adicionar membros à equipe.<br>Eles aparecerão aqui após o cadastro no Firebase.</p></div>`; if(tbodyEl)tbodyEl.innerHTML=''; return; }
 
-  mainEl.innerHTML = collabs.map(c => {
+  // Filtro ativo/inativo — ler seleção atual ou padrão 'ativos'
+  const filtroAtual = mainEl.getAttribute('data-filtro') || 'ativos';
+  const todosCollabs = allUsers.filter(u => u.role !== 'admin');
+  const collabs = filtroAtual === 'inativos'
+    ? todosCollabs.filter(u => u.ativo === false)
+    : todosCollabs.filter(u => u.ativo !== false); // undefined ou true = ativo
+  const qtdInativos = todosCollabs.filter(u => u.ativo === false).length;
+
+  // Barra de filtro
+  const filtroHtml = `<div style="display:flex;gap:8px;margin-bottom:16px;align-items:center">
+    <button class="btn btn-sm ${filtroAtual==='ativos'?'btn-primary':'btn-secondary'}" onclick="renderTeamComFiltro('ativos')">Ativos (${todosCollabs.filter(u=>u.ativo!==false).length})</button>
+    <button class="btn btn-sm ${filtroAtual==='inativos'?'btn-primary':'btn-secondary'}" onclick="renderTeamComFiltro('inativos')">Inativos (${qtdInativos})</button>
+  </div>`;
+
+  if (!collabs.length) {
+    mainEl.innerHTML = filtroHtml + `<div class="empty"><div class="icon">👥</div><p>${filtroAtual==='inativos'?'Nenhum colaborador inativo.':'Nenhum colaborador cadastrado.'}</p></div>`;
+    if (tbodyEl) tbodyEl.innerHTML = '';
+    return;
+  }
+
+  mainEl.innerHTML = filtroHtml + collabs.map(c => {
+    const isInativo = c.ativo === false;
     const ct = allTasks.filter(t=>t.assignedTo===c.id);
     const active = ct.filter(t=>t.status!=='concluida').length;
     const done = ct.filter(t=>t.status==='concluida').length;
@@ -7884,18 +8086,22 @@ function renderTeam() {
       </div>`;
     }).join('') : `<div style="font-size:13px;color:var(--text3);padding:10px 0">Nenhuma demanda atribuída.</div>`;
 
-    return `<div class="team-card">
+    return `<div class="team-card" style="${isInativo?'opacity:.6;':''}">
       <div class="team-card-header" onclick="toggleTeamCard('${c.id}')">
-        <div class="avatar avatar-collab" style="font-size:13px;width:38px;height:38px">${c.name[0]}</div>
+        <div class="avatar avatar-collab" style="font-size:13px;width:38px;height:38px;${isInativo?'background:var(--text3)':''}">${c.name[0]}</div>
         <div style="flex:1">
-          <div style="font-size:14px;font-weight:700">${c.name}</div>
+          <div style="font-size:14px;font-weight:700">${c.name} ${isInativo?'<span style="font-size:11px;color:var(--red);font-weight:400;background:var(--red-bg);padding:2px 8px;border-radius:10px;margin-left:4px">Inativo</span>':''}</div>
           <div style="font-size:12px;color:var(--text3)">${c.cargo||'—'} · ${active} ativas · ${done} concluídas · progresso médio: ${avg}%</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
-          <span class="score-badge ${sc.cls}">${sc.label} ${sc.score}</span>
-          <span class="risk-badge ${riskCls}">${riskLbl}</span>
+          ${!isInativo?`<span class="score-badge ${sc.cls}">${sc.label} ${sc.score}</span><span class="risk-badge ${riskCls}">${riskLbl}</span>`:''}
           ${prazosFurados>0?`<span style="font-size:11px;color:var(--red);font-weight:700;background:var(--red-bg);padding:3px 8px;border-radius:12px">⚠ ${prazosFurados} prazo(s) furado(s)</span>`:''}
           ${prazoPend>0?`<span style="font-size:11px;color:var(--yellow);font-weight:700;background:var(--yellow-bg);padding:3px 8px;border-radius:12px">📅 ${prazoPend} pedido(s)</span>`:''}
+          <button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="event.stopPropagation();openEditCollab('${c.id}')">✏️ Editar</button>
+          ${isInativo
+            ? `<button class="btn btn-sm btn-success" style="font-size:11px" onclick="event.stopPropagation();abrirDesativarUser('${c.id}','reativar')">✅ Reativar</button>`
+            : `<button class="btn btn-sm btn-danger" style="font-size:11px" onclick="event.stopPropagation();abrirDesativarUser('${c.id}','desativar')">🚫 Desativar</button>`
+          }
           <span style="font-size:16px;color:var(--text3)">▾</span>
         </div>
       </div>
@@ -7903,6 +8109,12 @@ function renderTeam() {
     </div>`;
   }).join('');
   if (tbodyEl) tbodyEl.innerHTML = '';
+}
+
+function renderTeamComFiltro(filtro) {
+  const mainEl = document.getElementById('adm-team-cards');
+  if (mainEl) mainEl.setAttribute('data-filtro', filtro);
+  renderTeam();
 }
 
 function toggleTeamCard(id) {
