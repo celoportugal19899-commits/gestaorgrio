@@ -112,6 +112,30 @@ const PosCanalLabels = {
   .acc-body.acc-closed{display:none;}
 
   /* ── RH MODULE ── */
+  /* ── MEDIDAS DISCIPLINARES ── */
+  .md-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px;}
+  .md-badge{display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;white-space:nowrap;}
+  .md-badge-fb{background:rgba(79,120,255,.12);color:var(--accent);}
+  .md-badge-av{background:rgba(245,158,11,.12);color:var(--yellow);}
+  .md-badge-ae{background:rgba(239,68,68,.12);color:var(--red);}
+  .md-badge-sus{background:rgba(168,85,247,.12);color:#a855f7;}
+  .md-badge-arq{background:var(--surface3);color:var(--text3);}
+  .md-row{display:grid;grid-template-columns:90px 1fr 130px 1fr 130px 80px auto;align-items:center;gap:12px;padding:11px 14px;border-bottom:1px solid var(--border);font-size:13px;}
+  .md-row:last-child{border-bottom:none;}
+  .md-row:hover{background:var(--surface2);}
+  .md-thead{background:var(--surface3);border-radius:10px 10px 0 0;}
+  .md-thead .md-row{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-weight:700;padding:9px 14px;}
+  .md-table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+  .md-filtros{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center;}
+  .md-filtro-btn{background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text2);font-size:12px;padding:5px 12px;cursor:pointer;transition:all .15s;}
+  .md-filtro-btn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .md-alerta-reinc{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--yellow);margin-top:6px;}
+  .md-timeline{margin-top:16px;}
+  .md-tl-ano{font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin:10px 0 6px;}
+  .md-tl-item{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);}
+  .md-tl-item:last-child{border-bottom:none;}
+  .md-tl-dot{width:8px;height:8px;border-radius:50%;margin-top:4px;flex-shrink:0;}
+  @media(max-width:900px){.md-stats{grid-template-columns:repeat(3,1fr);}.md-row{grid-template-columns:1fr 1fr auto;}.md-row > :nth-child(3),.md-row > :nth-child(5){display:none;}}
   .rh-drop-zone{border:2px dashed var(--border2);border-radius:12px;padding:40px 24px;text-align:center;cursor:pointer;transition:.2s;background:var(--surface2);}
   .rh-drop-zone:hover,.rh-drop-zone.drag-over{border-color:var(--accent);background:rgba(108,108,255,.08);}
   .rh-drop-zone .dz-ico{font-size:36px;margin-bottom:10px;}
@@ -767,6 +791,7 @@ const PosCanalLabels = {
         <div class="sidebar-item" id="nav-rh-holerite-adm" onclick="showView('adm-rh-holerite',this)"><span class="icon">💼</span> Holerite <span id="holerite-badge-adm" style="display:none;background:var(--yellow);color:#000;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
         <div class="sidebar-item" id="nav-rh-atestado-adm" onclick="showView('adm-rh-atestado',this)"><span class="icon">🏥</span> Atestados <span id="atestado-badge-adm" style="display:none;background:var(--accent);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
         <div class="sidebar-item" id="nav-rh-folha-adm" onclick="showView('adm-rh-folha',this)"><span class="icon">📋</span> Folha de Ponto <span id="folha-badge-adm" style="display:none;background:var(--yellow);color:#000;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
+        <div class="sidebar-item" id="nav-rh-medidas-adm" onclick="showView('adm-medidas-disciplinares',this)"><span class="icon">⚖️</span> Medidas Disciplinares</div>
       </div>
     </div>
     <div id="nav-collab" style="display:none">
@@ -805,6 +830,7 @@ const PosCanalLabels = {
         <div class="sidebar-item" onclick="showView('col-rh-holerite',this)"><span class="icon">💼</span> Meu Holerite</div>
         <div class="sidebar-item" onclick="showView('col-rh-atestado',this)"><span class="icon">🏥</span> Atestado</div>
         <div class="sidebar-item" onclick="showView(isRHManager()?'adm-rh-folha':'col-rh-folha',this)"><span class="icon">📋</span> Folha de Ponto</div>
+        <div class="sidebar-item" onclick="showView('sup-medidas-disciplinares',this)"><span class="icon">⚖️</span> Medidas Disciplinares</div>
       </div>
       <div class="sidebar-section">
         <div class="sidebar-section-label">Postos de Atendimento</div>
@@ -1611,8 +1637,116 @@ const PosCanalLabels = {
       <div id="col-folha-wrap"></div>
     </div>
 
+    <!-- VIEW: MEDIDAS DISCIPLINARES (ADM) -->
+    <div id="view-adm-medidas-disciplinares" class="view">
+      <div class="topbar" style="display:flex;justify-content:space-between;align-items:center">
+        <div class="page-header" style="margin:0"><h1>Medidas Disciplinares</h1><p>Histórico e controle de medidas aplicadas à equipe</p></div>
+        <button class="btn btn-primary" onclick="md_abrirNovaMedida()">+ Nova Medida</button>
+      </div>
+      <div id="md-adm-stats" class="md-stats"></div>
+      <div class="md-filtros" id="md-adm-filtros"></div>
+      <div style="margin-bottom:14px"><input class="form-input" id="md-adm-busca" placeholder="Buscar colaborador..." oninput="md_renderTabela()" style="max-width:300px"></div>
+      <div id="md-adm-tabela"></div>
+    </div>
+
+    <!-- VIEW: MEDIDAS DISCIPLINARES (SUP/PLICILA) -->
+    <div id="view-sup-medidas-disciplinares" class="view">
+      <div class="topbar" style="display:flex;justify-content:space-between;align-items:center">
+        <div class="page-header" style="margin:0"><h1>Medidas Disciplinares</h1><p>Registro e consulta de medidas aplicadas</p></div>
+        <button class="btn btn-primary" onclick="md_abrirNovaMedida()">+ Nova Medida</button>
+      </div>
+      <div id="md-sup-stats" class="md-stats"></div>
+      <div class="md-filtros" id="md-sup-filtros"></div>
+      <div style="margin-bottom:14px"><input class="form-input" id="md-sup-busca" placeholder="Buscar colaborador..." oninput="md_renderTabela()" style="max-width:300px"></div>
+      <div id="md-sup-tabela"></div>
+    </div>
+
   </div>
 </div>
+<!-- MODAL: NOVA / EDITAR MEDIDA DISCIPLINAR -->
+<div class="modal-overlay" id="modal-nova-medida">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header">
+      <div class="modal-title" id="md-modal-titulo">Nova Medida Disciplinar</div>
+      <button class="close-btn" onclick="closeModal('modal-nova-medida')">✕</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Colaborador <span style="color:var(--red)">*</span></label>
+      <select class="form-select" id="md-colab-sel" onchange="md_onColabSelect()">
+        <option value="">Selecione...</option>
+      </select>
+      <div id="md-alerta-reinc" class="md-alerta-reinc" style="display:none"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Tipo da Medida <span style="color:var(--red)">*</span></label>
+      <select class="form-select" id="md-tipo-sel">
+        <option value="">Selecione...</option>
+        <option value="Feedback Formal">Feedback Formal</option>
+        <option value="Advertência Verbal">Advertência Verbal</option>
+        <option value="Advertência Escrita">Advertência Escrita</option>
+        <option value="Suspensão">Suspensão</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Data da Ocorrência <span style="color:var(--red)">*</span></label>
+      <input class="form-input" id="md-data" type="date">
+      <div style="font-size:11px;color:var(--text3);margin-top:3px">Data em que o fato ocorreu. A data de lançamento é registrada automaticamente.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Motivo <span style="color:var(--red)">*</span></label>
+      <input class="form-input" id="md-motivo" placeholder="Ex: Atrasos recorrentes, conduta inadequada...">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Descrição Detalhada</label>
+      <textarea class="form-textarea" id="md-descricao" rows="3" placeholder="Descreva os fatos com detalhes..."></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Documento Assinado (PDF / JPG / PNG — máx. 5MB)</label>
+      <div id="md-upload-area" style="border:1.5px dashed var(--border2);border-radius:8px;padding:14px;text-align:center;cursor:pointer;position:relative;overflow:hidden">
+        <input type="file" id="md-file-input" accept=".pdf,.jpg,.jpeg,.png" style="position:absolute;inset:0;opacity:0;cursor:pointer" onchange="md_handleAnexo(this)">
+        <div style="font-size:13px;color:var(--text3)">📎 Clique ou arraste o arquivo</div>
+        <div id="md-file-nome" style="font-size:12px;color:var(--green);margin-top:4px;display:none"></div>
+      </div>
+    </div>
+    <input type="hidden" id="md-edit-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-nova-medida')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="md_salvar()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: DETALHE MEDIDA DISCIPLINAR -->
+<div class="modal-overlay" id="modal-detalhe-medida">
+  <div class="modal" style="max-width:600px;max-height:90vh;overflow-y:auto">
+    <div class="modal-header">
+      <div class="modal-title" id="md-det-titulo">Detalhes da Medida</div>
+      <button class="close-btn" onclick="closeModal('modal-detalhe-medida')">✕</button>
+    </div>
+    <div id="md-det-corpo"></div>
+  </div>
+</div>
+
+<!-- MODAL: ARQUIVAR MEDIDA DISCIPLINAR -->
+<div class="modal-overlay" id="modal-arquivar-medida">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header">
+      <div class="modal-title">📁 Arquivar Medida</div>
+      <button class="close-btn" onclick="closeModal('modal-arquivar-medida')">✕</button>
+    </div>
+    <div id="md-arq-info" style="font-size:13px;color:var(--text2);margin-bottom:14px;padding:10px;background:var(--surface2);border-radius:8px;line-height:1.6"></div>
+    <div class="form-group">
+      <label class="form-label">Motivo do Arquivamento <span style="color:var(--red)">*</span></label>
+      <textarea class="form-textarea" id="md-arq-motivo" rows="3" placeholder="Ex: Situação resolvida, colaborador desligado..."></textarea>
+    </div>
+    <input type="hidden" id="md-arq-id">
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-arquivar-medida')">Cancelar</button>
+      <button class="btn btn-danger" style="flex:1" onclick="md_confirmarArquivar()">📁 Arquivar</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-collab">
   <div class="modal" style="max-width:520px">
     <div class="modal-header"><div class="modal-title">Novo Colaborador</div><button class="close-btn" onclick="closeModal('modal-collab')">✕</button></div>
@@ -2345,6 +2479,8 @@ const db = firebase.firestore();
 let currentUser = null;
 let editingTaskId = null;
 let allUsers = [];
+let allMedidas = [];    // medidas_disciplinares
+let unsubMedidas;
 let allTasks = [];
 let allPostos = [];
 let allRegistros = [];
@@ -3505,6 +3641,8 @@ function _doRefreshCurrentView() {
   if (id === 'col-rh-atestado') renderColRhAtestado();
   if (id === 'adm-rh-folha') renderHistoricoFolhas();
   if (id === 'col-rh-folha') renderColRhFolha();
+  if (id === 'adm-medidas-disciplinares') md_renderTudo();
+  if (id === 'sup-medidas-disciplinares') md_renderTudo();
 }
 
 function showView(name, el) {
@@ -3538,6 +3676,8 @@ function showView(name, el) {
   if (name === 'col-rh-atestado') renderColRhAtestado();
   if (name === 'adm-rh-folha') renderHistoricoFolhas();
   if (name === 'col-rh-folha') renderColRhFolha();
+  if (name === 'adm-medidas-disciplinares') md_renderTudo();
+  if (name === 'sup-medidas-disciplinares') md_renderTudo();
   // Render imediato ao navegar (cancela debounce pendente e renderiza já)
   clearTimeout(_refreshTimer);
   _refreshTimer = null;
@@ -8504,6 +8644,7 @@ let assinadoFileBase64 = null;
 async function initRH() {
   if (unsubHolerites) unsubHolerites();
   if (unsubAtestados) unsubAtestados();
+  if (unsubMedidas)   unsubMedidas();
   unsubHolerites = db.collection('holerites').orderBy('enviadoEm','desc').onSnapshot(snap => {
     allHolerites = snap.docs.map(d => ({id: d.id, ...d.data()}));
     updateHoleriteBadges();
@@ -8518,7 +8659,735 @@ async function initRH() {
     if (active && active.id === 'view-adm-rh-atestado') renderAdmRhAtestado();
     if (active && active.id === 'view-col-rh-atestado') renderColRhAtestado();
   });
+  unsubMedidas = db.collection('medidas_disciplinares').orderBy('createdAt','desc').onSnapshot(snap => {
+    allMedidas = snap.docs.map(d => ({id: d.id, ...d.data()}));
+    const active = document.querySelector('.view.active');
+    if (active && (active.id === 'view-adm-medidas-disciplinares' || active.id === 'view-sup-medidas-disciplinares')) md_renderTudo();
+  });
 }
+
+// ══════════════════════════════════════════════════════
+// MÓDULO: MEDIDAS DISCIPLINARES (md_*)
+// ══════════════════════════════════════════════════════
+
+// ── Tipos e helpers visuais ──
+const MD_TIPOS = ['Feedback Formal','Advertência Verbal','Advertência Escrita','Suspensão'];
+const MD_BADGE = {
+  'Feedback Formal':     'md-badge-fb',
+  'Advertência Verbal':  'md-badge-av',
+  'Advertência Escrita': 'md-badge-ae',
+  'Suspensão':           'md-badge-sus',
+};
+const MD_DOT = {
+  'Feedback Formal':'var(--accent)',
+  'Advertência Verbal':'var(--yellow)',
+  'Advertência Escrita':'var(--red)',
+  'Suspensão':'#a855f7',
+};
+
+// Helper centralizado para obter data de ocorrência de uma medida
+// Retrocompatível: usa dataOcorrencia se disponível, senão createdAt
+function md_getDataOcorrencia(m) {
+  return m.dataOcorrencia || (m.createdAt||'').substr(0,10) || '';
+}
+
+// Helper para badge visual de status
+function md_statusBadge(status) {
+  if (status === 'ativa')     return `<span class="md-badge" style="background:rgba(34,197,94,.12);color:var(--green)">● Ativa</span>`;
+  if (status === 'resolvida') return `<span class="md-badge" style="background:rgba(79,120,255,.12);color:var(--accent)">✓ Resolvida</span>`;
+  if (status === 'arquivada') return `<span class="md-badge md-badge-arq">📁 Arquivada</span>`;
+  return `<span class="md-badge md-badge-arq">${status||'—'}</span>`;
+}
+
+// Estado de filtro atual — combinável
+let _mdFiltroTipo    = 'Todos';   // tipo de medida ou 'Todos'/'Arquivadas'/'Resolvidas'
+let _mdFiltroPeriodo = 'todos';   // 'todos'|'30d'|'90d'|'ano'|'custom'
+let _mdPeriodoIni    = '';
+let _mdPeriodoFim    = '';
+let _mdAnexoLocal = null; // { nome, base64, tamanho }
+
+// ── Helpers de permissão — baseados em role/cargo, sem hardcode de email ──
+
+// Supervisor operacional: cargo contém "Supervisor" e não é admin nem Plicila (Assistente Treinamento)
+function md_isSupervisorOp(u) {
+  if (!u) return false;
+  return u.role !== 'admin'
+      && !(u.cargo||'').toLowerCase().includes('assistente treinamento')
+      && (u.cargo||'').toLowerCase().includes('supervisor');
+}
+
+// Plicila / Assistente de Treinamento
+function md_isAssistenteTreinamento(u) {
+  if (!u) return false;
+  return (u.cargo||'').toLowerCase().includes('assistente treinamento');
+}
+
+// Cargos que Plicila gerencia (Jovem Aprendiz e Backoffice)
+function md_cargoPlicila(cargo) {
+  const c = (cargo||'').toLowerCase();
+  return c.includes('jovem aprendiz') || c.includes('backoffice');
+}
+
+// Pode criar medidas?
+function md_podeCriar() {
+  if (!currentUser) return false;
+  return currentUser.role === 'admin'
+      || md_isSupervisorOp(currentUser)
+      || md_isAssistenteTreinamento(currentUser);
+}
+
+// Filtro de visibilidade de medidas para o perfil atual
+function md_medidasVisiveis(medidas) {
+  if (!currentUser) return [];
+  if (currentUser.role === 'admin') return medidas;
+
+  if (md_isSupervisorOp(currentUser)) {
+    // Supervisores: veem todos colaboradores operacionais
+    // Não veem medidas da Plicila / Assistente Treinamento
+    return medidas.filter(m => {
+      const colab = allUsers.find(u => u.id === m.colaboradorId);
+      return colab ? !md_isAssistenteTreinamento(colab) : true;
+    });
+  }
+
+  if (md_isAssistenteTreinamento(currentUser)) {
+    // Plicila: vê apenas Jovem Aprendiz e Backoffice
+    // Não vê supervisores operacionais
+    return medidas.filter(m => {
+      const colab = allUsers.find(u => u.id === m.colaboradorId);
+      if (!colab) return false;
+      return md_cargoPlicila(colab.cargo);
+    });
+  }
+
+  return [];
+}
+
+// Colaboradores que o perfil atual pode selecionar no cadastro
+function md_colaboradoresPermitidos() {
+  const ativos = allUsers.filter(u => u.role !== 'admin' && u.role !== 'posto' && isAtivo(u));
+  if (!currentUser) return [];
+  if (currentUser.role === 'admin') return ativos;
+  if (md_isSupervisorOp(currentUser)) {
+    return ativos.filter(u => !md_isAssistenteTreinamento(u));
+  }
+  if (md_isAssistenteTreinamento(currentUser)) {
+    return ativos.filter(u => md_cargoPlicila(u.cargo));
+  }
+  return [];
+}
+
+// ── View principal ──
+let _mdViewId = '';
+
+function md_renderTudo() {
+  const isAdm = currentUser?.role === 'admin';
+  _mdViewId = isAdm ? 'adm' : 'sup';
+  md_renderStats();
+  md_renderFiltros();
+  md_renderTabela();
+}
+
+function md_renderStats() {
+  // Dashboard: apenas medidas com status === 'ativa'
+  const ativas = md_medidasVisiveis(allMedidas).filter(m => m.status === 'ativa');
+  const el = document.getElementById(`md-${_mdViewId}-stats`);
+  if (!el) return;
+  const cnt = (tipo) => ativas.filter(m => m.tipo === tipo).length;
+
+  // Reincidentes em 90 dias: colaboradores com ≥ 2 medidas ativas nos últimos 90 dias
+  const noventa = new Date(); noventa.setDate(noventa.getDate()-90);
+  const por90 = {};
+  ativas.forEach(m => {
+    const d = md_getDataOcorrencia(m);
+    if (d && new Date(d+'T00:00:00') >= noventa) {
+      por90[m.colaboradorNome] = (por90[m.colaboradorNome]||0)+1;
+    }
+  });
+  const reincidentes90 = Object.values(por90).filter(c=>c>=2).length;
+
+  const cards = [
+    { icon:'⚖️', lbl:'Medidas Ativas',        val: ativas.length,    cor:'var(--text)' },
+    { icon:'📝', lbl:'Feedback Formal',        val: cnt('Feedback Formal'),     cor:'var(--accent)' },
+    { icon:'🟠', lbl:'Adv. Verbal',            val: cnt('Advertência Verbal'),  cor:'var(--yellow)' },
+    { icon:'🔴', lbl:'Adv. Escrita',           val: cnt('Advertência Escrita'), cor:'var(--red)' },
+    { icon:'⛔', lbl:'Suspensões',             val: cnt('Suspensão'),           cor:'#a855f7' },
+    { icon:'⚠️', lbl:'Reincidentes 90d',       val: reincidentes90,             cor: reincidentes90>0?'var(--red)':'var(--green)' },
+  ];
+  el.innerHTML = cards.map(c => `
+    <div class="pas-card">
+      <div class="pas-lbl">${c.icon} ${c.lbl}</div>
+      <div class="pas-val" style="color:${c.cor}">${c.val}</div>
+    </div>`).join('');
+}
+
+function md_renderFiltros() {
+  const el = document.getElementById(`md-${_mdViewId}-filtros`);
+  if (!el) return;
+  const tiposFiltro = ['Todos', ...MD_TIPOS, 'Resolvidas', 'Arquivadas'];
+  const periodos = [
+    { k:'todos', l:'Qualquer período' },
+    { k:'30d',   l:'Últimos 30 dias' },
+    { k:'90d',   l:'Últimos 90 dias' },
+    { k:'ano',   l:'Ano atual' },
+    { k:'custom',l:'Personalizado' },
+  ];
+  el.innerHTML = [
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">',
+    tiposFiltro.map(f=>`<button class="md-filtro-btn ${_mdFiltroTipo===f?'active':''}" onclick="md_setFiltroTipo('${f}')">${f}</button>`).join(''),
+    '</div>',
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">',
+    periodos.map(p=>`<button class="md-filtro-btn ${_mdFiltroPeriodo===p.k?'active':''}" onclick="md_setFiltroPeriodo('${p.k}')">${p.l}</button>`).join(''),
+    `<div id="md-filtro-custom" style="display:${_mdFiltroPeriodo==='custom'?'flex':'none'};gap:6px;align-items:center">`,
+    `<input class="form-input" id="md-periodo-ini" type="date" value="${_mdPeriodoIni}" oninput="md_setPeriodoCustom()" style="width:140px;padding:5px 8px">`,
+    '<span style="color:var(--text3);font-size:12px">até</span>',
+    `<input class="form-input" id="md-periodo-fim" type="date" value="${_mdPeriodoFim}" oninput="md_setPeriodoCustom()" style="width:140px;padding:5px 8px">`,
+    '</div></div>'
+  ].join('');
+}
+
+function md_setFiltroTipo(f) {
+  _mdFiltroTipo = f;
+  md_renderFiltros();
+  md_renderTabela();
+}
+
+function md_setFiltroPeriodo(p) {
+  _mdFiltroPeriodo = p;
+  if (p !== 'custom') { _mdPeriodoIni = ''; _mdPeriodoFim = ''; }
+  md_renderFiltros();
+  md_renderTabela();
+}
+
+function md_setPeriodoCustom() {
+  _mdPeriodoIni = document.getElementById('md-periodo-ini')?.value || '';
+  _mdPeriodoFim = document.getElementById('md-periodo-fim')?.value || '';
+  md_renderTabela();
+}
+
+// Helper: aplicar filtro de período a uma data ISO 'YYYY-MM-DD'
+function md_dentroNoPeriodo(dataISO) {
+  if (_mdFiltroPeriodo === 'todos' || !dataISO) return true;
+  const d = new Date(dataISO + 'T00:00:00');
+  const hoje = new Date();
+  hoje.setHours(0,0,0,0);
+  if (_mdFiltroPeriodo === '30d') {
+    const ini = new Date(hoje); ini.setDate(ini.getDate()-30);
+    return d >= ini;
+  }
+  if (_mdFiltroPeriodo === '90d') {
+    const ini = new Date(hoje); ini.setDate(ini.getDate()-90);
+    return d >= ini;
+  }
+  if (_mdFiltroPeriodo === 'ano') {
+    return d.getFullYear() === hoje.getFullYear();
+  }
+  if (_mdFiltroPeriodo === 'custom') {
+    if (_mdPeriodoIni && d < new Date(_mdPeriodoIni+'T00:00:00')) return false;
+    if (_mdPeriodoFim && d > new Date(_mdPeriodoFim+'T23:59:59')) return false;
+    return true;
+  }
+  return true;
+}
+
+function md_renderTabela() {
+  const buscaEl = document.getElementById(`md-${_mdViewId}-busca`);
+  const busca = (buscaEl?.value||'').toLowerCase();
+  const tabelaEl = document.getElementById(`md-${_mdViewId}-tabela`);
+  if (!tabelaEl) return;
+
+  let medidas = md_medidasVisiveis(allMedidas);
+
+  // Filtro de tipo/status
+  if (_mdFiltroTipo === 'Arquivadas') {
+    medidas = medidas.filter(m => m.status === 'arquivada');
+  } else if (_mdFiltroTipo === 'Resolvidas') {
+    medidas = medidas.filter(m => m.status === 'resolvida');
+  } else if (_mdFiltroTipo !== 'Todos') {
+    medidas = medidas.filter(m => m.tipo === _mdFiltroTipo && m.status === 'ativa');
+  } else {
+    medidas = medidas.filter(m => m.status === 'ativa');
+  }
+
+  // Filtro de período (combinável) — usa helper centralizado
+  medidas = medidas.filter(m => md_dentroNoPeriodo(md_getDataOcorrencia(m)));
+
+  // Filtro de busca
+  if (busca) medidas = medidas.filter(m => m.colaboradorNome?.toLowerCase().includes(busca));
+
+  // Ordenação: Ativas → Resolvidas → Arquivadas; dentro de cada grupo, mais recente primeiro
+  const ordemStatus = { ativa:0, resolvida:1, arquivada:2 };
+  medidas.sort((a,b) => {
+    const os = (ordemStatus[a.status]??9) - (ordemStatus[b.status]??9);
+    if (os !== 0) return os;
+    return md_getDataOcorrencia(b).localeCompare(md_getDataOcorrencia(a));
+  });
+
+  // Top reincidências — apenas medidas ativas (não resolvidas, não arquivadas)
+  const reincMap = {};
+  md_medidasVisiveis(allMedidas).filter(m=>m.status==='ativa').forEach(m=>{
+    reincMap[m.colaboradorNome] = (reincMap[m.colaboradorNome]||0)+1;
+  });
+  const top3 = Object.entries(reincMap).sort((a,b)=>b[1]-a[1]).filter(([,c])=>c>0).slice(0,3);
+
+  const topHtml = top3.length ? `<div class="card" style="margin-bottom:16px">
+    <div class="card-title">📊 Top Reincidências — Medidas Ativas</div>
+    ${top3.map(([n,c])=>`<div style="display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px solid var(--border)">${n}<strong>${c}</strong></div>`).join('')}
+  </div>` : '';
+
+  if (!medidas.length) {
+    tabelaEl.innerHTML = topHtml + `<div class="empty"><div class="icon">⚖️</div><p>Nenhuma medida encontrada.</p></div>`;
+    return;
+  }
+
+  const isAdm = currentUser?.role === 'admin';
+
+  const linhas = medidas.map(m => {
+    const badgeTipo  = `<span class="md-badge ${MD_BADGE[m.tipo]||''}">${m.tipo}</span>`;
+
+    // Contador de medidas ativas do colaborador
+    const ativasColab = md_medidasVisiveis(allMedidas)
+      .filter(x => x.colaboradorId === m.colaboradorId && x.status === 'ativa').length;
+    const counterBadge = ativasColab > 0
+      ? `<span style="font-size:10px;color:var(--red);background:var(--red-bg);padding:1px 6px;border-radius:8px;margin-left:4px">⚠️ ${ativasColab} ativa${ativasColab>1?'s':''}</span>`
+      : '';
+
+    // Datas: usa helper centralizado
+    const dataOcorr  = md_getDataOcorrencia(m).split('-').reverse().join('/');
+    const dataLanc   = (m.createdAt||'').substr(0,10).split('-').reverse().join('/');
+    const datasHtml  = `<div style="font-size:12px;color:var(--text);font-family:'IBM Plex Mono',monospace">${dataOcorr||'—'}</div>
+      ${dataLanc&&dataLanc!==dataOcorr?`<div style="font-size:10px;color:var(--text3)">Lanç: ${dataLanc}</div>`:''}`;
+
+    const acoes = `<div style="display:flex;gap:4px;flex-wrap:wrap">
+      <button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="md_abrirDetalhe('${m.id}')">👁</button>
+      ${m.status==='ativa'&&isAdm?`<button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="md_abrirEditar('${m.id}')">✏️</button>`:''}
+      ${m.status==='ativa'&&isAdm?`<button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="md_confirmarResolver('${m.id}')" title="Marcar como Resolvida">✅</button>`:''}
+      ${m.status==='ativa'&&isAdm?`<button class="btn btn-sm btn-secondary" style="font-size:11px" onclick="md_abrirArquivar('${m.id}')">📁</button>`:''}
+    </div>`;
+
+    return `<div class="md-row">
+      <div>${datasHtml}</div>
+      <div>
+        <div style="font-size:13px;font-weight:600">${m.colaboradorNome||'—'}${counterBadge}</div>
+        <div style="font-size:11px;color:var(--text3)">${m.cargo||''}</div>
+      </div>
+      <div>${badgeTipo}</div>
+      <div style="font-size:12px;color:var(--text2)">${m.motivo||'—'}</div>
+      <div style="font-size:12px;color:var(--text3)">${m.criadoPorNome||'—'}</div>
+      <div>${md_statusBadge(m.status)}</div>
+      <div>${acoes}</div>
+    </div>`;
+  }).join('');
+
+  tabelaEl.innerHTML = topHtml + `
+    <div class="md-table-wrap">
+      <div class="md-thead"><div class="md-row">
+        <div>Ocorrência</div><div>Colaborador</div><div>Tipo</div><div>Motivo</div><div>Criado por</div><div>Status</div><div>Ações</div>
+      </div></div>
+      ${linhas}
+    </div>`;
+}
+
+// ── Upload de anexo ──
+function md_handleAnexo(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const MAX = 5 * 1024 * 1024; // 5MB — validado ANTES da conversão para base64
+  if (file.size > MAX) {
+    toast(`Arquivo muito grande (${(file.size/1024/1024).toFixed(1)}MB). Máx: 5MB.`, 'err');
+    input.value = '';
+    return;
+  }
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (!['pdf','jpg','jpeg','png'].includes(ext)) {
+    toast('Formato não permitido. Use PDF, JPG ou PNG.', 'err');
+    input.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = e => {
+    _mdAnexoLocal = { nome: file.name, base64: e.target.result, tamanho: file.size };
+    const nomeEl = document.getElementById('md-file-nome');
+    if (nomeEl) { nomeEl.textContent = `✓ ${file.name} (${(file.size/1024).toFixed(0)}KB)`; nomeEl.style.display='block'; }
+    toast('Arquivo carregado!','ok');
+  };
+  reader.readAsDataURL(file);
+}
+
+// ── Alerta de reincidência ao selecionar colaborador ──
+function md_onColabSelect() {
+  const id = document.getElementById('md-colab-sel').value;
+  const el = document.getElementById('md-alerta-reinc');
+  if (!id || !el) { if (el) el.style.display='none'; return; }
+
+  // Apenas medidas ativas (status === 'ativa') — resolvidas e arquivadas não contam
+  const ativas = allMedidas.filter(m => m.colaboradorId === id && m.status === 'ativa');
+
+  if (!ativas.length) { el.style.display='none'; return; }
+
+  // Contador por tipo
+  const cnt = {};
+  MD_TIPOS.forEach(t => { cnt[t] = 0; });
+  ativas.forEach(m => { if (cnt[m.tipo]!==undefined) cnt[m.tipo]++; });
+
+  // Alerta 90 dias
+  const noventa = new Date();
+  noventa.setDate(noventa.getDate()-90);
+  const recentes = ativas
+    .filter(m => { const d=md_getDataOcorrencia(m); return d && new Date(d+'T00:00:00') >= noventa; })
+    .sort((a,b)=>md_getDataOcorrencia(b).localeCompare(md_getDataOcorrencia(a)));
+  let ultimos90Html = '';
+  if (recentes.length) {
+    const diasAtras = Math.floor((Date.now() - new Date(md_getDataOcorrencia(recentes[0])+'T00:00:00'))/(1000*60*60*24));
+    ultimos90Html = `<div style="margin-top:4px;font-size:11px">Última medida aplicada há <strong>${diasAtras} dia(s)</strong>.</div>`;
+  }
+
+  el.innerHTML = `
+    <div style="font-weight:700;margin-bottom:6px">⚠️ Este colaborador já possui ${ativas.length} medida(s) disciplinar(es) ativa(s):</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+      <span>📝 Feedback Formal: <strong>${cnt['Feedback Formal']}</strong></span>
+      <span>🟠 Advertência Verbal: <strong>${cnt['Advertência Verbal']}</strong></span>
+      <span>🔴 Advertência Escrita: <strong>${cnt['Advertência Escrita']}</strong></span>
+      <span>⛔ Suspensão: <strong>${cnt['Suspensão']}</strong></span>
+    </div>
+    ${ultimos90Html}`;
+  el.style.display = 'block';
+}
+
+// ── Abrir modal nova medida ──
+function md_abrirNovaMedida() {
+  document.getElementById('md-modal-titulo').textContent = 'Nova Medida Disciplinar';
+  document.getElementById('md-colab-sel').innerHTML = '<option value="">Selecione...</option>' +
+    md_colaboradoresPermitidos().map(c=>`<option value="${c.id}">${c.name} — ${c.cargo||''}</option>`).join('');
+  document.getElementById('md-tipo-sel').value = '';
+  document.getElementById('md-data').value = new Date().toISOString().split('T')[0];
+  document.getElementById('md-motivo').value = '';
+  document.getElementById('md-descricao').value = '';
+  document.getElementById('md-edit-id').value = '';
+  document.getElementById('md-alerta-reinc').style.display = 'none';
+  const nomeEl = document.getElementById('md-file-nome');
+  if (nomeEl) { nomeEl.textContent=''; nomeEl.style.display='none'; }
+  _mdAnexoLocal = null;
+  document.getElementById('md-file-input').value = '';
+  document.getElementById('modal-nova-medida').classList.add('open');
+}
+
+// ── Abrir modal editar ──
+function md_abrirEditar(id) {
+  const m = allMedidas.find(x=>x.id===id);
+  if (!m) return;
+  document.getElementById('md-modal-titulo').textContent = 'Editar Medida Disciplinar';
+  const sel = document.getElementById('md-colab-sel');
+  sel.innerHTML = '<option value="">Selecione...</option>' +
+    md_colaboradoresPermitidos().map(c=>`<option value="${c.id}">${c.name} — ${c.cargo||''}</option>`).join('');
+  sel.value = m.colaboradorId;
+  document.getElementById('md-tipo-sel').value = m.tipo;
+  document.getElementById('md-data').value = m.dataOcorrencia||'';
+  document.getElementById('md-motivo').value = m.motivo||'';
+  document.getElementById('md-descricao').value = m.descricao||'';
+  document.getElementById('md-edit-id').value = id;
+  document.getElementById('md-alerta-reinc').style.display = 'none';
+  const nomeEl = document.getElementById('md-file-nome');
+  if (nomeEl) { nomeEl.textContent=''; nomeEl.style.display='none'; }
+  _mdAnexoLocal = null;
+  document.getElementById('md-file-input').value = '';
+  document.getElementById('modal-nova-medida').classList.add('open');
+}
+
+// ── Salvar (criar ou editar) ──
+async function md_salvar() {
+  const editId   = document.getElementById('md-edit-id').value;
+  const colabId  = document.getElementById('md-colab-sel').value;
+  const tipo     = document.getElementById('md-tipo-sel').value;
+  const data     = document.getElementById('md-data').value;
+  const motivo   = document.getElementById('md-motivo').value.trim();
+  const descricao= document.getElementById('md-descricao').value.trim();
+
+  if (!colabId)  { toast('Selecione o colaborador.','err'); return; }
+  if (!tipo)     { toast('Selecione o tipo de medida.','err'); return; }
+  if (!data)     { toast('Informe a data da ocorrência.','err'); return; }
+  if (!motivo)   { toast('O motivo é obrigatório.','err'); return; }
+
+  // Validação: data futura
+  const hoje = todayKey();
+  if (data > hoje) {
+    toast('A data da ocorrência não pode ser futura.','err'); return;
+  }
+
+  // Validação: medida duplicada no mesmo dia (mesmo colaborador + mesmo tipo + mesma data)
+  if (!editId) {
+    const duplicada = allMedidas.find(m =>
+      m.colaboradorId === colabId &&
+      m.tipo === tipo &&
+      md_getDataOcorrencia(m) === data &&
+      m.status !== 'arquivada'
+    );
+    if (duplicada) {
+      toast(`Já existe uma ${tipo} para este colaborador na data ${data.split('-').reverse().join('/')}.`, 'err');
+      return;
+    }
+  }
+
+  const colab = allUsers.find(u=>u.id===colabId);
+  const now = new Date().toISOString();
+  const anoMes = data.substr(0,7);
+
+  try {
+    let medidaId = editId;
+    if (editId) {
+      await db.collection('medidas_disciplinares').doc(editId).update({
+        tipo, dataOcorrencia:data, anoMes, motivo, descricao, updatedAt:now
+      });
+    } else {
+      const ref = db.collection('medidas_disciplinares').doc();
+      medidaId = ref.id;
+      await ref.set({
+        id: ref.id,
+        colaboradorId:    colabId,
+        colaboradorNome:  colab?.name||'',
+        colaboradorEmail: colab?.email||'',
+        cargo:            colab?.cargo||'',
+        tipo, motivo, descricao,
+        dataOcorrencia:   data,
+        anoMes,
+        status:           'ativa',
+        criadoPorId:      currentUser.id,
+        criadoPorNome:    currentUser.name,
+        criadoPorEmail:   currentUser.email,
+        createdAt:        now,
+        updatedAt:        now
+      });
+
+      // Notificar ADM quando supervisor ou Plicila cadastra nova medida
+      if (currentUser.role !== 'admin') {
+        const adm = allUsers.find(u=>u.role==='admin');
+        if (adm) await addNotificacao(adm.email, '⚖️ Nova Medida Disciplinar',
+          `${currentUser.name} registrou ${tipo} para ${colab?.name||'colaborador'}.`, '⚖️', 'yellow');
+      }
+    }
+
+    // Upload de anexo para subcoleção (mesmo padrão do Caixa)
+    if (_mdAnexoLocal && medidaId) {
+      const anexoRef = db.collection('medidas_disciplinares').doc(medidaId).collection('anexos').doc();
+      await anexoRef.set({
+        id:         anexoRef.id,
+        nome:       _mdAnexoLocal.nome,
+        base64:     _mdAnexoLocal.base64,
+        tamanho:    _mdAnexoLocal.tamanho,
+        uploadedAt: now
+      });
+    }
+
+    closeModal('modal-nova-medida');
+    _mdAnexoLocal = null;
+    toast(editId ? 'Medida atualizada!' : 'Medida registrada!', 'ok');
+  } catch(e) { toast('Erro ao salvar: '+e.message,'err'); }
+}
+
+// ── Abrir modal arquivar ──
+function md_abrirArquivar(id) {
+  const m = allMedidas.find(x=>x.id===id);
+  if (!m) return;
+  document.getElementById('md-arq-id').value = id;
+  document.getElementById('md-arq-motivo').value = '';
+  document.getElementById('md-arq-info').innerHTML =
+    `<strong>${m.colaboradorNome}</strong><br>
+     Tipo: <strong>${m.tipo}</strong><br>
+     Data: ${(m.dataOcorrencia||'').split('-').reverse().join('/')}<br>
+     Motivo: ${m.motivo}`;
+  document.getElementById('modal-arquivar-medida').classList.add('open');
+}
+
+// ── Confirmar arquivamento (motivo obrigatório) ──
+async function md_confirmarArquivar() {
+  const id     = document.getElementById('md-arq-id').value;
+  const motivo = document.getElementById('md-arq-motivo').value.trim();
+  if (!motivo) { toast('O motivo do arquivamento é obrigatório.','err'); return; }
+  try {
+    await db.collection('medidas_disciplinares').doc(id).update({
+      status:             'arquivada',
+      arquivadaPor:       currentUser.name,
+      arquivadaEm:        new Date().toISOString(),
+      motivoArquivamento: motivo
+    });
+    closeModal('modal-arquivar-medida');
+    toast('Medida arquivada.','ok');
+  } catch(e) { toast('Erro ao arquivar: '+e.message,'err'); }
+}
+
+// ── Marcar como Resolvida (sem exclusão, sai dos contadores de ativas) ──
+async function md_confirmarResolver(id) {
+  const m = allMedidas.find(x=>x.id===id);
+  if (!m) return;
+  if (!confirm(`Marcar "${m.tipo}" de ${m.colaboradorNome} como Resolvida?\n\nA medida permanecerá no histórico mas não contará como ativa.`)) return;
+  try {
+    await db.collection('medidas_disciplinares').doc(id).update({
+      status:      'resolvida',
+      resolvidaPor: currentUser.name,
+      resolvidaEm: new Date().toISOString()
+    });
+    toast('Medida marcada como resolvida.','ok');
+  } catch(e) { toast('Erro: '+e.message,'err'); }
+}
+
+// ── Detalhe da medida + timeline + anexos ──
+async function md_abrirDetalhe(id) {
+  const m = allMedidas.find(x=>x.id===id);
+  if (!m) return;
+
+  // Alerta de reincidência no detalhe — apenas medidas ativas
+  const ativas = md_medidasVisiveis(allMedidas)
+    .filter(x => x.colaboradorId === m.colaboradorId && x.status === 'ativa' && x.id !== m.id);
+  let alertaReinc = '';
+  if (ativas.length > 0) {
+    const noventa = new Date(); noventa.setDate(noventa.getDate()-90);
+    const recentes = ativas
+      .filter(x => { const d=md_getDataOcorrencia(x); return d && new Date(d+'T00:00:00') >= noventa; })
+      .sort((a,b)=>md_getDataOcorrencia(b).localeCompare(md_getDataOcorrencia(a)));
+    let ultHtml = '';
+    if (recentes.length) {
+      const dias = Math.floor((Date.now()-new Date(md_getDataOcorrencia(recentes[0])+'T00:00:00'))/(1000*60*60*24));
+      ultHtml = ` Última medida aplicada há <strong>${dias} dia(s)</strong>.`;
+    }
+    alertaReinc = `<div class="md-alerta-reinc" style="margin-bottom:12px">
+      ⚠️ Este colaborador já possui <strong>${ativas.length}</strong> outra(s) medida(s) ativa(s).${ultHtml}
+    </div>`;
+  }
+
+  // Histórico disciplinar do colaborador (todas as visíveis)
+  const historico = md_medidasVisiveis(allMedidas)
+    .filter(x => x.colaboradorId === m.colaboradorId)
+    .sort((a,b) => (md_getDataOcorrencia(b)||b.createdAt||'').localeCompare(md_getDataOcorrencia(a)||a.createdAt||''));
+  const porAno = {};
+  historico.forEach(h => {
+    const ano = (md_getDataOcorrencia(h)||h.createdAt||'').substr(0,4)||'—';
+    if (!porAno[ano]) porAno[ano] = [];
+    porAno[ano].push(h);
+  });
+
+  const timelineHtml = Object.entries(porAno).sort((a,b)=>b[0].localeCompare(a[0])).map(([ano,items]) =>
+    `<div class="md-tl-ano">${ano}</div>` +
+    items.map(h => {
+      const statusTag = h.status === 'resolvida'
+        ? `<span style="font-size:10px;color:var(--green);background:var(--green-bg);padding:1px 6px;border-radius:8px;margin-left:4px">Resolvida</span>`
+        : h.status === 'arquivada'
+        ? `<span style="font-size:10px;color:var(--text3);background:var(--surface3);padding:1px 6px;border-radius:8px;margin-left:4px">Arquivada</span>`
+        : '';
+      return `<div class="md-tl-item">
+        <div class="md-tl-dot" style="background:${h.status==='ativa'?(MD_DOT[h.tipo]||'var(--text3)'):'var(--text3)'}"></div>
+        <div style="flex:1">
+          <div style="font-size:12px;font-weight:600">${h.tipo}${statusTag}</div>
+          <div style="font-size:11px;color:var(--text3);line-height:1.6">
+            ${md_getDataOcorrencia(h).split('-').reverse().join('/')||'—'} · ${h.motivo||''}
+            ${h.criadoPorNome?`<br>Aplicado por: <strong>${h.criadoPorNome}</strong>${h.criadoPorEmail?' ('+h.criadoPorEmail+')':''}`:''}
+            ${h.status==='resolvida'&&h.resolvidaPor?`<br>Resolvida por: ${h.resolvidaPor}`:''}
+          </div>
+        </div>
+        ${h.id===m.id?`<span style="font-size:11px;background:var(--accent);color:#fff;padding:2px 8px;border-radius:8px;flex-shrink:0">atual</span>`:''}
+      </div>`;
+    }).join('')
+  ).join('');
+
+  // Datas ocorrência + lançamento
+  const dataOcorrStr = md_getDataOcorrencia(m).split('-').reverse().join('/');
+  const dataLancStr  = (m.createdAt||'').substr(0,10).split('-').reverse().join('/');
+
+  const detBody = document.getElementById('md-det-corpo');
+  document.getElementById('md-det-titulo').textContent = `⚖️ ${m.tipo} — ${m.colaboradorNome}`;
+
+  detBody.innerHTML = `
+    ${alertaReinc}
+    <div style="display:grid;gap:10px;margin-bottom:14px">
+      <div style="background:var(--surface2);border-radius:8px;padding:12px 14px">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:3px">Colaborador</div>
+        <div style="font-size:14px;font-weight:700">${m.colaboradorNome}</div>
+        <div style="font-size:12px;color:var(--text3)">${m.cargo||''}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div style="background:var(--surface2);border-radius:8px;padding:10px 12px">
+          <div style="font-size:11px;color:var(--text3)">Tipo</div>
+          <span class="md-badge ${MD_BADGE[m.tipo]||''}">${m.tipo}</span>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px 12px">
+          <div style="font-size:11px;color:var(--text3)">Status</div>
+          <div style="margin-top:4px">${md_statusBadge(m.status)}</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div style="background:var(--surface2);border-radius:8px;padding:10px 12px">
+          <div style="font-size:11px;color:var(--text3)">Ocorrência</div>
+          <div style="font-size:13px;font-weight:600">${dataOcorrStr||'—'}</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px 12px">
+          <div style="font-size:11px;color:var(--text3)">Lançamento</div>
+          <div style="font-size:13px;font-weight:600">${dataLancStr||'—'}</div>
+        </div>
+      </div>
+      <div style="background:var(--surface2);border-radius:8px;padding:10px 12px">
+        <div style="font-size:11px;color:var(--text3)">Motivo</div>
+        <div style="font-size:13px">${m.motivo||'—'}</div>
+      </div>
+      ${m.descricao?`<div style="background:var(--surface2);border-radius:8px;padding:10px 12px"><div style="font-size:11px;color:var(--text3)">Descrição</div><div style="font-size:13px;line-height:1.6">${m.descricao}</div></div>`:''}
+      <div style="background:var(--surface2);border-radius:8px;padding:10px 12px">
+        <div style="font-size:11px;color:var(--text3)">Registrado por</div>
+        <div style="font-size:13px;font-weight:600">${m.criadoPorNome||'—'}</div>
+        <div style="font-size:11px;color:var(--text3)">${m.criadoPorEmail||''} · ${dataLancStr}</div>
+      </div>
+      ${m.status==='resolvida'?`<div style="background:var(--green-bg);border-radius:8px;padding:10px 12px;border-left:3px solid var(--green)"><div style="font-size:11px;color:var(--green)">Resolvida</div><div style="font-size:12px">Por ${m.resolvidaPor||'—'} em ${(m.resolvidaEm||'').substr(0,10).split('-').reverse().join('/')}</div></div>`:''}
+      ${m.status==='arquivada'?`<div style="background:var(--surface3);border-radius:8px;padding:10px 12px;border-left:3px solid var(--text3)"><div style="font-size:11px;color:var(--text3)">Arquivada</div><div style="font-size:12px">Por ${m.arquivadaPor||'—'} em ${(m.arquivadaEm||'').substr(0,10).split('-').reverse().join('/')}<br>${m.motivoArquivamento||''}</div></div>`:''}
+    </div>
+    <div id="md-det-anexos" style="margin-bottom:16px"><div style="font-size:12px;color:var(--text3)">Carregando anexos...</div></div>
+    <div class="md-timeline">
+      <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">📋 Histórico Disciplinar</div>
+      ${timelineHtml || '<div style="font-size:12px;color:var(--text3)">Nenhum histórico.</div>'}
+    </div>`;
+
+  document.getElementById('modal-detalhe-medida').classList.add('open');
+
+  // Carregar anexos async
+  try {
+    const snap = await db.collection('medidas_disciplinares').doc(id).collection('anexos').get();
+    const anexosEl = document.getElementById('md-det-anexos');
+    if (!anexosEl) return;
+    if (snap.empty) {
+      anexosEl.innerHTML = `<div style="font-size:12px;color:var(--text3)">Nenhum documento anexado.</div>`;
+      return;
+    }
+    anexosEl.innerHTML = `<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Documentos</div>` +
+      snap.docs.map(d => {
+        const a = d.data();
+        return `<div class="anexo-item">
+          <div class="anexo-icon">📄</div>
+          <div class="anexo-info">
+            <div class="anexo-nome">${a.nome||'Documento'}</div>
+            <div class="anexo-meta">${a.tamanho?(a.tamanho/1024).toFixed(0)+'KB':''}</div>
+          </div>
+          <div class="anexo-acoes">
+            <button class="btn-anexo" onclick="md_downloadAnexo('${d.id}','${id}')">⬇ Baixar</button>
+          </div>
+        </div>`;
+      }).join('');
+  } catch(e) {
+    const el = document.getElementById('md-det-anexos');
+    if (el) el.innerHTML = `<div style="font-size:12px;color:var(--text3)">Erro ao carregar anexos.</div>`;
+  }
+}
+
+// ── Download de anexo ──
+async function md_downloadAnexo(anexoId, medidaId) {
+  try {
+    const doc = await db.collection('medidas_disciplinares').doc(medidaId).collection('anexos').doc(anexoId).get();
+    if (!doc.exists) { toast('Arquivo não encontrado.','err'); return; }
+    const a = doc.data();
+    const link = document.createElement('a');
+    link.href = a.base64;
+    link.download = a.nome||'documento';
+    link.click();
+    toast('Download iniciado!','ok');
+  } catch(e) { toast('Erro ao baixar: '+e.message,'err'); }
+}
+
+// ══════════════════════════════════════════════════════
 
 function updateHoleriteBadges() {
   // Badge ADM: holerites assinados pendentes de visualização
