@@ -2038,7 +2038,7 @@ const PosCanalLabels = {
 <!-- MODAL: JUSTIFICAR ATRASO -->
 <div class="modal-overlay" id="modal-justificar-atraso">
   <div class="modal" style="max-width:450px">
-    <div class="modal-header"><div class="modal-title" id="just-modal-title">⏰ Registro Fora do Horário</div><button class="close-btn" onclick="closeModal('modal-justificar-atraso')">✕</button></div>
+    <div class="modal-header"><div class="modal-title" id="just-modal-title">⏰ Registro Fora do Horário</div><button class="close-btn" onclick="closeModal('modal-justificar-atraso');const b=document.querySelector('#modal-justificar-atraso .btn-secondary[data-hidden-obrig]');if(b){b.style.display='';b.removeAttribute('data-hidden-obrig');}">✕</button></div>
     <div style="background:var(--yellow-bg);border-left:3px solid var(--yellow);border-radius:8px;padding:12px;margin-bottom:16px">
       <div style="font-size:13px;color:var(--text2)" id="just-msg-detalhe">Você está registrando fora do horário esperado.</div>
       <div style="font-size:12px;color:var(--text3);margin-top:4px">Adicione uma justificativa para o registro.</div>
@@ -2048,6 +2048,8 @@ const PosCanalLabels = {
       <textarea class="form-textarea" id="just-motivo" placeholder="Ex: Trânsito, consulta médica, problema técnico..." rows="3"></textarea>
     </div>
     <input type="hidden" id="just-tipo">
+    <input type="hidden" id="just-horario-previsto">
+    <input type="hidden" id="just-horario-batido">
     <div style="display:flex;gap:10px;margin-top:8px">
       <button class="btn btn-secondary" style="flex:1" onclick="registrarSemJustificativa()">Registrar Sem Justificar</button>
       <button class="btn btn-primary" style="flex:1" onclick="enviarJustificativaAtraso()">Enviar Justificativa</button>
@@ -2357,6 +2359,12 @@ let _readyPostos = false;
 
 const SENHA_PADRAO = 'rg@2026';
 const TOLERANCIA_MIN = 5;
+const JUSTIF_OBRIG_MIN = 30; // minutos: ACIMA de 30 (> 30) a justificativa é obrigatória
+
+// Helper global: usuário ativo para fins operacionais
+// ativo === false → excluído de toda tela operacional (ponto, demandas, seletores)
+// Histórico preservado — nunca deletar documentos
+function isAtivo(u) { return u.ativo !== false; }
 
 const POSTOS_INICIAIS = [
   // Posto de Teste
@@ -3630,7 +3638,7 @@ async function saveCollab() {
 
 function openCreateTask(taskId = null) {
   editingTaskId = taskId;
-  const collabs = allUsers.filter(u => u.role !== 'admin');
+  const collabs = allUsers.filter(u => u.role !== 'admin' && isAtivo(u));
   const sel = document.getElementById('nt-assign');
   sel.innerHTML = collabs.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   if (!collabs.length) { toast('Cadastre ao menos um colaborador primeiro', 'err'); return; }
@@ -3745,7 +3753,7 @@ async function deleteCollab(userId) {
 // ══════════════════════════════════════
 function renderDashboard() {
   renderAdmDashboardExtras();
-  const collabs = allUsers.filter(u => u.role !== 'admin');
+  const collabs = allUsers.filter(u => u.role !== 'admin' && isAtivo(u));
   const done = allTasks.filter(t=>t.status==='concluida').length;
   const active = allTasks.filter(t=>t.status==='em_andamento').length;
   const atRisk = allTasks.filter(t=>getSem(t)==='red'&&t.status!=='concluida').length;
@@ -4073,28 +4081,67 @@ async function registrarPonto(tipo) {
     const [hF, mF] = currentUser.horarioFim.split(':').map(Number);
     const inicioMin = hI * 60 + mI;
     const fimMin = hF * 60 + mF;
-    
+
+    // Helper para abrir modal com ou sem obrigatoriedade
+    function abrirModalJustif(titulo, detalhe, obrig, previsto, batido) {
+      document.getElementById('just-tipo').value = tipo;
+      document.getElementById('just-modal-title').textContent = titulo;
+      document.getElementById('just-msg-detalhe').innerHTML = detalhe;
+      document.getElementById('just-motivo').value = '';
+      document.getElementById('just-horario-previsto').value = previsto;
+      document.getElementById('just-horario-batido').value = batido;
+      const btnSem = document.querySelector('#modal-justificar-atraso .btn-secondary[onclick="registrarSemJustificativa()"]');
+      if (btnSem) {
+        btnSem.style.display = obrig ? 'none' : '';
+        obrig ? btnSem.setAttribute('data-hidden-obrig','1') : btnSem.removeAttribute('data-hidden-obrig');
+      }
+      document.getElementById('modal-justificar-atraso').classList.add('open');
+    }
+
     if (tipo === 'entrada' && validacao.atrasado) {
       const mins = validacao.minutos;
+      const obrig = mins > JUSTIF_OBRIG_MIN;
+      const previsto = currentUser.horarioInicio;
+      const batido = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+      const tit = obrig ? '⚠️ Entrada com Atraso Significativo' : '⏰ Entrada com Atraso';
+      const det = `Você está entrando com <strong>${mins} minuto(s) de atraso</strong>.<br>
+        Horário previsto: <strong>${previsto}</strong> · Horário batido: <strong>${batido}</strong>
+        ${obrig ? `<br><span style="color:var(--red);font-size:12px;font-weight:700">Atraso superior a ${JUSTIF_OBRIG_MIN} minutos — justificativa obrigatória.</span>` : ''}`;
       deveJustificar = true;
-      tituloModal = '⏰ Entrada com Atraso';
-      msgDetalhe = `Você está <strong>${mins} minuto(s)</strong> atrasado. Horário esperado: ${currentUser.horarioInicio}.`;
+      tituloModal = tit; msgDetalhe = det;
+      if (obrig) { abrirModalJustif(tit, det, true, previsto, batido); return; }
+
     } else if (tipo === 'saida' && horaAtual < fimMin - 10) {
+      const mins = fimMin - horaAtual;
+      const obrig = mins > JUSTIF_OBRIG_MIN;
+      const previsto = currentUser.horarioFim;
+      const batido = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+      const tit = obrig ? '⚠️ Saída Antecipada Significativa' : '⏰ Saída Antecipada';
+      const det = `Você está saindo com <strong>${mins} minuto(s) de antecipação</strong>.<br>
+        Horário previsto: <strong>${previsto}</strong> · Horário batido: <strong>${batido}</strong>
+        ${obrig ? `<br><span style="color:var(--red);font-size:12px;font-weight:700">Antecipação superior a ${JUSTIF_OBRIG_MIN} minutos — justificativa obrigatória.</span>` : ''}`;
       deveJustificar = true;
-      tituloModal = '⏰ Saída Antecipada';
-      msgDetalhe = `Você está saindo antes do horário previsto (${currentUser.horarioFim}).`;
+      tituloModal = tit; msgDetalhe = det;
+      if (obrig) { abrirModalJustif(tit, det, true, previsto, batido); return; }
+
     } else if (tipo === 'retorno_almoco' && existing?.saida_almoco) {
       const saidaAlmoco = new Date(existing.saida_almoco);
       const diffAlmoco = Math.floor((now - saidaAlmoco) / 60000);
       const isJovem = (currentUser.cargo || '').toLowerCase().includes('jovem aprendiz');
-      const limiteAlmoco = isJovem ? 20 : 60; // minutos de almoço permitidos
-      const toleranciaAlmoco = 5; // minutos de tolerância
-      const limiteComTolerancia = limiteAlmoco + toleranciaAlmoco;
-      if (diffAlmoco > limiteComTolerancia) {
-        deveJustificar = true;
-        tituloModal = '⏰ Retorno do Almoço Tardio';
+      const limiteAlmoco = isJovem ? 20 : 60;
+      const toleranciaAlmoco = 5;
+      if (diffAlmoco > limiteAlmoco + toleranciaAlmoco) {
         const atraso = diffAlmoco - limiteAlmoco;
-        msgDetalhe = `Você está retornando <strong>${atraso} minuto(s)</strong> após o permitido. Almoço: ${limiteAlmoco} min (tolerância: ${toleranciaAlmoco} min).`;
+        const obrig = atraso > JUSTIF_OBRIG_MIN;
+        const previsto = `${limiteAlmoco} min de almoço`;
+        const batido = `${diffAlmoco} min de almoço`;
+        const tit = obrig ? '⚠️ Retorno do Almoço com Atraso Significativo' : '⏰ Retorno do Almoço Tardio';
+        const det = `Você está retornando com <strong>${atraso} minuto(s) além do permitido</strong>.<br>
+          Limite de almoço: <strong>${limiteAlmoco} min</strong> · Tempo utilizado: <strong>${diffAlmoco} min</strong>
+          ${obrig ? `<br><span style="color:var(--red);font-size:12px;font-weight:700">Atraso superior a ${JUSTIF_OBRIG_MIN} minutos — justificativa obrigatória.</span>` : ''}`;
+        deveJustificar = true;
+        tituloModal = tit; msgDetalhe = det;
+        if (obrig) { abrirModalJustif(tit, det, true, previsto, batido); return; }
       }
     }
   }
@@ -4104,6 +4151,14 @@ async function registrarPonto(tipo) {
     document.getElementById('just-modal-title').textContent = tituloModal;
     document.getElementById('just-msg-detalhe').innerHTML = msgDetalhe;
     document.getElementById('just-motivo').value = '';
+    // Para casos < 30min: preencher horários com base no tipo
+    const batidoAgora = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+    document.getElementById('just-horario-previsto').value =
+      tipo === 'entrada' ? (currentUser.horarioInicio||'') :
+      tipo === 'saida'   ? (currentUser.horarioFim||'') : '';
+    document.getElementById('just-horario-batido').value = batidoAgora;
+    const btnSem = document.querySelector('#modal-justificar-atraso .btn-secondary[onclick="registrarSemJustificativa()"]');
+    if (btnSem) { btnSem.style.display = ''; btnSem.removeAttribute('data-hidden-obrig'); }
     document.getElementById('modal-justificar-atraso').classList.add('open');
     return;
   }
@@ -4173,60 +4228,89 @@ async function registrarSemJustificativa() {
 }
 
 async function enviarJustificativaAtraso() {
-  const tipo = document.getElementById('just-tipo').value;
-  const motivo = document.getElementById('just-motivo').value.trim();
-  
-  if (!motivo) {
-    toast('Digite o motivo do atraso', 'err');
-    return;
-  }
-  
+  const tipo    = document.getElementById('just-tipo').value;
+  const motivo  = document.getElementById('just-motivo').value.trim();
+  const horarioPrevisto = document.getElementById('just-horario-previsto').value;
+  const horarioBatido   = document.getElementById('just-horario-batido').value;
+
+  if (!motivo) { toast('Digite o motivo', 'err'); return; }
+
   const today = todayKey();
   const existing = allPontos.find(p => p.userId === currentUser.id && p.data === today);
-  
+
+  // Calcular diferença em minutos para o histórico
+  const now = new Date();
+  let diferencaMin = 0;
+  if (tipo === 'entrada' && currentUser.horarioInicio) {
+    const [h,m] = currentUser.horarioInicio.split(':').map(Number);
+    diferencaMin = now.getHours()*60 + now.getMinutes() - (h*60+m);
+  } else if (tipo === 'saida' && currentUser.horarioFim) {
+    const [h,m] = currentUser.horarioFim.split(':').map(Number);
+    diferencaMin = (h*60+m) - (now.getHours()*60 + now.getMinutes());
+  } else if (tipo === 'retorno_almoco' && existing?.saida_almoco) {
+    const saida = new Date(existing.saida_almoco);
+    const isJovem = (currentUser.cargo||'').toLowerCase().includes('jovem aprendiz');
+    diferencaMin = Math.floor((now-saida)/60000) - (isJovem?20:60);
+  }
+  diferencaMin = Math.max(0, Math.round(diferencaMin));
+  const obrigatorio = diferencaMin > JUSTIF_OBRIG_MIN; // > 30, não >=
+
   try {
-    const now = new Date().toISOString();
-    const justificativaAtraso = existing?.justificativaAtraso || {};
-    const statusJustificativa = existing?.statusJustificativa || {};
-    
+    const nowIso = now.toISOString();
+    const justificativaAtraso  = existing?.justificativaAtraso  || {};
+    const statusJustificativa  = existing?.statusJustificativa  || {};
+
     justificativaAtraso[tipo] = motivo;
-    statusJustificativa[tipo] = 'pendente';
-    
-    const updateData = { 
-      [tipo]: now, 
+    statusJustificativa[tipo] = obrigatorio ? 'registrado' : 'pendente';
+
+    const historicoJustif = existing?.historicoJustificativas || [];
+    historicoJustif.push({
+      tipo,
+      motivo,
+      diferencaMinutos: diferencaMin,
+      horarioPrevisto,
+      horarioBatido,
+      obrigatorio,
+      registradoEm: nowIso
+    });
+
+    const updateData = {
+      [tipo]: nowIso,
       justificativaAtraso,
       statusJustificativa,
-      updatedAt: now 
+      historicoJustificativas: historicoJustif,
+      updatedAt: nowIso
     };
-    
+
     if (existing) {
       await db.collection('pontos').doc(existing.id).update(updateData);
     } else {
       const ref = db.collection('pontos').doc();
-      await ref.set({ 
-        id: ref.id, 
-        userId: currentUser.id, 
-        userName: currentUser.name, 
-        cargo: currentUser.cargo||'', 
-        local: currentUser.local||'', 
-        data: today, 
-        ...updateData,
-        createdAt: now 
+      await ref.set({
+        id: ref.id, userId: currentUser.id, userName: currentUser.name,
+        cargo: currentUser.cargo||'', local: currentUser.local||'',
+        data: today, ...updateData, createdAt: nowIso
       });
     }
-    
-    // Notificar ADM
-    const admins = allUsers.filter(u => u.role === 'admin');
-    for (const adm of admins) {
-      await addNotificacao(adm.email, 'Justificativa de Atraso', `${currentUser.name} justificou atraso no ponto`, '⏰', 'yellow');
+
+    // Notificar ADM apenas para justificativas opcionais (≤ 30min)
+    if (!obrigatorio) {
+      const admins = allUsers.filter(u => u.role === 'admin');
+      for (const adm of admins) {
+        await addNotificacao(adm.email, 'Justificativa de Atraso', `${currentUser.name} justificou atraso no ponto`, '⏰', 'yellow');
+      }
     }
-    
+
+    // Restaurar botão "Sem Justificar" caso tenha sido ocultado
+    const btnSem = document.querySelector('#modal-justificar-atraso .btn-secondary[data-hidden-obrig]');
+    if (btnSem) { btnSem.style.display = ''; btnSem.removeAttribute('data-hidden-obrig'); }
+
     closeModal('modal-justificar-atraso');
     document.getElementById('just-motivo').value = '';
-    toast('Justificativa enviada para aprovação!', 'ok');
-  } catch(e) { 
+    toast(obrigatorio ? 'Justificativa registrada!' : 'Justificativa enviada para aprovação!', 'ok');
+  } catch(e) {
     console.error(e);
-    toast('Erro ao enviar justificativa', 'err'); 
+    toast('Erro ao enviar justificativa', 'err');
   }
 }
 
@@ -4298,7 +4382,7 @@ function abrirAprovarJustif(pontoId, tipo, recusar = false) {
 
 async function abrirModalAbonarFalta() {
   const sel = document.getElementById('ab-colaborador');
-  const collabs = allUsers.filter(u => u.role !== 'admin' && u.role !== 'posto');
+  const collabs = allUsers.filter(u => u.role !== 'admin' && u.role !== 'posto' && isAtivo(u));
   sel.innerHTML = '<option value="">Selecione...</option>' + collabs.map(c => 
     `<option value="${c.id}">${c.name}</option>`
   ).join('');
@@ -4371,7 +4455,7 @@ async function toggleEmCurso(checked) {
 }
 
 async function renderAdmPonto() {
-  const collabs = allUsers.filter(u => u.role !== 'admin');
+  const collabs = allUsers.filter(u => u.role !== 'admin' && isAtivo(u));
   const today = todayKey();
 
   // Mês filtro
@@ -4394,12 +4478,16 @@ async function renderAdmPonto() {
   const almoco = todayPontos.filter(p => p.saida_almoco && !p.retorno_almoco).length;
   const encerrados = todayPontos.filter(p => p.saida).length;
   const ausentes = collabs.length - todayPontos.filter(p => p.entrada).length;
+  const justifObrigHoje = todayPontos.filter(p =>
+    p.historicoJustificativas?.some(j => j.obrigatorio)
+  ).length;
 
   document.getElementById('ponto-adm-stats').innerHTML = `
     <div class="pas-card"><div class="pas-lbl">Presentes</div><div class="pas-val" style="color:var(--green)">${presentes}</div><div class="pas-sub">hoje</div></div>
     <div class="pas-card"><div class="pas-lbl">Em Almoço</div><div class="pas-val" style="color:var(--yellow)">${almoco}</div><div class="pas-sub">saíram</div></div>
     <div class="pas-card"><div class="pas-lbl">Encerraram</div><div class="pas-val" style="color:var(--accent)">${encerrados}</div><div class="pas-sub">hoje</div></div>
-    <div class="pas-card"><div class="pas-lbl">Ausentes</div><div class="pas-val" style="color:${ausentes>0?'var(--red)':'var(--green)'}">${ausentes}</div><div class="pas-sub">não registraram</div></div>`;
+    <div class="pas-card"><div class="pas-lbl">Ausentes</div><div class="pas-val" style="color:${ausentes>0?'var(--red)':'var(--green)'}">${ausentes}</div><div class="pas-sub">não registraram</div></div>
+    ${justifObrigHoje>0?`<div class="pas-card"><div class="pas-lbl">Justif. Obrig.</div><div class="pas-val" style="color:var(--red)">${justifObrigHoje}</div><div class="pas-sub">hoje ⚠️</div></div>`:''}`;
 
   // Solicitações de dispositivo
   const devSnap = await db.collection('devices').where('authorized','==',false).get();
@@ -4471,10 +4559,13 @@ async function renderAdmPonto() {
     function celulaPonto(tipo, valor) {
       if (atestadoHoje && tipo === 'entrada') return `<div class="ptt-mono">🏥</div>`;
       const corrigido = reg?.correcoes?.[tipo];
+      const justif = reg?.justificativaAtraso?.[tipo];
+      const justifObrig = justif && reg?.historicoJustificativas?.some(j=>j.tipo===tipo&&j.obrigatorio);
       const titulo = corrigido ? `title="✏️ Corrigido: ${fmtHHMM(corrigido.horarioOriginal)} → ${fmtHHMM(valor)}\nMotivo: ${corrigido.motivoCorrecao}\nPor: ${corrigido.corrigidoPor}"` : '';
-      const badge = corrigido ? `<span style="font-size:9px;color:var(--yellow);margin-left:3px">✏️</span>` : '';
+      const badgeCorr = corrigido ? `<span style="font-size:9px;color:var(--yellow);margin-left:2px" title="Batida corrigida pelo ADM">✏️</span>` : '';
+      const badgeJust = justifObrig ? `<span style="font-size:9px;color:var(--red);margin-left:2px" title="Justificativa obrigatória: ${justif}">⚠️</span>` : justif ? `<span style="font-size:9px;color:var(--accent);margin-left:2px" title="Justificativa: ${justif}">📝</span>` : '';
       const btnCorrigir = reg ? `<button onclick="abrirCorrecaoPonto('${reg.id}','${tipo}')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:10px;padding:0 2px;opacity:0" class="ptt-edit-btn" title="Corrigir batida">✏</button>` : '';
-      return `<div class="ptt-mono ${valor?'':'empty'}" ${titulo} style="position:relative" onmouseenter="this.querySelector('.ptt-edit-btn')&&(this.querySelector('.ptt-edit-btn').style.opacity='1')" onmouseleave="this.querySelector('.ptt-edit-btn')&&(this.querySelector('.ptt-edit-btn').style.opacity='0')">${valor?fmtHHMM(valor):'—'}${badge}${btnCorrigir}</div>`;
+      return `<div class="ptt-mono ${valor?'':'empty'}" ${titulo} style="position:relative" onmouseenter="this.querySelector('.ptt-edit-btn')&&(this.querySelector('.ptt-edit-btn').style.opacity='1')" onmouseleave="this.querySelector('.ptt-edit-btn')&&(this.querySelector('.ptt-edit-btn').style.opacity='0')">${valor?fmtHHMM(valor):'—'}${badgeCorr}${badgeJust}${btnCorrigir}</div>`;
     }
 
     return `<div class="ptt-row">
@@ -4582,7 +4673,7 @@ function exportarPontoExcel() {
   const sel = document.getElementById('ponto-mes-filtro');
   const mes = sel ? sel.value : todayKey().substr(0,7);
   const registros = allPontos.filter(p => p.data && p.data.startsWith(mes));
-  const collabs = allUsers.filter(u => u.role !== 'admin');
+  const collabs = allUsers.filter(u => u.role !== 'admin' && isAtivo(u));
 
   const [ano, mesNum] = mes.split('-').map(Number);
   const diasNoMes = new Date(ano, mesNum, 0).getDate();
@@ -4674,7 +4765,7 @@ function exportarPontoPDF() {
   const mes = sel ? sel.value : todayKey().substr(0,7);
   const [ano, numMes] = mes.split('-');
   const registros = allPontos.filter(p => p.data && p.data.startsWith(mes));
-  const collabs = allUsers.filter(u => u.role !== 'admin');
+  const collabs = allUsers.filter(u => u.role !== 'admin' && isAtivo(u));
   let html = `<html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;padding:24px;color:#1a1a1a}h1{font-size:18px;margin-bottom:4px}h2{font-size:14px;color:#555;margin:20px 0 8px}table{width:100%;border-collapse:collapse;font-size:12px}th{background:#1a1a2e;color:#fff;padding:8px 10px;text-align:left}td{padding:7px 10px;border-bottom:1px solid #eee}.hd{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:16px;border-bottom:2px solid #c9a227}</style></head><body>`;
   html += `<div class="hd"><div><h1>Gestão Grupo RG Rio — Relatório de Ponto</h1><p style="color:#666;font-size:13px">${nomeMes(parseInt(numMes)-1)} ${ano} • Gerado em ${new Date().toLocaleDateString('pt-BR')}</p></div></div>`;
   collabs.forEach(c => {
@@ -6234,7 +6325,7 @@ async function renderAdmCaixas() {
     .filter(c=>c.status!=='reabastecido_historico'&&c.status!=='sem_caixa')
     .reduce((a,c)=>a+(c.totalGasto||0),0);
   // Total disponível = valor inicial de cada supervisor ativo
-  const supervisores = allUsers.filter(u=>SUPERVISORES_CAIXA.includes(u.email)&&u.email!=='supervisor.teste@gruporgbrasil.com');
+  const supervisores = allUsers.filter(u=>SUPERVISORES_CAIXA.includes(u.email)&&u.email!=='supervisor.teste@gruporgbrasil.com'&&isAtivo(u));
   const totalDisponivel = supervisores.reduce((a,sup)=>{
     const caixa = allCaixas.find(c=>c.supervisorEmail===sup.email&&c.status!=='reabastecido_historico');
     return a + (caixa ? (caixa.saldoAtual||VALOR_CAIXA_INICIAL) : VALOR_CAIXA_INICIAL);
@@ -6971,7 +7062,7 @@ async function renderAdmCombustivel() {
   const stats = document.getElementById('adm-comb-stats');
   if (!el) return;
   const mes = mesAtualKey();
-  const supervisores = allUsers.filter(u=>SUPERVISORES_CAIXA.includes(u.email)&&u.email!=='supervisor.teste@gruporgbrasil.com');
+  const supervisores = allUsers.filter(u=>SUPERVISORES_CAIXA.includes(u.email)&&u.email!=='supervisor.teste@gruporgbrasil.com'&&isAtivo(u));
   const pendentes = allRecargas.filter(r=>r.status==='aguarda_aprovacao').length;
   const totalMes = allRecargas.filter(r=>r.mes===mes&&r.status==='confirmada').reduce((a,r)=>a+(r.valor||0),0);
 
@@ -7161,7 +7252,7 @@ async function renderRelatorioComb() {
   }
   const mes = sel ? sel.value : mesAtualKey();
   const [ano, numMes] = mes.split('-');
-  const supervisores = allUsers.filter(u=>SUPERVISORES_CAIXA.includes(u.email)&&u.email!=='supervisor.teste@gruporgbrasil.com');
+  const supervisores = allUsers.filter(u=>SUPERVISORES_CAIXA.includes(u.email)&&u.email!=='supervisor.teste@gruporgbrasil.com'&&isAtivo(u));
 
   // Totais gerais
   const totalRecargas = allRecargas.filter(r=>r.mes===mes&&r.status==='confirmada').reduce((a,r)=>a+(r.valor||0),0);
@@ -7770,6 +7861,9 @@ async function marcarTodasLidas() {
 
 async function addNotificacao(para, titulo, corpo, icone='🔔', cor='accent') {
   try {
+    // Não enviar notificações para usuários inativos
+    const destinatario = allUsers.find(u => u.email === para);
+    if (destinatario && !isAtivo(destinatario)) return;
     const ref = db.collection('notificacoes').doc();
     await ref.set({id:ref.id, para, titulo, corpo, icone, cor, lida:false, createdAt:new Date().toISOString()});
   } catch(e) { console.error('Notif error',e); }
@@ -8018,7 +8112,7 @@ async function criarNotif(userId, tipo, titulo, corpo) {
   const iconMap = {maquina:'💻', demanda:'◈', alerta:'⚠️'};
   const corMap = {maquina:'yellow', demanda:'accent', alerta:'red'};
   const user = allUsers.find(u=>u.id===userId);
-  if (!user) return;
+  if (!user || !isAtivo(user)) return; // não notificar inativos
   await addNotificacao(user.email, titulo, corpo, iconMap[tipo]||'🔔', corMap[tipo]||'accent');
 }
 
@@ -8034,7 +8128,7 @@ function renderTeam() {
 
   // Filtro ativo/inativo — ler seleção atual ou padrão 'ativos'
   const filtroAtual = mainEl.getAttribute('data-filtro') || 'ativos';
-  const todosCollabs = allUsers.filter(u => u.role !== 'admin');
+  const todosCollabs = allUsers.filter(u => u.role !== 'admin' && isAtivo(u));
   const collabs = filtroAtual === 'inativos'
     ? todosCollabs.filter(u => u.ativo === false)
     : todosCollabs.filter(u => u.ativo !== false); // undefined ou true = ativo
@@ -8180,7 +8274,7 @@ function getDestinatariosPermitidos(user) {
   const cargo = user.cargo || '';
   const permitidos = [user.id]; // sempre pode para si mesmo
   const cargosAlvo = CARGO_REGRAS[cargo] || [];
-  allUsers.filter(u => cargosAlvo.includes(u.cargo)).forEach(u => permitidos.push(u.id));
+  allUsers.filter(u => cargosAlvo.includes(u.cargo) && isAtivo(u)).forEach(u => permitidos.push(u.id));
   return permitidos;
 }
 
@@ -8351,7 +8445,7 @@ function renderSupDemandasEquipe() {
   const el = document.getElementById('sup-demandas-equipe-body');
   if (!el) return;
   const cargosAlvo = CARGO_REGRAS[currentUser.cargo||''] || [];
-  const equipe = allUsers.filter(u=>cargosAlvo.includes(u.cargo));
+  const equipe = allUsers.filter(u=>cargosAlvo.includes(u.cargo)&&isAtivo(u));
   if (!equipe.length) { el.innerHTML=`<div class="empty"><div class="icon">◈</div><p>Nenhum colaborador sob sua supervisão.</p></div>`; return; }
 
   // Propostas pendentes do supervisor
@@ -8629,7 +8723,7 @@ function renderMapeamentoHolerites() {
   document.getElementById('holerite-processando').style.display = 'none';
   document.getElementById('holerite-mapeamento').style.display = 'block';
 
-  const colabs = allUsers.filter(u => u.role !== 'admin').sort((a,b) => a.name.localeCompare(b.name));
+  const colabs = allUsers.filter(u => u.role !== 'admin' && isAtivo(u)).sort((a,b) => a.name.localeCompare(b.name));
   const opcoes = `<option value="">-- Não enviar --</option>` + colabs.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
 
   const detectados = holeritesPdfData.filter(item => item.userId).length;
@@ -9335,7 +9429,7 @@ async function handleFolhaFile(file) {
 function renderMapeamentoFolhas() {
   document.getElementById('folha-processando').style.display='none';
   document.getElementById('folha-mapeamento').style.display='block';
-  const colabs=allUsers.filter(u=>u.role!=='admin').sort((a,b)=>a.name.localeCompare(b.name));
+  const colabs=allUsers.filter(u=>u.role!=='admin'&&isAtivo(u)).sort((a,b)=>a.name.localeCompare(b.name));
   const opcoes=`<option value="">-- Não enviar --</option>`+colabs.map(u=>`<option value="${u.id}">${u.name}</option>`).join('');
   const det=folhasPdfData.filter(f=>f.userId).length;
   document.getElementById('folha-match-lista').innerHTML=`
