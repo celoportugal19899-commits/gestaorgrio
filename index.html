@@ -2492,6 +2492,7 @@ let unsubRegistros = null;
 let _readyUsers = false;
 let _readyTasks = false;
 let _readyPostos = false;
+let _autoRepairTriggered = false; // garante execução única do autoRepairUsersDuplicados por sessão
 
 const SENHA_PADRAO = 'rg@2026';
 const TOLERANCIA_MIN = 5;
@@ -3577,8 +3578,12 @@ function startApp() {
         const _dupEmails = Object.entries(_dupEmailCount).filter(([,n])=>n>1);
         if (_dupEmails.length > 0) {
           console.error('⚠️ ALERTA GESTÃORGRIO: usuários duplicados detectados no Firestore:', _dupEmails.map(([e,n])=>`${e}: ${n} docs`));
-          toast('⚠️ ATENÇÃO: existem usuários duplicados no Firestore. Execute a rotina administrativa de consolidação.','err');
         }
+      }
+      // Auto-repair: executa uma única vez por sessão, somente para ADM
+      if (!_autoRepairTriggered && currentUser && currentUser.role === 'admin') {
+        _autoRepairTriggered = true;
+        autoRepairUsersDuplicados();
       }
       _readyUsers = true;
       refreshCurrentView();
@@ -3625,6 +3630,150 @@ async function renderAdmDashboardExtras() {
   if (!wrap) return;
   if (!reqs.length) { wrap.innerHTML=''; return; }
   wrap.innerHTML = `<div style="margin-bottom:20px"><div style="font-size:12px;color:var(--yellow);text-transform:uppercase;letter-spacing:.8px;font-weight:700;margin-bottom:10px">🔑 ${reqs.length} solicitação(ões) de reset de senha</div>${reqs.map(r=>`<div class="device-req-card"><div style="font-size:22px">🔑</div><div class="dr-info"><div class="dr-title">${r.userName}</div><div class="dr-sub">${r.userEmail} • ${fmtDT(r.requestedAt)}</div></div><button class="btn btn-sm btn-primary" onclick="resetarSenha('${r.userId}','${r.id}')">Resetar Senha</button></div>`).join('')}</div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUTO-REPAIR: consolida usuários duplicados automaticamente no primeiro login ADM
+// Proteção dupla: window.__usersAutoRepairRunning + localStorage('users_repair_done_v1')
+// Nunca toca em módulos funcionais: Ponto, Time, Folha, RH, Caixa, etc.
+// ─────────────────────────────────────────────────────────────────────────────
+async function autoRepairUsersDuplicados() {
+  if (window.__usersAutoRepairRunning) return;
+  if (localStorage.getItem('users_repair_done_v1') === '1') return;
+  if (!currentUser || currentUser.role !== 'admin') return;
+
+  window.__usersAutoRepairRunning = true;
+  console.log('[autoRepair] Iniciando verificação de usuários duplicados...');
+
+  try {
+    // 1. Carregar toda a collection users
+    const snap = await db.collection('users').get();
+
+    // 2. Agrupar por email
+    const porEmail = {};
+    snap.docs.forEach(d => {
+      const key = (d.data().email || '').toLowerCase().trim();
+      if (!porEmail[key]) porEmail[key] = [];
+      porEmail[key].push({ docId: d.id, data: d.data() });
+    });
+
+    const duplicados = Object.entries(porEmail).filter(([, lista]) => lista.length > 1);
+
+    if (!duplicados.length) {
+      console.log('[autoRepair] Nenhum duplicado encontrado. Sistema íntegro.');
+      localStorage.setItem('users_repair_done_v1', '1');
+      window.__usersAutoRepairRunning = false;
+      return;
+    }
+
+    console.log('[autoRepair] ' + duplicados.length + ' email(s) com duplicatas encontrados. Iniciando reparo...');
+    let totalCorrigidos = 0;
+
+    for (const [email, lista] of duplicados) {
+      // 3. Escolher o keeper:
+      //    a) com deviceAuthorized === true (prefer oldest entre eles)
+      //    b) senão o mais antigo por createdAt
+      //    c) senão o primeiro encontrado
+      let keeper;
+      const comAuth = lista.filter(u => u.data.deviceAuthorized === true);
+      if (comAuth.length > 0) {
+        comAuth.sort((a, b) => (a.data.createdAt || '').localeCompare(b.data.createdAt || ''));
+        keeper = comAuth[0];
+      } else {
+        const sorted = [...lista].sort((a, b) => (a.data.createdAt || '').localeCompare(b.data.createdAt || ''));
+        keeper = sorted[0];
+      }
+
+      const dups = lista.filter(u => u.docId !== keeper.docId);
+      console.log('[autoRepair] email: ' + email + ' | keeper: ' + keeper.docId + ' | dups: ' + dups.map(d => d.docId).join(', '));
+
+      for (const dup of dups) {
+        // 4. Migrar referências em batch — cada coleção em paralelo
+        const [pontosSnap, folhasSnap, medidasSnap, atestadosSnap, tasksSnap, devicesSnap] =
+          await Promise.all([
+            db.collection('pontos').where('userId', '==', dup.docId).get(),
+            db.collection('folhasPonto').where('colaboradorId', '==', dup.docId).get(),
+            db.collection('medidas_disciplinares').where('colaboradorId', '==', dup.docId).get(),
+            db.collection('atestados').where('colaboradorId', '==', dup.docId).get(),
+            db.collection('tasks').where('assignedTo', '==', dup.docId).get(),
+            db.collection('devices').where('userId', '==', dup.docId).get(),
+          ]);
+
+        const totalWrites =
+          pontosSnap.size + folhasSnap.size + medidasSnap.size +
+          atestadosSnap.size + tasksSnap.size + devicesSnap.size;
+
+        console.log('[autoRepair]   dup ' + dup.docId + ' — refs: pontos:' + pontosSnap.size +
+          ' folhas:' + folhasSnap.size + ' medidas:' + medidasSnap.size +
+          ' atestados:' + atestadosSnap.size + ' tasks:' + tasksSnap.size +
+          ' devices:' + devicesSnap.size + ' | total writes: ' + (totalWrites + 1));
+
+        // Processar em lotes de até 400 escritas (Firestore limita 500 por batch)
+        const allOps = [];
+        pontosSnap.docs.forEach(d => allOps.push(
+          [d.ref, { userId: keeper.docId, userName: keeper.data.name || d.data().userName }]
+        ));
+        folhasSnap.docs.forEach(d => allOps.push(
+          [d.ref, { colaboradorId: keeper.docId, colaboradorNome: keeper.data.name || d.data().colaboradorNome }]
+        ));
+        medidasSnap.docs.forEach(d => allOps.push(
+          [d.ref, { colaboradorId: keeper.docId, colaboradorNome: keeper.data.name || d.data().colaboradorNome,
+            colaboradorEmail: keeper.data.email || d.data().colaboradorEmail }]
+        ));
+        atestadosSnap.docs.forEach(d => allOps.push(
+          [d.ref, { colaboradorId: keeper.docId, colaboradorNome: keeper.data.name || d.data().colaboradorNome }]
+        ));
+        tasksSnap.docs.forEach(d => allOps.push(
+          [d.ref, { assignedTo: keeper.docId }]
+        ));
+        devicesSnap.docs.forEach(d => allOps.push(
+          [d.ref, { userId: keeper.docId, userName: keeper.data.name || d.data().userName }]
+        ));
+
+        // Executar em lotes de 400
+        for (let i = 0; i < allOps.length; i += 400) {
+          const b = db.batch();
+          allOps.slice(i, i + 400).forEach(([ref, data]) => b.update(ref, data));
+          await b.commit();
+        }
+
+        // 5. Transferir deviceAuthorized para o keeper se necessário + excluir dup
+        const finalBatch = db.batch();
+        if (!keeper.data.deviceAuthorized && dup.data.deviceAuthorized) {
+          finalBatch.update(db.collection('users').doc(keeper.docId), {
+            deviceAuthorized: true,
+            authorizedDeviceId: dup.data.authorizedDeviceId || ''
+          });
+          console.log('[autoRepair]   deviceAuthorized transferido para keeper ' + keeper.docId);
+        }
+        // 6. Excluir o documento duplicado
+        finalBatch.delete(db.collection('users').doc(dup.docId));
+        await finalBatch.commit();
+
+        totalCorrigidos++;
+        console.log('[autoRepair]   dup ' + dup.docId + ' removido com sucesso.');
+      }
+    }
+
+    // 7. Marcar como concluído para não rodar novamente
+    localStorage.setItem('users_repair_done_v1', '1');
+
+    // 8. Recarregar allUsers com os dados corretos
+    const snapAtualizado = await db.collection('users').get();
+    allUsers = snapAtualizado.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    // Exibir toast apenas para o ADM
+    toast('⚠️ ' + totalCorrigidos + ' usuário(s) duplicado(s) foram corrigidos automaticamente.', 'ok');
+    console.log('[autoRepair] Concluído. ' + totalCorrigidos + ' duplicata(s) removida(s). allUsers recarregado com ' + allUsers.length + ' docs.');
+
+    // 9. Atualizar a view atual
+    refreshCurrentView();
+
+  } catch (e) {
+    console.error('[autoRepair] ERRO durante o reparo automático:', e);
+  } finally {
+    window.__usersAutoRepairRunning = false;
+  }
 }
 
 function refreshCurrentView() {
