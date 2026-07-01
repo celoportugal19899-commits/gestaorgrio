@@ -2488,7 +2488,6 @@ let unsubUsers = null;
 let unsubTasks = null;
 let _refreshTimer = null; // debounce para refreshCurrentView
 let unsubRegistros = null;
-let unsubPostos = null;
 // Flags de prontidão — garantem render só quando dados essenciais chegaram
 let _readyUsers = false;
 let _readyTasks = false;
@@ -2576,8 +2575,10 @@ async function initIncidencias() {
   if (unsubIncidencias) unsubIncidencias();
   unsubIncidencias = db.collection('incidencias').onSnapshot(snap => {
     allIncidencias = snap.docs.map(d => ({id: d.id, ...d.data()}));
+    const active = document.querySelector('.view.active');
+    if (active && active.id === 'view-col-incidencias') renderColIncidencias();
+    if (active && active.id === 'view-adm-incidencias') renderDashboardIncidencias();
     updateIncBadge();
-    refreshCurrentView();
   });
 }
 
@@ -3394,26 +3395,39 @@ function exportarIncidenciasExcel() {
 // ══════════════════════════════════════
 async function initSystem() {
   try {
-    // Criar admin se não existir
-    const admSnap = await db.collection('users').where('role','==','admin').get();
-    if (admSnap.empty) {
+    // Buscar TODOS os emails existentes na collection users de uma vez.
+    // Proteção idempotente: nunca criar usuário se o email já existe,
+    // independente de quantas vezes initSystem() for executado.
+    const allUsersSnap = await db.collection('users').get();
+    const emailsExistentes = new Set(
+      allUsersSnap.docs.map(d => (d.data().email || '').toLowerCase().trim())
+    );
+
+    // Criar admin somente se o email não existir
+    const adminEmail = 'admin@gestaorgrio.com';
+    if (!emailsExistentes.has(adminEmail)) {
       await db.collection('users').doc('admin').set({
-        id:'admin', name:'Administrador', email:'admin@gestaorgrio.com',
+        id:'admin', name:'Administrador', email: adminEmail,
         password:'admin123', role:'admin', cargo:'Administrador',
         mustChangePassword: false, createdAt: new Date().toISOString()
       });
+      emailsExistentes.add(adminEmail);
     }
-    // Criar colaboradores iniciais se não existirem
-    const colSnap = await db.collection('users').where('role','==','collaborator').get();
-    if (colSnap.empty) {
-      const batch = db.batch();
-      COLABORADORES_INICIAIS.forEach((c, i) => {
-        const ref = db.collection('users').doc();
-        batch.set(ref, { id:ref.id, ...c, password: SENHA_PADRAO, role:'collaborator',
-          mustChangePassword: i === 0 ? false : true, createdAt: new Date().toISOString() });
-      });
-      await batch.commit();
-    }
+
+    // Criar apenas os colaboradores cujo email ainda não existe.
+    // NUNCA recria todos por colSnap.empty — dupla proteção contra duplicação.
+    const batchSeed = db.batch();
+    let novosSeed = 0;
+    COLABORADORES_INICIAIS.forEach((c, i) => {
+      const emailNorm = (c.email || '').toLowerCase().trim();
+      if (emailsExistentes.has(emailNorm)) return;
+      const ref = db.collection('users').doc();
+      batchSeed.set(ref, { id:ref.id, ...c, password: SENHA_PADRAO, role:'collaborator',
+        mustChangePassword: i === 0 ? false : true, createdAt: new Date().toISOString() });
+      novosSeed++;
+    });
+    if (novosSeed > 0) await batchSeed.commit();
+
     // Criar postos iniciais se não existirem
     const postoSnap = await db.collection('postos').get();
     if (postoSnap.empty) {
@@ -3531,28 +3545,6 @@ function doLogout() {
   if (unsubUsers) unsubUsers();
   if (unsubTasks) unsubTasks();
   if (unsubPontos) unsubPontos();
-  if (unsubPostos) unsubPostos();
-  if (unsubRegistros) unsubRegistros();
-  if (unsubIncidencias) unsubIncidencias();
-  if (unsubCaixas) unsubCaixas();
-  if (unsubCaixaLancamentos) unsubCaixaLancamentos();
-  if (unsubRecargas) unsubRecargas();
-  if (unsubUsos) unsubUsos();
-  if (unsubNotifs) unsubNotifs();
-  if (unsubPropostas) unsubPropostas();
-  if (unsubHolerites) unsubHolerites();
-  if (unsubAtestados) unsubAtestados();
-  if (unsubMedidas) unsubMedidas();
-  if (unsubFolhas) unsubFolhas();
-  if (unsubCsatPlanosAcao) unsubCsatPlanosAcao();
-  if (unsubCsatMotivosDetectados) unsubCsatMotivosDetectados();
-  unsubUsers = null; unsubTasks = null; unsubPontos = null;
-  unsubPostos = null; unsubRegistros = null; unsubIncidencias = null;
-  unsubCaixas = null; unsubCaixaLancamentos = null;
-  unsubRecargas = null; unsubUsos = null; unsubNotifs = null;
-  unsubPropostas = null; unsubHolerites = null; unsubAtestados = null;
-  unsubMedidas = null; unsubFolhas = null;
-  unsubCsatPlanosAcao = null; unsubCsatMotivosDetectados = null;
   currentUser = null; allUsers = []; allTasks = [];
   _readyUsers = false; _readyTasks = false; _readyPostos = false;
   clearTimeout(_refreshTimer); _refreshTimer = null;
@@ -3576,17 +3568,21 @@ function startApp() {
   document.getElementById('nav-posto').style.display = isPosto ? 'block' : 'none';
   document.getElementById('nav-supervisor').style.display = (!isAdmin && !isPosto && isSupervisor) ? 'block' : 'none';
   if (!isPosto) {
-    if (unsubUsers) unsubUsers();
     unsubUsers = db.collection('users').onSnapshot(snap => {
       allUsers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      console.log('USERS FIRESTORE:', snap.docs.length);
-      console.log('ALL USERS:', allUsers.length);
-      console.log('UIDS:', allUsers.map(u => u.id));
-      console.log('EMAILS:', allUsers.map(u => u.email));
+      // Alerta permanente: detectar emails duplicados e notificar ADM
+      if (currentUser && currentUser.role === 'admin') {
+        const _dupEmailCount = {};
+        allUsers.forEach(u => { const _e = (u.email||'').toLowerCase(); _dupEmailCount[_e] = (_dupEmailCount[_e]||0)+1; });
+        const _dupEmails = Object.entries(_dupEmailCount).filter(([,n])=>n>1);
+        if (_dupEmails.length > 0) {
+          console.error('⚠️ ALERTA GESTÃORGRIO: usuários duplicados detectados no Firestore:', _dupEmails.map(([e,n])=>`${e}: ${n} docs`));
+          toast('⚠️ ATENÇÃO: existem usuários duplicados no Firestore. Execute a rotina administrativa de consolidação.','err');
+        }
+      }
       _readyUsers = true;
       refreshCurrentView();
     });
-    if (unsubTasks) unsubTasks();
     unsubTasks = db.collection('tasks').orderBy('createdAt','desc').onSnapshot(snap => {
       allTasks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       _readyTasks = true;
@@ -3597,13 +3593,11 @@ function startApp() {
     _readyUsers = true;
     _readyTasks = true;
   }
-  if (unsubPostos) unsubPostos();
-  unsubPostos = db.collection('postos').onSnapshot(snap => {
+  db.collection('postos').onSnapshot(snap => {
     allPostos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     _readyPostos = true;
     refreshCurrentView();
   });
-  if (unsubRegistros) unsubRegistros();
   unsubRegistros = db.collection('registros').onSnapshot(snap => {
     allRegistros = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     refreshCurrentView();
@@ -3634,7 +3628,6 @@ async function renderAdmDashboardExtras() {
 }
 
 function refreshCurrentView() {
-  console.count('refreshCurrentView');
   // Debounce 300ms: consolida múltiplos onSnapshot simultâneos num único render
   // Evita race condition onde snapshots parciais sobrescrevem a view com dados incompletos
   clearTimeout(_refreshTimer);
@@ -3656,11 +3649,8 @@ function _doRefreshCurrentView() {
   if (id === 'adm-ponto') renderAdmPonto();
   if (id === 'col-ponto') renderColPonto();
   if (id === 'adm-postos') renderAdmPostos();
-  if (id === 'col-incidencias') renderColIncidencias();
-  if (id === 'adm-incidencias') renderDashboardIncidencias();
   if (id === 'adm-indicadores') { (async()=>{ await initIndicadoresMesFiltro(); await renderIndicadores(); })(); }
   if (id === 'adm-csat') { (async()=>{ await initCsatMesFiltro(); await renderCSAT(); })(); }
-  if (id === 'adm-pos') { (async()=>{ await initPOS(); })(); }
   if (id === 'supervisor-postos') renderSupervisorPostos();
   if (id === 'sup-caixa') renderSupCaixa();
   if (id === 'adm-caixas') renderAdmCaixas();
@@ -3694,7 +3684,24 @@ function showView(name, el) {
     if (grpSup) grpSup.style.display = 'block';
     if (arrSup) arrSup.classList.add('open');
   }
-  // Render imediato ao navegar — única origem de renderização via _doRefreshCurrentView
+  if (name === 'adm-csat') { (async()=>{ await initCsatMesFiltro(); await renderCSAT(); })(); }
+  if (name === 'adm-pos') { (async()=>{ await initPOS(); })(); }
+  if (name === 'supervisor-postos') renderSupervisorPostos();
+  if (name === 'sup-caixa') renderSupCaixa();
+  if (name === 'adm-caixas') renderAdmCaixas();
+  if (name === 'sup-combustivel') renderSupCombustivel();
+  if (name === 'adm-combustivel') renderAdmCombustivel();
+  if (name === 'adm-relatorio-comb') renderRelatorioComb();
+  if (name === 'sup-demandas-equipe') renderSupDemandasEquipe();
+  if (name === 'adm-rh-holerite') renderAdmRhHolerite();
+  if (name === 'adm-rh-atestado') renderAdmRhAtestado();
+  if (name === 'col-rh-holerite') renderColRhHolerite();
+  if (name === 'col-rh-atestado') renderColRhAtestado();
+  if (name === 'adm-rh-folha') renderHistoricoFolhas();
+  if (name === 'col-rh-folha') renderColRhFolha();
+  if (name === 'adm-medidas-disciplinares') md_renderTudo();
+  if (name === 'sup-medidas-disciplinares') md_renderTudo();
+  // Render imediato ao navegar (cancela debounce pendente e renderiza já)
   clearTimeout(_refreshTimer);
   _refreshTimer = null;
   _doRefreshCurrentView();
@@ -4096,12 +4103,13 @@ async function initPonto() {
   if (unsubPontos) unsubPontos();
   unsubPontos = db.collection('pontos').onSnapshot(snap => {
     allPontos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    refreshCurrentView();
+    const active = document.querySelector('.view.active');
+    if (active && active.id === 'view-adm-ponto') renderAdmPonto();
+    if (active && active.id === 'view-col-ponto') renderColPonto();
   });
 }
 
 async function renderColPonto() {
-  console.count('renderColPonto');
   const did = getDeviceId();
   document.getElementById('device-id-display') && (document.getElementById('device-id-display').textContent = 'ID: ' + did);
 
@@ -4610,7 +4618,6 @@ async function toggleEmCurso(checked) {
 }
 
 async function renderAdmPonto() {
-  console.count('renderAdmPonto');
   const collabs = allUsers.filter(u => u.role !== 'admin' && isAtivo(u));
   const today = todayKey();
 
@@ -6008,12 +6015,15 @@ function initCaixas() {
     const pendentes = allCaixas.filter(c=>c.status==='aguarda_aprovacao').length;
     const badge = document.getElementById('caixa-badge');
     if (badge) { badge.textContent=pendentes; badge.style.display=pendentes>0?'inline':'none'; }
-    refreshCurrentView();
+    const active = document.querySelector('.view.active');
+    if (active?.id === 'view-adm-caixas') renderAdmCaixas();
+    if (active?.id === 'view-sup-caixa') renderSupCaixa();
   });
   if (unsubCaixaLancamentos) unsubCaixaLancamentos();
   unsubCaixaLancamentos = db.collection('caixa_lancamentos').orderBy('createdAt','desc').onSnapshot(snap => {
     allCaixaLancamentos = snap.docs.map(d => ({id:d.id,...d.data()}));
-    refreshCurrentView();
+    const active = document.querySelector('.view.active');
+    if (active?.id === 'view-sup-caixa') renderSupCaixa();
   });
 }
 
@@ -7000,11 +7010,15 @@ function initCombustivel() {
     const pend = allRecargas.filter(r=>r.status==='aguarda_aprovacao').length;
     const badge = document.getElementById('comb-badge');
     if (badge) { badge.textContent=pend; badge.style.display=pend>0?'inline':'none'; }
-    refreshCurrentView();
+    const active = document.querySelector('.view.active');
+    if (active?.id==='view-adm-combustivel') renderAdmCombustivel();
+    if (active?.id==='view-sup-combustivel') renderSupCombustivel();
   });
   unsubUsos = db.collection('usos_combustivel').onSnapshot(snap => {
     allUsos = snap.docs.map(d=>({id:d.id,...d.data()}));
-    refreshCurrentView();
+    const active = document.querySelector('.view.active');
+    if (active?.id==='view-adm-combustivel') renderAdmCombustivel();
+    if (active?.id==='view-sup-combustivel') renderSupCombustivel();
   });
 }
 
@@ -8271,7 +8285,6 @@ function abrirRespPrazo(taskId) {
 }
 
 function renderTeam() {
-  console.count('renderTeam');
   const mainEl = document.getElementById('adm-team-cards');
   const tbodyEl = document.getElementById('team-tbody');
   if (!mainEl) return;
@@ -8446,7 +8459,11 @@ function initPropostas() {
       badge.textContent = pendAdm;
       badge.style.display = pendAdm > 0 ? 'inline' : 'none';
     }
-    refreshCurrentView();
+    // Atualizar views abertas
+    const active = document.querySelector('.view.active');
+    if (active?.id === 'view-adm-tasks') renderPendingDemandasAdm();
+    if (active?.id === 'view-col-tasks') renderColPropPendentes();
+    if (active?.id === 'view-sup-demandas-equipe') renderSupDemandasEquipe();
   });
 }
 
@@ -8654,16 +8671,21 @@ async function initRH() {
   unsubHolerites = db.collection('holerites').orderBy('enviadoEm','desc').onSnapshot(snap => {
     allHolerites = snap.docs.map(d => ({id: d.id, ...d.data()}));
     updateHoleriteBadges();
-    refreshCurrentView();
+    const active = document.querySelector('.view.active');
+    if (active && active.id === 'view-adm-rh-holerite') renderAdmRhHolerite();
+    if (active && active.id === 'view-col-rh-holerite') renderColRhHolerite();
   });
   unsubAtestados = db.collection('atestados').orderBy('enviadoEm','desc').onSnapshot(snap => {
     allAtestados = snap.docs.map(d => ({id: d.id, ...d.data()}));
     updateAtestadoBadge();
-    refreshCurrentView();
+    const active = document.querySelector('.view.active');
+    if (active && active.id === 'view-adm-rh-atestado') renderAdmRhAtestado();
+    if (active && active.id === 'view-col-rh-atestado') renderColRhAtestado();
   });
   unsubMedidas = db.collection('medidas_disciplinares').orderBy('createdAt','desc').onSnapshot(snap => {
     allMedidas = snap.docs.map(d => ({id: d.id, ...d.data()}));
-    refreshCurrentView();
+    const active = document.querySelector('.view.active');
+    if (active && (active.id === 'view-adm-medidas-disciplinares' || active.id === 'view-sup-medidas-disciplinares')) md_renderTudo();
   });
 }
 
@@ -10208,7 +10230,9 @@ function initFolhaPonto() {
   unsubFolhas = db.collection('folhasPonto').orderBy('enviadoEm','desc').onSnapshot(snap => {
     allFolhas = snap.docs.map(d => ({id:d.id,...d.data()}));
     updateFolhaBadges();
-    refreshCurrentView();
+    const active = document.querySelector('.view.active');
+    if (active?.id==='view-adm-rh-folha' && document.getElementById('folha-tab-historico')?.classList.contains('active')) renderHistoricoFolhas();
+    if (active?.id==='view-col-rh-folha') renderColRhFolha();
   });
 }
 
@@ -10342,7 +10366,6 @@ async function dispararFolhas() {
 function cancelarFolha(){folhasPdfData=[];document.getElementById('folha-drop-zone').style.display='block';document.getElementById('folha-processando').style.display='none';document.getElementById('folha-mapeamento').style.display='none';document.getElementById('folha-file-input').value='';}
 
 function renderHistoricoFolhas() {
-  console.count('renderHistoricoFolhas');
   const lista=document.getElementById('folha-historico-lista'); if(!lista)return;
   const fm=document.getElementById('folha-filtro-mes')?.value||'';
   const fs=document.getElementById('folha-filtro-status')?.value||'';
@@ -13336,6 +13359,194 @@ async function confirmarImportPOS(){
     Chart.defaults.scale.grid.color    = 'rgba(255,255,255,.06)';
     Chart.defaults.scale.title.color   = '#a0aec0';
   })();
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// FERRAMENTAS ADMINISTRATIVAS DE MANUTENÇÃO — window.* (console do navegador)
+// Uso: abra o console com o ADM logado e chame cada função na sequência:
+//   1. window.relatorioUsuariosDuplicados()
+//   2. window.marcarDuplicatas()
+//   3. window.consolidarReferencias()
+//   4. window.deletarDuplicatas()
+//   5. window.verificarPosLimpeza()
+// ══════════════════════════════════════════════════════════════════════════
+
+window.relatorioUsuariosDuplicados = async function() {
+  console.log('═══════════════════════════════════════════════════════');
+  console.log('RELATÓRIO DE USUÁRIOS DUPLICADOS — GestãoRGRio');
+  console.log('═══════════════════════════════════════════════════════');
+  const snap = await db.collection('users').get();
+  console.log('Total de documentos: ' + snap.docs.length);
+  const porEmail = {};
+  snap.docs.forEach(d => {
+    const data = d.data();
+    const key = (data.email || '').toLowerCase().trim();
+    if (!porEmail[key]) porEmail[key] = [];
+    porEmail[key].push({ docId: d.id, name: data.name||data.nome||'—', createdAt: data.createdAt||'—',
+      ativo: data.ativo === false ? 'false' : 'true', role: data.role||'—',
+      deviceAuthorized: data.deviceAuthorized ? 'SIM' : 'não' });
+  });
+  const dups = Object.entries(porEmail).filter(([,l])=>l.length>1);
+  console.log('Emails únicos: ' + Object.keys(porEmail).length);
+  console.log('Emails duplicados: ' + dups.length);
+  console.log('Documentos excedentes: ' + (snap.docs.length - Object.keys(porEmail).length));
+  if (!dups.length) { console.log('\n✅ Nenhum duplicado encontrado.'); return; }
+  for (const [email, lista] of dups) {
+    lista.sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
+    console.log('\n─────────────────────────────────');
+    console.log('EMAIL: ' + email);
+    lista.forEach((u,i) => {
+      const label = i===0 ? '✅ KEEPER (mais antigo)' : '🗑  REMOVER (duplicata)';
+      console.log('  ' + label);
+      console.log('    doc.id:          ' + u.docId);
+      console.log('    name:            ' + u.name);
+      console.log('    createdAt:       ' + u.createdAt);
+      console.log('    ativo:           ' + u.ativo);
+      console.log('    role:            ' + u.role);
+      console.log('    deviceAuthorized:' + u.deviceAuthorized);
+    });
+  }
+  console.log('\n═══════════════════════════════════════════════════════');
+  console.log('Nenhuma alteração realizada. Execute marcarDuplicatas() para prosseguir.');
+};
+
+window.marcarDuplicatas = async function() {
+  console.log('Marcando duplicatas...');
+  const snap = await db.collection('users').get();
+  const porEmail = {};
+  snap.docs.forEach(d => {
+    const key = (d.data().email||'').toLowerCase().trim();
+    if (!porEmail[key]) porEmail[key] = [];
+    porEmail[key].push({ docId: d.id, createdAt: d.data().createdAt||'' });
+  });
+  const dups = Object.entries(porEmail).filter(([,l])=>l.length>1);
+  if (!dups.length) { console.log('✅ Nenhum duplicado encontrado.'); return; }
+  const batch = db.batch();
+  let marcados = 0;
+  for (const [email, lista] of dups) {
+    lista.sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
+    const keeper = lista[0];
+    console.log('KEEPER [' + email + ']: ' + keeper.docId);
+    lista.slice(1).forEach(dup => {
+      console.log('  MARCANDO: ' + dup.docId);
+      batch.update(db.collection('users').doc(dup.docId), {
+        _duplicado: true, _duplicadoDe: keeper.docId, _marcadoEm: new Date().toISOString()
+      });
+      marcados++;
+    });
+  }
+  await batch.commit();
+  console.log('✅ ' + marcados + ' documento(s) marcado(s) com _duplicado: true.');
+  console.log('Revise no Firebase Console. Em seguida: consolidarReferencias()');
+};
+
+window.consolidarReferencias = async function() {
+  console.log('Consolidando referências...');
+  const dupSnap = await db.collection('users').where('_duplicado','==',true).get();
+  if (dupSnap.empty) { console.log('Nenhum _duplicado encontrado. Execute marcarDuplicatas() primeiro.'); return; }
+  for (const dupDoc of dupSnap.docs) {
+    const dupId    = dupDoc.id;
+    const keeperId = dupDoc.data()._duplicadoDe;
+    if (!keeperId) { console.warn('AVISO: ' + dupId + ' sem _duplicadoDe — pulando.'); continue; }
+    const keeperDoc  = await db.collection('users').doc(keeperId).get();
+    const keeperData = keeperDoc.data();
+    console.log('\nMigrando ' + dupId + ' → ' + keeperId + ' (' + keeperData.email + ')');
+    // pontos
+    const pontosSnap = await db.collection('pontos').where('userId','==',dupId).get();
+    if (pontosSnap.size > 0) {
+      const b = db.batch();
+      pontosSnap.docs.forEach(d => b.update(d.ref, { userId: keeperId, userName: keeperData.name||d.data().userName }));
+      await b.commit();
+      console.log('  pontos migrados: ' + pontosSnap.size);
+    }
+    // folhasPonto
+    const folhasSnap = await db.collection('folhasPonto').where('colaboradorId','==',dupId).get();
+    if (folhasSnap.size > 0) {
+      const b = db.batch();
+      folhasSnap.docs.forEach(d => b.update(d.ref, { colaboradorId: keeperId, colaboradorNome: keeperData.name||d.data().colaboradorNome }));
+      await b.commit();
+      console.log('  folhasPonto migradas: ' + folhasSnap.size);
+    }
+    // medidas_disciplinares
+    const medidasSnap = await db.collection('medidas_disciplinares').where('colaboradorId','==',dupId).get();
+    if (medidasSnap.size > 0) {
+      const b = db.batch();
+      medidasSnap.docs.forEach(d => b.update(d.ref, { colaboradorId: keeperId, colaboradorNome: keeperData.name||d.data().colaboradorNome, colaboradorEmail: keeperData.email||d.data().colaboradorEmail }));
+      await b.commit();
+      console.log('  medidas migradas: ' + medidasSnap.size);
+    }
+    // atestados
+    const atestadosSnap = await db.collection('atestados').where('colaboradorId','==',dupId).get();
+    if (atestadosSnap.size > 0) {
+      const b = db.batch();
+      atestadosSnap.docs.forEach(d => b.update(d.ref, { colaboradorId: keeperId, colaboradorNome: keeperData.name||d.data().colaboradorNome }));
+      await b.commit();
+      console.log('  atestados migrados: ' + atestadosSnap.size);
+    }
+    // tasks
+    const tasksSnap = await db.collection('tasks').where('assignedTo','==',dupId).get();
+    if (tasksSnap.size > 0) {
+      const b = db.batch();
+      tasksSnap.docs.forEach(d => b.update(d.ref, { assignedTo: keeperId }));
+      await b.commit();
+      console.log('  tasks migradas: ' + tasksSnap.size);
+    }
+    // devices
+    const devicesSnap = await db.collection('devices').where('userId','==',dupId).get();
+    if (devicesSnap.size > 0) {
+      const b = db.batch();
+      devicesSnap.docs.forEach(d => b.update(d.ref, { userId: keeperId, userName: keeperData.name||d.data().userName }));
+      await b.commit();
+      console.log('  devices migrados: ' + devicesSnap.size);
+    }
+    // Transferir deviceAuthorized se keeper não tem mas dup tem
+    if (!keeperData.deviceAuthorized && dupDoc.data().deviceAuthorized) {
+      await db.collection('users').doc(keeperId).update({ deviceAuthorized: true, authorizedDeviceId: dupDoc.data().authorizedDeviceId||'' });
+      console.log('  deviceAuthorized transferido para o keeper.');
+    }
+  }
+  console.log('\n✅ Consolidação concluída. Em seguida: deletarDuplicatas()');
+};
+
+window.deletarDuplicatas = async function() {
+  const dupSnap = await db.collection('users').where('_duplicado','==',true).get();
+  if (dupSnap.empty) { console.log('Nenhum documento com _duplicado: true encontrado.'); return; }
+  const ok = confirm(
+    'Você está prestes a DELETAR PERMANENTEMENTE ' + dupSnap.size + ' documento(s) da collection users.\n\n' +
+    'Esta ação é IRREVERSÍVEL.\n\n' +
+    'Confirma que relatorioUsuariosDuplicados(), marcarDuplicatas() e consolidarReferencias() já foram executados e revisados?'
+  );
+  if (!ok) { console.log('Operação cancelada pelo usuário.'); return; }
+  const batch = db.batch();
+  dupSnap.docs.forEach(d => {
+    console.log('  Deletando: ' + d.id + ' (' + d.data().email + ')');
+    batch.delete(d.ref);
+  });
+  await batch.commit();
+  console.log('✅ ' + dupSnap.size + ' documento(s) deletado(s). Execute verificarPosLimpeza().');
+};
+
+window.verificarPosLimpeza = async function() {
+  const snap = await db.collection('users').get();
+  const emailCount = {};
+  snap.docs.forEach(d => {
+    const e = (d.data().email||'').toLowerCase().trim();
+    emailCount[e] = (emailCount[e]||0)+1;
+  });
+  const dups = Object.entries(emailCount).filter(([,n])=>n>1);
+  console.log('═══════════════════════════════════════════');
+  console.log('VERIFICAÇÃO PÓS-LIMPEZA');
+  console.log('Total de documentos:  ' + snap.docs.length);
+  console.log('Total de emails únicos: ' + Object.keys(emailCount).length);
+  console.log('Duplicatas restantes: ' + dups.length);
+  if (dups.length === 0) {
+    console.log('✅ LIMPO — nenhuma duplicata encontrada.');
+  } else {
+    console.warn('⚠️ Ainda existem duplicatas:');
+    dups.forEach(([e,n]) => console.warn('  ' + e + ': ' + n + ' docs'));
+  }
+  console.log('═══════════════════════════════════════════');
+};
 
 initSystem();
 </script>
