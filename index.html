@@ -2488,6 +2488,7 @@ let unsubUsers = null;
 let unsubTasks = null;
 let _refreshTimer = null; // debounce para refreshCurrentView
 let unsubRegistros = null;
+let unsubPostos = null;
 // Flags de prontidão — garantem render só quando dados essenciais chegaram
 let _readyUsers = false;
 let _readyTasks = false;
@@ -2575,10 +2576,8 @@ async function initIncidencias() {
   if (unsubIncidencias) unsubIncidencias();
   unsubIncidencias = db.collection('incidencias').onSnapshot(snap => {
     allIncidencias = snap.docs.map(d => ({id: d.id, ...d.data()}));
-    const active = document.querySelector('.view.active');
-    if (active && active.id === 'view-col-incidencias') renderColIncidencias();
-    if (active && active.id === 'view-adm-incidencias') renderDashboardIncidencias();
     updateIncBadge();
+    refreshCurrentView();
   });
 }
 
@@ -3532,6 +3531,28 @@ function doLogout() {
   if (unsubUsers) unsubUsers();
   if (unsubTasks) unsubTasks();
   if (unsubPontos) unsubPontos();
+  if (unsubPostos) unsubPostos();
+  if (unsubRegistros) unsubRegistros();
+  if (unsubIncidencias) unsubIncidencias();
+  if (unsubCaixas) unsubCaixas();
+  if (unsubCaixaLancamentos) unsubCaixaLancamentos();
+  if (unsubRecargas) unsubRecargas();
+  if (unsubUsos) unsubUsos();
+  if (unsubNotifs) unsubNotifs();
+  if (unsubPropostas) unsubPropostas();
+  if (unsubHolerites) unsubHolerites();
+  if (unsubAtestados) unsubAtestados();
+  if (unsubMedidas) unsubMedidas();
+  if (unsubFolhas) unsubFolhas();
+  if (unsubCsatPlanosAcao) unsubCsatPlanosAcao();
+  if (unsubCsatMotivosDetectados) unsubCsatMotivosDetectados();
+  unsubUsers = null; unsubTasks = null; unsubPontos = null;
+  unsubPostos = null; unsubRegistros = null; unsubIncidencias = null;
+  unsubCaixas = null; unsubCaixaLancamentos = null;
+  unsubRecargas = null; unsubUsos = null; unsubNotifs = null;
+  unsubPropostas = null; unsubHolerites = null; unsubAtestados = null;
+  unsubMedidas = null; unsubFolhas = null;
+  unsubCsatPlanosAcao = null; unsubCsatMotivosDetectados = null;
   currentUser = null; allUsers = []; allTasks = [];
   _readyUsers = false; _readyTasks = false; _readyPostos = false;
   clearTimeout(_refreshTimer); _refreshTimer = null;
@@ -3555,11 +3576,17 @@ function startApp() {
   document.getElementById('nav-posto').style.display = isPosto ? 'block' : 'none';
   document.getElementById('nav-supervisor').style.display = (!isAdmin && !isPosto && isSupervisor) ? 'block' : 'none';
   if (!isPosto) {
+    if (unsubUsers) unsubUsers();
     unsubUsers = db.collection('users').onSnapshot(snap => {
       allUsers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      console.log('USERS FIRESTORE:', snap.docs.length);
+      console.log('ALL USERS:', allUsers.length);
+      console.log('UIDS:', allUsers.map(u => u.id));
+      console.log('EMAILS:', allUsers.map(u => u.email));
       _readyUsers = true;
       refreshCurrentView();
     });
+    if (unsubTasks) unsubTasks();
     unsubTasks = db.collection('tasks').orderBy('createdAt','desc').onSnapshot(snap => {
       allTasks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       _readyTasks = true;
@@ -3570,11 +3597,13 @@ function startApp() {
     _readyUsers = true;
     _readyTasks = true;
   }
-  db.collection('postos').onSnapshot(snap => {
+  if (unsubPostos) unsubPostos();
+  unsubPostos = db.collection('postos').onSnapshot(snap => {
     allPostos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     _readyPostos = true;
     refreshCurrentView();
   });
+  if (unsubRegistros) unsubRegistros();
   unsubRegistros = db.collection('registros').onSnapshot(snap => {
     allRegistros = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     refreshCurrentView();
@@ -3605,6 +3634,7 @@ async function renderAdmDashboardExtras() {
 }
 
 function refreshCurrentView() {
+  console.count('refreshCurrentView');
   // Debounce 300ms: consolida múltiplos onSnapshot simultâneos num único render
   // Evita race condition onde snapshots parciais sobrescrevem a view com dados incompletos
   clearTimeout(_refreshTimer);
@@ -3626,8 +3656,11 @@ function _doRefreshCurrentView() {
   if (id === 'adm-ponto') renderAdmPonto();
   if (id === 'col-ponto') renderColPonto();
   if (id === 'adm-postos') renderAdmPostos();
+  if (id === 'col-incidencias') renderColIncidencias();
+  if (id === 'adm-incidencias') renderDashboardIncidencias();
   if (id === 'adm-indicadores') { (async()=>{ await initIndicadoresMesFiltro(); await renderIndicadores(); })(); }
   if (id === 'adm-csat') { (async()=>{ await initCsatMesFiltro(); await renderCSAT(); })(); }
+  if (id === 'adm-pos') { (async()=>{ await initPOS(); })(); }
   if (id === 'supervisor-postos') renderSupervisorPostos();
   if (id === 'sup-caixa') renderSupCaixa();
   if (id === 'adm-caixas') renderAdmCaixas();
@@ -3661,24 +3694,7 @@ function showView(name, el) {
     if (grpSup) grpSup.style.display = 'block';
     if (arrSup) arrSup.classList.add('open');
   }
-  if (name === 'adm-csat') { (async()=>{ await initCsatMesFiltro(); await renderCSAT(); })(); }
-  if (name === 'adm-pos') { (async()=>{ await initPOS(); })(); }
-  if (name === 'supervisor-postos') renderSupervisorPostos();
-  if (name === 'sup-caixa') renderSupCaixa();
-  if (name === 'adm-caixas') renderAdmCaixas();
-  if (name === 'sup-combustivel') renderSupCombustivel();
-  if (name === 'adm-combustivel') renderAdmCombustivel();
-  if (name === 'adm-relatorio-comb') renderRelatorioComb();
-  if (name === 'sup-demandas-equipe') renderSupDemandasEquipe();
-  if (name === 'adm-rh-holerite') renderAdmRhHolerite();
-  if (name === 'adm-rh-atestado') renderAdmRhAtestado();
-  if (name === 'col-rh-holerite') renderColRhHolerite();
-  if (name === 'col-rh-atestado') renderColRhAtestado();
-  if (name === 'adm-rh-folha') renderHistoricoFolhas();
-  if (name === 'col-rh-folha') renderColRhFolha();
-  if (name === 'adm-medidas-disciplinares') md_renderTudo();
-  if (name === 'sup-medidas-disciplinares') md_renderTudo();
-  // Render imediato ao navegar (cancela debounce pendente e renderiza já)
+  // Render imediato ao navegar — única origem de renderização via _doRefreshCurrentView
   clearTimeout(_refreshTimer);
   _refreshTimer = null;
   _doRefreshCurrentView();
@@ -4080,13 +4096,12 @@ async function initPonto() {
   if (unsubPontos) unsubPontos();
   unsubPontos = db.collection('pontos').onSnapshot(snap => {
     allPontos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    const active = document.querySelector('.view.active');
-    if (active && active.id === 'view-adm-ponto') renderAdmPonto();
-    if (active && active.id === 'view-col-ponto') renderColPonto();
+    refreshCurrentView();
   });
 }
 
 async function renderColPonto() {
+  console.count('renderColPonto');
   const did = getDeviceId();
   document.getElementById('device-id-display') && (document.getElementById('device-id-display').textContent = 'ID: ' + did);
 
@@ -4595,6 +4610,7 @@ async function toggleEmCurso(checked) {
 }
 
 async function renderAdmPonto() {
+  console.count('renderAdmPonto');
   const collabs = allUsers.filter(u => u.role !== 'admin' && isAtivo(u));
   const today = todayKey();
 
@@ -5992,15 +6008,12 @@ function initCaixas() {
     const pendentes = allCaixas.filter(c=>c.status==='aguarda_aprovacao').length;
     const badge = document.getElementById('caixa-badge');
     if (badge) { badge.textContent=pendentes; badge.style.display=pendentes>0?'inline':'none'; }
-    const active = document.querySelector('.view.active');
-    if (active?.id === 'view-adm-caixas') renderAdmCaixas();
-    if (active?.id === 'view-sup-caixa') renderSupCaixa();
+    refreshCurrentView();
   });
   if (unsubCaixaLancamentos) unsubCaixaLancamentos();
   unsubCaixaLancamentos = db.collection('caixa_lancamentos').orderBy('createdAt','desc').onSnapshot(snap => {
     allCaixaLancamentos = snap.docs.map(d => ({id:d.id,...d.data()}));
-    const active = document.querySelector('.view.active');
-    if (active?.id === 'view-sup-caixa') renderSupCaixa();
+    refreshCurrentView();
   });
 }
 
@@ -6987,15 +7000,11 @@ function initCombustivel() {
     const pend = allRecargas.filter(r=>r.status==='aguarda_aprovacao').length;
     const badge = document.getElementById('comb-badge');
     if (badge) { badge.textContent=pend; badge.style.display=pend>0?'inline':'none'; }
-    const active = document.querySelector('.view.active');
-    if (active?.id==='view-adm-combustivel') renderAdmCombustivel();
-    if (active?.id==='view-sup-combustivel') renderSupCombustivel();
+    refreshCurrentView();
   });
   unsubUsos = db.collection('usos_combustivel').onSnapshot(snap => {
     allUsos = snap.docs.map(d=>({id:d.id,...d.data()}));
-    const active = document.querySelector('.view.active');
-    if (active?.id==='view-adm-combustivel') renderAdmCombustivel();
-    if (active?.id==='view-sup-combustivel') renderSupCombustivel();
+    refreshCurrentView();
   });
 }
 
@@ -8262,6 +8271,7 @@ function abrirRespPrazo(taskId) {
 }
 
 function renderTeam() {
+  console.count('renderTeam');
   const mainEl = document.getElementById('adm-team-cards');
   const tbodyEl = document.getElementById('team-tbody');
   if (!mainEl) return;
@@ -8436,11 +8446,7 @@ function initPropostas() {
       badge.textContent = pendAdm;
       badge.style.display = pendAdm > 0 ? 'inline' : 'none';
     }
-    // Atualizar views abertas
-    const active = document.querySelector('.view.active');
-    if (active?.id === 'view-adm-tasks') renderPendingDemandasAdm();
-    if (active?.id === 'view-col-tasks') renderColPropPendentes();
-    if (active?.id === 'view-sup-demandas-equipe') renderSupDemandasEquipe();
+    refreshCurrentView();
   });
 }
 
@@ -8648,21 +8654,16 @@ async function initRH() {
   unsubHolerites = db.collection('holerites').orderBy('enviadoEm','desc').onSnapshot(snap => {
     allHolerites = snap.docs.map(d => ({id: d.id, ...d.data()}));
     updateHoleriteBadges();
-    const active = document.querySelector('.view.active');
-    if (active && active.id === 'view-adm-rh-holerite') renderAdmRhHolerite();
-    if (active && active.id === 'view-col-rh-holerite') renderColRhHolerite();
+    refreshCurrentView();
   });
   unsubAtestados = db.collection('atestados').orderBy('enviadoEm','desc').onSnapshot(snap => {
     allAtestados = snap.docs.map(d => ({id: d.id, ...d.data()}));
     updateAtestadoBadge();
-    const active = document.querySelector('.view.active');
-    if (active && active.id === 'view-adm-rh-atestado') renderAdmRhAtestado();
-    if (active && active.id === 'view-col-rh-atestado') renderColRhAtestado();
+    refreshCurrentView();
   });
   unsubMedidas = db.collection('medidas_disciplinares').orderBy('createdAt','desc').onSnapshot(snap => {
     allMedidas = snap.docs.map(d => ({id: d.id, ...d.data()}));
-    const active = document.querySelector('.view.active');
-    if (active && (active.id === 'view-adm-medidas-disciplinares' || active.id === 'view-sup-medidas-disciplinares')) md_renderTudo();
+    refreshCurrentView();
   });
 }
 
@@ -10207,9 +10208,7 @@ function initFolhaPonto() {
   unsubFolhas = db.collection('folhasPonto').orderBy('enviadoEm','desc').onSnapshot(snap => {
     allFolhas = snap.docs.map(d => ({id:d.id,...d.data()}));
     updateFolhaBadges();
-    const active = document.querySelector('.view.active');
-    if (active?.id==='view-adm-rh-folha' && document.getElementById('folha-tab-historico')?.classList.contains('active')) renderHistoricoFolhas();
-    if (active?.id==='view-col-rh-folha') renderColRhFolha();
+    refreshCurrentView();
   });
 }
 
@@ -10343,6 +10342,7 @@ async function dispararFolhas() {
 function cancelarFolha(){folhasPdfData=[];document.getElementById('folha-drop-zone').style.display='block';document.getElementById('folha-processando').style.display='none';document.getElementById('folha-mapeamento').style.display='none';document.getElementById('folha-file-input').value='';}
 
 function renderHistoricoFolhas() {
+  console.count('renderHistoricoFolhas');
   const lista=document.getElementById('folha-historico-lista'); if(!lista)return;
   const fm=document.getElementById('folha-filtro-mes')?.value||'';
   const fs=document.getElementById('folha-filtro-status')?.value||'';
