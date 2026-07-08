@@ -4065,6 +4065,24 @@ async function deleteCollab(userId) {
 // ══════════════════════════════════════
 function renderDashboard() {
   renderAdmDashboardExtras();
+
+  // ── Verificar duplicatas em allUsers (síncrono — sem Firestore call) ──
+  const _dupCount = {};
+  allUsers.forEach(u => { const _e=(u.email||'').toLowerCase(); _dupCount[_e]=(_dupCount[_e]||0)+1; });
+  const _dupEmails = Object.entries(_dupCount).filter(([,n])=>n>1).map(([e])=>e);
+  const _bannerExist = document.getElementById('dup-alert-banner');
+  if (_bannerExist) _bannerExist.remove();
+  if (_dupEmails.length > 0) {
+    const _statsRow = document.getElementById('stats-row');
+    if (_statsRow) {
+      const _banner = document.createElement('div');
+      _banner.id = 'dup-alert-banner';
+      _banner.style.cssText = 'background:rgba(239,68,68,.1);border:2px solid rgba(239,68,68,.3);border-radius:12px;padding:14px 18px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px';
+      _banner.innerHTML = `<div><span style="font-size:18px;margin-right:8px">⚠️</span><strong style="color:#ef4444">${_dupEmails.length} email(s) com usuários duplicados detectados!</strong><span style="color:var(--text3);font-size:12px;margin-left:8px">${_dupEmails.join(', ')}</span></div><button class="btn btn-primary" style="font-size:13px;padding:6px 14px" onclick="window.executarReparoUrgente()">🔧 Executar Reparo Agora</button>`;
+      _statsRow.parentNode.insertBefore(_banner, _statsRow);
+    }
+  }
+
   const collabs = allUsers.filter(u => u.role !== 'admin' && isAtivo(u));
   const done = allTasks.filter(t=>t.status==='concluida').length;
   const active = allTasks.filter(t=>t.status==='em_andamento').length;
@@ -9783,15 +9801,16 @@ function renderMapeamentoHolerites() {
       ${detectados===total&&total>0 ? `✅ ${detectados} colaboradores identificados automaticamente.` : `⚠️ ${detectados} de ${total} detectados — confira o nome do PDF antes de atribuir.`}
     </div>
     ${holeritesPdfData.map((item, idx) => `
-    <div class="rh-match-row" style="${item.userId ? '' : 'border:1px solid rgba(245,158,11,.3);background:var(--yellow-bg)'}">
-      <div class="mr-page" style="${item.userId ? '' : 'background:var(--yellow)'}">${idx + 1}</div>
+    <div class="rh-match-row" style="${item.userId ? '' : 'border:2px solid rgba(239,68,68,.45);background:rgba(239,68,68,.07)'}">
+      <div class="mr-page" style="${item.userId ? '' : 'background:#ef4444;color:#fff'}">${idx + 1}</div>
       <div class="mr-info">
-        <div style="font-size:13px;font-weight:600;color:${item.nomeDetectado ? 'var(--text)' : 'var(--yellow)'}">
+        <div style="font-size:13px;font-weight:600;color:${item.nomeDetectado ? 'var(--text)' : '#ef4444'}">
           ${item.nomeDetectado || '⚠ Nome não detectado no PDF'}
+          ${!item.userId ? '<span style="font-size:11px;color:#ef4444;margin-left:6px">⚠ Selecione manualmente</span>' : ''}
         </div>
         <div style="font-size:11px;color:var(--text3)">Página ${idx + 1} do PDF</div>
       </div>
-      <select class="form-select" id="match-user-${idx}" style="width:240px">
+      <select class="form-select" id="match-user-${idx}" style="width:240px${!item.userId ? ';border-color:#ef4444' : ''}">
         ${opcoes}
       </select>
     </div>
@@ -9842,6 +9861,12 @@ async function dispararHolerites() {
   }
 
   if (!batch.length) { toast('Selecione pelo menos um colaborador', 'err'); return; }
+
+  // ── Avisar se há páginas ignoradas (sem atribuição manual) ──
+  const semAtribuicao = holeritesPdfData.length - batch.length;
+  if (semAtribuicao > 0) {
+    if (!confirm(`⚠️ ${semAtribuicao} página(s) estão sem colaborador atribuído e serão IGNORADAS.\n\nPáginas que serão disparadas: ${batch.length}\nPáginas ignoradas: ${semAtribuicao}\n\nDeseja continuar mesmo assim?`)) return;
+  }
 
   // ── Confirmar antes de disparar ──
   const lista = batch.map(b => `• Pág. ${b.pagina} → ${b.colaboradorNome}`).join('\n');
@@ -10478,10 +10503,10 @@ function renderMapeamentoFolhas() {
       ${det===folhasPdfData.length&&folhasPdfData.length>0?`✅ ${det} colaboradores identificados.`:`⚠️ ${det} de ${folhasPdfData.length} detectados.`}
     </div>
     ${folhasPdfData.map((item,idx)=>`
-    <div class="rh-match-row" style="${item.userId?'':'border:1px solid rgba(245,158,11,.3);background:var(--yellow-bg)'}">
-      <div class="mr-page" style="${item.userId?'':'background:var(--yellow)'}">${idx+1}</div>
-      <div class="mr-info"><div style="font-size:13px;font-weight:600;color:${item.nomeDetectado?'var(--text)':'var(--yellow)'}">${item.nomeDetectado||'⚠ Não detectado'}</div><div style="font-size:11px;color:var(--text3)">Página ${idx+1}</div></div>
-      <select class="form-select" id="folha-match-${idx}" style="width:240px">${opcoes}</select>
+    <div class="rh-match-row" style="${item.userId?'':'border:2px solid rgba(239,68,68,.45);background:rgba(239,68,68,.07)'}">
+      <div class="mr-page" style="${item.userId?'':'background:#ef4444;color:#fff'}">${idx+1}</div>
+      <div class="mr-info"><div style="font-size:13px;font-weight:600;color:${item.nomeDetectado?'var(--text)':'#ef4444'}">${item.nomeDetectado||'⚠ Não detectado'}${!item.userId?'<span style="font-size:11px;color:#ef4444;margin-left:6px">⚠ Selecione manualmente</span>':''}</div><div style="font-size:11px;color:var(--text3)">Página ${idx+1}</div></div>
+      <select class="form-select" id="folha-match-${idx}" style="width:240px${!item.userId?';border-color:#ef4444':''}">${opcoes}</select>
     </div>`).join('')}`;
   folhasPdfData.forEach((item,idx)=>{const s=document.getElementById(`folha-match-${idx}`);if(s&&item.userId)s.value=item.userId;});
 }
@@ -10500,6 +10525,11 @@ async function dispararFolhas() {
     batch.push({colaboradorId:uid,colaboradorEmail:u.email,colaboradorNome:u.name,pagina:i+1,mes:comp,mesNum:parseInt(ms),ano:parseInt(as),pdfBase64:item.pdfBase64,status:'pendente',enviadoEm:new Date().toISOString(),enviadoPor:currentUser.name,vistoColaborador:false,vistoManager:false});
   }
   if(!batch.length){toast('Selecione pelo menos um colaborador','err');return;}
+  // ── Avisar se há páginas ignoradas ──
+  const _semAtrib = folhasPdfData.length - batch.length;
+  if (_semAtrib > 0) {
+    if (!confirm(`⚠️ ${_semAtrib} página(s) estão sem colaborador atribuído e serão IGNORADAS.\n\nPáginas que serão disparadas: ${batch.length}\nPáginas ignoradas: ${_semAtrib}\n\nDeseja continuar mesmo assim?`)) return;
+  }
   if(!confirm(`Disparar ${batch.length} folha(s) de ${comp}?\n\n${batch.map(b=>`• Pág. ${b.pagina} → ${b.colaboradorNome}`).join('\n')}`))return;
   try{
     for(const doc of batch){
@@ -13519,6 +13549,29 @@ async function confirmarImportPOS(){
 //   4. window.deletarDuplicatas()
 //   5. window.verificarPosLimpeza()
 // ══════════════════════════════════════════════════════════════════════════
+
+// ── verificarDuplicados — retorna array de grupos com email duplicado ──
+async function verificarDuplicados() {
+  const snap = await db.collection('users').get();
+  const emails = {};
+  snap.docs.forEach(d => {
+    const u = d.data();
+    const key = (u.email || '').toLowerCase().trim();
+    if (!emails[key]) emails[key] = [];
+    emails[key].push({ id: d.id, ...u });
+  });
+  return Object.values(emails).filter(g => g.length > 1);
+}
+
+// ── executarReparoUrgente — disponível via window e pelo botão do dashboard ──
+window.executarReparoUrgente = async function() {
+  if (!confirm('⚠️ Executar reparo de usuários duplicados agora?\n\nTodas as referências serão migradas para o usuário correto e os duplicados serão removidos.')) return;
+  // Resetar flag de sessão para permitir nova execução
+  window.__usersAutoRepairRunning = false;
+  localStorage.removeItem('users_repair_done_v1');
+  _autoRepairTriggered = false;
+  await autoRepairUsersDuplicados();
+};
 
 window.relatorioUsuariosDuplicados = async function() {
   console.log('═══════════════════════════════════════════════════════');
