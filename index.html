@@ -2493,6 +2493,7 @@ let _readyUsers = false;
 let _readyTasks = false;
 let _readyPostos = false;
 let _autoRepairTriggered = false; // garante execução única do autoRepairUsersDuplicados por sessão
+let _usersInitialLoad   = true;  // ignora docChanges 'added' da carga inicial do onSnapshot
 
 const SENHA_PADRAO = 'rg@2026';
 const TOLERANCIA_MIN = 5;
@@ -3571,6 +3572,22 @@ function startApp() {
   if (!isPosto) {
     unsubUsers = db.collection('users').onSnapshot(snap => {
       allUsers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      // ── Rastreamento de criação de usuários (skip na carga inicial) ──
+      if (!_usersInitialLoad) {
+        snap.docChanges().forEach(change => {
+          if (change.type === 'added') {
+            const u = change.doc.data();
+            console.error('🚨 NOVO USUÁRIO CRIADO NA COLLECTION USERS:', {
+              docId: change.doc.id, email: u.email, name: u.name||u.nome||'—',
+              role: u.role, createdAt: u.createdAt, criadoPor: currentUser?.email||'sistema'
+            });
+            console.trace('📍 Stack trace:');
+          }
+        });
+      }
+      _usersInitialLoad = false;
+
       // Alerta permanente: detectar emails duplicados e notificar ADM
       if (currentUser && currentUser.role === 'admin') {
         const _dupEmailCount = {};
@@ -3762,17 +3779,62 @@ async function autoRepairUsersDuplicados() {
     const snapAtualizado = await db.collection('users').get();
     allUsers = snapAtualizado.docs.map(d => ({ id: d.id, ...d.data() }));
 
+    // 9. Validar e corrigir dispositivos órfãos
+    const orfaos = await validarDispositivos();
+
     // Exibir toast apenas para o ADM
-    toast('⚠️ ' + totalCorrigidos + ' usuário(s) duplicado(s) foram corrigidos automaticamente.', 'ok');
+    const msgOrfaos = orfaos > 0 ? ` ${orfaos} dispositivo(s) corrigido(s).` : '';
+    toast('⚠️ ' + totalCorrigidos + ' usuário(s) duplicado(s) foram corrigidos automaticamente.' + msgOrfaos, 'ok');
     console.log('[autoRepair] Concluído. ' + totalCorrigidos + ' duplicata(s) removida(s). allUsers recarregado com ' + allUsers.length + ' docs.');
 
-    // 9. Atualizar a view atual
+    // 10. Atualizar a view atual
     refreshCurrentView();
 
   } catch (e) {
     console.error('[autoRepair] ERRO durante o reparo automático:', e);
   } finally {
     window.__usersAutoRepairRunning = false;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// validarDispositivos — corrige dispositivos órfãos (userId inexistente em users)
+// Chamada automaticamente pelo autoRepair e disponível via window.*
+// ─────────────────────────────────────────────────────────────────────────────
+async function validarDispositivos() {
+  try {
+    const [devSnap, usersSnap] = await Promise.all([
+      db.collection('devices').get(),
+      db.collection('users').get()
+    ]);
+    const userIds  = new Set(usersSnap.docs.map(d => d.id));
+    const emailMap = {}; // email → docId
+    usersSnap.docs.forEach(d => {
+      const u = d.data();
+      if (u.email) emailMap[(u.email || '').toLowerCase().trim()] = d.id;
+    });
+
+    let corrigidos = 0;
+    const batch = db.batch();
+    devSnap.docs.forEach(doc => {
+      const dev = doc.data();
+      if (userIds.has(dev.userId)) return; // ok — userId existe
+      // userId não existe — tentar encontrar pelo userEmail
+      const novoId = dev.userEmail ? emailMap[(dev.userEmail || '').toLowerCase().trim()] : null;
+      if (novoId) {
+        batch.update(doc.ref, { userId: novoId });
+        console.log('[validarDispositivos] Corrigido dispositivo ' + doc.id + ': ' + dev.userId + ' → ' + novoId);
+        corrigidos++;
+      } else {
+        console.warn('[validarDispositivos] Dispositivo órfão sem match por email: ' + doc.id, dev);
+      }
+    });
+    if (corrigidos > 0) await batch.commit();
+    console.log('[validarDispositivos] ' + devSnap.size + ' dispositivos verificados. ' + corrigidos + ' corrigido(s).');
+    return corrigidos;
+  } catch(e) {
+    console.error('[validarDispositivos] Erro:', e);
+    return 0;
   }
 }
 
@@ -4205,9 +4267,25 @@ let unsubPontos = null;
 
 function getDeviceId() {
   const uid = currentUser && currentUser.id ? currentUser.id : 'anon';
-  const key = 'rg_device_id_' + uid;
-  let did = localStorage.getItem(key);
-  if (!did) { did = 'DEV-' + Math.random().toString(36).substr(2,9).toUpperCase(); localStorage.setItem(key, did); }
+  // Chave estável por EMAIL — não muda quando o doc.id do usuário muda (ex: após dedup repair)
+  const emailKey = currentUser && currentUser.email
+    ? 'rg_device_id_' + currentUser.email.toLowerCase().replace(/[^a-z0-9]/g, '_')
+    : 'rg_device_id_' + uid;
+  let did = localStorage.getItem(emailKey);
+  if (!did) {
+    // Backward compat: migrar chave antiga baseada em uid para a nova baseada em email
+    const oldKey = 'rg_device_id_' + uid;
+    const oldDid = localStorage.getItem(oldKey);
+    if (oldDid) {
+      did = oldDid;
+      localStorage.setItem(emailKey, did);
+      localStorage.removeItem(oldKey); // limpar chave obsoleta
+      console.log('[getDeviceId] Chave migrada:', oldKey, '→', emailKey, '| did:', did);
+    } else {
+      did = 'DEV-' + Math.random().toString(36).substr(2,9).toUpperCase();
+      localStorage.setItem(emailKey, did);
+    }
+  }
   return did;
 }
 
@@ -13571,6 +13649,14 @@ window.executarReparoUrgente = async function() {
   localStorage.removeItem('users_repair_done_v1');
   _autoRepairTriggered = false;
   await autoRepairUsersDuplicados();
+};
+
+window.validarDispositivos = async function() {
+  console.log('[window.validarDispositivos] Iniciando validação manual...');
+  const n = await validarDispositivos();
+  console.log('[window.validarDispositivos] Concluído. ' + n + ' dispositivo(s) corrigido(s).');
+  if (n === 0) toast('✅ Todos os dispositivos estão íntegros.', 'ok');
+  else toast('🔧 ' + n + ' dispositivo(s) corrigido(s).', 'ok');
 };
 
 window.relatorioUsuariosDuplicados = async function() {
