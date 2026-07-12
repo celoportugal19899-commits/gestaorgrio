@@ -780,6 +780,7 @@ const PosCanalLabels = {
           <div class="sidebar-item sidebar-sub" id="nav-indicadores-adm" onclick="showView('adm-indicadores',this)"><span class="icon">📊</span> Indicadores</div>
           <div class="sidebar-item sidebar-sub" id="nav-csat-adm" onclick="showView('adm-csat',this)"><span class="icon">⭐</span> Pesquisa CSAT</div>
           <div class="sidebar-item sidebar-sub" id="nav-pos-adm" onclick="showView('adm-pos',this)"><span class="icon">💳</span> Máquina Cartão POS</div>
+          <div class="sidebar-item sidebar-sub" id="nav-indevidos-adm" onclick="showView('adm-indevidos',this)"><span class="icon">🔍</span> Indevidos</div>
         </div>
         <div class="sidebar-item" id="nav-inc-adm" onclick="showView('adm-incidencias',this)"><span class="icon">📋</span> Incidências <span id="inc-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
         <div class="sidebar-item" id="nav-caixas-adm" onclick="showView('adm-caixas',this)"><span class="icon">💰</span> Caixas Rotativos <span id="caixa-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
@@ -839,6 +840,7 @@ const PosCanalLabels = {
           <div class="sidebar-item sidebar-sub" id="nav-indicadores-sup" onclick="showView('adm-indicadores',this)"><span class="icon">📊</span> Indicadores</div>
           <div class="sidebar-item sidebar-sub" id="nav-csat-sup" onclick="showView('adm-csat',this)"><span class="icon">⭐</span> Pesquisa CSAT</div>
           <div class="sidebar-item sidebar-sub" id="nav-pos-sup" onclick="showView('adm-pos',this)"><span class="icon">💳</span> Máquina Cartão POS</div>
+          <div class="sidebar-item sidebar-sub" id="nav-indevidos-sup" onclick="showView('adm-indevidos',this)"><span class="icon">🔍</span> Indevidos</div>
         </div>
       </div>
     </div>
@@ -1320,6 +1322,23 @@ const PosCanalLabels = {
       </div>
       <div id="pos-tab-canal"    style="display:none"><div id="pos-canal-wrap"></div></div>
       <div style="margin-top:14px;font-size:12px;color:var(--text3)"><strong style="color:var(--text2)">Último import:</strong> <span id="pos-import-log">Nenhum import realizado nesta sessão.</span></div>
+    </div>
+
+    <!-- INDEVIDOS — Área de Qualidade -->
+    <div id="view-adm-indevidos" class="view">
+      <div class="topbar" style="flex-wrap:wrap;gap:10px;align-items:center">
+        <div class="topbar-title">🔍 Indevidos</div>
+        <div class="csat-tabs" style="margin-left:auto;display:flex;gap:4px">
+          <button class="csat-tab active" id="ind-tab-painel"        onclick="switchIndevidosTab('painel')">📊 Painel</button>
+          <button class="csat-tab"        id="ind-tab-importar"      onclick="switchIndevidosTab('importar')">📥 Importar</button>
+          <button class="csat-tab"        id="ind-tab-detalhamento"  onclick="switchIndevidosTab('detalhamento')">📋 Detalhamento</button>
+        </div>
+      </div>
+      <div class="view-content">
+        <div id="ind-painel-wrap"></div>
+        <div id="ind-importar-wrap"     style="display:none"></div>
+        <div id="ind-detalhamento-wrap" style="display:none"></div>
+      </div>
     </div>
 
     <!-- MODAL: IMPORTAR POS -->
@@ -2494,6 +2513,22 @@ let _readyTasks = false;
 let _readyPostos = false;
 let _autoRepairTriggered = false; // garante execução única do autoRepairUsersDuplicados por sessão
 let _usersInitialLoad   = true;  // ignora docChanges 'added' da carga inicial do onSnapshot
+// ── Indevidos ──
+let allIndevidos       = [];
+let unsubIndevidos     = null;
+let _indevidosTab      = 'painel';
+let _indFiltroMes      = '';
+let _indFiltroPosto    = '';
+let _indFiltroServico  = '';
+let _indPagina         = 1;
+const IND_POR_PAG      = 20;
+let _chartIndMensal    = null;
+let _chartIndPostos    = null;
+let _chartIndServicos  = null;
+let _chartIndCausa     = null;
+let _chartIndTendencia = null;
+let _chartIndMotivo    = null;
+let _chartIndOrdemCorreta = null;
 
 const SENHA_PADRAO = 'rg@2026';
 const TOLERANCIA_MIN = 5;
@@ -3547,8 +3582,10 @@ function doLogout() {
   if (unsubUsers) unsubUsers();
   if (unsubTasks) unsubTasks();
   if (unsubPontos) unsubPontos();
+  if (unsubIndevidos) unsubIndevidos();
   currentUser = null; allUsers = []; allTasks = [];
   _readyUsers = false; _readyTasks = false; _readyPostos = false;
+  _indevidosTab = 'painel'; _indFiltroMes = ''; _indFiltroPosto = ''; _indFiltroServico = ''; _indPagina = 1;
   clearTimeout(_refreshTimer); _refreshTimer = null;
   showPage('login');
   document.getElementById('login-email').value = '';
@@ -3637,6 +3674,7 @@ function startApp() {
   initNotificacoes();
   initPropostas();
   if (!isPosto) { initCsatAcoes(); if (isAdmin) seedCsatSugestoesSeNecessario(); }
+  if (!isPosto) initIndevidos();
   setTimeout(verificarAlertas, 5000);
 }
 
@@ -3862,6 +3900,7 @@ function _doRefreshCurrentView() {
   if (id === 'adm-postos') renderAdmPostos();
   if (id === 'adm-indicadores') { (async()=>{ await initIndicadoresMesFiltro(); await renderIndicadores(); })(); }
   if (id === 'adm-csat') { (async()=>{ await initCsatMesFiltro(); await renderCSAT(); })(); }
+  if (id === 'adm-indevidos') renderIndevidos();
   if (id === 'supervisor-postos') renderSupervisorPostos();
   if (id === 'sup-caixa') renderSupCaixa();
   if (id === 'adm-caixas') renderAdmCaixas();
@@ -3884,7 +3923,7 @@ function showView(name, el) {
   document.getElementById('view-' + name).classList.add('active');
   document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
   if (el) el.classList.add('active');
-  if (name === 'adm-postos' || name === 'adm-indicadores' || name === 'adm-csat' || name === 'adm-pos') {
+  if (name === 'adm-postos' || name === 'adm-indicadores' || name === 'adm-csat' || name === 'adm-pos' || name === 'adm-indevidos') {
     const grp = document.getElementById('postos-group');
     const arr = document.getElementById('arrow-postos-group');
     if (grp) grp.style.display = 'block';
@@ -13617,6 +13656,437 @@ async function confirmarImportPOS(){
     Chart.defaults.scale.title.color   = '#a0aec0';
   })();
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MÓDULO INDEVIDOS — Área de Qualidade
+// Acesso: ADM, Supervisores (Leonardo, Victor), Plicila
+// ═══════════════════════════════════════════════════════════════════════════
+
+function podeVerIndevidos() {
+  if (!currentUser) return false;
+  if (currentUser.role === 'admin') return true;
+  return ['victor.simoes@gruporgbrasil.com','leonardo.costa@gruporgbrasil.com',
+          'plicila.silva@gruporgbrasil.com','supervisor.teste@gruporgbrasil.com',
+          'teste@gruporgbrasil.com'].includes(currentUser.email);
+}
+
+function initIndevidos() {
+  if (unsubIndevidos) unsubIndevidos();
+  unsubIndevidos = db.collection('indevidos').orderBy('importadoEm','desc').onSnapshot(snap => {
+    allIndevidos = snap.docs.map(d => ({id:d.id,...d.data()}));
+    refreshCurrentView();
+  }, err => console.error('initIndevidos:', err));
+}
+
+function switchIndevidosTab(tab) {
+  _indevidosTab = tab; _indPagina = 1;
+  ['painel','importar','detalhamento'].forEach(t => {
+    const w = document.getElementById('ind-'+t+'-wrap');
+    const b = document.getElementById('ind-tab-'+t);
+    if (w) w.style.display = t===tab ? '' : 'none';
+    if (b) b.classList.toggle('active', t===tab);
+  });
+  renderIndevidos();
+}
+
+function renderIndevidos() {
+  if (!podeVerIndevidos()) return;
+  if (_indevidosTab === 'painel')         renderIndevidosPainel();
+  else if (_indevidosTab === 'importar')  renderIndevidosImportar();
+  else                                    renderIndevidosDetalhamento();
+}
+
+function _destroyChart(ref) { try { if (ref) ref.destroy(); } catch(e){} return null; }
+
+function _normColInd(k) {
+  return (k||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase().replace(/\s+/g,' ');
+}
+function _normTxtInd(s) {
+  return (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase();
+}
+function _categMotivo(motivo) {
+  const m = _normTxtInd(motivo);
+  if (m.includes('SCRIPT')||m.includes('IAC')||m.includes('INTRANET')) return 'Não seguiu script';
+  if (m.includes('INCOMPLETO')||m.includes('FALTANDO')||m.includes('DADO')) return 'Dados incompletos';
+  if (m.includes('VERIFIC')||m.includes('VALID')) return 'Falha na verificação';
+  if (m.includes('PROCEDIMENTO')||m.includes('PROCESSO')||m.includes('PROTOCOLO')) return 'Erro de procedimento';
+  return 'Outros';
+}
+function _mediaMovel(arr, w) {
+  return arr.map((_,i) => {
+    if (i < w-1) return null;
+    const sl = arr.slice(i-w+1, i+1);
+    return Math.round(sl.reduce((a,b)=>a+b,0)/w*10)/10;
+  });
+}
+function _filtrarIndevidos() {
+  return allIndevidos.filter(r => {
+    if (_indFiltroMes     && r.mesRef !== _indFiltroMes) return false;
+    if (_indFiltroPosto   && _normTxtInd(r.loja) !== _normTxtInd(_indFiltroPosto)) return false;
+    if (_indFiltroServico && _normTxtInd(r.descricaoServico) !== _normTxtInd(_indFiltroServico)) return false;
+    return true;
+  });
+}
+function _indAplicarFiltro() {
+  _indFiltroMes     = document.getElementById('ind-fil-mes')?.value     || '';
+  _indFiltroPosto   = document.getElementById('ind-fil-posto')?.value   || '';
+  _indFiltroServico = document.getElementById('ind-fil-servico')?.value || '';
+  renderIndevidosPainel();
+}
+
+// ── renderIndevidosImportar ──────────────────────────────────────────────────
+async function renderIndevidosImportar() {
+  const wrap = document.getElementById('ind-importar-wrap'); if (!wrap) return;
+  let ultimoImport = '—';
+  try { const cfg = await db.collection('indevidos_config').doc('geral').get(); if (cfg.exists) ultimoImport = cfg.data().ultimoImport||'—'; } catch(e) {}
+  wrap.innerHTML = `
+    <div style="max-width:560px;margin:24px auto;padding:0 16px">
+      <div style="background:var(--surface2);border-radius:16px;padding:28px;margin-bottom:20px">
+        <h3 style="margin:0 0 20px;font-size:16px;font-weight:700">📥 Importar Arquivo de Indevidos</h3>
+        <div class="form-group">
+          <label class="form-label">Arquivo Excel (.xlsx)</label>
+          <input type="file" class="form-input" id="ind-import-file" accept=".xlsx,.xls" style="padding:6px">
+        </div>
+        <div class="form-group" style="margin-top:14px">
+          <label class="form-label">Data de Referência (D-1 da extração)</label>
+          <input type="date" class="form-input" id="ind-data-ref" style="max-width:200px">
+        </div>
+        <div class="form-group" style="margin-top:14px">
+          <label class="form-label">Competência (ex: 06/2026)</label>
+          <input type="text" class="form-input" id="ind-competencia" placeholder="06/2026" style="max-width:160px" maxlength="7">
+        </div>
+        <button class="btn btn-primary" style="margin-top:20px;width:100%" onclick="importarIndevidos()">📥 Importar e Salvar</button>
+      </div>
+      <div style="background:var(--surface2);border-radius:12px;padding:16px 20px">
+        <div style="font-size:12px;color:var(--text3);font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:.6px">Último Import</div>
+        <div style="font-size:14px;color:var(--text)">${ultimoImport}</div>
+      </div>
+    </div>`;
+}
+
+// ── importarIndevidos ────────────────────────────────────────────────────────
+async function importarIndevidos() {
+  const fileInput = document.getElementById('ind-import-file');
+  const dataRef   = document.getElementById('ind-data-ref')?.value || '';
+  const comp      = (document.getElementById('ind-competencia')?.value || '').trim();
+  if (!fileInput?.files?.length) { toast('Selecione um arquivo Excel','err'); return; }
+  if (!dataRef) { toast('Informe a data de referência','err'); return; }
+  if (!comp || !/^\d{2}\/\d{4}$/.test(comp)) { toast('Informe a competência no formato 06/2026','err'); return; }
+  const [mesStr, anoStr] = comp.split('/');
+  const mesRef = anoStr + '-' + mesStr;
+  toast('⏳ Processando arquivo...','ok');
+  try {
+    const buf  = await fileInput.files[0].arrayBuffer();
+    const wb   = XLSX.read(buf, {type:'array'});
+    const ws   = wb.Sheets[wb.SheetNames[0]];
+    const rawRows = XLSX.utils.sheet_to_json(ws, {defval:''});
+    const rows = rawRows.map(r => { const n={}; Object.keys(r).forEach(k=>{n[_normColInd(k)]=r[k];}); return n; });
+    const indevidos = rows.filter(r => _normTxtInd(String(r['CONCLUSAO']||r['CONCLUSAO']||'')) === 'INDEVIDO');
+    if (!indevidos.length) { toast('Nenhum registro INDEVIDO encontrado','err'); return; }
+    const existSnap = await db.collection('indevidos').where('mesRef','==',mesRef).get();
+    const existOrdens = {};
+    existSnap.docs.forEach(d => { existOrdens[d.data().numeroOrdem] = d.id; });
+    const now = new Date().toISOString();
+    let novos = 0, atualizados = 0;
+    for (let i = 0; i < indevidos.length; i += 400) {
+      const b = db.batch();
+      indevidos.slice(i, i+400).forEach(r => {
+        const numeroOrdem = String(r['NUMERO DA ORDEM']||r['NUMERO ORDEM']||'').trim();
+        const doc = {
+          mesRef,
+          numeroCliente:    String(r['NUMERO CLIENTE']||'').trim(),
+          numeroOrdem,
+          numeroCaso:       String(r['NUMERO DO CASO']||r['NUMERO CASO']||'').trim(),
+          municipio:        String(r['MUNICIPIO']||r['MUNICIPIO']||'').trim(),
+          canalAtendimento: String(r['CANAL ATENDIMENTO']||r['CANAL DE ATENDIMENTO']||'').trim(),
+          loginAtendente:   String(r['LOGIN ATENDENTE']||'').trim(),
+          descricaoServico: String(r['DESCRICAO DO SERVICO']||r['DESCRICAO SERVICO']||r['DESCRICAO DO SERVICO']||'').trim(),
+          retornoIndevido:  String(r['RETORNO INDEVIDO']||'').trim(),
+          br:               String(r['BR']||'').trim(),
+          atendente:        String(r['ATENDENTE']||'').trim(),
+          loja:             String(r['LOJA']||'').trim(),
+          especialista:     String(r['ESPECIALISTA']||'').trim(),
+          coordenador:      String(r['COORDENADOR']||'').trim(),
+          gerente:          String(r['GERENTE']||'').trim(),
+          empresa:          String(r['EMPRESA']||'').trim(),
+          mes:              String(r['MES']||r['MES']||'').trim(),
+          dia:              String(r['DIA']||'').trim(),
+          motivoErro:       String(r['MOTIVO DO ERRO']||r['MOTIVO ERRO']||'').trim(),
+          conclusao:        String(r['CONCLUSAO']||r['CONCLUSAO']||'').trim(),
+          analise:          String(r['ANALISE']||r['ANALISE']||'').trim(),
+          causaRaiz:        String(r['CAUSA RAIZ']||'').trim(),
+          feedback:         String(r['FEEDBACK']||'').trim(),
+          obsFeedback:      String(r['OBS FEEDBACK']||r['OBS. FEEDBACK']||'').trim(),
+          ordemCorreta:     String(r['ORDEM CORRETA']||'').trim(),
+          dataOrdemCorreta: String(r['DATA ORDEM CORRETA']||'').trim(),
+          ano:              String(r['ANO']||anoStr).trim(),
+          mes2:             String(r['MES2']||mesStr).trim(),
+          mes3:             String(r['MES3']||'').trim(),
+          importadoEm:      now, importadoPor: currentUser.email,
+          dataReferencia:   dataRef, updatedAt: now
+        };
+        if (existOrdens[numeroOrdem]) { b.update(db.collection('indevidos').doc(existOrdens[numeroOrdem]), doc); atualizados++; }
+        else { const ref = db.collection('indevidos').doc(); b.set(ref, {id:ref.id,...doc}); novos++; }
+      });
+      await b.commit();
+    }
+    const allSnap = await db.collection('indevidos').get();
+    const mesesSet = new Set(allSnap.docs.map(d=>d.data().mesRef).filter(Boolean));
+    await db.collection('indevidos_config').doc('geral').set({
+      ultimoImport:`${new Date().toLocaleDateString('pt-BR')} — ${indevidos.length} registros — ${comp}`,
+      dataReferencia: dataRef, ultimoMes: mesRef,
+      mesesDisponiveis:[...mesesSet].sort(), totalRegistros: allSnap.size, atualizadoEm: now
+    });
+    toast(`✅ ${novos} novos + ${atualizados} atualizados (${indevidos.length} indevidos de ${comp})`,'ok');
+    switchIndevidosTab('painel');
+  } catch(e) { console.error('importarIndevidos:',e); toast('Erro: '+e.message,'err'); }
+}
+
+// ── renderIndevidosPainel ────────────────────────────────────────────────────
+function renderIndevidosPainel() {
+  const wrap = document.getElementById('ind-painel-wrap'); if (!wrap) return;
+  const dados   = _filtrarIndevidos();
+  const mesesDisp = [...new Set(allIndevidos.map(r=>r.mesRef).filter(Boolean))].sort();
+  const postosDisp= [...new Set(allIndevidos.map(r=>r.loja).filter(Boolean))].sort();
+  const servDisp  = [...new Set(allIndevidos.map(r=>r.descricaoServico).filter(Boolean))].sort();
+  const totalInd  = dados.length;
+  const postosOf  = new Set(dados.map(r=>r.loja).filter(Boolean)).size;
+  const servicosOf= new Set(dados.map(r=>r.descricaoServico).filter(Boolean)).size;
+  const atendentes= new Set(dados.map(r=>r.atendente).filter(Boolean)).size;
+  if (!allIndevidos.length) {
+    wrap.innerHTML=`<div class="empty" style="margin-top:60px"><div class="icon">🔍</div><p>Nenhum dado importado ainda.<br>Acesse a aba <strong>Importar</strong> para adicionar registros.</p><button class="btn btn-primary" style="margin-top:12px" onclick="switchIndevidosTab('importar')">📥 Importar agora</button></div>`;
+    return;
+  }
+  wrap.innerHTML = `
+    <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;padding:16px 0 8px">
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Competência</label>
+        <select class="form-select" id="ind-fil-mes" style="min-width:160px" onchange="_indAplicarFiltro()">
+          <option value="">Todos os meses</option>
+          ${mesesDisp.map(m=>`<option value="${m}" ${_indFiltroMes===m?'selected':''}>${m}</option>`).join('')}
+        </select></div>
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Posto</label>
+        <select class="form-select" id="ind-fil-posto" style="min-width:200px" onchange="_indAplicarFiltro()">
+          <option value="">Todos os postos</option>
+          ${postosDisp.map(p=>`<option value="${p}" ${_indFiltroPosto===p?'selected':''}>${p}</option>`).join('')}
+        </select></div>
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Serviço</label>
+        <select class="form-select" id="ind-fil-servico" style="min-width:220px" onchange="_indAplicarFiltro()">
+          <option value="">Todos os serviços</option>
+          ${servDisp.map(s=>`<option value="${s}" ${_indFiltroServico===s?'selected':''}>${s}</option>`).join('')}
+        </select></div>
+    </div>
+    <div class="stats-row" style="margin-bottom:20px">
+      <div class="stat-card"><div class="label">📋 Total Indevidos</div><div class="value" style="color:#ef4444">${totalInd}</div><div class="sub">registros</div></div>
+      <div class="stat-card"><div class="label">🏪 Postos Ofensores</div><div class="value" style="color:#f59e0b">${postosOf}</div><div class="sub">postos</div></div>
+      <div class="stat-card"><div class="label">🔧 Serviços Ofensores</div><div class="value" style="color:#8b5cf6">${servicosOf}</div><div class="sub">serviços</div></div>
+      <div class="stat-card"><div class="label">👤 Atendentes</div><div class="value" style="color:#3b82f6">${atendentes}</div><div class="sub">envolvidos</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+      <div style="background:var(--surface2);border-radius:14px;padding:20px"><div style="font-size:13px;font-weight:700;margin-bottom:14px">📈 Evolução Mensal</div><canvas id="ind-chart-mensal" height="200"></canvas></div>
+      <div style="background:var(--surface2);border-radius:14px;padding:20px"><div style="font-size:13px;font-weight:700;margin-bottom:14px">📅 Tendência — Média Móvel 3 Meses</div><canvas id="ind-chart-tendencia" height="200"></canvas></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+      <div style="background:var(--surface2);border-radius:14px;padding:20px"><div style="font-size:13px;font-weight:700;margin-bottom:14px">🏆 Ranking de Postos Ofensores</div><canvas id="ind-chart-postos" height="230"></canvas></div>
+      <div style="background:var(--surface2);border-radius:14px;padding:20px"><div style="font-size:13px;font-weight:700;margin-bottom:14px">🔥 Ranking de Serviços</div><canvas id="ind-chart-servicos" height="230"></canvas></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+      <div style="background:var(--surface2);border-radius:14px;padding:20px"><div style="font-size:13px;font-weight:700;margin-bottom:14px">📈 Análise de Causa Raiz (Top 5)</div><canvas id="ind-chart-causa" height="230"></canvas></div>
+      <div style="background:var(--surface2);border-radius:14px;padding:20px"><div style="font-size:13px;font-weight:700;margin-bottom:14px">📋 Motivo do Erro por Categoria</div><canvas id="ind-chart-motivo" height="230"></canvas></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+      <div style="background:var(--surface2);border-radius:14px;padding:20px"><div style="font-size:13px;font-weight:700;margin-bottom:14px">🔄 Reincidência por Atendente (Top 10)</div><div id="ind-tbl-reincidencia"></div></div>
+      <div style="background:var(--surface2);border-radius:14px;padding:20px"><div style="font-size:13px;font-weight:700;margin-bottom:14px">🏪 Análise Posto × Serviço</div><div id="ind-tbl-cross" style="overflow-x:auto"></div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:360px 1fr;gap:16px;margin-bottom:20px">
+      <div style="background:var(--surface2);border-radius:14px;padding:20px"><div style="font-size:13px;font-weight:700;margin-bottom:14px">🔄 Análise de Ordem Correta</div><canvas id="ind-chart-ordem" height="200"></canvas></div>
+      <div style="background:var(--surface2);border-radius:14px;padding:20px"><div style="font-size:13px;font-weight:700;margin-bottom:14px">🏆 Tabela Completa — Postos Ofensores</div><div id="ind-tbl-postos"></div></div>
+    </div>`;
+  setTimeout(() => _renderIndevidosCharts(dados, mesesDisp), 50);
+}
+
+function _renderIndevidosCharts(dados, mesesDisp) {
+  _chartIndMensal    = _destroyChart(_chartIndMensal);
+  _chartIndPostos    = _destroyChart(_chartIndPostos);
+  _chartIndServicos  = _destroyChart(_chartIndServicos);
+  _chartIndCausa     = _destroyChart(_chartIndCausa);
+  _chartIndTendencia = _destroyChart(_chartIndTendencia);
+  _chartIndMotivo    = _destroyChart(_chartIndMotivo);
+  _chartIndOrdemCorreta = _destroyChart(_chartIndOrdemCorreta);
+  const plugDL = CsatDataLabels;
+  const tickCfg = {color:'#a0aec0',font:{size:11}};
+  const gridCfg = {color:'rgba(255,255,255,.06)'};
+
+  // Evolução mensal
+  const dadosSemFilMes = allIndevidos.filter(r => {
+    if (_indFiltroPosto   && _normTxtInd(r.loja) !== _normTxtInd(_indFiltroPosto)) return false;
+    if (_indFiltroServico && _normTxtInd(r.descricaoServico) !== _normTxtInd(_indFiltroServico)) return false;
+    return true;
+  });
+  const cntMes = {}; dadosSemFilMes.forEach(r=>{if(r.mesRef)cntMes[r.mesRef]=(cntMes[r.mesRef]||0)+1;});
+  const valsMes = mesesDisp.map(m=>cntMes[m]||0);
+  const ctxM = document.getElementById('ind-chart-mensal');
+  if (ctxM) _chartIndMensal = new Chart(ctxM, {type:'line',
+    data:{labels:mesesDisp,datasets:[{label:'Indevidos',data:valsMes,borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,.15)',borderWidth:2,fill:true,tension:.3,pointRadius:4,pointBackgroundColor:'#3b82f6'}]},
+    options:{responsive:true,plugins:{legend:{display:false},[plugDL.id]:{display:true,color:'#e2e8f0',font:{size:11,weight:'bold'},anchor:'end',align:'top'}},scales:{x:{ticks:tickCfg,grid:gridCfg},y:{ticks:tickCfg,grid:gridCfg,beginAtZero:true}}},plugins:[plugDL]});
+
+  // Tendência
+  const mm3 = _mediaMovel(valsMes, 3);
+  const ultimo = valsMes[valsMes.length-1]||0, mmAt = mm3[mm3.length-1]||0;
+  const tendTxt = mmAt>0?(ultimo>mmAt?'📈 Tendência de Piora':'📉 Tendência de Melhora'):'';
+  const ctxT = document.getElementById('ind-chart-tendencia');
+  if (ctxT) _chartIndTendencia = new Chart(ctxT, {type:'line',
+    data:{labels:mesesDisp,datasets:[
+      {label:'Mensal',data:valsMes,borderColor:'#94a3b8',backgroundColor:'transparent',borderWidth:2,borderDash:[5,4],tension:.3,pointRadius:3},
+      {label:'Média Móvel 3m',data:mm3,borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,.1)',borderWidth:2.5,fill:true,tension:.3,pointRadius:4,pointBackgroundColor:'#3b82f6',spanGaps:true}
+    ]},
+    options:{responsive:true,plugins:{legend:{labels:{color:'#a0aec0',font:{size:11}}},title:{display:!!tendTxt,text:tendTxt,color:ultimo>mmAt?'#ef4444':'#22c55e',font:{size:12,weight:'bold'}}},scales:{x:{ticks:tickCfg,grid:gridCfg},y:{ticks:tickCfg,grid:gridCfg,beginAtZero:true}}}});
+
+  // Ranking postos
+  const cntPosto = {}; dados.forEach(r=>{if(r.loja)cntPosto[r.loja]=(cntPosto[r.loja]||0)+1;});
+  const top5P = Object.entries(cntPosto).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const ctxP = document.getElementById('ind-chart-postos');
+  if (ctxP && top5P.length) _chartIndPostos = new Chart(ctxP, {type:'bar',
+    data:{labels:top5P.map(([p])=>p.length>20?p.slice(0,18)+'…':p),datasets:[{label:'Indevidos',data:top5P.map(([,v])=>v),backgroundColor:'rgba(239,68,68,.7)',borderColor:'#ef4444',borderWidth:1.5,borderRadius:6}]},
+    options:{indexAxis:'y',responsive:true,plugins:{legend:{display:false},[plugDL.id]:{display:true,color:'#e2e8f0',font:{size:11,weight:'bold'},anchor:'end',align:'right'}},scales:{x:{ticks:tickCfg,grid:gridCfg,beginAtZero:true},y:{ticks:{color:'#a0aec0',font:{size:10}},grid:{display:false}}}},plugins:[plugDL]});
+
+  // Tabela postos completa
+  const tblP = document.getElementById('ind-tbl-postos');
+  if (tblP) { const all=Object.entries(cntPosto).sort((a,b)=>b[1]-a[1]);
+    tblP.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:13px"><tr style="border-bottom:1px solid rgba(255,255,255,.1)"><th style="text-align:left;padding:6px 8px;color:var(--text3)">#</th><th style="text-align:left;padding:6px 8px;color:var(--text3)">Posto</th><th style="text-align:center;padding:6px 8px;color:var(--text3)">Qtd</th><th style="text-align:center;padding:6px 8px;color:var(--text3)">%</th></tr>${all.map(([p,v],i)=>`<tr style="border-bottom:1px solid rgba(255,255,255,.05)"><td style="padding:6px 8px;color:${i<3?'#f59e0b':'var(--text3)'};font-weight:700">${i+1}</td><td style="padding:6px 8px">${p}</td><td style="text-align:center;padding:6px 8px;font-weight:600;color:#ef4444">${v}</td><td style="text-align:center;padding:6px 8px;color:var(--text3)">${dados.length?Math.round(v/dados.length*100)+'%':'—'}</td></tr>`).join('')}</table>`; }
+
+  // Ranking serviços
+  const cntServ = {}; dados.forEach(r=>{if(r.descricaoServico)cntServ[r.descricaoServico]=(cntServ[r.descricaoServico]||0)+1;});
+  const top5S = Object.entries(cntServ).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const ctxS = document.getElementById('ind-chart-servicos');
+  if (ctxS && top5S.length) _chartIndServicos = new Chart(ctxS, {type:'bar',
+    data:{labels:top5S.map(([s])=>s.length>22?s.slice(0,20)+'…':s),datasets:[{label:'Indevidos',data:top5S.map(([,v])=>v),backgroundColor:'rgba(245,158,11,.7)',borderColor:'#f59e0b',borderWidth:1.5,borderRadius:6}]},
+    options:{indexAxis:'y',responsive:true,plugins:{legend:{display:false},[plugDL.id]:{display:true,color:'#e2e8f0',font:{size:11,weight:'bold'},anchor:'end',align:'right'}},scales:{x:{ticks:tickCfg,grid:gridCfg,beginAtZero:true},y:{ticks:{color:'#a0aec0',font:{size:10}},grid:{display:false}}}},plugins:[plugDL]});
+
+  // Causa raiz
+  const cntCausa = {}; dados.forEach(r=>{if(r.causaRaiz)cntCausa[r.causaRaiz]=(cntCausa[r.causaRaiz]||0)+1;});
+  const top5C = Object.entries(cntCausa).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const ctxC = document.getElementById('ind-chart-causa');
+  if (ctxC && top5C.length) _chartIndCausa = new Chart(ctxC, {type:'bar',
+    data:{labels:top5C.map(([c])=>c.length>22?c.slice(0,20)+'…':c),datasets:[{label:'Qtd',data:top5C.map(([,v])=>v),backgroundColor:'rgba(139,92,246,.7)',borderColor:'#8b5cf6',borderWidth:1.5,borderRadius:6}]},
+    options:{indexAxis:'y',responsive:true,plugins:{legend:{display:false},[plugDL.id]:{display:true,color:'#e2e8f0',font:{size:11,weight:'bold'},anchor:'end',align:'right'}},scales:{x:{ticks:tickCfg,grid:gridCfg,beginAtZero:true},y:{ticks:{color:'#a0aec0',font:{size:10}},grid:{display:false}}}},plugins:[plugDL]});
+
+  // Motivo do erro por categoria
+  const cats = ['Não seguiu script','Dados incompletos','Falha na verificação','Erro de procedimento','Outros'];
+  const catClrs = ['#ef4444','#f59e0b','#8b5cf6','#3b82f6','#6b7280'];
+  const cntCat = {}; cats.forEach(c=>cntCat[c]=0);
+  dados.forEach(r=>{cntCat[_categMotivo(r.motivoErro)]++;});
+  const ctxMot = document.getElementById('ind-chart-motivo');
+  if (ctxMot) _chartIndMotivo = new Chart(ctxMot, {type:'bar',
+    data:{labels:cats,datasets:[{label:'Qtd',data:cats.map(c=>cntCat[c]),backgroundColor:catClrs.map(c=>c+'b3'),borderColor:catClrs,borderWidth:1.5,borderRadius:6}]},
+    options:{responsive:true,plugins:{legend:{display:false},[plugDL.id]:{display:true,color:'#e2e8f0',font:{size:11,weight:'bold'},anchor:'end',align:'top'}},scales:{x:{ticks:{color:'#a0aec0',font:{size:10}},grid:{display:false}},y:{ticks:tickCfg,grid:gridCfg,beginAtZero:true}}},plugins:[plugDL]});
+
+  // Reincidência por atendente
+  const cntAte = {}; dados.forEach(r=>{if(r.atendente)cntAte[r.atendente]=(cntAte[r.atendente]||0)+1;});
+  const top10A = Object.entries(cntAte).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const tblR = document.getElementById('ind-tbl-reincidencia');
+  if (tblR) tblR.innerHTML = top10A.length
+    ? `<table style="width:100%;border-collapse:collapse;font-size:12px"><tr style="border-bottom:1px solid rgba(255,255,255,.1)"><th style="text-align:left;padding:5px 6px;color:var(--text3)">Atendente</th><th style="text-align:center;padding:5px 6px;color:var(--text3)">Qtd</th><th style="text-align:center;padding:5px 6px;color:var(--text3)">Status</th></tr>${top10A.map(([a,v])=>`<tr style="border-bottom:1px solid rgba(255,255,255,.05)"><td style="padding:5px 6px">${a}</td><td style="text-align:center;font-weight:600;color:${v>=3?'#ef4444':v>=2?'#f59e0b':'var(--text)'}">${v}</td><td style="text-align:center">${v>=3?'<span style="background:rgba(239,68,68,.2);color:#ef4444;padding:2px 8px;border-radius:10px;font-size:11px">🚨 Crítico</span>':v>=2?'<span style="background:rgba(245,158,11,.2);color:#f59e0b;padding:2px 8px;border-radius:10px;font-size:11px">⚠️ Alerta</span>':'<span style="font-size:11px;color:var(--text3)">—</span>'}</td></tr>`).join('')}</table>`
+    : '<div style="color:var(--text3);font-size:13px">Nenhum dado</div>';
+
+  // Posto × Serviço
+  const top4P = Object.entries(cntPosto).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([p])=>p);
+  const top4S = Object.entries(cntServ).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([s])=>s);
+  const crossM = {}; dados.forEach(r=>{if(top4P.includes(r.loja)&&top4S.includes(r.descricaoServico)){const k=r.loja+'|||'+r.descricaoServico;crossM[k]=(crossM[k]||0)+1;}});
+  const tblCross = document.getElementById('ind-tbl-cross');
+  if (tblCross && top4P.length && top4S.length) {
+    const shortS = top4S.map(s=>s.length>14?s.slice(0,12)+'…':s);
+    tblCross.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:11px"><tr><th style="padding:5px 4px;color:var(--text3);text-align:left">Posto</th>${shortS.map(s=>`<th style="padding:5px 4px;color:var(--text3);text-align:center">${s}</th>`).join('')}</tr>${top4P.map(p=>`<tr style="border-top:1px solid rgba(255,255,255,.07)"><td style="padding:5px 4px;font-weight:600">${p.length>16?p.slice(0,14)+'…':p}</td>${top4S.map(s=>{const v=crossM[p+'|||'+s]||0;return`<td style="text-align:center;padding:5px 4px;color:${v>0?'#f59e0b':'var(--text3)'};font-weight:${v>0?'700':'400'}">${v||'—'}</td>`;}).join('')}</tr>`).join('')}</table>`;
+  } else if (tblCross) tblCross.innerHTML='<div style="color:var(--text3);font-size:13px">Dados insuficientes</div>';
+
+  // Ordem correta
+  const comOrdem = dados.filter(r=>r.ordemCorreta&&r.ordemCorreta.trim()).length;
+  const semOrdem = dados.length - comOrdem;
+  const ctxO = document.getElementById('ind-chart-ordem');
+  if (ctxO && dados.length) _chartIndOrdemCorreta = new Chart(ctxO, {type:'doughnut',
+    data:{labels:['Com ordem correta','Sem ordem correta'],datasets:[{data:[comOrdem,semOrdem],backgroundColor:['#22c55e','#ef4444'],borderWidth:0}]},
+    options:{responsive:true,cutout:'62%',plugins:{legend:{labels:{color:'#a0aec0',font:{size:11}}},[plugDL.id]:{display:true,color:'#fff',font:{size:12,weight:'bold'},formatter:(v)=>v>0?v+'\n('+Math.round(v/dados.length*100)+'%)':''}}},plugins:[plugDL]});
+}
+
+// ── renderIndevidosDetalhamento ──────────────────────────────────────────────
+function renderIndevidosDetalhamento() {
+  const wrap = document.getElementById('ind-detalhamento-wrap'); if (!wrap) return;
+  const mesesDisp = [...new Set(allIndevidos.map(r=>r.mesRef).filter(Boolean))].sort();
+  const postosDisp= [...new Set(allIndevidos.map(r=>r.loja).filter(Boolean))].sort();
+  const servDisp  = [...new Set(allIndevidos.map(r=>r.descricaoServico).filter(Boolean))].sort();
+  const ateDisp   = [...new Set(allIndevidos.map(r=>r.atendente).filter(Boolean))].sort();
+  const filtMes   = document.getElementById('ind-det-fil-mes')?.value   || '';
+  const filtPosto = document.getElementById('ind-det-fil-posto')?.value || '';
+  const filtServ  = document.getElementById('ind-det-fil-serv')?.value  || '';
+  const filtAte   = document.getElementById('ind-det-fil-ate')?.value   || '';
+  const filtrados = allIndevidos.filter(r => {
+    if (filtMes   && r.mesRef !== filtMes) return false;
+    if (filtPosto && _normTxtInd(r.loja) !== _normTxtInd(filtPosto)) return false;
+    if (filtServ  && _normTxtInd(r.descricaoServico) !== _normTxtInd(filtServ)) return false;
+    if (filtAte   && _normTxtInd(r.atendente) !== _normTxtInd(filtAte)) return false;
+    return true;
+  });
+  const totalPags = Math.ceil(filtrados.length/IND_POR_PAG)||1;
+  if (_indPagina > totalPags) _indPagina = 1;
+  const paginados = filtrados.slice((_indPagina-1)*IND_POR_PAG, _indPagina*IND_POR_PAG);
+  const mkSel = (id, opts, cur) => `<select class="form-select" id="${id}" style="min-width:140px" onchange="_indPagina=1;renderIndevidosDetalhamento()"><option value="">Todos</option>${opts.map(o=>`<option value="${o}" ${cur===o?'selected':''}>${o}</option>`).join('')}</select>`;
+  wrap.innerHTML = `
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:16px 0 12px">
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Competência</label>${mkSel('ind-det-fil-mes',mesesDisp,filtMes)}</div>
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Posto</label>${mkSel('ind-det-fil-posto',postosDisp,filtPosto)}</div>
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Serviço</label>${mkSel('ind-det-fil-serv',servDisp,filtServ)}</div>
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Atendente</label>${mkSel('ind-det-fil-ate',ateDisp,filtAte)}</div>
+      <button class="btn btn-secondary" onclick="exportarIndevidos()" style="height:38px;align-self:flex-end">⬇ Exportar Excel</button>
+    </div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">${filtrados.length} registro(s) · Página ${_indPagina} de ${totalPags}</div>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:960px">
+        <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15);background:var(--surface3)">
+          ${['Competência','Posto','Atendente','Serviço','Motivo do Erro','Causa Raiz','Ordem Correta','Dia','Nº Ordem'].map(h=>`<th style="padding:8px 10px;text-align:left;color:var(--text3);white-space:nowrap;font-weight:600">${h}</th>`).join('')}
+        </tr></thead>
+        <tbody>${paginados.length ? paginados.map(r=>`
+          <tr style="border-bottom:1px solid rgba(255,255,255,.05)" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background=''">
+            <td style="padding:7px 10px;white-space:nowrap;color:var(--text3)">${r.mesRef||'—'}</td>
+            <td style="padding:7px 10px;white-space:nowrap">${r.loja||'—'}</td>
+            <td style="padding:7px 10px">${r.atendente||'—'}</td>
+            <td style="padding:7px 10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.descricaoServico||''}">${r.descricaoServico||'—'}</td>
+            <td style="padding:7px 10px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.motivoErro||''}">${r.motivoErro||'—'}</td>
+            <td style="padding:7px 10px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.causaRaiz||''}">${r.causaRaiz||'—'}</td>
+            <td style="padding:7px 10px;color:${r.ordemCorreta?'#22c55e':'var(--text3)'}">${r.ordemCorreta||'—'}</td>
+            <td style="padding:7px 10px;white-space:nowrap;color:var(--text3)">${r.dia||'—'}</td>
+            <td style="padding:7px 10px;white-space:nowrap;font-family:monospace;font-size:11px;color:var(--text3)">${r.numeroOrdem||'—'}</td>
+          </tr>`).join('') : '<tr><td colspan="9" style="padding:24px;text-align:center;color:var(--text3)">Nenhum registro encontrado</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+    ${totalPags>1?`<div style="display:flex;gap:6px;align-items:center;margin-top:14px;flex-wrap:wrap">
+      <button class="btn btn-sm btn-secondary" onclick="_indPagina=Math.max(1,_indPagina-1);renderIndevidosDetalhamento()" ${_indPagina===1?'disabled':''}>‹ Ant</button>
+      ${Array.from({length:Math.min(totalPags,7)},(_,i)=>{const p=totalPags<=7?i+1:(_indPagina<=4?i+1:(i+_indPagina-3>totalPags?totalPags-6+i:i+_indPagina-3));return p>0&&p<=totalPags?`<button class="btn btn-sm ${p===_indPagina?'btn-primary':'btn-secondary'}" onclick="_indPagina=${p};renderIndevidosDetalhamento()">${p}</button>`:''}).join('')}
+      <button class="btn btn-sm btn-secondary" onclick="_indPagina=Math.min(${totalPags},_indPagina+1);renderIndevidosDetalhamento()" ${_indPagina===totalPags?'disabled':''}>Próx ›</button>
+      <span style="color:var(--text3);font-size:12px;margin-left:8px">${filtrados.length} total</span>
+    </div>`:''}`;
+}
+
+// ── exportarIndevidos ────────────────────────────────────────────────────────
+function exportarIndevidos() {
+  const filtMes   = document.getElementById('ind-det-fil-mes')?.value   || '';
+  const filtPosto = document.getElementById('ind-det-fil-posto')?.value || '';
+  const filtServ  = document.getElementById('ind-det-fil-serv')?.value  || '';
+  const filtAte   = document.getElementById('ind-det-fil-ate')?.value   || '';
+  const filtrados = allIndevidos.filter(r => {
+    if (filtMes   && r.mesRef !== filtMes) return false;
+    if (filtPosto && _normTxtInd(r.loja) !== _normTxtInd(filtPosto)) return false;
+    if (filtServ  && _normTxtInd(r.descricaoServico) !== _normTxtInd(filtServ)) return false;
+    if (filtAte   && _normTxtInd(r.atendente) !== _normTxtInd(filtAte)) return false;
+    return true;
+  });
+  if (!filtrados.length) { toast('Nenhum dado para exportar','err'); return; }
+  const cols = ['mesRef','loja','atendente','loginAtendente','descricaoServico','motivoErro','causaRaiz','ordemCorreta','dia','numeroOrdem','numeroCaso','retornoIndevido','analise','feedback','dataReferencia','importadoPor','importadoEm'];
+  const rows = filtrados.map(r=>{const o={};cols.forEach(c=>o[c]=r[c]||'');return o;});
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Indevidos');
+  XLSX.writeFile(wb, `Indevidos_${filtMes||'todos'}_${new Date().toISOString().slice(0,10)}.xlsx`);
+  toast(`✅ ${filtrados.length} registros exportados`,'ok');
+}
 
 // ══════════════════════════════════════════════════════════════════════════
 // FERRAMENTAS ADMINISTRATIVAS DE MANUTENÇÃO — window.* (console do navegador)
