@@ -2521,6 +2521,7 @@ let _indevidosMesesDisp   = [];          // meses disponíveis (da config)
 let _indevidosMesesSel    = [];          // meses selecionados (multi-select)
 let _indevidosCacheMes    = {};          // cache: mesRef → docs[]
 let _indevidosCarregando  = false;
+let _indevidosUltimoImport = '';         // texto do último import para exibir no painel
 let _indFiltroPosto       = '';
 let _indFiltroServico     = '';
 let _indPagina            = 1;
@@ -2531,6 +2532,20 @@ let _chartIndPostos       = null;
 let _chartIndServicos     = null;
 let _chartIndMotivo       = null;
 const MESES_ABREV_IND = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+// Gera todos os meses de Jan/2025 até o mês atual para exibir nos pills
+function _gerarTodosMeses() {
+  const agora = new Date();
+  const limNum = agora.getFullYear() * 100 + agora.getMonth() + 1;
+  const meses = [];
+  for (let ano = 2025; ano <= 2026; ano++) {
+    for (let mes = 1; mes <= 12; mes++) {
+      if (ano * 100 + mes > limNum) break;
+      meses.push(String(ano) + '-' + String(mes).padStart(2, '0'));
+    }
+  }
+  return meses;
+}
 
 const SENHA_PADRAO = 'rg@2026';
 const TOLERANCIA_MIN = 5;
@@ -3588,7 +3603,7 @@ function doLogout() {
   currentUser = null; allUsers = []; allTasks = [];
   _readyUsers = false; _readyTasks = false; _readyPostos = false;
   _indevidosTab = 'painel'; _indFiltroPosto = ''; _indFiltroServico = ''; _indPagina = 1;
-  _indevidosMesesSel = []; _indevidosCacheMes = {}; allIndevidos = []; _indevidosMesesDisp = [];
+  _indevidosMesesSel = []; _indevidosCacheMes = {}; allIndevidos = []; _indevidosMesesDisp = []; _indevidosUltimoImport = '';
   clearTimeout(_refreshTimer); _refreshTimer = null;
   showPage('login');
   document.getElementById('login-email').value = '';
@@ -13680,6 +13695,7 @@ function initIndevidos() {
       if (cfg.exists) {
         const d = cfg.data();
         _indevidosMesesDisp = (d.mesesDisponiveis || []).sort();
+        _indevidosUltimoImport = d.ultimoImport || '';
         if (_indevidosMesesSel.length === 0 && d.ultimoMes) {
           _indevidosMesesSel = [d.ultimoMes]; // selecionar mês mais recente por padrão
         }
@@ -13769,11 +13785,12 @@ function _mediaMovel(arr, w) {
   });
 }
 
-// Filtro base: aplica posto + serviço, e GARANTE apenas os 29 postos da gerência
+// Filtro base: empresa RG (resolve confusão com outros operadores nos mesmos municípios)
+// Filtro secundário: posto e serviço selecionados pelo usuário
 function _filtrarIndevidos() {
-  const postosGer = new Set(POSTOS_INICIAIS.filter(p=>p.nome!=='Posto Teste').map(p=>_normTxtInd(p.nome)));
   return allIndevidos.filter(r => {
-    if (!postosGer.has(_normTxtInd(r.loja||''))) return false;   // só meus 29 postos
+    const emp = _normTxtInd(r.empresa || '');
+    if (!emp.includes('RG')) return false;  // só gerência RG Services/Brasil
     if (_indFiltroPosto   && _normTxtInd(r.loja) !== _normTxtInd(_indFiltroPosto)) return false;
     if (_indFiltroServico && _normTxtInd(r.descricaoServico) !== _normTxtInd(_indFiltroServico)) return false;
     return true;
@@ -13943,7 +13960,7 @@ async function importarIndevidos() {
           municipio:        String(r['MUNICIPIO']||r['MUNICIPIO']||'').trim(),
           canalAtendimento: String(r['CANAL ATENDIMENTO']||r['CANAL DE ATENDIMENTO']||'').trim(),
           loginAtendente:   String(r['LOGIN ATENDENTE']||'').trim(),
-          descricaoServico: String(r['DESCRICAO DO SERVICO']||r['DESCRICAO SERVICO']||r['DESCRICAO DO SERVICO']||'').trim(),
+          descricaoServico: String(r['DESCRICAO DO SERVICO']||r['DESCRICAO_SERVICO']||r['DESCRICAO SERVICO']||r['SERVICO']||r['DESCRICAO']||'').trim(),
           retornoIndevido:  String(r['RETORNO INDEVIDO']||'').trim(),
           br:               String(r['BR']||'').trim(),
           atendente:        String(r['ATENDENTE']||'').trim(),
@@ -13985,6 +14002,7 @@ async function importarIndevidos() {
     delete _indevidosCacheMes[mesRef];                         // forçar reload do mês importado
     _indevidosMesesDisp = [...new Set([..._indevidosMesesDisp, mesRef])].sort();
     _indevidosMesesSel  = [mesRef];                            // selecionar automaticamente o mês importado
+    _indevidosUltimoImport = `${new Date().toLocaleDateString('pt-BR')} — ${indevidos.length} registros — ${comp}`;
     // Resetar formulário
     const container = document.getElementById('indev-form-container');
     if (container) container.parentElement.removeChild(container);
@@ -13998,18 +14016,24 @@ async function importarIndevidos() {
 async function renderIndevidosPainel() {
   const wrap = document.getElementById('ind-painel-wrap'); if (!wrap) return;
 
-  // Sem meses disponíveis → estado vazio
-  if (!_indevidosMesesDisp.length) {
+  // Gerar todos os meses 2025-2026 (inclui meses sem dados ainda)
+  const todosMeses = _gerarTodosMeses();
+
+  // Sem nenhum mês ainda → estado vazio com botão de importar
+  if (!_indevidosMesesDisp.length && !todosMeses.length) {
     wrap.innerHTML=`<div class="empty" style="margin-top:60px"><div class="icon">🔍</div><p>Nenhum dado importado ainda.<br>Acesse a aba <strong>Importar</strong> para adicionar registros.</p><button class="btn btn-primary" style="margin-top:12px" onclick="switchIndevidosTab('importar')">📥 Importar agora</button></div>`;
     return;
   }
 
-  // Carregar dados dos meses selecionados (usa cache quando disponível)
+  // Carregar dados dos meses selecionados (usa cache)
   if (_indevidosMesesSel.length) await _carregarDadosIndevidos();
 
-  const dados   = _filtrarIndevidos();
+  const dados     = _filtrarIndevidos();
   const postosGer = POSTOS_INICIAIS.filter(p=>p.nome!=='Posto Teste').sort((a,b)=>a.nome.localeCompare(b.nome));
-  const servDisp  = [...new Set(allIndevidos.map(r=>r.descricaoServico).filter(Boolean))].sort();
+  // Serviços filtrados apenas por empresa RG (para popular o select corretamente)
+  const dadosEmp  = allIndevidos.filter(r => _normTxtInd(r.empresa||'').includes('RG')
+    && (!_indFiltroPosto || _normTxtInd(r.loja) === _normTxtInd(_indFiltroPosto)));
+  const servDisp  = [...new Set(dadosEmp.map(r=>r.descricaoServico).filter(Boolean))].sort();
 
   const totalInd   = dados.length;
   const postosOf   = new Set(dados.map(r=>r.loja).filter(Boolean)).size;
@@ -14021,23 +14045,30 @@ async function renderIndevidosPainel() {
     : 'Nenhum mês selecionado';
 
   wrap.innerHTML = `
-    <!-- Pills de mês -->
-    <div style="padding:12px 0 8px">
-      <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Período</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
-        ${_indevidosMesesDisp.map(m=>{
-          const a=_indevidosMesesSel.includes(m);
-          return `<button onclick="_toggleMesIndevidos('${m}')" style="font-size:12px;padding:4px 11px;border-radius:20px;border:1px solid ${a?'transparent':'rgba(255,255,255,.18)'};background:${a?'#2a78d6':'transparent'};color:${a?'#fff':'var(--text2)'};cursor:pointer;transition:all .15s">${_formatMesPill(m)}</button>`;
+    <!-- Pills de mês — todos os meses 2025 e 2026 -->
+    <div style="padding:10px 0 6px">
+      <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:7px">Período</div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:7px">
+        ${todosMeses.map(m=>{
+          const temDados = _indevidosMesesDisp.includes(m);
+          const ativo    = _indevidosMesesSel.includes(m);
+          return `<button onclick="_toggleMesIndevidos('${m}')" style="font-size:11px;padding:3px 10px;border-radius:16px;border:1px solid ${ativo?'transparent':temDados?'rgba(255,255,255,.22)':'rgba(255,255,255,.08)'};background:${ativo?'#2a78d6':'transparent'};color:${ativo?'#fff':temDados?'var(--text2)':'var(--text3)'};cursor:pointer;opacity:${temDados?1:.55};transition:all .12s">${_formatMesPill(m)}</button>`;
         }).join('')}
       </div>
       <div style="display:flex;gap:6px">
-        <button onclick="_selecionarTodosIndevidos()" style="font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid rgba(255,255,255,.18);background:transparent;color:var(--text3);cursor:pointer">Todos</button>
-        <button onclick="_limparMesesIndevidos()" style="font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid rgba(255,255,255,.18);background:transparent;color:var(--text3);cursor:pointer">Limpar</button>
+        <button onclick="_selecionarTodosIndevidos()" style="font-size:11px;padding:3px 10px;border-radius:16px;border:1px solid rgba(255,255,255,.18);background:transparent;color:var(--text3);cursor:pointer">Todos</button>
+        <button onclick="_limparMesesIndevidos()" style="font-size:11px;padding:3px 10px;border-radius:16px;border:1px solid rgba(255,255,255,.18);background:transparent;color:var(--text3);cursor:pointer">Limpar</button>
       </div>
     </div>
 
+    <!-- Badge de última atualização + período ativo -->
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 0 10px">
+      ${_indevidosUltimoImport ? `<span style="font-size:11px;background:rgba(27,175,122,.12);color:#0f6e56;padding:3px 10px;border-radius:12px;border:1px solid rgba(27,175,122,.25)">Última atualização: ${_indevidosUltimoImport}</span>` : ''}
+      ${_indevidosMesesSel.length ? `<span style="font-size:11px;background:rgba(42,120,214,.12);color:#185fa5;padding:3px 10px;border-radius:12px;border:1px solid rgba(42,120,214,.25)">📅 ${periodoLabel}</span>` : ''}
+    </div>
+
     <!-- Filtros -->
-    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;padding:8px 0 16px;border-bottom:1px solid rgba(255,255,255,.07)">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:8px 0 14px;border-bottom:1px solid rgba(255,255,255,.07)">
       <div>
         <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Posto</label>
         <select class="form-select" id="ind-fil-posto" style="min-width:200px" onchange="_indAplicarFiltro()">
@@ -14046,24 +14077,23 @@ async function renderIndevidosPainel() {
         </select>
       </div>
       <div>
-        <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Serviço</label>
+        <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Descrição do serviço</label>
         <select class="form-select" id="ind-fil-servico" style="min-width:220px" onchange="_indAplicarFiltro()">
           <option value="">Todos os serviços</option>
           ${servDisp.map(s=>`<option value="${s}" ${_indFiltroServico===s?'selected':''}>${s.length>50?s.slice(0,48)+'…':s}</option>`).join('')}
         </select>
       </div>
-      ${_indevidosMesesSel.length?`<div style="font-size:11px;background:rgba(245,158,11,.15);color:#f59e0b;padding:4px 10px;border-radius:20px;border:1px solid rgba(245,158,11,.3);align-self:flex-end">📅 ${periodoLabel}</div>`:''}
     </div>
 
     <!-- Cards -->
-    <div class="stats-row" style="margin:16px 0">
-      <div class="stat-card"><div class="label">📋 Total indevidos</div><div class="value" style="color:#e24b4a">${totalInd.toLocaleString('pt-BR')}</div><div class="sub">${periodoLabel}</div></div>
-      <div class="stat-card"><div class="label">🏪 Postos ofensores</div><div class="value" style="color:#f59e0b">${postosOf} <span style="font-size:14px;color:var(--text3)">/ 29</span></div><div class="sub">com ocorrências</div></div>
-      <div class="stat-card"><div class="label">🔧 Serviços distintos</div><div class="value" style="color:#3b82f6">${servicosOf}</div><div class="sub">tipos de serviço</div></div>
-      <div class="stat-card"><div class="label">👤 Atendentes</div><div class="value">${atendentes}</div><div class="sub">envolvidos</div></div>
+    <div class="stats-row" style="margin:14px 0">
+      <div class="stat-card"><div class="label">Total indevidos</div><div class="value" style="color:#e24b4a">${totalInd.toLocaleString('pt-BR')}</div><div class="sub">${periodoLabel}</div></div>
+      <div class="stat-card"><div class="label">Postos ofensores</div><div class="value" style="color:#f59e0b">${postosOf} <span style="font-size:13px;color:var(--text3)">/ 29</span></div><div class="sub">com ocorrências</div></div>
+      <div class="stat-card"><div class="label">Serviços distintos</div><div class="value" style="color:#3b82f6">${servicosOf}</div><div class="sub">tipos</div></div>
+      <div class="stat-card"><div class="label">Atendentes</div><div class="value">${atendentes}</div><div class="sub">envolvidos</div></div>
     </div>
 
-    ${!totalInd && _indevidosMesesSel.length ? `<div style="text-align:center;padding:32px;color:var(--text3);font-size:14px">Nenhum registro encontrado para o período e filtros selecionados.</div>` : ''}
+    ${!totalInd ? `<div style="text-align:center;padding:28px;color:var(--text3);font-size:13px">${_indevidosMesesSel.length ? 'Nenhum registro encontrado para o período e filtros selecionados.' : 'Selecione um mês acima para visualizar os dados.'}</div>` : ''}
 
     ${totalInd ? `
     <!-- Gráficos linha 1 -->
@@ -14130,10 +14160,12 @@ function _renderIndevidosCharts(dados) {
   const mesesOrden = Object.keys(cntMes).sort();
   const valsMes = mesesOrden.map(m=>cntMes[m]);
 
+  const ptLabelPlugin = {id:'ptLbl',afterDatasetsDraw(c){const{ctx}=c;c.data.datasets.forEach((ds,di)=>{if(ds.borderDash)return;c.getDatasetMeta(di).data.forEach((el,i)=>{const v=ds.data[i];if(v==null)return;ctx.save();ctx.fillStyle=ds.borderColor||'#3b82f6';ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.fillText(v,el.x,el.y-9);ctx.restore();});});}};
+
   const ctxM = document.getElementById('ind-c-mensal');
   if (ctxM && mesesOrden.length) _chartIndMensal = new Chart(ctxM, {type:'line',
     data:{labels:mesesOrden.map(_formatMesPill),datasets:[{data:valsMes,borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,.12)',borderWidth:2,fill:true,tension:.35,pointRadius:3,pointBackgroundColor:'#3b82f6'}]},
-    options:baseOpts});
+    options:baseOpts, plugins:[ptLabelPlugin]});
 
   // Tendência
   const mm3 = _mediaMovel(valsMes,3);
@@ -14146,7 +14178,8 @@ function _renderIndevidosCharts(dados) {
       {label:'Média 3m',data:mm3,borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,.08)',borderWidth:2,fill:true,tension:.35,pointRadius:3,pointBackgroundColor:'#3b82f6',spanGaps:true}
     ]},
     options:{...baseOpts,plugins:{legend:{labels:{color:tickC,font:{size:10},boxWidth:8,padding:10}},
-      title:{display:!!tendTxt,text:tendTxt,color:ultimo>mmAt?'#ef4444':'#22c55e',font:{size:11,weight:'bold'}}}}});
+      title:{display:!!tendTxt,text:tendTxt,color:ultimo>mmAt?'#ef4444':'#22c55e',font:{size:11,weight:'bold'}}}},
+    plugins:[ptLabelPlugin]});
 
   // Ranking postos — tabela com barra
   const cntPosto = {}; dados.forEach(r=>{if(r.loja)cntPosto[r.loja]=(cntPosto[r.loja]||0)+1;});
@@ -14162,13 +14195,15 @@ function _renderIndevidosCharts(dados) {
       <span style="font-size:11px;color:var(--text3);min-width:32px;text-align:right">${dados.length?Math.round(v/dados.length*100)+'%':'—'}</span>
     </div>`).join('') : '<div style="color:var(--text3);font-size:13px;padding:8px">Sem dados</div>';
 
-  // Serviços ofensores Top 8
+  // Serviços ofensores Top 5 com rótulos
   const cntServ = {}; dados.forEach(r=>{if(r.descricaoServico)cntServ[r.descricaoServico]=(cntServ[r.descricaoServico]||0)+1;});
-  const top8S = Object.entries(cntServ).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const top5S = Object.entries(cntServ).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const ctxS = document.getElementById('ind-c-servicos');
-  if (ctxS && top8S.length) _chartIndServicos = new Chart(ctxS, {type:'bar',
-    data:{labels:top8S.map(([s])=>s.length>28?s.slice(0,26)+'…':s),datasets:[{data:top8S.map(([,v])=>v),backgroundColor:'rgba(245,158,11,.7)',borderColor:'#f59e0b',borderWidth:1.5,borderRadius:4}]},
-    options:{...baseOpts,indexAxis:'y',scales:{x:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true},y:{ticks:{color:tickC,font:{size:10}},grid:{display:false}}}}});
+  if (ctxS && top5S.length) _chartIndServicos = new Chart(ctxS, {type:'bar',
+    data:{labels:top5S.map(([s])=>s.length>30?s.slice(0,28)+'…':s),datasets:[{data:top5S.map(([,v])=>v),backgroundColor:'rgba(237,161,0,.7)',borderColor:'#eda100',borderWidth:1.5,borderRadius:4}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true},y:{ticks:{color:tickC,font:{size:10}},grid:{display:false}}}},
+    plugins:[{id:'srvLabels',afterDatasetsDraw(c){const{ctx}=c;c.data.datasets[0].data.forEach((v,i)=>{if(!v)return;const el=c.getDatasetMeta(0).data[i];ctx.save();ctx.fillStyle='#633806';ctx.font='bold 11px sans-serif';ctx.textAlign='left';ctx.fillText(v,el.x+5,el.y+4);ctx.restore();});}}]});
 
   // Motivo do erro
   const cats = ['Não seguiu script','Dados incompletos','Falha na verificação','Erro de procedimento','Outros'];
@@ -14178,7 +14213,8 @@ function _renderIndevidosCharts(dados) {
   const ctxMot = document.getElementById('ind-c-motivo');
   if (ctxMot) _chartIndMotivo = new Chart(ctxMot, {type:'bar',
     data:{labels:cats,datasets:[{data:cats.map(c=>cntCat[c]),backgroundColor:catClrs.map(c=>c+'b3'),borderColor:catClrs,borderWidth:1.5,borderRadius:4}]},
-    options:{...baseOpts,scales:{x:{ticks:{color:tickC,font:{size:9}},grid:{display:false}},y:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true}}}});
+    options:{...baseOpts,scales:{x:{ticks:{color:tickC,font:{size:9}},grid:{display:false}},y:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true}}},
+    plugins:[{id:'motLabels',afterDatasetsDraw(c){const{ctx}=c;c.data.datasets[0].data.forEach((v,i)=>{if(!v)return;const el=c.getDatasetMeta(0).data[i];ctx.save();ctx.fillStyle='#333';ctx.font='bold 11px sans-serif';ctx.textAlign='center';ctx.fillText(v,el.x,el.y-8);ctx.restore();});}}]});
 
   // Reincidência por atendente
   const cntAte = {}; dados.forEach(r=>{if(r.atendente)cntAte[r.atendente]=(cntAte[r.atendente]||0)+1;});
