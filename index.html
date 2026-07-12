@@ -13673,9 +13673,13 @@ function podeVerIndevidos() {
 function initIndevidos() {
   if (unsubIndevidos) unsubIndevidos();
   unsubIndevidos = db.collection('indevidos').orderBy('importadoEm','desc').onSnapshot(snap => {
-    allIndevidos = snap.docs.map(d => ({id:d.id,...d.data()}));
-    refreshCurrentView();
-  }, err => console.error('initIndevidos:', err));
+    try {
+      allIndevidos = snap.docs.map(d => ({id:d.id,...d.data()}));
+      refreshCurrentView();
+    } catch(e) {
+      console.warn('⚠️ Erro no callback do listener Indevidos:', e);
+    }
+  }, err => console.error('initIndevidos listener error:', err));
 }
 
 function switchIndevidosTab(tab) {
@@ -13800,9 +13804,48 @@ async function importarIndevidos() {
     const wb   = XLSX.read(buf, {type:'array'});
     const ws   = wb.Sheets[wb.SheetNames[0]];
     const rawRows = XLSX.utils.sheet_to_json(ws, {defval:''});
-    const rows = rawRows.map(r => { const n={}; Object.keys(r).forEach(k=>{n[_normColInd(k)]=r[k];}); return n; });
-    const indevidos = rows.filter(r => _normTxtInd(String(r['CONCLUSAO']||r['CONCLUSAO']||'')) === 'INDEVIDO');
-    if (!indevidos.length) { toast('Nenhum registro INDEVIDO encontrado','err'); return; }
+
+    if (!rawRows.length) { toast('Arquivo sem dados','err'); return; }
+
+    // Normalizar chaves das colunas (remove acentos, uppercasa, trim)
+    const rows = rawRows.map(r => {
+      const n={};
+      Object.keys(r).forEach(k => { n[_normColInd(k)] = r[k]; });
+      return n;
+    });
+
+    // Diagnóstico: log colunas disponíveis e valores únicos de CONCLUSAO
+    const colsDisp = Object.keys(rows[0] || {});
+    console.log('📊 Colunas do Excel (normalizadas):', colsDisp);
+    const valoresConc = [...new Set(rows.map(r => String(r['CONCLUSAO']||'').trim()).filter(Boolean))];
+    console.log('📊 Valores únicos de CONCLUSAO:', valoresConc);
+
+    // Filtrar INDEVIDO — usa includes() para capturar "INDEVIDO" mesmo em strings maiores
+    // e normaliza o valor (remove acentos, uppercase, trim)
+    const indevidos = rows.filter(r => {
+      const conclusao = _normTxtInd(String(r['CONCLUSAO'] || ''));
+      if (!conclusao.includes('INDEVIDO')) return false;
+
+      // Filtrar apenas anos >= 2025
+      // O campo ANO pode ser "2026", "202606" (AAAAMM), ou ausente
+      const anoRaw = String(r['ANO'] || r['MES'] || r['MES2'] || anoStr).trim();
+      const anoNum  = parseInt(anoRaw.slice(0, 4)) || parseInt(anoStr);
+      if (anoNum < 2025) {
+        console.log('⏭ Ignorado (ano ' + anoNum + '):', r['NUMERO DA ORDEM'] || '?');
+        return false;
+      }
+      return true;
+    });
+
+    if (!indevidos.length) {
+      // Diagnóstico adicional
+      console.warn('⚠️ Nenhum INDEVIDO encontrado. Valores CONCLUSAO disponíveis:', valoresConc);
+      console.warn('⚠️ Primeira linha do Excel (normalizada):', rows[0]);
+      toast('Nenhum registro INDEVIDO encontrado. Verifique o console para diagnóstico.','err');
+      return;
+    }
+
+    console.log('✅ Indevidos encontrados:', indevidos.length, '| Anos únicos:', [...new Set(indevidos.map(r=>String(r['ANO']||'').slice(0,4)))]);
     const existSnap = await db.collection('indevidos').where('mesRef','==',mesRef).get();
     const existOrdens = {};
     existSnap.docs.forEach(d => { existOrdens[d.data().numeroOrdem] = d.id; });
