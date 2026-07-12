@@ -13800,9 +13800,32 @@ async function importarIndevidos() {
   const mesRef = anoStr + '-' + mesStr;
   toast('⏳ Processando arquivo...','ok');
   try {
-    const buf  = await fileInput.files[0].arrayBuffer();
-    const wb   = XLSX.read(buf, {type:'array'});
-    const ws   = wb.Sheets[wb.SheetNames[0]];
+    const buf = await fileInput.files[0].arrayBuffer();
+    const wb  = XLSX.read(buf, {type:'array'});
+
+    // ── Encontrar a aba que contém a coluna CONCLUSÃO ──────────────────────
+    console.log('📂 Abas disponíveis:', wb.SheetNames);
+    let ws = null, wsName = '', headerRowIdx = -1;
+    for (const name of wb.SheetNames) {
+      const candidate = wb.Sheets[name];
+      // Ler as primeiras 50 linhas como array bruto para encontrar o cabeçalho
+      const rawArr = XLSX.utils.sheet_to_json(candidate, {header:1, defval:'', blankrows:false});
+      for (let i = 0; i < Math.min(rawArr.length, 50); i++) {
+        const rowStr = (rawArr[i] || []).map(c => _normTxtInd(String(c||''))).join(' ');
+        if (rowStr.includes('CONCLUSAO')) {
+          ws = candidate; wsName = name; headerRowIdx = i;
+          break;
+        }
+      }
+      if (ws) break;
+    }
+    if (!ws) {
+      toast('❌ Nenhuma aba com "CONCLUSÃO" encontrada. Abas disponíveis: ' + wb.SheetNames.join(', '), 'err');
+      return;
+    }
+    console.log(`✅ Usando aba: "${wsName}" (cabeçalho na linha ${headerRowIdx + 1})`);
+
+    // Ler a aba encontrada como objetos (XLSX detecta cabeçalho automaticamente)
     const rawRows = XLSX.utils.sheet_to_json(ws, {defval:''});
 
     if (!rawRows.length) { toast('Arquivo sem dados','err'); return; }
