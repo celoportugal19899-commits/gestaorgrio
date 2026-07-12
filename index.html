@@ -2514,21 +2514,23 @@ let _readyPostos = false;
 let _autoRepairTriggered = false; // garante execução única do autoRepairUsersDuplicados por sessão
 let _usersInitialLoad   = true;  // ignora docChanges 'added' da carga inicial do onSnapshot
 // ── Indevidos ──
-let allIndevidos       = [];
-let unsubIndevidos     = null;
-let _indevidosTab      = 'painel';
-let _indFiltroMes      = '';
-let _indFiltroPosto    = '';
-let _indFiltroServico  = '';
-let _indPagina         = 1;
-const IND_POR_PAG      = 20;
-let _chartIndMensal    = null;
-let _chartIndPostos    = null;
-let _chartIndServicos  = null;
-let _chartIndCausa     = null;
-let _chartIndTendencia = null;
-let _chartIndMotivo    = null;
-let _chartIndOrdemCorreta = null;
+let allIndevidos          = [];          // docs do(s) mês(es) selecionado(s)
+let unsubIndevidos        = null;        // mantido por compatibilidade com doLogout
+let _indevidosTab         = 'painel';
+let _indevidosMesesDisp   = [];          // meses disponíveis (da config)
+let _indevidosMesesSel    = [];          // meses selecionados (multi-select)
+let _indevidosCacheMes    = {};          // cache: mesRef → docs[]
+let _indevidosCarregando  = false;
+let _indFiltroPosto       = '';
+let _indFiltroServico     = '';
+let _indPagina            = 1;
+const IND_POR_PAG         = 50;
+let _chartIndMensal       = null;
+let _chartIndTendencia    = null;
+let _chartIndPostos       = null;
+let _chartIndServicos     = null;
+let _chartIndMotivo       = null;
+const MESES_ABREV_IND = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
 const SENHA_PADRAO = 'rg@2026';
 const TOLERANCIA_MIN = 5;
@@ -3585,7 +3587,8 @@ function doLogout() {
   if (unsubIndevidos) unsubIndevidos();
   currentUser = null; allUsers = []; allTasks = [];
   _readyUsers = false; _readyTasks = false; _readyPostos = false;
-  _indevidosTab = 'painel'; _indFiltroMes = ''; _indFiltroPosto = ''; _indFiltroServico = ''; _indPagina = 1;
+  _indevidosTab = 'painel'; _indFiltroPosto = ''; _indFiltroServico = ''; _indPagina = 1;
+  _indevidosMesesSel = []; _indevidosCacheMes = {}; allIndevidos = []; _indevidosMesesDisp = [];
   clearTimeout(_refreshTimer); _refreshTimer = null;
   showPage('login');
   document.getElementById('login-email').value = '';
@@ -13671,15 +13674,57 @@ function podeVerIndevidos() {
 }
 
 function initIndevidos() {
-  if (unsubIndevidos) unsubIndevidos();
-  unsubIndevidos = db.collection('indevidos').orderBy('importadoEm','desc').onSnapshot(snap => {
-    try {
-      allIndevidos = snap.docs.map(d => ({id:d.id,...d.data()}));
+  // Leve: carrega apenas o doc de config (não o acervo inteiro)
+  db.collection('indevidos_config').doc('geral').get()
+    .then(cfg => {
+      if (cfg.exists) {
+        const d = cfg.data();
+        _indevidosMesesDisp = (d.mesesDisponiveis || []).sort();
+        if (_indevidosMesesSel.length === 0 && d.ultimoMes) {
+          _indevidosMesesSel = [d.ultimoMes]; // selecionar mês mais recente por padrão
+        }
+      }
       refreshCurrentView();
-    } catch(e) {
-      console.warn('⚠️ Erro no callback do listener Indevidos:', e);
+    })
+    .catch(e => console.warn('initIndevidos config:', e));
+}
+
+async function _carregarDadosIndevidos() {
+  if (!_indevidosMesesSel.length) { allIndevidos = []; return; }
+  const novos = _indevidosMesesSel.filter(m => !_indevidosCacheMes[m]);
+  if (novos.length) {
+    _indevidosCarregando = true;
+    for (const mesRef of novos) {
+      try {
+        const snap = await db.collection('indevidos').where('mesRef','==',mesRef).get();
+        _indevidosCacheMes[mesRef] = snap.docs.map(d => ({id:d.id,...d.data()}));
+      } catch(e) { console.warn('Erro ao carregar mês', mesRef, e); _indevidosCacheMes[mesRef] = []; }
     }
-  }, err => console.error('initIndevidos listener error:', err));
+    _indevidosCarregando = false;
+  }
+  allIndevidos = _indevidosMesesSel.flatMap(m => _indevidosCacheMes[m] || []);
+}
+
+async function _toggleMesIndevidos(mesRef) {
+  const idx = _indevidosMesesSel.indexOf(mesRef);
+  if (idx >= 0) _indevidosMesesSel.splice(idx, 1);
+  else _indevidosMesesSel.push(mesRef);
+  _indPagina = 1;
+  renderIndevidos();
+}
+
+function _selecionarTodosIndevidos() {
+  _indevidosMesesSel = [..._indevidosMesesDisp];
+  _indPagina = 1; renderIndevidos();
+}
+function _limparMesesIndevidos() {
+  _indevidosMesesSel = []; _indPagina = 1; renderIndevidos();
+}
+
+function _formatMesPill(mesRef) {
+  if (!mesRef || !mesRef.includes('-')) return mesRef;
+  const [ano, mes] = mesRef.split('-');
+  return (MESES_ABREV_IND[parseInt(mes)-1] || mes) + '/' + ano.slice(2);
 }
 
 function switchIndevidosTab(tab) {
@@ -13695,9 +13740,9 @@ function switchIndevidosTab(tab) {
 
 function renderIndevidos() {
   if (!podeVerIndevidos()) return;
-  if (_indevidosTab === 'painel')         renderIndevidosPainel();
-  else if (_indevidosTab === 'importar')  renderIndevidosImportar();
-  else                                    renderIndevidosDetalhamento();
+  if (_indevidosTab === 'painel')        renderIndevidosPainel();
+  else if (_indevidosTab === 'importar') renderIndevidosImportar();
+  else                                   renderIndevidosDetalhamento();
 }
 
 function _destroyChart(ref) { try { if (ref) ref.destroy(); } catch(e){} return null; }
@@ -13723,16 +13768,18 @@ function _mediaMovel(arr, w) {
     return Math.round(sl.reduce((a,b)=>a+b,0)/w*10)/10;
   });
 }
+
+// Filtro base: aplica posto + serviço, e GARANTE apenas os 29 postos da gerência
 function _filtrarIndevidos() {
+  const postosGer = new Set(POSTOS_INICIAIS.filter(p=>p.nome!=='Posto Teste').map(p=>_normTxtInd(p.nome)));
   return allIndevidos.filter(r => {
-    if (_indFiltroMes     && r.mesRef !== _indFiltroMes) return false;
+    if (!postosGer.has(_normTxtInd(r.loja||''))) return false;   // só meus 29 postos
     if (_indFiltroPosto   && _normTxtInd(r.loja) !== _normTxtInd(_indFiltroPosto)) return false;
     if (_indFiltroServico && _normTxtInd(r.descricaoServico) !== _normTxtInd(_indFiltroServico)) return false;
     return true;
   });
 }
 function _indAplicarFiltro() {
-  _indFiltroMes     = document.getElementById('ind-fil-mes')?.value     || '';
   _indFiltroPosto   = document.getElementById('ind-fil-posto')?.value   || '';
   _indFiltroServico = document.getElementById('ind-fil-servico')?.value || '';
   renderIndevidosPainel();
@@ -13934,7 +13981,11 @@ async function importarIndevidos() {
       mesesDisponiveis:[...mesesSet].sort(), totalRegistros: allSnap.size, atualizadoEm: now
     });
     toast(`✅ ${novos} novos + ${atualizados} atualizados (${indevidos.length} indevidos de ${comp})`,'ok');
-    // Resetar formulário para permitir nova importação
+    // Atualizar estado local
+    delete _indevidosCacheMes[mesRef];                         // forçar reload do mês importado
+    _indevidosMesesDisp = [...new Set([..._indevidosMesesDisp, mesRef])].sort();
+    _indevidosMesesSel  = [mesRef];                            // selecionar automaticamente o mês importado
+    // Resetar formulário
     const container = document.getElementById('indev-form-container');
     if (container) container.parentElement.removeChild(container);
     const ultimo = document.getElementById('indev-ultimo-import-txt');
@@ -13944,218 +13995,256 @@ async function importarIndevidos() {
 }
 
 // ── renderIndevidosPainel ────────────────────────────────────────────────────
-function renderIndevidosPainel() {
+async function renderIndevidosPainel() {
   const wrap = document.getElementById('ind-painel-wrap'); if (!wrap) return;
-  const dados   = _filtrarIndevidos();
-  const mesesDisp = [...new Set(allIndevidos.map(r=>r.mesRef).filter(Boolean))].sort();
-  const postosDisp= [...new Set(allIndevidos.map(r=>r.loja).filter(Boolean))].sort();
-  const servDisp  = [...new Set(allIndevidos.map(r=>r.descricaoServico).filter(Boolean))].sort();
-  const totalInd  = dados.length;
-  const postosOf  = new Set(dados.map(r=>r.loja).filter(Boolean)).size;
-  const servicosOf= new Set(dados.map(r=>r.descricaoServico).filter(Boolean)).size;
-  const atendentes= new Set(dados.map(r=>r.atendente).filter(Boolean)).size;
-  if (!allIndevidos.length) {
+
+  // Sem meses disponíveis → estado vazio
+  if (!_indevidosMesesDisp.length) {
     wrap.innerHTML=`<div class="empty" style="margin-top:60px"><div class="icon">🔍</div><p>Nenhum dado importado ainda.<br>Acesse a aba <strong>Importar</strong> para adicionar registros.</p><button class="btn btn-primary" style="margin-top:12px" onclick="switchIndevidosTab('importar')">📥 Importar agora</button></div>`;
     return;
   }
+
+  // Carregar dados dos meses selecionados (usa cache quando disponível)
+  if (_indevidosMesesSel.length) await _carregarDadosIndevidos();
+
+  const dados   = _filtrarIndevidos();
+  const postosGer = POSTOS_INICIAIS.filter(p=>p.nome!=='Posto Teste').sort((a,b)=>a.nome.localeCompare(b.nome));
+  const servDisp  = [...new Set(allIndevidos.map(r=>r.descricaoServico).filter(Boolean))].sort();
+
+  const totalInd   = dados.length;
+  const postosOf   = new Set(dados.map(r=>r.loja).filter(Boolean)).size;
+  const servicosOf = new Set(dados.map(r=>r.descricaoServico).filter(Boolean)).size;
+  const atendentes = new Set(dados.map(r=>r.atendente).filter(Boolean)).size;
+
+  const periodoLabel = _indevidosMesesSel.length
+    ? _indevidosMesesSel.map(_formatMesPill).join(', ')
+    : 'Nenhum mês selecionado';
+
   wrap.innerHTML = `
-    <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;padding:16px 0 8px">
-      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Competência</label>
-        <select class="form-select" id="ind-fil-mes" style="min-width:160px" onchange="_indAplicarFiltro()">
-          <option value="">Todos os meses</option>
-          ${mesesDisp.map(m=>`<option value="${m}" ${_indFiltroMes===m?'selected':''}>${m}</option>`).join('')}
-        </select></div>
-      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Posto</label>
+    <!-- Pills de mês -->
+    <div style="padding:12px 0 8px">
+      <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Período</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+        ${_indevidosMesesDisp.map(m=>{
+          const a=_indevidosMesesSel.includes(m);
+          return `<button onclick="_toggleMesIndevidos('${m}')" style="font-size:12px;padding:4px 11px;border-radius:20px;border:1px solid ${a?'transparent':'rgba(255,255,255,.18)'};background:${a?'#2a78d6':'transparent'};color:${a?'#fff':'var(--text2)'};cursor:pointer;transition:all .15s">${_formatMesPill(m)}</button>`;
+        }).join('')}
+      </div>
+      <div style="display:flex;gap:6px">
+        <button onclick="_selecionarTodosIndevidos()" style="font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid rgba(255,255,255,.18);background:transparent;color:var(--text3);cursor:pointer">Todos</button>
+        <button onclick="_limparMesesIndevidos()" style="font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid rgba(255,255,255,.18);background:transparent;color:var(--text3);cursor:pointer">Limpar</button>
+      </div>
+    </div>
+
+    <!-- Filtros -->
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;padding:8px 0 16px;border-bottom:1px solid rgba(255,255,255,.07)">
+      <div>
+        <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Posto</label>
         <select class="form-select" id="ind-fil-posto" style="min-width:200px" onchange="_indAplicarFiltro()">
-          <option value="">Todos os postos</option>
-          ${postosDisp.map(p=>`<option value="${p}" ${_indFiltroPosto===p?'selected':''}>${p}</option>`).join('')}
-        </select></div>
-      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Serviço</label>
+          <option value="">Todos os postos (29)</option>
+          ${postosGer.map(p=>`<option value="${p.nome}" ${_indFiltroPosto===p.nome?'selected':''}>${p.nome}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Serviço</label>
         <select class="form-select" id="ind-fil-servico" style="min-width:220px" onchange="_indAplicarFiltro()">
           <option value="">Todos os serviços</option>
-          ${servDisp.map(s=>`<option value="${s}" ${_indFiltroServico===s?'selected':''}>${s}</option>`).join('')}
-        </select></div>
+          ${servDisp.map(s=>`<option value="${s}" ${_indFiltroServico===s?'selected':''}>${s.length>50?s.slice(0,48)+'…':s}</option>`).join('')}
+        </select>
+      </div>
+      ${_indevidosMesesSel.length?`<div style="font-size:11px;background:rgba(245,158,11,.15);color:#f59e0b;padding:4px 10px;border-radius:20px;border:1px solid rgba(245,158,11,.3);align-self:flex-end">📅 ${periodoLabel}</div>`:''}
     </div>
-    <div class="stats-row" style="margin-bottom:20px">
-      <div class="stat-card"><div class="label">📋 Total Indevidos</div><div class="value" style="color:#ef4444">${totalInd}</div><div class="sub">registros</div></div>
-      <div class="stat-card"><div class="label">🏪 Postos Ofensores</div><div class="value" style="color:#f59e0b">${postosOf}</div><div class="sub">postos</div></div>
-      <div class="stat-card"><div class="label">🔧 Serviços Ofensores</div><div class="value" style="color:#8b5cf6">${servicosOf}</div><div class="sub">serviços</div></div>
-      <div class="stat-card"><div class="label">👤 Atendentes</div><div class="value" style="color:#3b82f6">${atendentes}</div><div class="sub">envolvidos</div></div>
+
+    <!-- Cards -->
+    <div class="stats-row" style="margin:16px 0">
+      <div class="stat-card"><div class="label">📋 Total indevidos</div><div class="value" style="color:#e24b4a">${totalInd.toLocaleString('pt-BR')}</div><div class="sub">${periodoLabel}</div></div>
+      <div class="stat-card"><div class="label">🏪 Postos ofensores</div><div class="value" style="color:#f59e0b">${postosOf} <span style="font-size:14px;color:var(--text3)">/ 29</span></div><div class="sub">com ocorrências</div></div>
+      <div class="stat-card"><div class="label">🔧 Serviços distintos</div><div class="value" style="color:#3b82f6">${servicosOf}</div><div class="sub">tipos de serviço</div></div>
+      <div class="stat-card"><div class="label">👤 Atendentes</div><div class="value">${atendentes}</div><div class="sub">envolvidos</div></div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
-      <div style="background:var(--surface2);border-radius:14px;padding:20px"><div style="font-size:13px;font-weight:700;margin-bottom:14px">📈 Evolução Mensal</div><canvas id="ind-chart-mensal" height="200"></canvas></div>
-      <div style="background:var(--surface2);border-radius:14px;padding:20px"><div style="font-size:13px;font-weight:700;margin-bottom:14px">📅 Tendência — Média Móvel 3 Meses</div><canvas id="ind-chart-tendencia" height="200"></canvas></div>
+
+    ${!totalInd && _indevidosMesesSel.length ? `<div style="text-align:center;padding:32px;color:var(--text3);font-size:14px">Nenhum registro encontrado para o período e filtros selecionados.</div>` : ''}
+
+    ${totalInd ? `
+    <!-- Gráficos linha 1 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div style="background:var(--surface2);border-radius:14px;padding:18px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:12px">📈 Evolução mensal</div>
+        <div style="position:relative;width:100%;height:160px"><canvas id="ind-c-mensal"></canvas></div>
+      </div>
+      <div style="background:var(--surface2);border-radius:14px;padding:18px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:12px">📅 Tendência — média móvel 3 meses</div>
+        <div style="position:relative;width:100%;height:160px"><canvas id="ind-c-tendencia"></canvas></div>
+      </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
-      <div style="background:var(--surface2);border-radius:14px;padding:20px"><div style="font-size:13px;font-weight:700;margin-bottom:14px">🏆 Ranking de Postos Ofensores</div><canvas id="ind-chart-postos" height="230"></canvas></div>
-      <div style="background:var(--surface2);border-radius:14px;padding:20px"><div style="font-size:13px;font-weight:700;margin-bottom:14px">🔥 Ranking de Serviços</div><canvas id="ind-chart-servicos" height="230"></canvas></div>
+
+    <!-- Gráficos linha 2 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div style="background:var(--surface2);border-radius:14px;padding:18px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:12px">🏆 Ranking postos ofensores</div>
+        <div id="ind-tbl-postos"></div>
+      </div>
+      <div style="background:var(--surface2);border-radius:14px;padding:18px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:12px">🔥 Serviços ofensores (Top 8)</div>
+        <div style="position:relative;width:100%;height:220px"><canvas id="ind-c-servicos"></canvas></div>
+      </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
-      <div style="background:var(--surface2);border-radius:14px;padding:20px"><div style="font-size:13px;font-weight:700;margin-bottom:14px">📈 Análise de Causa Raiz (Top 5)</div><canvas id="ind-chart-causa" height="230"></canvas></div>
-      <div style="background:var(--surface2);border-radius:14px;padding:20px"><div style="font-size:13px;font-weight:700;margin-bottom:14px">📋 Motivo do Erro por Categoria</div><canvas id="ind-chart-motivo" height="230"></canvas></div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
-      <div style="background:var(--surface2);border-radius:14px;padding:20px"><div style="font-size:13px;font-weight:700;margin-bottom:14px">🔄 Reincidência por Atendente (Top 10)</div><div id="ind-tbl-reincidencia"></div></div>
-      <div style="background:var(--surface2);border-radius:14px;padding:20px"><div style="font-size:13px;font-weight:700;margin-bottom:14px">🏪 Análise Posto × Serviço</div><div id="ind-tbl-cross" style="overflow-x:auto"></div></div>
-    </div>
-    <div style="display:grid;grid-template-columns:360px 1fr;gap:16px;margin-bottom:20px">
-      <div style="background:var(--surface2);border-radius:14px;padding:20px"><div style="font-size:13px;font-weight:700;margin-bottom:14px">🔄 Análise de Ordem Correta</div><canvas id="ind-chart-ordem" height="200"></canvas></div>
-      <div style="background:var(--surface2);border-radius:14px;padding:20px"><div style="font-size:13px;font-weight:700;margin-bottom:14px">🏆 Tabela Completa — Postos Ofensores</div><div id="ind-tbl-postos"></div></div>
-    </div>`;
-  setTimeout(() => _renderIndevidosCharts(dados, mesesDisp), 50);
+
+    <!-- Gráficos linha 3 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div style="background:var(--surface2);border-radius:14px;padding:18px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:12px">📋 Motivo do erro por categoria</div>
+        <div style="position:relative;width:100%;height:200px"><canvas id="ind-c-motivo"></canvas></div>
+      </div>
+      <div style="background:var(--surface2);border-radius:14px;padding:18px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:12px">🔄 Reincidência por atendente (Top 10)</div>
+        <div id="ind-tbl-reincidencia"></div>
+      </div>
+    </div>` : ''}`;
+
+  if (totalInd) setTimeout(() => _renderIndevidosCharts(dados), 50);
 }
 
-function _renderIndevidosCharts(dados, mesesDisp) {
+function _renderIndevidosCharts(dados) {
   _chartIndMensal    = _destroyChart(_chartIndMensal);
+  _chartIndTendencia = _destroyChart(_chartIndTendencia);
   _chartIndPostos    = _destroyChart(_chartIndPostos);
   _chartIndServicos  = _destroyChart(_chartIndServicos);
-  _chartIndCausa     = _destroyChart(_chartIndCausa);
-  _chartIndTendencia = _destroyChart(_chartIndTendencia);
   _chartIndMotivo    = _destroyChart(_chartIndMotivo);
-  _chartIndOrdemCorreta = _destroyChart(_chartIndOrdemCorreta);
-  const plugDL = CsatDataLabels;
-  const tickCfg = {color:'#a0aec0',font:{size:11}};
-  const gridCfg = {color:'rgba(255,255,255,.06)'};
 
-  // Evolução mensal
-  const dadosSemFilMes = allIndevidos.filter(r => {
+  const gridC = 'rgba(255,255,255,.06)';
+  const tickC = '#a0aec0';
+  const baseOpts = { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+    scales:{ x:{ticks:{color:tickC,font:{size:10}},grid:{display:false}},
+             y:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true} } };
+
+  // Evolução mensal (por todos os meses disponíveis sem filtro de mês, com filtro posto/serviço)
+  const postosGer = new Set(POSTOS_INICIAIS.filter(p=>p.nome!=='Posto Teste').map(p=>_normTxtInd(p.nome)));
+  const dadosTodos = allIndevidos.filter(r => {
+    if (!postosGer.has(_normTxtInd(r.loja||''))) return false;
     if (_indFiltroPosto   && _normTxtInd(r.loja) !== _normTxtInd(_indFiltroPosto)) return false;
     if (_indFiltroServico && _normTxtInd(r.descricaoServico) !== _normTxtInd(_indFiltroServico)) return false;
     return true;
   });
-  const cntMes = {}; dadosSemFilMes.forEach(r=>{if(r.mesRef)cntMes[r.mesRef]=(cntMes[r.mesRef]||0)+1;});
-  const valsMes = mesesDisp.map(m=>cntMes[m]||0);
-  const ctxM = document.getElementById('ind-chart-mensal');
-  if (ctxM) _chartIndMensal = new Chart(ctxM, {type:'line',
-    data:{labels:mesesDisp,datasets:[{label:'Indevidos',data:valsMes,borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,.15)',borderWidth:2,fill:true,tension:.3,pointRadius:4,pointBackgroundColor:'#3b82f6'}]},
-    options:{responsive:true,plugins:{legend:{display:false},[plugDL.id]:{display:true,color:'#e2e8f0',font:{size:11,weight:'bold'},anchor:'end',align:'top'}},scales:{x:{ticks:tickCfg,grid:gridCfg},y:{ticks:tickCfg,grid:gridCfg,beginAtZero:true}}},plugins:[plugDL]});
+  const cntMes = {}; dadosTodos.forEach(r=>{if(r.mesRef)cntMes[r.mesRef]=(cntMes[r.mesRef]||0)+1;});
+  const mesesOrden = Object.keys(cntMes).sort();
+  const valsMes = mesesOrden.map(m=>cntMes[m]);
+
+  const ctxM = document.getElementById('ind-c-mensal');
+  if (ctxM && mesesOrden.length) _chartIndMensal = new Chart(ctxM, {type:'line',
+    data:{labels:mesesOrden.map(_formatMesPill),datasets:[{data:valsMes,borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,.12)',borderWidth:2,fill:true,tension:.35,pointRadius:3,pointBackgroundColor:'#3b82f6'}]},
+    options:baseOpts});
 
   // Tendência
-  const mm3 = _mediaMovel(valsMes, 3);
-  const ultimo = valsMes[valsMes.length-1]||0, mmAt = mm3[mm3.length-1]||0;
-  const tendTxt = mmAt>0?(ultimo>mmAt?'📈 Tendência de Piora':'📉 Tendência de Melhora'):'';
-  const ctxT = document.getElementById('ind-chart-tendencia');
-  if (ctxT) _chartIndTendencia = new Chart(ctxT, {type:'line',
-    data:{labels:mesesDisp,datasets:[
-      {label:'Mensal',data:valsMes,borderColor:'#94a3b8',backgroundColor:'transparent',borderWidth:2,borderDash:[5,4],tension:.3,pointRadius:3},
-      {label:'Média Móvel 3m',data:mm3,borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,.1)',borderWidth:2.5,fill:true,tension:.3,pointRadius:4,pointBackgroundColor:'#3b82f6',spanGaps:true}
+  const mm3 = _mediaMovel(valsMes,3);
+  const ultimo=valsMes[valsMes.length-1]||0, mmAt=mm3[mm3.length-1]||0;
+  const tendTxt = mmAt>0?(ultimo>mmAt?'📈 Piora':'📉 Melhora'):'';
+  const ctxT = document.getElementById('ind-c-tendencia');
+  if (ctxT && mesesOrden.length) _chartIndTendencia = new Chart(ctxT, {type:'line',
+    data:{labels:mesesOrden.map(_formatMesPill),datasets:[
+      {label:'Mensal',data:valsMes,borderColor:'#94a3b8',borderDash:[4,3],borderWidth:1.5,fill:false,tension:.35,pointRadius:2,spanGaps:true},
+      {label:'Média 3m',data:mm3,borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,.08)',borderWidth:2,fill:true,tension:.35,pointRadius:3,pointBackgroundColor:'#3b82f6',spanGaps:true}
     ]},
-    options:{responsive:true,plugins:{legend:{labels:{color:'#a0aec0',font:{size:11}}},title:{display:!!tendTxt,text:tendTxt,color:ultimo>mmAt?'#ef4444':'#22c55e',font:{size:12,weight:'bold'}}},scales:{x:{ticks:tickCfg,grid:gridCfg},y:{ticks:tickCfg,grid:gridCfg,beginAtZero:true}}}});
+    options:{...baseOpts,plugins:{legend:{labels:{color:tickC,font:{size:10},boxWidth:8,padding:10}},
+      title:{display:!!tendTxt,text:tendTxt,color:ultimo>mmAt?'#ef4444':'#22c55e',font:{size:11,weight:'bold'}}}}});
 
-  // Ranking postos
+  // Ranking postos — tabela com barra
   const cntPosto = {}; dados.forEach(r=>{if(r.loja)cntPosto[r.loja]=(cntPosto[r.loja]||0)+1;});
-  const top5P = Object.entries(cntPosto).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  const ctxP = document.getElementById('ind-chart-postos');
-  if (ctxP && top5P.length) _chartIndPostos = new Chart(ctxP, {type:'bar',
-    data:{labels:top5P.map(([p])=>p.length>20?p.slice(0,18)+'…':p),datasets:[{label:'Indevidos',data:top5P.map(([,v])=>v),backgroundColor:'rgba(239,68,68,.7)',borderColor:'#ef4444',borderWidth:1.5,borderRadius:6}]},
-    options:{indexAxis:'y',responsive:true,plugins:{legend:{display:false},[plugDL.id]:{display:true,color:'#e2e8f0',font:{size:11,weight:'bold'},anchor:'end',align:'right'}},scales:{x:{ticks:tickCfg,grid:gridCfg,beginAtZero:true},y:{ticks:{color:'#a0aec0',font:{size:10}},grid:{display:false}}}},plugins:[plugDL]});
+  const rankP = Object.entries(cntPosto).sort((a,b)=>b[1]-a[1]);
+  const maxP  = rankP[0]?.[1]||1;
+  const tblP  = document.getElementById('ind-tbl-postos');
+  if (tblP) tblP.innerHTML = rankP.length ? rankP.map(([p,v],i)=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+      <span style="font-size:11px;font-weight:600;color:${i<3?'#f59e0b':'var(--text3)'};min-width:16px">${i+1}</span>
+      <span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p}</span>
+      <div style="width:60px;height:5px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden"><div style="height:100%;background:#e24b4a;width:${Math.round(v/maxP*100)}%;border-radius:3px"></div></div>
+      <span style="font-size:12px;font-weight:600;min-width:26px;text-align:right;color:#e24b4a">${v}</span>
+      <span style="font-size:11px;color:var(--text3);min-width:32px;text-align:right">${dados.length?Math.round(v/dados.length*100)+'%':'—'}</span>
+    </div>`).join('') : '<div style="color:var(--text3);font-size:13px;padding:8px">Sem dados</div>';
 
-  // Tabela postos completa
-  const tblP = document.getElementById('ind-tbl-postos');
-  if (tblP) { const all=Object.entries(cntPosto).sort((a,b)=>b[1]-a[1]);
-    tblP.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:13px"><tr style="border-bottom:1px solid rgba(255,255,255,.1)"><th style="text-align:left;padding:6px 8px;color:var(--text3)">#</th><th style="text-align:left;padding:6px 8px;color:var(--text3)">Posto</th><th style="text-align:center;padding:6px 8px;color:var(--text3)">Qtd</th><th style="text-align:center;padding:6px 8px;color:var(--text3)">%</th></tr>${all.map(([p,v],i)=>`<tr style="border-bottom:1px solid rgba(255,255,255,.05)"><td style="padding:6px 8px;color:${i<3?'#f59e0b':'var(--text3)'};font-weight:700">${i+1}</td><td style="padding:6px 8px">${p}</td><td style="text-align:center;padding:6px 8px;font-weight:600;color:#ef4444">${v}</td><td style="text-align:center;padding:6px 8px;color:var(--text3)">${dados.length?Math.round(v/dados.length*100)+'%':'—'}</td></tr>`).join('')}</table>`; }
-
-  // Ranking serviços
+  // Serviços ofensores Top 8
   const cntServ = {}; dados.forEach(r=>{if(r.descricaoServico)cntServ[r.descricaoServico]=(cntServ[r.descricaoServico]||0)+1;});
-  const top5S = Object.entries(cntServ).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  const ctxS = document.getElementById('ind-chart-servicos');
-  if (ctxS && top5S.length) _chartIndServicos = new Chart(ctxS, {type:'bar',
-    data:{labels:top5S.map(([s])=>s.length>22?s.slice(0,20)+'…':s),datasets:[{label:'Indevidos',data:top5S.map(([,v])=>v),backgroundColor:'rgba(245,158,11,.7)',borderColor:'#f59e0b',borderWidth:1.5,borderRadius:6}]},
-    options:{indexAxis:'y',responsive:true,plugins:{legend:{display:false},[plugDL.id]:{display:true,color:'#e2e8f0',font:{size:11,weight:'bold'},anchor:'end',align:'right'}},scales:{x:{ticks:tickCfg,grid:gridCfg,beginAtZero:true},y:{ticks:{color:'#a0aec0',font:{size:10}},grid:{display:false}}}},plugins:[plugDL]});
+  const top8S = Object.entries(cntServ).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const ctxS = document.getElementById('ind-c-servicos');
+  if (ctxS && top8S.length) _chartIndServicos = new Chart(ctxS, {type:'bar',
+    data:{labels:top8S.map(([s])=>s.length>28?s.slice(0,26)+'…':s),datasets:[{data:top8S.map(([,v])=>v),backgroundColor:'rgba(245,158,11,.7)',borderColor:'#f59e0b',borderWidth:1.5,borderRadius:4}]},
+    options:{...baseOpts,indexAxis:'y',scales:{x:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true},y:{ticks:{color:tickC,font:{size:10}},grid:{display:false}}}}});
 
-  // Causa raiz
-  const cntCausa = {}; dados.forEach(r=>{if(r.causaRaiz)cntCausa[r.causaRaiz]=(cntCausa[r.causaRaiz]||0)+1;});
-  const top5C = Object.entries(cntCausa).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  const ctxC = document.getElementById('ind-chart-causa');
-  if (ctxC && top5C.length) _chartIndCausa = new Chart(ctxC, {type:'bar',
-    data:{labels:top5C.map(([c])=>c.length>22?c.slice(0,20)+'…':c),datasets:[{label:'Qtd',data:top5C.map(([,v])=>v),backgroundColor:'rgba(139,92,246,.7)',borderColor:'#8b5cf6',borderWidth:1.5,borderRadius:6}]},
-    options:{indexAxis:'y',responsive:true,plugins:{legend:{display:false},[plugDL.id]:{display:true,color:'#e2e8f0',font:{size:11,weight:'bold'},anchor:'end',align:'right'}},scales:{x:{ticks:tickCfg,grid:gridCfg,beginAtZero:true},y:{ticks:{color:'#a0aec0',font:{size:10}},grid:{display:false}}}},plugins:[plugDL]});
-
-  // Motivo do erro por categoria
+  // Motivo do erro
   const cats = ['Não seguiu script','Dados incompletos','Falha na verificação','Erro de procedimento','Outros'];
-  const catClrs = ['#ef4444','#f59e0b','#8b5cf6','#3b82f6','#6b7280'];
+  const catClrs = ['#e24b4a','#f59e0b','#8b5cf6','#3b82f6','#6b7280'];
   const cntCat = {}; cats.forEach(c=>cntCat[c]=0);
   dados.forEach(r=>{cntCat[_categMotivo(r.motivoErro)]++;});
-  const ctxMot = document.getElementById('ind-chart-motivo');
+  const ctxMot = document.getElementById('ind-c-motivo');
   if (ctxMot) _chartIndMotivo = new Chart(ctxMot, {type:'bar',
-    data:{labels:cats,datasets:[{label:'Qtd',data:cats.map(c=>cntCat[c]),backgroundColor:catClrs.map(c=>c+'b3'),borderColor:catClrs,borderWidth:1.5,borderRadius:6}]},
-    options:{responsive:true,plugins:{legend:{display:false},[plugDL.id]:{display:true,color:'#e2e8f0',font:{size:11,weight:'bold'},anchor:'end',align:'top'}},scales:{x:{ticks:{color:'#a0aec0',font:{size:10}},grid:{display:false}},y:{ticks:tickCfg,grid:gridCfg,beginAtZero:true}}},plugins:[plugDL]});
+    data:{labels:cats,datasets:[{data:cats.map(c=>cntCat[c]),backgroundColor:catClrs.map(c=>c+'b3'),borderColor:catClrs,borderWidth:1.5,borderRadius:4}]},
+    options:{...baseOpts,scales:{x:{ticks:{color:tickC,font:{size:9}},grid:{display:false}},y:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true}}}});
 
   // Reincidência por atendente
   const cntAte = {}; dados.forEach(r=>{if(r.atendente)cntAte[r.atendente]=(cntAte[r.atendente]||0)+1;});
   const top10A = Object.entries(cntAte).sort((a,b)=>b[1]-a[1]).slice(0,10);
   const tblR = document.getElementById('ind-tbl-reincidencia');
-  if (tblR) tblR.innerHTML = top10A.length
-    ? `<table style="width:100%;border-collapse:collapse;font-size:12px"><tr style="border-bottom:1px solid rgba(255,255,255,.1)"><th style="text-align:left;padding:5px 6px;color:var(--text3)">Atendente</th><th style="text-align:center;padding:5px 6px;color:var(--text3)">Qtd</th><th style="text-align:center;padding:5px 6px;color:var(--text3)">Status</th></tr>${top10A.map(([a,v])=>`<tr style="border-bottom:1px solid rgba(255,255,255,.05)"><td style="padding:5px 6px">${a}</td><td style="text-align:center;font-weight:600;color:${v>=3?'#ef4444':v>=2?'#f59e0b':'var(--text)'}">${v}</td><td style="text-align:center">${v>=3?'<span style="background:rgba(239,68,68,.2);color:#ef4444;padding:2px 8px;border-radius:10px;font-size:11px">🚨 Crítico</span>':v>=2?'<span style="background:rgba(245,158,11,.2);color:#f59e0b;padding:2px 8px;border-radius:10px;font-size:11px">⚠️ Alerta</span>':'<span style="font-size:11px;color:var(--text3)">—</span>'}</td></tr>`).join('')}</table>`
-    : '<div style="color:var(--text3);font-size:13px">Nenhum dado</div>';
-
-  // Posto × Serviço
-  const top4P = Object.entries(cntPosto).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([p])=>p);
-  const top4S = Object.entries(cntServ).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([s])=>s);
-  const crossM = {}; dados.forEach(r=>{if(top4P.includes(r.loja)&&top4S.includes(r.descricaoServico)){const k=r.loja+'|||'+r.descricaoServico;crossM[k]=(crossM[k]||0)+1;}});
-  const tblCross = document.getElementById('ind-tbl-cross');
-  if (tblCross && top4P.length && top4S.length) {
-    const shortS = top4S.map(s=>s.length>14?s.slice(0,12)+'…':s);
-    tblCross.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:11px"><tr><th style="padding:5px 4px;color:var(--text3);text-align:left">Posto</th>${shortS.map(s=>`<th style="padding:5px 4px;color:var(--text3);text-align:center">${s}</th>`).join('')}</tr>${top4P.map(p=>`<tr style="border-top:1px solid rgba(255,255,255,.07)"><td style="padding:5px 4px;font-weight:600">${p.length>16?p.slice(0,14)+'…':p}</td>${top4S.map(s=>{const v=crossM[p+'|||'+s]||0;return`<td style="text-align:center;padding:5px 4px;color:${v>0?'#f59e0b':'var(--text3)'};font-weight:${v>0?'700':'400'}">${v||'—'}</td>`;}).join('')}</tr>`).join('')}</table>`;
-  } else if (tblCross) tblCross.innerHTML='<div style="color:var(--text3);font-size:13px">Dados insuficientes</div>';
-
-  // Ordem correta
-  const comOrdem = dados.filter(r=>r.ordemCorreta&&r.ordemCorreta.trim()).length;
-  const semOrdem = dados.length - comOrdem;
-  const ctxO = document.getElementById('ind-chart-ordem');
-  if (ctxO && dados.length) _chartIndOrdemCorreta = new Chart(ctxO, {type:'doughnut',
-    data:{labels:['Com ordem correta','Sem ordem correta'],datasets:[{data:[comOrdem,semOrdem],backgroundColor:['#22c55e','#ef4444'],borderWidth:0}]},
-    options:{responsive:true,cutout:'62%',plugins:{legend:{labels:{color:'#a0aec0',font:{size:11}}},[plugDL.id]:{display:true,color:'#fff',font:{size:12,weight:'bold'},formatter:(v)=>v>0?v+'\n('+Math.round(v/dados.length*100)+'%)':''}}},plugins:[plugDL]});
+  if (tblR) tblR.innerHTML = top10A.length ? top10A.map(([a,v],i)=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+      <span style="font-size:11px;color:var(--text3);min-width:16px">${i+1}</span>
+      <span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a}</span>
+      <span style="font-size:13px;font-weight:600;color:${v>=5?'#e24b4a':v>=3?'#f59e0b':'var(--text)'}">${v}</span>
+      ${v>=5?'<span style="font-size:10px;background:rgba(239,68,68,.2);color:#e24b4a;padding:2px 6px;border-radius:8px">Crítico</span>':v>=3?'<span style="font-size:10px;background:rgba(245,158,11,.2);color:#f59e0b;padding:2px 6px;border-radius:8px">Alerta</span>':''}
+    </div>`).join('') : '<div style="color:var(--text3);font-size:13px;padding:8px">Sem dados</div>';
 }
 
 // ── renderIndevidosDetalhamento ──────────────────────────────────────────────
-function renderIndevidosDetalhamento() {
+async function renderIndevidosDetalhamento() {
   const wrap = document.getElementById('ind-detalhamento-wrap'); if (!wrap) return;
-  const mesesDisp = [...new Set(allIndevidos.map(r=>r.mesRef).filter(Boolean))].sort();
-  const postosDisp= [...new Set(allIndevidos.map(r=>r.loja).filter(Boolean))].sort();
-  const servDisp  = [...new Set(allIndevidos.map(r=>r.descricaoServico).filter(Boolean))].sort();
-  const ateDisp   = [...new Set(allIndevidos.map(r=>r.atendente).filter(Boolean))].sort();
-  const filtMes   = document.getElementById('ind-det-fil-mes')?.value   || '';
+
+  // Garantir dados carregados para os meses selecionados
+  if (_indevidosMesesSel.length) await _carregarDadosIndevidos();
+
+  const postosGer  = new Set(POSTOS_INICIAIS.filter(p=>p.nome!=='Posto Teste').map(p=>_normTxtInd(p.nome)));
+  const postosDisp = POSTOS_INICIAIS.filter(p=>p.nome!=='Posto Teste').map(p=>p.nome).sort();
+  const base       = allIndevidos.filter(r => postosGer.has(_normTxtInd(r.loja||'')));
+  const servDisp   = [...new Set(base.map(r=>r.descricaoServico).filter(Boolean))].sort();
+  const ateDisp    = [...new Set(base.map(r=>r.atendente).filter(Boolean))].sort();
+
   const filtPosto = document.getElementById('ind-det-fil-posto')?.value || '';
   const filtServ  = document.getElementById('ind-det-fil-serv')?.value  || '';
   const filtAte   = document.getElementById('ind-det-fil-ate')?.value   || '';
-  const filtrados = allIndevidos.filter(r => {
-    if (filtMes   && r.mesRef !== filtMes) return false;
+
+  const filtrados = base.filter(r => {
     if (filtPosto && _normTxtInd(r.loja) !== _normTxtInd(filtPosto)) return false;
     if (filtServ  && _normTxtInd(r.descricaoServico) !== _normTxtInd(filtServ)) return false;
     if (filtAte   && _normTxtInd(r.atendente) !== _normTxtInd(filtAte)) return false;
     return true;
   });
+
   const totalPags = Math.ceil(filtrados.length/IND_POR_PAG)||1;
   if (_indPagina > totalPags) _indPagina = 1;
   const paginados = filtrados.slice((_indPagina-1)*IND_POR_PAG, _indPagina*IND_POR_PAG);
-  const mkSel = (id, opts, cur) => `<select class="form-select" id="${id}" style="min-width:140px" onchange="_indPagina=1;renderIndevidosDetalhamento()"><option value="">Todos</option>${opts.map(o=>`<option value="${o}" ${cur===o?'selected':''}>${o}</option>`).join('')}</select>`;
+  const mk = (id,opts,cur) => `<select class="form-select" id="${id}" style="min-width:160px" onchange="_indPagina=1;renderIndevidosDetalhamento()"><option value="">Todos</option>${opts.map(o=>`<option value="${o}" ${cur===o?'selected':''}>${o.length>40?o.slice(0,38)+'…':o}</option>`).join('')}</select>`;
+
   wrap.innerHTML = `
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:16px 0 12px">
-      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Competência</label>${mkSel('ind-det-fil-mes',mesesDisp,filtMes)}</div>
-      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Posto</label>${mkSel('ind-det-fil-posto',postosDisp,filtPosto)}</div>
-      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Serviço</label>${mkSel('ind-det-fil-serv',servDisp,filtServ)}</div>
-      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Atendente</label>${mkSel('ind-det-fil-ate',ateDisp,filtAte)}</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:14px 0 12px">
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Posto</label>${mk('ind-det-fil-posto',postosDisp,filtPosto)}</div>
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Serviço</label>${mk('ind-det-fil-serv',servDisp,filtServ)}</div>
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Atendente</label>${mk('ind-det-fil-ate',ateDisp,filtAte)}</div>
       <button class="btn btn-secondary" onclick="exportarIndevidos()" style="height:38px;align-self:flex-end">⬇ Exportar Excel</button>
     </div>
-    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">${filtrados.length} registro(s) · Página ${_indPagina} de ${totalPags}</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">${filtrados.length.toLocaleString('pt-BR')} registro(s) · Página ${_indPagina} de ${totalPags}</div>
     <div style="overflow-x:auto">
-      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:960px">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:860px">
         <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15);background:var(--surface3)">
-          ${['Competência','Posto','Atendente','Serviço','Motivo do Erro','Causa Raiz','Ordem Correta','Dia','Nº Ordem'].map(h=>`<th style="padding:8px 10px;text-align:left;color:var(--text3);white-space:nowrap;font-weight:600">${h}</th>`).join('')}
+          ${['Competência','Posto','Atendente','Serviço','Motivo do Erro','Dia','Nº Ordem'].map(h=>`<th style="padding:8px 10px;text-align:left;color:var(--text3);white-space:nowrap;font-weight:600">${h}</th>`).join('')}
         </tr></thead>
         <tbody>${paginados.length ? paginados.map(r=>`
           <tr style="border-bottom:1px solid rgba(255,255,255,.05)" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background=''">
             <td style="padding:7px 10px;white-space:nowrap;color:var(--text3)">${r.mesRef||'—'}</td>
             <td style="padding:7px 10px;white-space:nowrap">${r.loja||'—'}</td>
             <td style="padding:7px 10px">${r.atendente||'—'}</td>
-            <td style="padding:7px 10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.descricaoServico||''}">${r.descricaoServico||'—'}</td>
-            <td style="padding:7px 10px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.motivoErro||''}">${r.motivoErro||'—'}</td>
-            <td style="padding:7px 10px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.causaRaiz||''}">${r.causaRaiz||'—'}</td>
-            <td style="padding:7px 10px;color:${r.ordemCorreta?'#22c55e':'var(--text3)'}">${r.ordemCorreta||'—'}</td>
+            <td style="padding:7px 10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.descricaoServico||''}">${r.descricaoServico||'—'}</td>
+            <td style="padding:7px 10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.motivoErro||''}">${r.motivoErro||'—'}</td>
             <td style="padding:7px 10px;white-space:nowrap;color:var(--text3)">${r.dia||'—'}</td>
             <td style="padding:7px 10px;white-space:nowrap;font-family:monospace;font-size:11px;color:var(--text3)">${r.numeroOrdem||'—'}</td>
-          </tr>`).join('') : '<tr><td colspan="9" style="padding:24px;text-align:center;color:var(--text3)">Nenhum registro encontrado</td></tr>'}
+          </tr>`).join('') : '<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--text3)">Nenhum registro encontrado</td></tr>'}
         </tbody>
       </table>
     </div>
@@ -14163,30 +14252,31 @@ function renderIndevidosDetalhamento() {
       <button class="btn btn-sm btn-secondary" onclick="_indPagina=Math.max(1,_indPagina-1);renderIndevidosDetalhamento()" ${_indPagina===1?'disabled':''}>‹ Ant</button>
       ${Array.from({length:Math.min(totalPags,7)},(_,i)=>{const p=totalPags<=7?i+1:(_indPagina<=4?i+1:(i+_indPagina-3>totalPags?totalPags-6+i:i+_indPagina-3));return p>0&&p<=totalPags?`<button class="btn btn-sm ${p===_indPagina?'btn-primary':'btn-secondary'}" onclick="_indPagina=${p};renderIndevidosDetalhamento()">${p}</button>`:''}).join('')}
       <button class="btn btn-sm btn-secondary" onclick="_indPagina=Math.min(${totalPags},_indPagina+1);renderIndevidosDetalhamento()" ${_indPagina===totalPags?'disabled':''}>Próx ›</button>
-      <span style="color:var(--text3);font-size:12px;margin-left:8px">${filtrados.length} total</span>
+      <span style="color:var(--text3);font-size:12px;margin-left:8px">${filtrados.length.toLocaleString('pt-BR')} total</span>
     </div>`:''}`;
 }
 
 // ── exportarIndevidos ────────────────────────────────────────────────────────
 function exportarIndevidos() {
-  const filtMes   = document.getElementById('ind-det-fil-mes')?.value   || '';
+  const postosGer = new Set(POSTOS_INICIAIS.filter(p=>p.nome!=='Posto Teste').map(p=>_normTxtInd(p.nome)));
   const filtPosto = document.getElementById('ind-det-fil-posto')?.value || '';
   const filtServ  = document.getElementById('ind-det-fil-serv')?.value  || '';
   const filtAte   = document.getElementById('ind-det-fil-ate')?.value   || '';
   const filtrados = allIndevidos.filter(r => {
-    if (filtMes   && r.mesRef !== filtMes) return false;
+    if (!postosGer.has(_normTxtInd(r.loja||''))) return false;
     if (filtPosto && _normTxtInd(r.loja) !== _normTxtInd(filtPosto)) return false;
     if (filtServ  && _normTxtInd(r.descricaoServico) !== _normTxtInd(filtServ)) return false;
     if (filtAte   && _normTxtInd(r.atendente) !== _normTxtInd(filtAte)) return false;
     return true;
   });
   if (!filtrados.length) { toast('Nenhum dado para exportar','err'); return; }
-  const cols = ['mesRef','loja','atendente','loginAtendente','descricaoServico','motivoErro','causaRaiz','ordemCorreta','dia','numeroOrdem','numeroCaso','retornoIndevido','analise','feedback','dataReferencia','importadoPor','importadoEm'];
+  const cols = ['mesRef','loja','atendente','loginAtendente','descricaoServico','motivoErro','causaRaiz','dia','numeroOrdem','numeroCaso','retornoIndevido','analise','feedback','dataReferencia','importadoPor','importadoEm'];
   const rows = filtrados.map(r=>{const o={};cols.forEach(c=>o[c]=r[c]||'');return o;});
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Indevidos');
-  XLSX.writeFile(wb, `Indevidos_${filtMes||'todos'}_${new Date().toISOString().slice(0,10)}.xlsx`);
-  toast(`✅ ${filtrados.length} registros exportados`,'ok');
+  const mesLabel = _indevidosMesesSel.map(_formatMesPill).join('-') || 'todos';
+  XLSX.writeFile(wb, `Indevidos_${mesLabel}_${new Date().toISOString().slice(0,10)}.xlsx`);
+  toast(`✅ ${filtrados.length.toLocaleString('pt-BR')} registros exportados`,'ok');
 }
 
 // ══════════════════════════════════════════════════════════════════════════
