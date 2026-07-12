@@ -13737,39 +13737,59 @@ function _indAplicarFiltro() {
 // ── renderIndevidosImportar ──────────────────────────────────────────────────
 async function renderIndevidosImportar() {
   const wrap = document.getElementById('ind-importar-wrap'); if (!wrap) return;
+
+  // Guard: se o formulário já existe, apenas atualizar o log de último import
+  // Isso evita que refreshCurrentView() resete o file input e perca o arquivo selecionado
+  if (document.getElementById('indev-form-container')) {
+    try {
+      const cfg = await db.collection('indevidos_config').doc('geral').get();
+      const el  = document.getElementById('indev-ultimo-import-txt');
+      if (el && cfg.exists) el.textContent = cfg.data().ultimoImport || '—';
+    } catch(e) {}
+    return;
+  }
+
+  // Primeira renderização — montar o formulário completo
   let ultimoImport = '—';
-  try { const cfg = await db.collection('indevidos_config').doc('geral').get(); if (cfg.exists) ultimoImport = cfg.data().ultimoImport||'—'; } catch(e) {}
+  try {
+    const cfg = await db.collection('indevidos_config').doc('geral').get();
+    if (cfg.exists) ultimoImport = cfg.data().ultimoImport || '—';
+  } catch(e) {}
+
   wrap.innerHTML = `
-    <div style="max-width:560px;margin:24px auto;padding:0 16px">
+    <div id="indev-form-container" style="max-width:560px;margin:24px auto;padding:0 16px">
       <div style="background:var(--surface2);border-radius:16px;padding:28px;margin-bottom:20px">
         <h3 style="margin:0 0 20px;font-size:16px;font-weight:700">📥 Importar Arquivo de Indevidos</h3>
         <div class="form-group">
           <label class="form-label">Arquivo Excel (.xlsx)</label>
-          <input type="file" class="form-input" id="ind-import-file" accept=".xlsx,.xls" style="padding:6px">
+          <input type="file" class="form-input" id="indev-import-file" accept=".xlsx,.xls" style="padding:6px"
+                 onchange="document.getElementById('indev-file-label').textContent=this.files[0]?'✅ '+this.files[0].name:'Nenhum arquivo selecionado'">
+          <div id="indev-file-label" style="font-size:12px;color:var(--text3);margin-top:6px">Nenhum arquivo selecionado</div>
         </div>
         <div class="form-group" style="margin-top:14px">
           <label class="form-label">Data de Referência (D-1 da extração)</label>
-          <input type="date" class="form-input" id="ind-data-ref" style="max-width:200px">
+          <input type="date" class="form-input" id="indev-data-ref" style="max-width:200px">
         </div>
         <div class="form-group" style="margin-top:14px">
           <label class="form-label">Competência (ex: 06/2026)</label>
-          <input type="text" class="form-input" id="ind-competencia" placeholder="06/2026" style="max-width:160px" maxlength="7">
+          <input type="text" class="form-input" id="indev-competencia" placeholder="06/2026" style="max-width:160px" maxlength="7">
         </div>
         <button class="btn btn-primary" style="margin-top:20px;width:100%" onclick="importarIndevidos()">📥 Importar e Salvar</button>
       </div>
       <div style="background:var(--surface2);border-radius:12px;padding:16px 20px">
         <div style="font-size:12px;color:var(--text3);font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:.6px">Último Import</div>
-        <div style="font-size:14px;color:var(--text)">${ultimoImport}</div>
+        <div id="indev-ultimo-import-txt" style="font-size:14px;color:var(--text)">${ultimoImport}</div>
       </div>
     </div>`;
 }
 
 // ── importarIndevidos ────────────────────────────────────────────────────────
 async function importarIndevidos() {
-  const fileInput = document.getElementById('ind-import-file');
-  const dataRef   = document.getElementById('ind-data-ref')?.value || '';
-  const comp      = (document.getElementById('ind-competencia')?.value || '').trim();
+  const fileInput = document.getElementById('indev-import-file');
+  const dataRef   = document.getElementById('indev-data-ref')?.value || '';
+  const comp      = (document.getElementById('indev-competencia')?.value || '').trim();
   if (!fileInput?.files?.length) { toast('Selecione um arquivo Excel','err'); return; }
+  console.log('📂 Arquivo:', fileInput.files[0].name, fileInput.files[0].size, 'bytes');
   if (!dataRef) { toast('Informe a data de referência','err'); return; }
   if (!comp || !/^\d{2}\/\d{4}$/.test(comp)) { toast('Informe a competência no formato 06/2026','err'); return; }
   const [mesStr, anoStr] = comp.split('/');
@@ -13838,6 +13858,11 @@ async function importarIndevidos() {
       mesesDisponiveis:[...mesesSet].sort(), totalRegistros: allSnap.size, atualizadoEm: now
     });
     toast(`✅ ${novos} novos + ${atualizados} atualizados (${indevidos.length} indevidos de ${comp})`,'ok');
+    // Resetar formulário para permitir nova importação
+    const container = document.getElementById('indev-form-container');
+    if (container) container.parentElement.removeChild(container);
+    const ultimo = document.getElementById('indev-ultimo-import-txt');
+    if (ultimo) ultimo.textContent = `${new Date().toLocaleDateString('pt-BR')} — ${indevidos.length} registros — ${comp}`;
     switchIndevidosTab('painel');
   } catch(e) { console.error('importarIndevidos:',e); toast('Erro: '+e.message,'err'); }
 }
