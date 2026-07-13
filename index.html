@@ -2517,35 +2517,16 @@ let _usersInitialLoad   = true;  // ignora docChanges 'added' da carga inicial d
 let allIndevidos          = [];          // docs do(s) mês(es) selecionado(s)
 let unsubIndevidos        = null;        // mantido por compatibilidade com doLogout
 let _indevidosTab         = 'painel';
-let _indevidosMesesDisp   = [];          // meses disponíveis (da config)
 let _indevidosMesesSel    = [];          // meses selecionados (multi-select)
 let _indevidosCacheMes    = {};          // cache: mesRef → docs[]
-let _indevidosCarregando  = false;
 let _indevidosUltimoImport = '';         // texto do último import para exibir no painel
 let _indFiltroPosto       = '';
 let _indFiltroServico     = '';
 let _indPagina            = 1;
 const IND_POR_PAG         = 50;
 let _chartIndMensal       = null;
-let _chartIndTendencia    = null;
-let _chartIndPostos       = null;
-let _chartIndServicos     = null;
 let _chartIndMotivo       = null;
 const MESES_ABREV_IND = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-
-// Gera todos os meses de Jan/2025 até o mês atual para exibir nos pills
-function _gerarTodosMeses() {
-  const agora = new Date();
-  const limNum = agora.getFullYear() * 100 + agora.getMonth() + 1;
-  const meses = [];
-  for (let ano = 2025; ano <= 2026; ano++) {
-    for (let mes = 1; mes <= 12; mes++) {
-      if (ano * 100 + mes > limNum) break;
-      meses.push(String(ano) + '-' + String(mes).padStart(2, '0'));
-    }
-  }
-  return meses;
-}
 
 const SENHA_PADRAO = 'rg@2026';
 const TOLERANCIA_MIN = 5;
@@ -3603,7 +3584,7 @@ function doLogout() {
   currentUser = null; allUsers = []; allTasks = [];
   _readyUsers = false; _readyTasks = false; _readyPostos = false;
   _indevidosTab = 'painel'; _indFiltroPosto = ''; _indFiltroServico = ''; _indPagina = 1;
-  _indevidosMesesSel = []; _indevidosCacheMes = {}; allIndevidos = []; _indevidosMesesDisp = []; _indevidosUltimoImport = '';
+  _indevidosMesesSel = []; _indevidosCacheMes = {}; allIndevidos = []; _indevidosMesesComDados = []; _indevidosUltimoImport = ''; _indFiltroPosto = ''; _indFiltroServico = ''; _indPagina = 1;
   clearTimeout(_refreshTimer); _refreshTimer = null;
   showPage('login');
   document.getElementById('login-email').value = '';
@@ -13678,8 +13659,34 @@ async function confirmarImportPOS(){
 // ═══════════════════════════════════════════════════════════════════════════
 // MÓDULO INDEVIDOS — Área de Qualidade
 // Acesso: ADM, Supervisores (Leonardo, Victor), Plicila
+// Arquitetura: Firestore como histórico oficial por competência mensal
+// Fonte de dados: coluna da planilha usada exatamente como fornecida
 // ═══════════════════════════════════════════════════════════════════════════
 
+// ── Constantes ──────────────────────────────────────────────────────────────
+const IND_MESES_2026 = ['2026-01','2026-02','2026-03','2026-04','2026-05','2026-06',
+                        '2026-07','2026-08','2026-09','2026-10','2026-11','2026-12'];
+const IND_MESES_LABEL = {
+  '01':'Jan','02':'Fev','03':'Mar','04':'Abr','05':'Mai','06':'Jun',
+  '07':'Jul','08':'Ago','09':'Set','10':'Out','11':'Nov','12':'Dez'
+};
+
+// ── Variáveis globais ────────────────────────────────────────────────────────
+let allIndevidos          = [];
+let unsubIndevidos        = null;
+let _indevidosTab         = 'painel';
+let _indevidosMesesComDados = [];   // quais meses têm dados no Firestore
+let _indevidosMesesSel    = [];     // meses selecionados nos pills
+let _indevidosCacheMes    = {};     // cache: mesRef → docs[]
+let _indevidosUltimoImport = '';
+let _indFiltroPosto       = '';
+let _indFiltroServico     = '';
+let _indPagina            = 1;
+const IND_POR_PAG         = 50;
+let _chartIndMensal       = null;
+let _chartIndMotivo       = null;
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 function podeVerIndevidos() {
   if (!currentUser) return false;
   if (currentUser.role === 'admin') return true;
@@ -13688,84 +13695,78 @@ function podeVerIndevidos() {
           'teste@gruporgbrasil.com'].includes(currentUser.email);
 }
 
+function _indMesLabel(mesRef) {
+  // "2026-06" → "Jun/26"
+  if (!mesRef || !mesRef.includes('-')) return mesRef;
+  const [ano, mes] = mesRef.split('-');
+  return (IND_MESES_LABEL[mes] || mes) + '/' + ano.slice(2);
+}
+
+// Normalizar nome de coluna: trim + colapsar espaços internos + uppercase + remover acentos
+function _normIndCol(k) {
+  return (k || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .trim().toUpperCase().replace(/\s+/g,' ');
+}
+
+// Categorizar motivo do erro
+function _categMotivo(motivo) {
+  const m = (motivo||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
+  if (m.includes('SCRIPT')||m.includes('IAC')||m.includes('INTRANET')) return 'Não seguiu script';
+  if (m.includes('INCOMPLETO')||m.includes('FALTANDO')||m.includes('DADO')||m.includes('INFORMAT')) return 'Dados incompletos';
+  if (m.includes('VERIFIC')||m.includes('VALID')||m.includes('ANEXO')) return 'Falha na verificação';
+  if (m.includes('PROCEDIMENTO')||m.includes('PROCESSO')||m.includes('PROTOCOLO')||m.includes('ORIENTA')) return 'Erro de procedimento';
+  return 'Outros';
+}
+
+function _destroyIndChart(ref) { try { if(ref) ref.destroy(); } catch(e){} return null; }
+
+// ── Filtro ───────────────────────────────────────────────────────────────────
+function _filtrarIndevidos() {
+  return allIndevidos.filter(r => {
+    if (_indFiltroPosto   && r.loja           !== _indFiltroPosto)   return false;
+    if (_indFiltroServico && r.descricaoServico !== _indFiltroServico) return false;
+    return true;
+  });
+}
+
+function _indAplicarFiltro() {
+  _indFiltroPosto   = document.getElementById('ind-fil-posto')?.value   || '';
+  _indFiltroServico = document.getElementById('ind-fil-servico')?.value || '';
+  renderIndevidosPainel();
+}
+
+// ── Carregamento por demanda ─────────────────────────────────────────────────
+async function _carregarMesIndevidos(mesRef) {
+  if (_indevidosCacheMes[mesRef]) return; // já em cache
+  try {
+    const snap = await db.collection('indevidos').where('mesRef','==',mesRef).get();
+    _indevidosCacheMes[mesRef] = snap.docs.map(d => ({id:d.id,...d.data()}));
+    console.log(`[Indevidos] ${mesRef}: ${snap.size} docs carregados`);
+  } catch(e) {
+    console.warn('[Indevidos] Erro ao carregar', mesRef, e);
+    _indevidosCacheMes[mesRef] = [];
+  }
+}
+
+// ── initIndevidos ─────────────────────────────────────────────────────────────
 function initIndevidos() {
-  // Leve: carrega apenas o doc de config (não o acervo inteiro)
   db.collection('indevidos_config').doc('geral').get()
     .then(cfg => {
       if (cfg.exists) {
         const d = cfg.data();
-        _indevidosMesesDisp = (d.mesesDisponiveis || []).sort();
-        _indevidosUltimoImport = d.ultimoImport || '';
+        _indevidosMesesComDados  = (d.mesesComDados || []).sort();
+        _indevidosUltimoImport   = d.ultimoImport || '';
+        // Selecionar o mês mais recente com dados por padrão
         if (_indevidosMesesSel.length === 0 && d.ultimoMes) {
-          _indevidosMesesSel = [d.ultimoMes]; // selecionar mês mais recente por padrão
+          _indevidosMesesSel = [d.ultimoMes];
         }
       }
       refreshCurrentView();
     })
-    .catch(e => console.warn('initIndevidos config:', e));
+    .catch(e => console.warn('[Indevidos] initIndevidos:', e));
 }
 
-async function _carregarDadosIndevidos() {
-  if (!_indevidosMesesSel.length) { allIndevidos = []; return; }
-  const novos = _indevidosMesesSel.filter(m => !_indevidosCacheMes[m]);
-  if (novos.length) {
-    _indevidosCarregando = true;
-    for (const mesRef of novos) {
-      try {
-        const snap = await db.collection('indevidos').where('mesRef','==',mesRef).get();
-        _indevidosCacheMes[mesRef] = snap.docs.map(d => ({id:d.id,...d.data()}));
-        console.log(`[Indevidos] Mês ${mesRef}: ${snap.size} docs carregados do Firestore`);
-        // Diagnóstico: mostrar valores únicos dos campos de filtro
-        if (snap.size > 0) {
-          const amostra = snap.docs[0].data();
-          console.log('[Indevidos] Amostra de campos:', { gerente: amostra.gerente, empresa: amostra.empresa, loja: amostra.loja, descricaoServico: amostra.descricaoServico });
-          const gerentes = [...new Set(snap.docs.map(d=>d.data().gerente||''))];
-          console.log('[Indevidos] Gerentes encontrados:', gerentes);
-          const lojas = [...new Set(snap.docs.map(d=>d.data().loja||''))].sort();
-          console.log('[Indevidos] Lojas encontradas:', lojas);
-        }
-      } catch(e) { console.warn('Erro ao carregar mês', mesRef, e); _indevidosCacheMes[mesRef] = []; }
-    }
-    _indevidosCarregando = false;
-  }
-  allIndevidos = _indevidosMesesSel.flatMap(m => _indevidosCacheMes[m] || []);
-  const totalGerencia = allIndevidos.filter(r => _ehMinhaGerencia(r)).length;
-  console.log(`[Indevidos] Total carregado: ${allIndevidos.length} | Após filtro gerência: ${totalGerencia}`);
-}
-
-async function _toggleMesIndevidos(mesRef, evt) {
-  const shift = evt && evt.shiftKey;
-  if (shift) {
-    // Shift+clique: adiciona/remove da seleção múltipla
-    const idx = _indevidosMesesSel.indexOf(mesRef);
-    if (idx >= 0) _indevidosMesesSel.splice(idx, 1);
-    else _indevidosMesesSel.push(mesRef);
-  } else {
-    // Clique simples: substitui a seleção por este mês apenas
-    if (_indevidosMesesSel.length === 1 && _indevidosMesesSel[0] === mesRef) {
-      _indevidosMesesSel = []; // deselecionar se clicar no mesmo
-    } else {
-      _indevidosMesesSel = [mesRef];
-    }
-  }
-  _indPagina = 1;
-  renderIndevidos();
-}
-
-function _selecionarTodosIndevidos() {
-  _indevidosMesesSel = [..._indevidosMesesDisp];
-  _indPagina = 1; renderIndevidos();
-}
-function _limparMesesIndevidos() {
-  _indevidosMesesSel = []; _indPagina = 1; renderIndevidos();
-}
-
-function _formatMesPill(mesRef) {
-  if (!mesRef || !mesRef.includes('-')) return mesRef;
-  const [ano, mes] = mesRef.split('-');
-  return (MESES_ABREV_IND[parseInt(mes)-1] || mes) + '/' + ano.slice(2);
-}
-
+// ── switchIndevidosTab ───────────────────────────────────────────────────────
 function switchIndevidosTab(tab) {
   _indevidosTab = tab; _indPagina = 1;
   ['painel','importar','detalhamento'].forEach(t => {
@@ -13784,620 +13785,493 @@ function renderIndevidos() {
   else                                   renderIndevidosDetalhamento();
 }
 
-function _destroyChart(ref) { try { if (ref) ref.destroy(); } catch(e){} return null; }
-
-function _normColInd(k) {
-  return (k||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase().replace(/\s+/g,' ');
-}
-function _normTxtInd(s) {
-  return (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase();
-}
-function _categMotivo(motivo) {
-  const m = _normTxtInd(motivo);
-  if (m.includes('SCRIPT')||m.includes('IAC')||m.includes('INTRANET')) return 'Não seguiu script';
-  if (m.includes('INCOMPLETO')||m.includes('FALTANDO')||m.includes('DADO')) return 'Dados incompletos';
-  if (m.includes('VERIFIC')||m.includes('VALID')) return 'Falha na verificação';
-  if (m.includes('PROCEDIMENTO')||m.includes('PROCESSO')||m.includes('PROTOCOLO')) return 'Erro de procedimento';
-  return 'Outros';
-}
-function _mediaMovel(arr, w) {
-  return arr.map((_,i) => {
-    if (i < w-1) return null;
-    const sl = arr.slice(i-w+1, i+1);
-    return Math.round(sl.reduce((a,b)=>a+b,0)/w*10)/10;
-  });
-}
-
-// ── Helper único de filtro de gerência ──────────────────────────────────────
-// Identifica registros exclusivamente da gerência de Marcelo Portugal
-// Usa o campo GERENTE (mapeado do Excel) que é o identificador mais confiável
-function _ehMinhaGerencia(r) {
-  return _normTxtInd(r.gerente || '').includes('MARCELO');
-}
-
-// Filtro base: gerência + posto + serviço selecionados
-function _filtrarIndevidos() {
-  return allIndevidos.filter(r => {
-    if (!_ehMinhaGerencia(r)) return false;
-    if (_indFiltroPosto   && _normTxtInd(r.loja) !== _normTxtInd(_indFiltroPosto)) return false;
-    if (_indFiltroServico && _normTxtInd(r.descricaoServico) !== _normTxtInd(_indFiltroServico)) return false;
-    return true;
-  });
-}
-function _indAplicarFiltro() {
-  _indFiltroPosto   = document.getElementById('ind-fil-posto')?.value   || '';
-  _indFiltroServico = document.getElementById('ind-fil-servico')?.value || '';
-  renderIndevidosPainel();
-}
-
 // ── renderIndevidosImportar ──────────────────────────────────────────────────
 async function renderIndevidosImportar() {
   const wrap = document.getElementById('ind-importar-wrap'); if (!wrap) return;
-
-  // Guard: se o formulário já existe, apenas atualizar o log de último import
-  // Isso evita que refreshCurrentView() resete o file input e perca o arquivo selecionado
   if (document.getElementById('indev-form-container')) {
-    try {
-      const cfg = await db.collection('indevidos_config').doc('geral').get();
-      const el  = document.getElementById('indev-ultimo-import-txt');
-      if (el && cfg.exists) el.textContent = cfg.data().ultimoImport || '—';
-    } catch(e) {}
+    const el = document.getElementById('indev-ultimo-import-txt');
+    if (el && _indevidosUltimoImport) el.textContent = _indevidosUltimoImport;
     return;
   }
-
-  // Primeira renderização — montar o formulário completo
-  let ultimoImport = '—';
-  try {
-    const cfg = await db.collection('indevidos_config').doc('geral').get();
-    if (cfg.exists) ultimoImport = cfg.data().ultimoImport || '—';
-  } catch(e) {}
-
   wrap.innerHTML = `
-    <div id="indev-form-container" style="max-width:560px;margin:24px auto;padding:0 16px">
-      <div style="background:var(--surface2);border-radius:16px;padding:28px;margin-bottom:20px">
-        <h3 style="margin:0 0 20px;font-size:16px;font-weight:700">📥 Importar Arquivo de Indevidos</h3>
+    <div id="indev-form-container" style="max-width:540px;margin:24px auto;padding:0 16px">
+      <div style="background:var(--surface2);border-radius:14px;padding:24px;margin-bottom:16px">
+        <h3 style="margin:0 0 18px;font-size:15px;font-weight:600">📥 Importar Indevidos</h3>
         <div class="form-group">
           <label class="form-label">Arquivo Excel (.xlsx)</label>
           <input type="file" class="form-input" id="indev-import-file" accept=".xlsx,.xls" style="padding:6px"
                  onchange="document.getElementById('indev-file-label').textContent=this.files[0]?'✅ '+this.files[0].name:'Nenhum arquivo selecionado'">
-          <div id="indev-file-label" style="font-size:12px;color:var(--text3);margin-top:6px">Nenhum arquivo selecionado</div>
+          <div id="indev-file-label" style="font-size:12px;color:var(--text3);margin-top:5px">Nenhum arquivo selecionado</div>
         </div>
-        <div class="form-group" style="margin-top:14px">
-          <label class="form-label">Data de Referência (D-1 da extração)</label>
-          <input type="date" class="form-input" id="indev-data-ref" style="max-width:200px">
-        </div>
-        <div class="form-group" style="margin-top:14px">
-          <label class="form-label">Competência (ex: 06/2026)</label>
-          <input type="text" class="form-input" id="indev-competencia" placeholder="06/2026" style="max-width:160px" maxlength="7">
-        </div>
-        <button class="btn btn-primary" style="margin-top:20px;width:100%" onclick="importarIndevidos()">📥 Importar e Salvar</button>
+        <p style="font-size:12px;color:var(--text3);margin:10px 0 0">
+          O sistema detecta automaticamente a competência a partir do campo MÊS da planilha.<br>
+          Os dados do mês detectado serão substituídos. Demais meses permanecem intactos.
+        </p>
+        <button class="btn btn-primary" style="margin-top:16px;width:100%" onclick="importarIndevidos()">📥 Importar</button>
       </div>
-      <div style="background:var(--surface2);border-radius:12px;padding:16px 20px">
-        <div style="font-size:12px;color:var(--text3);font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:.6px">Último Import</div>
-        <div id="indev-ultimo-import-txt" style="font-size:14px;color:var(--text)">${ultimoImport}</div>
+      <div style="background:var(--surface2);border-radius:12px;padding:14px 18px">
+        <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px">Último Import</div>
+        <div id="indev-ultimo-import-txt" style="font-size:13px;color:var(--text)">${_indevidosUltimoImport || '—'}</div>
       </div>
     </div>`;
 }
 
-// ── importarIndevidos ────────────────────────────────────────────────────────
+// ── importarIndevidos ─────────────────────────────────────────────────────────
 async function importarIndevidos() {
   const fileInput = document.getElementById('indev-import-file');
-  const dataRef   = document.getElementById('indev-data-ref')?.value || '';
-  const comp      = (document.getElementById('indev-competencia')?.value || '').trim();
   if (!fileInput?.files?.length) { toast('Selecione um arquivo Excel','err'); return; }
-  console.log('📂 Arquivo:', fileInput.files[0].name, fileInput.files[0].size, 'bytes');
-  if (!dataRef) { toast('Informe a data de referência','err'); return; }
-  if (!comp || !/^\d{2}\/\d{4}$/.test(comp)) { toast('Informe a competência no formato 06/2026','err'); return; }
-  const [mesStr, anoStr] = comp.split('/');
-  const mesRef = anoStr + '-' + mesStr;
+
   toast('⏳ Processando arquivo...','ok');
   try {
     const buf = await fileInput.files[0].arrayBuffer();
-    const wb  = XLSX.read(buf, {type:'array'});
+    const wb  = XLSX.read(buf, {type:'array', cellDates:true});
 
-    // ── Encontrar a aba correta: tem coluna CONCLUSÃO + maior número de linhas ──
-    console.log('📂 Abas disponíveis:', wb.SheetNames);
-    let ws = null, wsName = '', headerRowIdx = -1, bestRows = -1;
+    // Encontrar aba com os dados (preferência: "Base de Análise" ou maior aba com CONCLUSÃO)
+    let wsName = wb.SheetNames[0];
     for (const name of wb.SheetNames) {
-      const candidate = wb.Sheets[name];
-      if (!candidate['!ref']) continue;
-      // Contar linhas via range (sem ler tudo) para comparar volume
-      const range = XLSX.utils.decode_range(candidate['!ref']);
-      const rowCount = range.e.r + 1;
-      // Ler só as primeiras 10 linhas para achar o cabeçalho com CONCLUSÃO
-      const rawArr = XLSX.utils.sheet_to_json(candidate, {header:1, defval:'', blankrows:false, range:{s:{r:0,c:0}, e:{r:9,c:range.e.c}}});
-      let hIdx = -1;
-      for (let i = 0; i < rawArr.length; i++) {
-        const rowStr = (rawArr[i] || []).map(c => _normTxtInd(String(c||''))).join(' ');
-        if (rowStr.includes('CONCLUSAO')) { hIdx = i; break; }
-      }
-      if (hIdx < 0) {
-        console.log(`  ⏭ Aba "${name}": sem CONCLUSÃO (${rowCount} linhas)`);
-        continue;
-      }
-      console.log(`  🔍 Aba "${name}": tem CONCLUSÃO, ${rowCount} linhas`);
-      // Preferir a aba com mais dados
-      if (rowCount > bestRows) {
-        ws = candidate; wsName = name; headerRowIdx = hIdx; bestRows = rowCount;
-      }
+      const ws = wb.Sheets[name];
+      if (!ws['!ref']) continue;
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      if (range.e.r > XLSX.utils.decode_range(wb.Sheets[wsName]['!ref'] || 'A1').e.r) wsName = name;
+      if (name.includes('Análise') || name.includes('Analise') || name.includes('Base')) { wsName = name; break; }
     }
-    if (!ws) {
-      toast('❌ Nenhuma aba com "CONCLUSÃO" encontrada. Abas: ' + wb.SheetNames.join(', '), 'err');
-      return;
-    }
-    console.log(`✅ Usando aba: "${wsName}" — ${bestRows} linhas (cabeçalho na linha ${headerRowIdx + 1})`);
+    const ws = wb.Sheets[wsName];
+    console.log('[Indevidos Import] Aba:', wsName);
 
-    // Ler a aba encontrada como objetos (XLSX detecta cabeçalho automaticamente)
-    const rawRows = XLSX.utils.sheet_to_json(ws, {defval:''});
+    // Ler como array bruto e construir mapa de colunas normalizado
+    const rawArr = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:false});
+    if (rawArr.length < 2) { toast('Planilha sem dados','err'); return; }
 
-    if (!rawRows.length) { toast('Arquivo sem dados','err'); return; }
-
-    // Normalizar chaves das colunas (remove acentos, uppercasa, trim)
-    const rows = rawRows.map(r => {
-      const n={};
-      Object.keys(r).forEach(k => { n[_normColInd(k)] = r[k]; });
-      return n;
+    const rawHeaders = rawArr[0];
+    // colMap: nome normalizado → índice
+    const colMap = {};
+    rawHeaders.forEach((h, i) => {
+      if (h != null && h !== '') colMap[_normIndCol(String(h))] = i;
     });
 
-    // Diagnóstico: log colunas disponíveis e valores únicos de CONCLUSAO
-    const colsDisp = Object.keys(rows[0] || {});
-    console.log('📊 Colunas do Excel (normalizadas):', colsDisp);
-    const valoresConc = [...new Set(rows.map(r => String(r['CONCLUSAO']||'').trim()).filter(Boolean))];
-    console.log('📊 Valores únicos de CONCLUSAO:', valoresConc);
-
-    // Filtrar INDEVIDO — usa includes() para capturar "INDEVIDO" mesmo em strings maiores
-    // e normaliza o valor (remove acentos, uppercase, trim)
-    const indevidos = rows.filter(r => {
-      const conclusao = _normTxtInd(String(r['CONCLUSAO'] || ''));
-      if (!conclusao.includes('INDEVIDO')) return false;
-
-      // Filtrar apenas anos >= 2025
-      // O campo ANO pode ser "2026", "202606" (AAAAMM), ou ausente
-      const anoRaw = String(r['ANO'] || r['MES'] || r['MES2'] || anoStr).trim();
-      const anoNum  = parseInt(anoRaw.slice(0, 4)) || parseInt(anoStr);
-      if (anoNum < 2025) {
-        console.log('⏭ Ignorado (ano ' + anoNum + '):', r['NUMERO DA ORDEM'] || '?');
-        return false;
-      }
-      return true;
-    });
-
-    if (!indevidos.length) {
-      // Diagnóstico adicional
-      console.warn('⚠️ Nenhum INDEVIDO encontrado. Valores CONCLUSAO disponíveis:', valoresConc);
-      console.warn('⚠️ Primeira linha do Excel (normalizada):', rows[0]);
-      toast('Nenhum registro INDEVIDO encontrado. Verifique o console para diagnóstico.','err');
+    // Confirmar colunas obrigatórias
+    const colsObrigatorias = ['CONCLUSAO','MES','DESCRICAO SERVICO','LOJA','ATENDENTE','MOTIVO DO ERRO'];
+    const faltando = colsObrigatorias.filter(c => colMap[c] === undefined);
+    if (faltando.length) {
+      console.warn('[Indevidos Import] Colunas normalizadas disponíveis:', Object.keys(colMap));
+      toast('Colunas não encontradas: ' + faltando.join(', '), 'err');
       return;
     }
+    console.log('[Indevidos Import] Colunas mapeadas OK');
 
-    console.log('✅ Indevidos encontrados:', indevidos.length, '| Anos únicos:', [...new Set(indevidos.map(r=>String(r['ANO']||'').slice(0,4)))]);
-    const existSnap = await db.collection('indevidos').where('mesRef','==',mesRef).get();
-    const existOrdens = {};
-    existSnap.docs.forEach(d => { existOrdens[d.data().numeroOrdem] = d.id; });
-    const now = new Date().toISOString();
-    let novos = 0, atualizados = 0;
-    // Log de diagnóstico: coluna GERENTE encontrada + amostra de valor
-    if (indevidos.length > 0) {
-      const r0 = indevidos[0];
-      const colGerenteEncontrada = ['GERENTE','GERENCIA','NOME GERENTE','NOME_GERENTE'].find(k => r0[k] !== undefined && r0[k] !== '');
-      const valGerente = colGerenteEncontrada ? String(r0[colGerenteEncontrada]).trim() : '(vazio)';
-      console.log('[Indevidos Import] Coluna GERENTE encontrada:', colGerenteEncontrada || 'NENHUMA');
-      console.log('[Indevidos Import] Valor importado para GERENTE:', valGerente);
-      const gerentes = [...new Set(indevidos.map(r=>String(r['GERENTE']||r['GERENCIA']||r['NOME GERENTE']||r['NOME_GERENTE']||'').trim()).filter(Boolean))];
-      console.log('[Indevidos Import] Gerentes únicos no arquivo:', gerentes);
-    }
-    for (let i = 0; i < indevidos.length; i += 400) {
-      const b = db.batch();
-      indevidos.slice(i, i+400).forEach(r => {
-        const numeroOrdem = String(r['NUMERO DA ORDEM']||r['NUMERO ORDEM']||'').trim();
-        const doc = {
-          mesRef,
-          numeroCliente:    String(r['NUMERO CLIENTE']||'').trim(),
-          numeroOrdem,
-          numeroCaso:       String(r['NUMERO DO CASO']||r['NUMERO CASO']||'').trim(),
-          municipio:        String(r['MUNICIPIO']||r['MUNICIPIO']||'').trim(),
-          canalAtendimento: String(r['CANAL ATENDIMENTO']||r['CANAL DE ATENDIMENTO']||'').trim(),
-          loginAtendente:   String(r['LOGIN ATENDENTE']||'').trim(),
-          descricaoServico: String(r['DESCRICAO DO SERVICO']||r['DESCRICAO_SERVICO']||r['DESCRICAO SERVICO']||r['SERVICO']||r['DESCRICAO']||'').trim(),
-          retornoIndevido:  String(r['RETORNO INDEVIDO']||'').trim(),
-          br:               String(r['BR']||'').trim(),
-          atendente:        String(r['ATENDENTE']||'').trim(),
-          loja:             String(r['LOJA']||'').trim(),
-          especialista:     String(r['ESPECIALISTA']||'').trim(),
-          coordenador:      String(r['COORDENADOR']||'').trim(),
-          gerente: (() => {
-            // Aceitar variações: GERENTE, GERENCIA, NOME GERENTE, NOME_GERENTE
-            const v = String(r['GERENTE']||r['GERENCIA']||r['NOME GERENTE']||r['NOME_GERENTE']||'').trim();
-            return v;
-          })(),
-          empresa:          String(r['EMPRESA']||'').trim(),
-          mes:              String(r['MES']||r['MES']||'').trim(),
-          dia:              String(r['DIA']||'').trim(),
-          motivoErro:       String(r['MOTIVO DO ERRO']||r['MOTIVO ERRO']||'').trim(),
-          conclusao:        String(r['CONCLUSAO']||r['CONCLUSAO']||'').trim(),
-          analise:          String(r['ANALISE']||r['ANALISE']||'').trim(),
-          causaRaiz:        String(r['CAUSA RAIZ']||'').trim(),
-          feedback:         String(r['FEEDBACK']||'').trim(),
-          obsFeedback:      String(r['OBS FEEDBACK']||r['OBS. FEEDBACK']||'').trim(),
-          ordemCorreta:     String(r['ORDEM CORRETA']||'').trim(),
-          dataOrdemCorreta: String(r['DATA ORDEM CORRETA']||'').trim(),
-          ano:              String(r['ANO']||anoStr).trim(),
-          mes2:             String(r['MES2']||mesStr).trim(),
-          mes3:             String(r['MES3']||'').trim(),
-          importadoEm:      now, importadoPor: currentUser.email,
-          dataReferencia:   dataRef, updatedAt: now
-        };
-        if (existOrdens[numeroOrdem]) { b.update(db.collection('indevidos').doc(existOrdens[numeroOrdem]), doc); atualizados++; }
-        else { const ref = db.collection('indevidos').doc(); b.set(ref, {id:ref.id,...doc}); novos++; }
+    // Helper para ler valor de uma célula por nome de coluna (normalizado)
+    const get = (row, colNorm) => {
+      const idx = colMap[colNorm];
+      if (idx === undefined) return '';
+      const v = row[idx];
+      if (v instanceof Date) return `${v.getDate().toString().padStart(2,'0')}/${(v.getMonth()+1).toString().padStart(2,'0')}/${v.getFullYear()}`;
+      return String(v ?? '').trim();
+    };
+
+    // Processar linhas: filtrar INDEVIDO e agrupar por mesRef
+    const byMes = {};
+    const rows = rawArr.slice(1);
+    rows.forEach(row => {
+      if (row.every(c => !c || c === '')) return; // linha vazia
+      const conclusao = get(row, 'CONCLUSAO').toUpperCase();
+      if (!conclusao.includes('INDEVIDO')) return;
+
+      // Derivar mesRef do campo MÊS (valor 202601 → "2026-01")
+      const mesRaw = get(row, 'MES').replace(/\D/g,'');
+      if (mesRaw.length !== 6) return;
+      const mesRef = mesRaw.slice(0,4) + '-' + mesRaw.slice(4,6);
+
+      if (!byMes[mesRef]) byMes[mesRef] = [];
+      byMes[mesRef].push({
+        mesRef,
+        municipio:         get(row, 'MUNICIPIO'),
+        canalAtendimento:  get(row, 'CANAL ATENDIMENTO'),
+        loginAtendente:    get(row, 'LOGIN ATENDENTE'),
+        descricaoServico:  get(row, 'DESCRICAO SERVICO'),
+        retornoIndevido:   get(row, 'RETORNO DE INDEVIDO'),
+        br:                get(row, 'BR'),
+        atendente:         get(row, 'ATENDENTE'),
+        loja:              get(row, 'LOJA'),
+        especialista:      get(row, 'ESPECIALISTA'),
+        coordenador:       get(row, 'COORDENADOR'),
+        gerente:           get(row, 'GERENTE'),
+        empresa:           get(row, 'EMPRESA'),
+        mes:               get(row, 'MES'),
+        dia:               get(row, 'DIA'),
+        motivoErro:        get(row, 'MOTIVO DO ERRO'),
+        conclusao:         get(row, 'CONCLUSAO'),
+        analise:           get(row, 'ANALISE'),
+        causaRaiz:         get(row, 'CAUSA RAIZ'),
+        ano:               get(row, 'ANO'),
+        importadoEm:       new Date().toISOString(),
+        importadoPor:      currentUser.email
       });
-      await b.commit();
-    }
-    // Atualizar config usando meses já conhecidos em memória — sem varrer toda a collection
-    const mesesAtualizados = [...new Set([..._indevidosMesesDisp, mesRef])].sort();
-    await db.collection('indevidos_config').doc('geral').set({
-      ultimoImport:`${new Date().toLocaleDateString('pt-BR')} — ${indevidos.length} registros — ${comp}`,
-      dataReferencia: dataRef, ultimoMes: mesRef,
-      mesesDisponiveis: mesesAtualizados, atualizadoEm: now
     });
-    toast(`✅ ${novos} novos + ${atualizados} atualizados (${indevidos.length} indevidos de ${comp})`,'ok');
-    // Atualizar estado local
-    delete _indevidosCacheMes[mesRef];                         // forçar reload do mês importado
-    _indevidosMesesDisp = mesesAtualizados;
-    _indevidosMesesSel  = [mesRef];                            // selecionar automaticamente o mês importado
-    _indevidosUltimoImport = `${new Date().toLocaleDateString('pt-BR')} — ${indevidos.length} registros — ${comp}`;
-    // Resetar formulário
-    const container = document.getElementById('indev-form-container');
-    if (container) container.parentElement.removeChild(container);
-    const ultimo = document.getElementById('indev-ultimo-import-txt');
-    if (ultimo) ultimo.textContent = `${new Date().toLocaleDateString('pt-BR')} — ${indevidos.length} registros — ${comp}`;
+
+    const mesesDetectados = Object.keys(byMes).sort();
+    const totalIndevidos  = Object.values(byMes).reduce((s,v) => s+v.length, 0);
+    console.log('[Indevidos Import] Meses detectados:', mesesDetectados);
+    console.log('[Indevidos Import] Total INDEVIDO:', totalIndevidos);
+    console.log('[Indevidos Import] Gerentes únicos:', [...new Set(Object.values(byMes).flat().map(r=>r.gerente))]);
+    console.log('[Indevidos Import] Lojas únicas:', [...new Set(Object.values(byMes).flat().map(r=>r.loja))]);
+
+    if (!mesesDetectados.length) { toast('Nenhum registro INDEVIDO encontrado','err'); return; }
+
+    // Para cada mês: DELETE todos os docs do mês, INSERT novos
+    for (const mesRef of mesesDetectados) {
+      // Deletar existentes
+      const existSnap = await db.collection('indevidos').where('mesRef','==',mesRef).get();
+      if (existSnap.size > 0) {
+        for (let i=0; i<existSnap.docs.length; i+=400) {
+          const b = db.batch();
+          existSnap.docs.slice(i,i+400).forEach(d => b.delete(d.ref));
+          await b.commit();
+        }
+        console.log(`[Indevidos Import] ${mesRef}: deletados ${existSnap.size} registros antigos`);
+      }
+      // Inserir novos
+      const records = byMes[mesRef];
+      for (let i=0; i<records.length; i+=400) {
+        const b = db.batch();
+        records.slice(i,i+400).forEach(rec => {
+          const ref = db.collection('indevidos').doc();
+          b.set(ref, {id:ref.id,...rec});
+        });
+        await b.commit();
+      }
+      console.log(`[Indevidos Import] ${mesRef}: ${records.length} registros importados`);
+    }
+
+    // Atualizar config
+    const cfgSnap = await db.collection('indevidos_config').doc('geral').get();
+    const mesesExistentes = new Set(cfgSnap.exists ? (cfgSnap.data().mesesComDados||[]) : []);
+    mesesDetectados.forEach(m => mesesExistentes.add(m));
+    const mesesArr   = [...mesesExistentes].sort();
+    const ultimoMes  = mesesArr[mesesArr.length-1];
+    const ultimoImport = `${new Date().toLocaleDateString('pt-BR')} — ${totalIndevidos} registros — ${mesesDetectados.map(_indMesLabel).join(', ')}`;
+    await db.collection('indevidos_config').doc('geral').set({
+      mesesComDados: mesesArr, ultimoMes, ultimoImport, atualizadoEm: new Date().toISOString()
+    });
+
+    // Atualizar estado
+    mesesDetectados.forEach(m => { delete _indevidosCacheMes[m]; });
+    _indevidosMesesComDados  = mesesArr;
+    _indevidosUltimoImport   = ultimoImport;
+    _indevidosMesesSel       = [mesesDetectados[mesesDetectados.length-1]];
+
+    // Resetar form
+    const cont = document.getElementById('indev-form-container');
+    if (cont) cont.parentElement.removeChild(cont);
+    const ul = document.getElementById('indev-ultimo-import-txt');
+    if (ul) ul.textContent = ultimoImport;
+
+    toast(`✅ ${totalIndevidos} indevidos importados — ${mesesDetectados.map(_indMesLabel).join(', ')}`, 'ok');
     switchIndevidosTab('painel');
-  } catch(e) { console.error('importarIndevidos:',e); toast('Erro: '+e.message,'err'); }
+  } catch(e) {
+    console.error('[Indevidos Import] Erro:', e);
+    toast('Erro na importação: ' + e.message, 'err');
+  }
 }
 
-// ── renderIndevidosPainel ────────────────────────────────────────────────────
+// ── renderIndevidosPainel ─────────────────────────────────────────────────────
 async function renderIndevidosPainel() {
   const wrap = document.getElementById('ind-painel-wrap'); if (!wrap) return;
 
-  // Gerar todos os meses 2025-2026 (inclui meses sem dados ainda)
-  const todosMeses = _gerarTodosMeses();
+  // Carregar meses selecionados (cache)
+  for (const m of _indevidosMesesSel) await _carregarMesIndevidos(m);
+  allIndevidos = _indevidosMesesSel.flatMap(m => _indevidosCacheMes[m] || []);
 
-  // Sem nenhum mês ainda → estado vazio com botão de importar
-  if (!_indevidosMesesDisp.length && !todosMeses.length) {
-    wrap.innerHTML=`<div class="empty" style="margin-top:60px"><div class="icon">🔍</div><p>Nenhum dado importado ainda.<br>Acesse a aba <strong>Importar</strong> para adicionar registros.</p><button class="btn btn-primary" style="margin-top:12px" onclick="switchIndevidosTab('importar')">📥 Importar agora</button></div>`;
-    return;
-  }
-
-  // Carregar dados dos meses selecionados (usa cache)
-  if (_indevidosMesesSel.length) await _carregarDadosIndevidos();
-
-  const dados     = _filtrarIndevidos();
-  const postosGer = POSTOS_INICIAIS.filter(p=>p.nome!=='Posto Teste').sort((a,b)=>a.nome.localeCompare(b.nome));
-  // Serviços filtrados apenas pela gerência de Marcelo (para popular o select corretamente)
-  const dadosEmp  = allIndevidos.filter(r => _ehMinhaGerencia(r)
-    && (!_indFiltroPosto || _normTxtInd(r.loja) === _normTxtInd(_indFiltroPosto)));
-  const servDisp  = [...new Set(dadosEmp.map(r=>r.descricaoServico).filter(Boolean))].sort();
+  const dados      = _filtrarIndevidos();
+  const postosDisp = [...new Set(allIndevidos.map(r=>r.loja).filter(Boolean))].sort();
+  const servDisp   = [...new Set(allIndevidos.map(r=>r.descricaoServico).filter(Boolean))].sort();
 
   const totalInd   = dados.length;
   const postosOf   = new Set(dados.map(r=>r.loja).filter(Boolean)).size;
   const servicosOf = new Set(dados.map(r=>r.descricaoServico).filter(Boolean)).size;
   const atendentes = new Set(dados.map(r=>r.atendente).filter(Boolean)).size;
-
-  const periodoLabel = _indevidosMesesSel.length
-    ? _indevidosMesesSel.map(_formatMesPill).join(', ')
-    : 'Nenhum mês selecionado';
+  const periodoLabel = _indevidosMesesSel.map(_indMesLabel).join(', ') || 'Nenhum';
 
   wrap.innerHTML = `
-    <!-- Pills de mês — todos os meses 2025 e 2026 -->
-    <div style="padding:10px 0 6px">
-      <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:7px">Período</div>
-      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:7px">
-        ${todosMeses.map(m=>{
-          const temDados = _indevidosMesesDisp.includes(m);
-          const ativo    = _indevidosMesesSel.includes(m);
-          return `<button onclick="_toggleMesIndevidos('${m}',event)" title="${temDados?'Clique para selecionar. Shift+clique para adicionar à seleção.':'Sem dados importados para este mês'}" style="font-size:11px;padding:3px 10px;border-radius:16px;border:1px solid ${ativo?'transparent':temDados?'rgba(255,255,255,.22)':'rgba(255,255,255,.08)'};background:${ativo?'#2a78d6':'transparent'};color:${ativo?'#fff':temDados?'var(--text2)':'var(--text3)'};cursor:${temDados?'pointer':'default'};opacity:${temDados?1:.4};transition:all .12s">${_formatMesPill(m)}</button>`;
-        }).join('')}
-      </div>
-      <div style="display:flex;gap:6px">
-        <button onclick="_selecionarTodosIndevidos()" style="font-size:11px;padding:3px 10px;border-radius:16px;border:1px solid rgba(255,255,255,.18);background:transparent;color:var(--text3);cursor:pointer">Todos</button>
-        <button onclick="_limparMesesIndevidos()" style="font-size:11px;padding:3px 10px;border-radius:16px;border:1px solid rgba(255,255,255,.18);background:transparent;color:var(--text3);cursor:pointer">Limpar</button>
-      </div>
+    <!-- TOPBAR INFO -->
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 0 12px">
+      ${_indevidosUltimoImport ? `<span style="font-size:11px;background:rgba(27,175,122,.12);color:#0f6e56;padding:3px 10px;border-radius:12px;border:1px solid rgba(27,175,122,.25)">📅 Dados até: ${_indevidosUltimoImport}</span>` : ''}
     </div>
 
-    <!-- Badge de última atualização + período ativo -->
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 0 10px">
-      ${_indevidosUltimoImport ? `<span style="font-size:11px;background:rgba(27,175,122,.12);color:#0f6e56;padding:3px 10px;border-radius:12px;border:1px solid rgba(27,175,122,.25)">Última atualização: ${_indevidosUltimoImport}</span>` : ''}
-      ${_indevidosMesesSel.length ? `<span style="font-size:11px;background:rgba(42,120,214,.12);color:#185fa5;padding:3px 10px;border-radius:12px;border:1px solid rgba(42,120,214,.25)">📅 ${periodoLabel}</span>` : ''}
+    <!-- PERÍODO: 12 pills fixos de 2026 -->
+    <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">Período</div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px">
+      ${IND_MESES_2026.map(m => {
+        const comDados = _indevidosMesesComDados.includes(m);
+        const ativo    = _indevidosMesesSel.includes(m);
+        return `<button onclick="_indToggleMes('${m}',event)"
+          title="${comDados ? 'Clique para selecionar. Shift+clique para acumular.' : 'Sem dados importados para este mês'}"
+          style="font-size:11px;padding:3px 10px;border-radius:14px;
+            border:1px solid ${ativo?'transparent':comDados?'rgba(255,255,255,.22)':'rgba(255,255,255,.08)'};
+            background:${ativo?'#2a78d6':'transparent'};
+            color:${ativo?'#fff':comDados?'var(--text2)':'var(--text3)'};
+            cursor:${comDados?'pointer':'default'};
+            opacity:${comDados?1:.4};transition:all .12s">
+          ${_indMesLabel(m)}
+        </button>`;
+      }).join('')}
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:12px">
+      <button onclick="_indSelecionarTodos()" style="font-size:11px;padding:2px 10px;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:transparent;color:var(--text3);cursor:pointer">Todos com dados</button>
+      <button onclick="_indLimpar()" style="font-size:11px;padding:2px 10px;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:transparent;color:var(--text3);cursor:pointer">Limpar</button>
     </div>
 
-    <!-- Filtros -->
+    <!-- FILTROS -->
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:8px 0 14px;border-bottom:1px solid rgba(255,255,255,.07)">
       <div>
-        <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Posto</label>
+        <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Posto</label>
         <select class="form-select" id="ind-fil-posto" style="min-width:200px" onchange="_indAplicarFiltro()">
-          <option value="">Todos os postos (29)</option>
-          ${postosGer.map(p=>`<option value="${p.nome}" ${_indFiltroPosto===p.nome?'selected':''}>${p.nome}</option>`).join('')}
+          <option value="">Todos os postos</option>
+          ${postosDisp.map(p=>`<option value="${p}" ${_indFiltroPosto===p?'selected':''}>${p}</option>`).join('')}
         </select>
       </div>
       <div>
-        <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px">Descrição do serviço</label>
+        <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Serviço</label>
         <select class="form-select" id="ind-fil-servico" style="min-width:220px" onchange="_indAplicarFiltro()">
           <option value="">Todos os serviços</option>
           ${servDisp.map(s=>`<option value="${s}" ${_indFiltroServico===s?'selected':''}>${s.length>50?s.slice(0,48)+'…':s}</option>`).join('')}
         </select>
       </div>
+      ${_indevidosMesesSel.length?`<span style="font-size:11px;background:rgba(42,120,214,.12);color:#185fa5;padding:3px 10px;border-radius:12px;border:1px solid rgba(42,120,214,.25);align-self:flex-end">📅 ${periodoLabel}</span>`:''}
     </div>
 
-    <!-- Cards -->
+    <!-- CARDS -->
     <div class="stats-row" style="margin:14px 0">
-      <div class="stat-card"><div class="label">Total indevidos</div><div class="value" style="color:#e24b4a">${totalInd.toLocaleString('pt-BR')}</div><div class="sub">${periodoLabel}</div></div>
-      <div class="stat-card"><div class="label">Postos ofensores</div><div class="value" style="color:#f59e0b">${postosOf} <span style="font-size:13px;color:var(--text3)">/ 29</span></div><div class="sub">com ocorrências</div></div>
-      <div class="stat-card"><div class="label">Serviços distintos</div><div class="value" style="color:#3b82f6">${servicosOf}</div><div class="sub">tipos</div></div>
+      <div class="stat-card"><div class="label">Indevidos</div><div class="value" style="color:#e24b4a">${totalInd.toLocaleString('pt-BR')}</div><div class="sub">${periodoLabel}</div></div>
+      <div class="stat-card"><div class="label">Postos</div><div class="value" style="color:#f59e0b">${postosOf}</div><div class="sub">com ocorrências</div></div>
+      <div class="stat-card"><div class="label">Serviços</div><div class="value" style="color:#3b82f6">${servicosOf}</div><div class="sub">tipos distintos</div></div>
       <div class="stat-card"><div class="label">Atendentes</div><div class="value">${atendentes}</div><div class="sub">envolvidos</div></div>
     </div>
 
-    ${!totalInd ? `<div style="text-align:center;padding:28px;color:var(--text3);font-size:13px">${_indevidosMesesSel.length ? 'Nenhum registro encontrado para o período e filtros selecionados.' : 'Selecione um mês acima para visualizar os dados.'}</div>` : ''}
+    ${!totalInd ? `<div style="text-align:center;padding:32px;color:var(--text3);font-size:13px">${_indevidosMesesSel.length?'Nenhum registro encontrado para os filtros selecionados.':'Selecione um mês acima para visualizar os dados.'}</div>` : ''}
 
     ${totalInd ? `
-    <!-- LINHA 4: Gráficos — Evolução | Causa Raiz | Motivo do Erro -->
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
+    <!-- GRÁFICOS: Evolução | Motivo do Erro -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
       <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
-        <div style="font-size:12px;font-weight:600;margin-bottom:10px">📈 Evolução mensal</div>
-        <div style="position:relative;width:100%;height:150px"><canvas id="ind-c-mensal"></canvas></div>
-      </div>
-      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
-        <div style="font-size:12px;font-weight:600;margin-bottom:10px">🔍 Causa Raiz (Top 5)</div>
-        <div style="position:relative;width:100%;height:150px"><canvas id="ind-c-causa"></canvas></div>
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">📈 Evolução mensal — 2026</div>
+        <div style="position:relative;width:100%;height:160px"><canvas id="ind-c-mensal"></canvas></div>
       </div>
       <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
         <div style="font-size:12px;font-weight:600;margin-bottom:10px">📋 Motivo do erro</div>
-        <div style="position:relative;width:100%;height:150px"><canvas id="ind-c-motivo"></canvas></div>
+        <div style="position:relative;width:100%;height:160px"><canvas id="ind-c-motivo"></canvas></div>
       </div>
     </div>
 
-    <!-- LINHA 5: Rankings — Top 5 Postos | Top 5 Serviços -->
+    <!-- RANKINGS: Top 5 Postos | Top 5 Serviços -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
       <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
         <div style="font-size:12px;font-weight:600;margin-bottom:10px">🏆 Top 5 Postos</div>
-        <div id="ind-tbl-postos"></div>
+        <div id="ind-rank-postos"></div>
       </div>
       <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
-        <div style="font-size:12px;font-weight:600;margin-bottom:10px">🔥 Top 5 Serviços</div>
-        <div id="ind-tbl-servicos"></div>
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">🔥 Top 5 Serviços — DESCRIÇÃO_SERVIÇO</div>
+        <div id="ind-rank-servicos"></div>
       </div>
-    </div>
-
-    <!-- LINHA 6: Gráficos secundários — Tendência | Reincidência -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
-        <div style="font-size:12px;font-weight:600;margin-bottom:10px">📅 Tendência — média móvel 3m</div>
-        <div style="position:relative;width:100%;height:150px"><canvas id="ind-c-tendencia"></canvas></div>
-      </div>
-      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
-        <div style="font-size:12px;font-weight:600;margin-bottom:10px">🔄 Reincidência por atendente</div>
-        <div id="ind-tbl-reincidencia"></div>
-      </div>
-    </div>
-
-    <!-- LINHA 7: Tabela resumida — últimos 5 registros -->
-    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:12px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div style="font-size:12px;font-weight:600">📋 Últimos registros</div>
-        <button class="btn btn-sm btn-secondary" onclick="switchIndevidosTab('detalhamento')" style="font-size:11px;padding:3px 10px">Ver todos →</button>
-      </div>
-      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;min-width:600px">
-        <thead><tr style="border-bottom:1px solid rgba(255,255,255,.12)">
-          ${['Posto','Atendente','Serviço','Motivo','Dia'].map(h=>`<th style="padding:5px 8px;text-align:left;color:var(--text3);font-weight:500">${h}</th>`).join('')}
-        </tr></thead>
-        <tbody id="ind-tbl-resumo"></tbody>
-      </table></div>
     </div>` : ''}`;
 
   if (totalInd) setTimeout(() => _renderIndevidosCharts(dados), 50);
 }
 
-function _renderIndevidosCharts(dados) {
-  _chartIndMensal    = _destroyChart(_chartIndMensal);
-  _chartIndTendencia = _destroyChart(_chartIndTendencia);
-  _chartIndPostos    = _destroyChart(_chartIndPostos);
-  _chartIndServicos  = _destroyChart(_chartIndServicos);
-  _chartIndMotivo    = _destroyChart(_chartIndMotivo);
-  if (window._chartIndCausa) { try { window._chartIndCausa.destroy(); } catch(e){} window._chartIndCausa = null; }
+// Controles dos pills
+async function _indToggleMes(mesRef, evt) {
+  if (!_indevidosMesesComDados.includes(mesRef)) return;
+  if (evt && evt.shiftKey) {
+    const idx = _indevidosMesesSel.indexOf(mesRef);
+    if (idx >= 0) _indevidosMesesSel.splice(idx, 1);
+    else _indevidosMesesSel.push(mesRef);
+  } else {
+    _indevidosMesesSel = (_indevidosMesesSel.length===1 && _indevidosMesesSel[0]===mesRef) ? [] : [mesRef];
+  }
+  _indPagina = 1;
+  renderIndevidos();
+}
+function _indSelecionarTodos() { _indevidosMesesSel = [..._indevidosMesesComDados]; renderIndevidos(); }
+function _indLimpar()          { _indevidosMesesSel = []; renderIndevidos(); }
 
-  const gridC = 'rgba(255,255,255,.06)';
-  const tickC = '#a0aec0';
-  const baseOpts = { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+// ── _renderIndevidosCharts ────────────────────────────────────────────────────
+function _renderIndevidosCharts(dados) {
+  _chartIndMensal = _destroyIndChart(_chartIndMensal);
+  _chartIndMotivo = _destroyIndChart(_chartIndMotivo);
+
+  const gridC  = 'rgba(255,255,255,.06)';
+  const tickC  = '#a0aec0';
+  const baseOpts = { responsive:true, maintainAspectRatio:false,
+    plugins:{legend:{display:false}},
     scales:{ x:{ticks:{color:tickC,font:{size:10}},grid:{display:false}},
              y:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true} } };
 
-  const dadosTodos = allIndevidos.filter(r => {
-    if (!_ehMinhaGerencia(r)) return false;
-    if (_indFiltroPosto   && _normTxtInd(r.loja) !== _normTxtInd(_indFiltroPosto)) return false;
-    if (_indFiltroServico && _normTxtInd(r.descricaoServico) !== _normTxtInd(_indFiltroServico)) return false;
-    return true;
-  });
-  const cntMes = {}; dadosTodos.forEach(r=>{if(r.mesRef)cntMes[r.mesRef]=(cntMes[r.mesRef]||0)+1;});
-  const mesesOrden = Object.keys(cntMes).sort();
-  const valsMes = mesesOrden.map(m=>cntMes[m]);
+  // Evolução mensal — conta registros por mês em todos os dados carregados em cache (todos os meses)
+  const todosCached = IND_MESES_2026
+    .filter(m => _indevidosCacheMes[m])
+    .flatMap(m => _indevidosCacheMes[m]);
+  const cntMes = {};
+  IND_MESES_2026.forEach(m => { cntMes[m] = 0; });
+  todosCached.forEach(r => { if (r.mesRef && cntMes[r.mesRef]!==undefined) cntMes[r.mesRef]++; });
+  const mesesLabels = IND_MESES_2026.map(_indMesLabel);
+  const valsMes     = IND_MESES_2026.map(m => cntMes[m]);
 
-  const ptLabelPlugin = {id:'ptLbl',afterDatasetsDraw(c){const{ctx}=c;c.data.datasets.forEach((ds,di)=>{if(ds.borderDash)return;c.getDatasetMeta(di).data.forEach((el,i)=>{const v=ds.data[i];if(v==null)return;ctx.save();ctx.fillStyle=ds.borderColor||'#3b82f6';ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.fillText(v,el.x,el.y-9);ctx.restore();});});}};
-
-  // Evolução mensal
   const ctxM = document.getElementById('ind-c-mensal');
-  if (ctxM && mesesOrden.length) _chartIndMensal = new Chart(ctxM, {type:'line',
-    data:{labels:mesesOrden.map(_formatMesPill),datasets:[{data:valsMes,borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,.12)',borderWidth:2,fill:true,tension:.35,pointRadius:3,pointBackgroundColor:'#3b82f6'}]},
-    options:baseOpts, plugins:[ptLabelPlugin]});
+  if (ctxM) _chartIndMensal = new Chart(ctxM, {type:'line',
+    data:{labels:mesesLabels, datasets:[{
+      data:valsMes, borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,.12)',
+      borderWidth:2, fill:true, tension:.35, pointRadius:4, pointBackgroundColor:'#3b82f6'
+    }]},
+    options:baseOpts,
+    plugins:[{id:'ptLbl',afterDatasetsDraw(c){const{ctx}=c;c.data.datasets[0].data.forEach((v,i)=>{
+      if(!v)return;const el=c.getDatasetMeta(0).data[i];ctx.save();ctx.fillStyle='#3b82f6';
+      ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.fillText(v,el.x,el.y-9);ctx.restore();});}}]});
 
-  // Causa Raiz (Top 5)
-  const cntCausa = {}; dados.forEach(r=>{if(r.causaRaiz)cntCausa[r.causaRaiz]=(cntCausa[r.causaRaiz]||0)+1;});
-  const top5Causa = Object.entries(cntCausa).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  const ctxCausa = document.getElementById('ind-c-causa');
-  if (ctxCausa && top5Causa.length) window._chartIndCausa = new Chart(ctxCausa, {type:'bar',
-    data:{labels:top5Causa.map(([c])=>c.length>28?c.slice(0,26)+'…':c),datasets:[{data:top5Causa.map(([,v])=>v),backgroundColor:'rgba(139,92,246,.7)',borderColor:'#8b5cf6',borderWidth:1.5,borderRadius:4}]},
-    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true},y:{ticks:{color:tickC,font:{size:10}},grid:{display:false}}}},
-    plugins:[{id:'causaLbl',afterDatasetsDraw(c){const{ctx}=c;c.data.datasets[0].data.forEach((v,i)=>{if(!v)return;const el=c.getDatasetMeta(0).data[i];ctx.save();ctx.fillStyle='#4c1d95';ctx.font='bold 11px sans-serif';ctx.textAlign='left';ctx.fillText(v,el.x+5,el.y+4);ctx.restore();});}}]});
-
-  // Motivo do erro
-  const cats = ['Não seguiu script','Dados incompletos','Falha na verificação','Erro de procedimento','Outros'];
+  // Motivo do erro — usando os dados filtrados do mês selecionado
+  const cats    = ['Não seguiu script','Dados incompletos','Falha na verificação','Erro de procedimento','Outros'];
   const catClrs = ['#e24b4a','#f59e0b','#8b5cf6','#3b82f6','#6b7280'];
-  const cntCat = {}; cats.forEach(c=>cntCat[c]=0);
-  dados.forEach(r=>{cntCat[_categMotivo(r.motivoErro)]++;});
+  const cntCat  = {}; cats.forEach(c => cntCat[c] = 0);
+  dados.forEach(r => { cntCat[_categMotivo(r.motivoErro)]++; });
   const ctxMot = document.getElementById('ind-c-motivo');
   if (ctxMot) _chartIndMotivo = new Chart(ctxMot, {type:'bar',
-    data:{labels:cats,datasets:[{data:cats.map(c=>cntCat[c]),backgroundColor:catClrs.map(c=>c+'b3'),borderColor:catClrs,borderWidth:1.5,borderRadius:4}]},
-    options:{...baseOpts,scales:{x:{ticks:{color:tickC,font:{size:9}},grid:{display:false}},y:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true}}},
-    plugins:[{id:'motLabels',afterDatasetsDraw(c){const{ctx}=c;c.data.datasets[0].data.forEach((v,i)=>{if(!v)return;const el=c.getDatasetMeta(0).data[i];ctx.save();ctx.fillStyle='#333';ctx.font='bold 11px sans-serif';ctx.textAlign='center';ctx.fillText(v,el.x,el.y-8);ctx.restore();});}}]});
+    data:{labels:cats, datasets:[{data:cats.map(c=>cntCat[c]),
+      backgroundColor:catClrs.map(c=>c+'b3'), borderColor:catClrs, borderWidth:1.5, borderRadius:4}]},
+    options:{...baseOpts, scales:{
+      x:{ticks:{color:tickC,font:{size:9}},grid:{display:false}},
+      y:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true}}},
+    plugins:[{id:'motLbl',afterDatasetsDraw(c){const{ctx}=c;c.data.datasets[0].data.forEach((v,i)=>{
+      if(!v)return;const el=c.getDatasetMeta(0).data[i];ctx.save();ctx.fillStyle='#333';
+      ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.fillText(v,el.x,el.y-8);ctx.restore();});}}]});
 
   // Top 5 Postos
   const cntPosto = {}; dados.forEach(r=>{if(r.loja)cntPosto[r.loja]=(cntPosto[r.loja]||0)+1;});
-  const rankP = Object.entries(cntPosto).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  const maxP  = rankP[0]?.[1]||1;
-  const tblP  = document.getElementById('ind-tbl-postos');
-  if (tblP) tblP.innerHTML = rankP.length ? rankP.map(([p,v],i)=>`
-    <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">
-      <span style="font-size:11px;font-weight:600;color:${i<3?'#f59e0b':'var(--text3)'};min-width:16px">${i+1}</span>
+  const top5P = Object.entries(cntPosto).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const maxP  = top5P[0]?.[1]||1;
+  const tblP  = document.getElementById('ind-rank-postos');
+  if (tblP) tblP.innerHTML = top5P.length ? top5P.map(([p,v],i)=>`
+    <div style="display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+      <span style="font-size:11px;font-weight:700;color:${i<3?'#f59e0b':'var(--text3)'};min-width:14px">${i+1}</span>
       <span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p}</span>
-      <div style="width:56px;height:5px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden"><div style="height:100%;background:#e24b4a;width:${Math.round(v/maxP*100)}%;border-radius:3px"></div></div>
-      <span style="font-size:12px;font-weight:600;min-width:22px;text-align:right;color:#e24b4a">${v}</span>
-      <span style="font-size:11px;color:var(--text3);min-width:30px;text-align:right">${dados.length?Math.round(v/dados.length*100)+'%':'—'}</span>
+      <div style="width:52px;height:5px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden">
+        <div style="height:100%;background:#e24b4a;width:${Math.round(v/maxP*100)}%;border-radius:3px"></div>
+      </div>
+      <span style="font-size:12px;font-weight:600;color:#e24b4a;min-width:20px;text-align:right">${v}</span>
+      <span style="font-size:11px;color:var(--text3);min-width:28px;text-align:right">${dados.length?Math.round(v/dados.length*100)+'%':'—'}</span>
     </div>`).join('') : '<div style="color:var(--text3);font-size:13px;padding:8px">Sem dados</div>';
 
-  // Top 5 Serviços
+  // Top 5 Serviços — campo DESCRIÇÃO_SERVIÇO (descricaoServico)
   const cntServ = {}; dados.forEach(r=>{if(r.descricaoServico)cntServ[r.descricaoServico]=(cntServ[r.descricaoServico]||0)+1;});
   const top5S = Object.entries(cntServ).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const maxS  = top5S[0]?.[1]||1;
-  const tblS  = document.getElementById('ind-tbl-servicos');
+  const tblS  = document.getElementById('ind-rank-servicos');
   if (tblS) tblS.innerHTML = top5S.length ? top5S.map(([s,v],i)=>`
-    <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">
-      <span style="font-size:11px;font-weight:600;color:${i<3?'#f59e0b':'var(--text3)'};min-width:16px">${i+1}</span>
-      <span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s}">${s.length>32?s.slice(0,30)+'…':s}</span>
-      <div style="width:56px;height:5px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden"><div style="height:100%;background:#eda100;width:${Math.round(v/maxS*100)}%;border-radius:3px"></div></div>
-      <span style="font-size:12px;font-weight:600;min-width:22px;text-align:right;color:#eda100">${v}</span>
+    <div style="display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+      <span style="font-size:11px;font-weight:700;color:${i<3?'#f59e0b':'var(--text3)'};min-width:14px">${i+1}</span>
+      <span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s}">${s.length>34?s.slice(0,32)+'…':s}</span>
+      <div style="width:52px;height:5px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden">
+        <div style="height:100%;background:#eda100;width:${Math.round(v/maxS*100)}%;border-radius:3px"></div>
+      </div>
+      <span style="font-size:12px;font-weight:600;color:#eda100;min-width:20px;text-align:right">${v}</span>
     </div>`).join('') : '<div style="color:var(--text3);font-size:13px;padding:8px">Sem dados</div>';
-
-  // Tendência (média móvel 3m)
-  const mm3 = _mediaMovel(valsMes,3);
-  const ultimo=valsMes[valsMes.length-1]||0, mmAt=mm3[mm3.length-1]||0;
-  const tendTxt = mmAt>0?(ultimo>mmAt?'📈 Piora':'📉 Melhora'):'';
-  const ctxT = document.getElementById('ind-c-tendencia');
-  if (ctxT && mesesOrden.length) _chartIndTendencia = new Chart(ctxT, {type:'line',
-    data:{labels:mesesOrden.map(_formatMesPill),datasets:[
-      {label:'Mensal',data:valsMes,borderColor:'#94a3b8',borderDash:[4,3],borderWidth:1.5,fill:false,tension:.35,pointRadius:2,spanGaps:true},
-      {label:'Média 3m',data:mm3,borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,.08)',borderWidth:2,fill:true,tension:.35,pointRadius:3,pointBackgroundColor:'#3b82f6',spanGaps:true}
-    ]},
-    options:{...baseOpts,plugins:{legend:{labels:{color:tickC,font:{size:10},boxWidth:8,padding:10}},
-      title:{display:!!tendTxt,text:tendTxt,color:ultimo>mmAt?'#ef4444':'#22c55e',font:{size:11,weight:'bold'}}}},
-    plugins:[ptLabelPlugin]});
-
-  // Reincidência por atendente
-  const cntAte = {}; dados.forEach(r=>{if(r.atendente)cntAte[r.atendente]=(cntAte[r.atendente]||0)+1;});
-  const top10A = Object.entries(cntAte).sort((a,b)=>b[1]-a[1]).slice(0,10);
-  const tblR = document.getElementById('ind-tbl-reincidencia');
-  if (tblR) tblR.innerHTML = top10A.length ? top10A.map(([a,v],i)=>`
-    <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">
-      <span style="font-size:11px;color:var(--text3);min-width:16px">${i+1}</span>
-      <span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a}</span>
-      <span style="font-size:13px;font-weight:600;color:${v>=5?'#e24b4a':v>=3?'#f59e0b':'var(--text)'}">${v}</span>
-      ${v>=5?'<span style="font-size:10px;background:rgba(239,68,68,.2);color:#e24b4a;padding:2px 6px;border-radius:8px">Crítico</span>':v>=3?'<span style="font-size:10px;background:rgba(245,158,11,.2);color:#f59e0b;padding:2px 6px;border-radius:8px">Alerta</span>':''}
-    </div>`).join('') : '<div style="color:var(--text3);font-size:13px;padding:8px">Sem dados</div>';
-
-  // Tabela resumo — últimos 5 registros
-  const tblRes = document.getElementById('ind-tbl-resumo');
-  if (tblRes) {
-    const ult5 = dados.slice(0,5);
-    tblRes.innerHTML = ult5.length ? ult5.map(r=>`
-      <tr style="border-bottom:1px solid rgba(255,255,255,.05)" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background=''">
-        <td style="padding:5px 8px;font-size:11px">${r.loja||'—'}</td>
-        <td style="padding:5px 8px;font-size:11px">${r.atendente||'—'}</td>
-        <td style="padding:5px 8px;font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.descricaoServico||'—'}</td>
-        <td style="padding:5px 8px;font-size:11px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.motivoErro||'—'}</td>
-        <td style="padding:5px 8px;font-size:11px;color:var(--text3)">${r.dia||'—'}</td>
-      </tr>`).join('') : '<tr><td colspan="5" style="padding:12px 8px;text-align:center;color:var(--text3);font-size:12px">Sem dados</td></tr>';
-  }
 }
 
-// ── renderIndevidosDetalhamento ──────────────────────────────────────────────
+// ── renderIndevidosDetalhamento ───────────────────────────────────────────────
 async function renderIndevidosDetalhamento() {
   const wrap = document.getElementById('ind-detalhamento-wrap'); if (!wrap) return;
 
-  // Garantir dados carregados para os meses selecionados
-  if (_indevidosMesesSel.length) await _carregarDadosIndevidos();
+  // Carregar todos os meses com dados para o filtro de mês
+  for (const m of _indevidosMesesComDados) await _carregarMesIndevidos(m);
+  const todosOsDados = _indevidosMesesComDados.flatMap(m => _indevidosCacheMes[m] || []);
 
-  const postosDisp = POSTOS_INICIAIS.filter(p=>p.nome!=='Posto Teste').map(p=>p.nome).sort();
-  const base       = allIndevidos.filter(r => _ehMinhaGerencia(r));
-  const servDisp   = [...new Set(base.map(r=>r.descricaoServico).filter(Boolean))].sort();
-  const ateDisp    = [...new Set(base.map(r=>r.atendente).filter(Boolean))].sort();
+  const filtMes    = document.getElementById('ind-det-fil-mes')?.value     || '';
+  const filtPosto  = document.getElementById('ind-det-fil-posto')?.value   || '';
+  const filtServ   = document.getElementById('ind-det-fil-serv')?.value    || '';
+  const filtAte    = document.getElementById('ind-det-fil-ate')?.value     || '';
 
-  const filtPosto = document.getElementById('ind-det-fil-posto')?.value || '';
-  const filtServ  = document.getElementById('ind-det-fil-serv')?.value  || '';
-  const filtAte   = document.getElementById('ind-det-fil-ate')?.value   || '';
+  const postosDisp = [...new Set(todosOsDados.map(r=>r.loja).filter(Boolean))].sort();
+  const servDisp   = [...new Set(todosOsDados.map(r=>r.descricaoServico).filter(Boolean))].sort();
+  const ateDisp    = [...new Set(todosOsDados.map(r=>r.atendente).filter(Boolean))].sort();
 
-  const filtrados = base.filter(r => {
-    if (filtPosto && _normTxtInd(r.loja) !== _normTxtInd(filtPosto)) return false;
-    if (filtServ  && _normTxtInd(r.descricaoServico) !== _normTxtInd(filtServ)) return false;
-    if (filtAte   && _normTxtInd(r.atendente) !== _normTxtInd(filtAte)) return false;
+  const filtrados = todosOsDados.filter(r => {
+    if (filtMes   && r.mesRef           !== filtMes)   return false;
+    if (filtPosto && r.loja             !== filtPosto)  return false;
+    if (filtServ  && r.descricaoServico !== filtServ)   return false;
+    if (filtAte   && r.atendente        !== filtAte)    return false;
     return true;
   });
 
-  const totalPags = Math.ceil(filtrados.length/IND_POR_PAG)||1;
+  const totalPags = Math.ceil(filtrados.length / IND_POR_PAG) || 1;
   if (_indPagina > totalPags) _indPagina = 1;
   const paginados = filtrados.slice((_indPagina-1)*IND_POR_PAG, _indPagina*IND_POR_PAG);
-  const mk = (id,opts,cur) => `<select class="form-select" id="${id}" style="min-width:160px" onchange="_indPagina=1;renderIndevidosDetalhamento()"><option value="">Todos</option>${opts.map(o=>`<option value="${o}" ${cur===o?'selected':''}>${o.length>40?o.slice(0,38)+'…':o}</option>`).join('')}</select>`;
+
+  const mkSel = (id, opts, cur, lbl) => `
+    <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">${lbl}</label>
+    <select class="form-select" id="${id}" style="min-width:140px" onchange="_indPagina=1;renderIndevidosDetalhamento()">
+      <option value="">Todos</option>
+      ${opts.map(o=>`<option value="${o}" ${cur===o?'selected':''}>${o.length>36?o.slice(0,34)+'…':o}</option>`).join('')}
+    </select></div>`;
 
   wrap.innerHTML = `
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:14px 0 12px">
-      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Posto</label>${mk('ind-det-fil-posto',postosDisp,filtPosto)}</div>
-      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Serviço</label>${mk('ind-det-fil-serv',servDisp,filtServ)}</div>
-      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Atendente</label>${mk('ind-det-fil-ate',ateDisp,filtAte)}</div>
-      <button class="btn btn-secondary" onclick="exportarIndevidos()" style="height:38px;align-self:flex-end">⬇ Exportar Excel</button>
+        <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Mês</label>
+      <select class="form-select" id="ind-det-fil-mes" style="min-width:100px" onchange="_indPagina=1;renderIndevidosDetalhamento()">
+        <option value="">Todos</option>
+        ${_indevidosMesesComDados.map(m=>`<option value="${m}" ${filtMes===m?'selected':''}>${_indMesLabel(m)}</option>`).join('')}
+      </select></div>
+      ${mkSel('ind-det-fil-posto', postosDisp, filtPosto, 'Posto')}
+      ${mkSel('ind-det-fil-serv',  servDisp,   filtServ,  'Serviço')}
+      ${mkSel('ind-det-fil-ate',   ateDisp,    filtAte,   'Atendente')}
+      <button class="btn btn-secondary" onclick="exportarIndevidos()" style="height:38px;align-self:flex-end">⬇ Excel</button>
     </div>
     <div style="font-size:12px;color:var(--text3);margin-bottom:10px">${filtrados.length.toLocaleString('pt-BR')} registro(s) · Página ${_indPagina} de ${totalPags}</div>
     <div style="overflow-x:auto">
-      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:860px">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:780px">
         <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15);background:var(--surface3)">
-          ${['Competência','Posto','Atendente','Serviço','Motivo do Erro','Dia','Nº Ordem'].map(h=>`<th style="padding:8px 10px;text-align:left;color:var(--text3);white-space:nowrap;font-weight:600">${h}</th>`).join('')}
+          ${['Mês','Posto','Atendente','Serviço','Motivo do Erro','Dia'].map(h=>`<th style="padding:7px 10px;text-align:left;color:var(--text3);white-space:nowrap;font-weight:600">${h}</th>`).join('')}
         </tr></thead>
         <tbody>${paginados.length ? paginados.map(r=>`
           <tr style="border-bottom:1px solid rgba(255,255,255,.05)" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background=''">
-            <td style="padding:7px 10px;white-space:nowrap;color:var(--text3)">${r.mesRef||'—'}</td>
-            <td style="padding:7px 10px;white-space:nowrap">${r.loja||'—'}</td>
-            <td style="padding:7px 10px">${r.atendente||'—'}</td>
-            <td style="padding:7px 10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.descricaoServico||''}">${r.descricaoServico||'—'}</td>
-            <td style="padding:7px 10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.motivoErro||''}">${r.motivoErro||'—'}</td>
-            <td style="padding:7px 10px;white-space:nowrap;color:var(--text3)">${r.dia||'—'}</td>
-            <td style="padding:7px 10px;white-space:nowrap;font-family:monospace;font-size:11px;color:var(--text3)">${r.numeroOrdem||'—'}</td>
-          </tr>`).join('') : '<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--text3)">Nenhum registro encontrado</td></tr>'}
+            <td style="padding:6px 10px;white-space:nowrap;color:var(--text3)">${_indMesLabel(r.mesRef)||'—'}</td>
+            <td style="padding:6px 10px;white-space:nowrap">${r.loja||'—'}</td>
+            <td style="padding:6px 10px">${r.atendente||'—'}</td>
+            <td style="padding:6px 10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.descricaoServico||''}">${r.descricaoServico||'—'}</td>
+            <td style="padding:6px 10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.motivoErro||''}">${r.motivoErro||'—'}</td>
+            <td style="padding:6px 10px;white-space:nowrap;color:var(--text3)">${r.dia||'—'}</td>
+          </tr>`).join('') : '<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--text3)">Nenhum registro</td></tr>'}
         </tbody>
       </table>
     </div>
-    ${totalPags>1?`<div style="display:flex;gap:6px;align-items:center;margin-top:14px;flex-wrap:wrap">
+    ${totalPags>1?`<div style="display:flex;gap:6px;align-items:center;margin-top:12px;flex-wrap:wrap">
       <button class="btn btn-sm btn-secondary" onclick="_indPagina=Math.max(1,_indPagina-1);renderIndevidosDetalhamento()" ${_indPagina===1?'disabled':''}>‹ Ant</button>
-      ${Array.from({length:Math.min(totalPags,7)},(_,i)=>{const p=totalPags<=7?i+1:(_indPagina<=4?i+1:(i+_indPagina-3>totalPags?totalPags-6+i:i+_indPagina-3));return p>0&&p<=totalPags?`<button class="btn btn-sm ${p===_indPagina?'btn-primary':'btn-secondary'}" onclick="_indPagina=${p};renderIndevidosDetalhamento()">${p}</button>`:''}).join('')}
+      ${Array.from({length:Math.min(totalPags,7)},(_,i)=>{const p=totalPags<=7?i+1:(_indPagina<=4?i+1:i+_indPagina-3);return p>0&&p<=totalPags?`<button class="btn btn-sm ${p===_indPagina?'btn-primary':'btn-secondary'}" onclick="_indPagina=${p};renderIndevidosDetalhamento()">${p}</button>`:''}).join('')}
       <button class="btn btn-sm btn-secondary" onclick="_indPagina=Math.min(${totalPags},_indPagina+1);renderIndevidosDetalhamento()" ${_indPagina===totalPags?'disabled':''}>Próx ›</button>
       <span style="color:var(--text3);font-size:12px;margin-left:8px">${filtrados.length.toLocaleString('pt-BR')} total</span>
     </div>`:''}`;
 }
 
-// ── exportarIndevidos ────────────────────────────────────────────────────────
+// ── exportarIndevidos ─────────────────────────────────────────────────────────
 function exportarIndevidos() {
+  const filtMes   = document.getElementById('ind-det-fil-mes')?.value   || '';
   const filtPosto = document.getElementById('ind-det-fil-posto')?.value || '';
   const filtServ  = document.getElementById('ind-det-fil-serv')?.value  || '';
   const filtAte   = document.getElementById('ind-det-fil-ate')?.value   || '';
-  const filtrados = allIndevidos.filter(r => {
-    if (!_ehMinhaGerencia(r)) return false;
-    if (filtPosto && _normTxtInd(r.loja) !== _normTxtInd(filtPosto)) return false;
-    if (filtServ  && _normTxtInd(r.descricaoServico) !== _normTxtInd(filtServ)) return false;
-    if (filtAte   && _normTxtInd(r.atendente) !== _normTxtInd(filtAte)) return false;
+  const todosOsDados = _indevidosMesesComDados.flatMap(m => _indevidosCacheMes[m] || []);
+  const filtrados = todosOsDados.filter(r => {
+    if (filtMes   && r.mesRef           !== filtMes)   return false;
+    if (filtPosto && r.loja             !== filtPosto)  return false;
+    if (filtServ  && r.descricaoServico !== filtServ)   return false;
+    if (filtAte   && r.atendente        !== filtAte)    return false;
     return true;
   });
   if (!filtrados.length) { toast('Nenhum dado para exportar','err'); return; }
-  const cols = ['mesRef','loja','atendente','loginAtendente','descricaoServico','motivoErro','causaRaiz','dia','numeroOrdem','numeroCaso','retornoIndevido','analise','feedback','dataReferencia','importadoPor','importadoEm'];
-  const rows = filtrados.map(r=>{const o={};cols.forEach(c=>o[c]=r[c]||'');return o;});
+  const cols = ['mesRef','loja','atendente','descricaoServico','motivoErro','dia','municipio','canalAtendimento','loginAtendente','retornoIndevido','gerente','empresa','importadoPor','importadoEm'];
+  const rows = filtrados.map(r => { const o={}; cols.forEach(c => o[c]=r[c]||''); return o; });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Indevidos');
-  const mesLabel = _indevidosMesesSel.map(_formatMesPill).join('-') || 'todos';
-  XLSX.writeFile(wb, `Indevidos_${mesLabel}_${new Date().toISOString().slice(0,10)}.xlsx`);
+  XLSX.writeFile(wb, `Indevidos_${filtMes||'historico'}_${new Date().toISOString().slice(0,10)}.xlsx`);
   toast(`✅ ${filtrados.length.toLocaleString('pt-BR')} registros exportados`,'ok');
 }
+
+
 
 // ══════════════════════════════════════════════════════════════════════════
 // FERRAMENTAS ADMINISTRATIVAS DE MANUTENÇÃO — window.* (console do navegador)
