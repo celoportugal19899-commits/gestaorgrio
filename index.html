@@ -13714,17 +13714,40 @@ async function _carregarDadosIndevidos() {
       try {
         const snap = await db.collection('indevidos').where('mesRef','==',mesRef).get();
         _indevidosCacheMes[mesRef] = snap.docs.map(d => ({id:d.id,...d.data()}));
+        console.log(`[Indevidos] Mês ${mesRef}: ${snap.size} docs carregados do Firestore`);
+        // Diagnóstico: mostrar valores únicos dos campos de filtro
+        if (snap.size > 0) {
+          const amostra = snap.docs[0].data();
+          console.log('[Indevidos] Amostra de campos:', { gerente: amostra.gerente, empresa: amostra.empresa, loja: amostra.loja, descricaoServico: amostra.descricaoServico });
+          const gerentes = [...new Set(snap.docs.map(d=>d.data().gerente||''))];
+          console.log('[Indevidos] Gerentes encontrados:', gerentes);
+          const lojas = [...new Set(snap.docs.map(d=>d.data().loja||''))].sort();
+          console.log('[Indevidos] Lojas encontradas:', lojas);
+        }
       } catch(e) { console.warn('Erro ao carregar mês', mesRef, e); _indevidosCacheMes[mesRef] = []; }
     }
     _indevidosCarregando = false;
   }
   allIndevidos = _indevidosMesesSel.flatMap(m => _indevidosCacheMes[m] || []);
+  const totalGerencia = allIndevidos.filter(r => _ehMinhaGerencia(r)).length;
+  console.log(`[Indevidos] Total carregado: ${allIndevidos.length} | Após filtro gerência: ${totalGerencia}`);
 }
 
-async function _toggleMesIndevidos(mesRef) {
-  const idx = _indevidosMesesSel.indexOf(mesRef);
-  if (idx >= 0) _indevidosMesesSel.splice(idx, 1);
-  else _indevidosMesesSel.push(mesRef);
+async function _toggleMesIndevidos(mesRef, evt) {
+  const shift = evt && evt.shiftKey;
+  if (shift) {
+    // Shift+clique: adiciona/remove da seleção múltipla
+    const idx = _indevidosMesesSel.indexOf(mesRef);
+    if (idx >= 0) _indevidosMesesSel.splice(idx, 1);
+    else _indevidosMesesSel.push(mesRef);
+  } else {
+    // Clique simples: substitui a seleção por este mês apenas
+    if (_indevidosMesesSel.length === 1 && _indevidosMesesSel[0] === mesRef) {
+      _indevidosMesesSel = []; // deselecionar se clicar no mesmo
+    } else {
+      _indevidosMesesSel = [mesRef];
+    }
+  }
   _indPagina = 1;
   renderIndevidos();
 }
@@ -13785,12 +13808,17 @@ function _mediaMovel(arr, w) {
   });
 }
 
-// Filtro base: empresa RG (resolve confusão com outros operadores nos mesmos municípios)
-// Filtro secundário: posto e serviço selecionados pelo usuário
+// ── Helper único de filtro de gerência ──────────────────────────────────────
+// Identifica registros exclusivamente da gerência de Marcelo Portugal
+// Usa o campo GERENTE (mapeado do Excel) que é o identificador mais confiável
+function _ehMinhaGerencia(r) {
+  return _normTxtInd(r.gerente || '').includes('MARCELO');
+}
+
+// Filtro base: gerência + posto + serviço selecionados
 function _filtrarIndevidos() {
   return allIndevidos.filter(r => {
-    const emp = _normTxtInd(r.empresa || '');
-    if (!emp.includes('RG')) return false;  // só gerência RG Services/Brasil
+    if (!_ehMinhaGerencia(r)) return false;
     if (_indFiltroPosto   && _normTxtInd(r.loja) !== _normTxtInd(_indFiltroPosto)) return false;
     if (_indFiltroServico && _normTxtInd(r.descricaoServico) !== _normTxtInd(_indFiltroServico)) return false;
     return true;
@@ -14030,8 +14058,8 @@ async function renderIndevidosPainel() {
 
   const dados     = _filtrarIndevidos();
   const postosGer = POSTOS_INICIAIS.filter(p=>p.nome!=='Posto Teste').sort((a,b)=>a.nome.localeCompare(b.nome));
-  // Serviços filtrados apenas por empresa RG (para popular o select corretamente)
-  const dadosEmp  = allIndevidos.filter(r => _normTxtInd(r.empresa||'').includes('RG')
+  // Serviços filtrados apenas pela gerência de Marcelo (para popular o select corretamente)
+  const dadosEmp  = allIndevidos.filter(r => _ehMinhaGerencia(r)
     && (!_indFiltroPosto || _normTxtInd(r.loja) === _normTxtInd(_indFiltroPosto)));
   const servDisp  = [...new Set(dadosEmp.map(r=>r.descricaoServico).filter(Boolean))].sort();
 
@@ -14052,7 +14080,7 @@ async function renderIndevidosPainel() {
         ${todosMeses.map(m=>{
           const temDados = _indevidosMesesDisp.includes(m);
           const ativo    = _indevidosMesesSel.includes(m);
-          return `<button onclick="_toggleMesIndevidos('${m}')" style="font-size:11px;padding:3px 10px;border-radius:16px;border:1px solid ${ativo?'transparent':temDados?'rgba(255,255,255,.22)':'rgba(255,255,255,.08)'};background:${ativo?'#2a78d6':'transparent'};color:${ativo?'#fff':temDados?'var(--text2)':'var(--text3)'};cursor:pointer;opacity:${temDados?1:.55};transition:all .12s">${_formatMesPill(m)}</button>`;
+          return `<button onclick="_toggleMesIndevidos('${m}',event)" title="${temDados?'Clique para selecionar. Shift+clique para adicionar à seleção.':'Sem dados importados para este mês'}" style="font-size:11px;padding:3px 10px;border-radius:16px;border:1px solid ${ativo?'transparent':temDados?'rgba(255,255,255,.22)':'rgba(255,255,255,.08)'};background:${ativo?'#2a78d6':'transparent'};color:${ativo?'#fff':temDados?'var(--text2)':'var(--text3)'};cursor:${temDados?'pointer':'default'};opacity:${temDados?1:.4};transition:all .12s">${_formatMesPill(m)}</button>`;
         }).join('')}
       </div>
       <div style="display:flex;gap:6px">
@@ -14149,9 +14177,8 @@ function _renderIndevidosCharts(dados) {
              y:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true} } };
 
   // Evolução mensal (por todos os meses disponíveis sem filtro de mês, com filtro posto/serviço)
-  const postosGer = new Set(POSTOS_INICIAIS.filter(p=>p.nome!=='Posto Teste').map(p=>_normTxtInd(p.nome)));
   const dadosTodos = allIndevidos.filter(r => {
-    if (!postosGer.has(_normTxtInd(r.loja||''))) return false;
+    if (!_ehMinhaGerencia(r)) return false;
     if (_indFiltroPosto   && _normTxtInd(r.loja) !== _normTxtInd(_indFiltroPosto)) return false;
     if (_indFiltroServico && _normTxtInd(r.descricaoServico) !== _normTxtInd(_indFiltroServico)) return false;
     return true;
@@ -14236,9 +14263,8 @@ async function renderIndevidosDetalhamento() {
   // Garantir dados carregados para os meses selecionados
   if (_indevidosMesesSel.length) await _carregarDadosIndevidos();
 
-  const postosGer  = new Set(POSTOS_INICIAIS.filter(p=>p.nome!=='Posto Teste').map(p=>_normTxtInd(p.nome)));
   const postosDisp = POSTOS_INICIAIS.filter(p=>p.nome!=='Posto Teste').map(p=>p.nome).sort();
-  const base       = allIndevidos.filter(r => postosGer.has(_normTxtInd(r.loja||'')));
+  const base       = allIndevidos.filter(r => _ehMinhaGerencia(r));
   const servDisp   = [...new Set(base.map(r=>r.descricaoServico).filter(Boolean))].sort();
   const ateDisp    = [...new Set(base.map(r=>r.atendente).filter(Boolean))].sort();
 
@@ -14294,12 +14320,11 @@ async function renderIndevidosDetalhamento() {
 
 // ── exportarIndevidos ────────────────────────────────────────────────────────
 function exportarIndevidos() {
-  const postosGer = new Set(POSTOS_INICIAIS.filter(p=>p.nome!=='Posto Teste').map(p=>_normTxtInd(p.nome)));
   const filtPosto = document.getElementById('ind-det-fil-posto')?.value || '';
   const filtServ  = document.getElementById('ind-det-fil-serv')?.value  || '';
   const filtAte   = document.getElementById('ind-det-fil-ate')?.value   || '';
   const filtrados = allIndevidos.filter(r => {
-    if (!postosGer.has(_normTxtInd(r.loja||''))) return false;
+    if (!_ehMinhaGerencia(r)) return false;
     if (filtPosto && _normTxtInd(r.loja) !== _normTxtInd(filtPosto)) return false;
     if (filtServ  && _normTxtInd(r.descricaoServico) !== _normTxtInd(filtServ)) return false;
     if (filtAte   && _normTxtInd(r.atendente) !== _normTxtInd(filtAte)) return false;
