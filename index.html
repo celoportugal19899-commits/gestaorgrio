@@ -13976,6 +13976,16 @@ async function importarIndevidos() {
     existSnap.docs.forEach(d => { existOrdens[d.data().numeroOrdem] = d.id; });
     const now = new Date().toISOString();
     let novos = 0, atualizados = 0;
+    // Log de diagnóstico: coluna GERENTE encontrada + amostra de valor
+    if (indevidos.length > 0) {
+      const r0 = indevidos[0];
+      const colGerenteEncontrada = ['GERENTE','GERENCIA','NOME GERENTE','NOME_GERENTE'].find(k => r0[k] !== undefined && r0[k] !== '');
+      const valGerente = colGerenteEncontrada ? String(r0[colGerenteEncontrada]).trim() : '(vazio)';
+      console.log('[Indevidos Import] Coluna GERENTE encontrada:', colGerenteEncontrada || 'NENHUMA');
+      console.log('[Indevidos Import] Valor importado para GERENTE:', valGerente);
+      const gerentes = [...new Set(indevidos.map(r=>String(r['GERENTE']||r['GERENCIA']||r['NOME GERENTE']||r['NOME_GERENTE']||'').trim()).filter(Boolean))];
+      console.log('[Indevidos Import] Gerentes únicos no arquivo:', gerentes);
+    }
     for (let i = 0; i < indevidos.length; i += 400) {
       const b = db.batch();
       indevidos.slice(i, i+400).forEach(r => {
@@ -13995,7 +14005,11 @@ async function importarIndevidos() {
           loja:             String(r['LOJA']||'').trim(),
           especialista:     String(r['ESPECIALISTA']||'').trim(),
           coordenador:      String(r['COORDENADOR']||'').trim(),
-          gerente:          String(r['GERENTE']||'').trim(),
+          gerente: (() => {
+            // Aceitar variações: GERENTE, GERENCIA, NOME GERENTE, NOME_GERENTE
+            const v = String(r['GERENTE']||r['GERENCIA']||r['NOME GERENTE']||r['NOME_GERENTE']||'').trim();
+            return v;
+          })(),
           empresa:          String(r['EMPRESA']||'').trim(),
           mes:              String(r['MES']||r['MES']||'').trim(),
           dia:              String(r['DIA']||'').trim(),
@@ -14018,17 +14032,17 @@ async function importarIndevidos() {
       });
       await b.commit();
     }
-    const allSnap = await db.collection('indevidos').get();
-    const mesesSet = new Set(allSnap.docs.map(d=>d.data().mesRef).filter(Boolean));
+    // Atualizar config usando meses já conhecidos em memória — sem varrer toda a collection
+    const mesesAtualizados = [...new Set([..._indevidosMesesDisp, mesRef])].sort();
     await db.collection('indevidos_config').doc('geral').set({
       ultimoImport:`${new Date().toLocaleDateString('pt-BR')} — ${indevidos.length} registros — ${comp}`,
       dataReferencia: dataRef, ultimoMes: mesRef,
-      mesesDisponiveis:[...mesesSet].sort(), totalRegistros: allSnap.size, atualizadoEm: now
+      mesesDisponiveis: mesesAtualizados, atualizadoEm: now
     });
     toast(`✅ ${novos} novos + ${atualizados} atualizados (${indevidos.length} indevidos de ${comp})`,'ok');
     // Atualizar estado local
     delete _indevidosCacheMes[mesRef];                         // forçar reload do mês importado
-    _indevidosMesesDisp = [...new Set([..._indevidosMesesDisp, mesRef])].sort();
+    _indevidosMesesDisp = mesesAtualizados;
     _indevidosMesesSel  = [mesRef];                            // selecionar automaticamente o mês importado
     _indevidosUltimoImport = `${new Date().toLocaleDateString('pt-BR')} — ${indevidos.length} registros — ${comp}`;
     // Resetar formulário
@@ -14124,40 +14138,58 @@ async function renderIndevidosPainel() {
     ${!totalInd ? `<div style="text-align:center;padding:28px;color:var(--text3);font-size:13px">${_indevidosMesesSel.length ? 'Nenhum registro encontrado para o período e filtros selecionados.' : 'Selecione um mês acima para visualizar os dados.'}</div>` : ''}
 
     ${totalInd ? `
-    <!-- Gráficos linha 1 -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-      <div style="background:var(--surface2);border-radius:14px;padding:18px;border:1px solid rgba(255,255,255,.07)">
-        <div style="font-size:12px;font-weight:600;margin-bottom:12px">📈 Evolução mensal</div>
-        <div style="position:relative;width:100%;height:160px"><canvas id="ind-c-mensal"></canvas></div>
+    <!-- LINHA 4: Gráficos — Evolução | Causa Raiz | Motivo do Erro -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">📈 Evolução mensal</div>
+        <div style="position:relative;width:100%;height:150px"><canvas id="ind-c-mensal"></canvas></div>
       </div>
-      <div style="background:var(--surface2);border-radius:14px;padding:18px;border:1px solid rgba(255,255,255,.07)">
-        <div style="font-size:12px;font-weight:600;margin-bottom:12px">📅 Tendência — média móvel 3 meses</div>
-        <div style="position:relative;width:100%;height:160px"><canvas id="ind-c-tendencia"></canvas></div>
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">🔍 Causa Raiz (Top 5)</div>
+        <div style="position:relative;width:100%;height:150px"><canvas id="ind-c-causa"></canvas></div>
+      </div>
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">📋 Motivo do erro</div>
+        <div style="position:relative;width:100%;height:150px"><canvas id="ind-c-motivo"></canvas></div>
       </div>
     </div>
 
-    <!-- Gráficos linha 2 -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-      <div style="background:var(--surface2);border-radius:14px;padding:18px;border:1px solid rgba(255,255,255,.07)">
-        <div style="font-size:12px;font-weight:600;margin-bottom:12px">🏆 Ranking postos ofensores</div>
+    <!-- LINHA 5: Rankings — Top 5 Postos | Top 5 Serviços -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">🏆 Top 5 Postos</div>
         <div id="ind-tbl-postos"></div>
       </div>
-      <div style="background:var(--surface2);border-radius:14px;padding:18px;border:1px solid rgba(255,255,255,.07)">
-        <div style="font-size:12px;font-weight:600;margin-bottom:12px">🔥 Serviços ofensores (Top 8)</div>
-        <div style="position:relative;width:100%;height:220px"><canvas id="ind-c-servicos"></canvas></div>
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">🔥 Top 5 Serviços</div>
+        <div id="ind-tbl-servicos"></div>
       </div>
     </div>
 
-    <!-- Gráficos linha 3 -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-      <div style="background:var(--surface2);border-radius:14px;padding:18px;border:1px solid rgba(255,255,255,.07)">
-        <div style="font-size:12px;font-weight:600;margin-bottom:12px">📋 Motivo do erro por categoria</div>
-        <div style="position:relative;width:100%;height:200px"><canvas id="ind-c-motivo"></canvas></div>
+    <!-- LINHA 6: Gráficos secundários — Tendência | Reincidência -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">📅 Tendência — média móvel 3m</div>
+        <div style="position:relative;width:100%;height:150px"><canvas id="ind-c-tendencia"></canvas></div>
       </div>
-      <div style="background:var(--surface2);border-radius:14px;padding:18px;border:1px solid rgba(255,255,255,.07)">
-        <div style="font-size:12px;font-weight:600;margin-bottom:12px">🔄 Reincidência por atendente (Top 10)</div>
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">🔄 Reincidência por atendente</div>
         <div id="ind-tbl-reincidencia"></div>
       </div>
+    </div>
+
+    <!-- LINHA 7: Tabela resumida — últimos 5 registros -->
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:12px;font-weight:600">📋 Últimos registros</div>
+        <button class="btn btn-sm btn-secondary" onclick="switchIndevidosTab('detalhamento')" style="font-size:11px;padding:3px 10px">Ver todos →</button>
+      </div>
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;min-width:600px">
+        <thead><tr style="border-bottom:1px solid rgba(255,255,255,.12)">
+          ${['Posto','Atendente','Serviço','Motivo','Dia'].map(h=>`<th style="padding:5px 8px;text-align:left;color:var(--text3);font-weight:500">${h}</th>`).join('')}
+        </tr></thead>
+        <tbody id="ind-tbl-resumo"></tbody>
+      </table></div>
     </div>` : ''}`;
 
   if (totalInd) setTimeout(() => _renderIndevidosCharts(dados), 50);
@@ -14169,6 +14201,7 @@ function _renderIndevidosCharts(dados) {
   _chartIndPostos    = _destroyChart(_chartIndPostos);
   _chartIndServicos  = _destroyChart(_chartIndServicos);
   _chartIndMotivo    = _destroyChart(_chartIndMotivo);
+  if (window._chartIndCausa) { try { window._chartIndCausa.destroy(); } catch(e){} window._chartIndCausa = null; }
 
   const gridC = 'rgba(255,255,255,.06)';
   const tickC = '#a0aec0';
@@ -14176,7 +14209,6 @@ function _renderIndevidosCharts(dados) {
     scales:{ x:{ticks:{color:tickC,font:{size:10}},grid:{display:false}},
              y:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true} } };
 
-  // Evolução mensal (por todos os meses disponíveis sem filtro de mês, com filtro posto/serviço)
   const dadosTodos = allIndevidos.filter(r => {
     if (!_ehMinhaGerencia(r)) return false;
     if (_indFiltroPosto   && _normTxtInd(r.loja) !== _normTxtInd(_indFiltroPosto)) return false;
@@ -14189,12 +14221,60 @@ function _renderIndevidosCharts(dados) {
 
   const ptLabelPlugin = {id:'ptLbl',afterDatasetsDraw(c){const{ctx}=c;c.data.datasets.forEach((ds,di)=>{if(ds.borderDash)return;c.getDatasetMeta(di).data.forEach((el,i)=>{const v=ds.data[i];if(v==null)return;ctx.save();ctx.fillStyle=ds.borderColor||'#3b82f6';ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.fillText(v,el.x,el.y-9);ctx.restore();});});}};
 
+  // Evolução mensal
   const ctxM = document.getElementById('ind-c-mensal');
   if (ctxM && mesesOrden.length) _chartIndMensal = new Chart(ctxM, {type:'line',
     data:{labels:mesesOrden.map(_formatMesPill),datasets:[{data:valsMes,borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,.12)',borderWidth:2,fill:true,tension:.35,pointRadius:3,pointBackgroundColor:'#3b82f6'}]},
     options:baseOpts, plugins:[ptLabelPlugin]});
 
-  // Tendência
+  // Causa Raiz (Top 5)
+  const cntCausa = {}; dados.forEach(r=>{if(r.causaRaiz)cntCausa[r.causaRaiz]=(cntCausa[r.causaRaiz]||0)+1;});
+  const top5Causa = Object.entries(cntCausa).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const ctxCausa = document.getElementById('ind-c-causa');
+  if (ctxCausa && top5Causa.length) window._chartIndCausa = new Chart(ctxCausa, {type:'bar',
+    data:{labels:top5Causa.map(([c])=>c.length>28?c.slice(0,26)+'…':c),datasets:[{data:top5Causa.map(([,v])=>v),backgroundColor:'rgba(139,92,246,.7)',borderColor:'#8b5cf6',borderWidth:1.5,borderRadius:4}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true},y:{ticks:{color:tickC,font:{size:10}},grid:{display:false}}}},
+    plugins:[{id:'causaLbl',afterDatasetsDraw(c){const{ctx}=c;c.data.datasets[0].data.forEach((v,i)=>{if(!v)return;const el=c.getDatasetMeta(0).data[i];ctx.save();ctx.fillStyle='#4c1d95';ctx.font='bold 11px sans-serif';ctx.textAlign='left';ctx.fillText(v,el.x+5,el.y+4);ctx.restore();});}}]});
+
+  // Motivo do erro
+  const cats = ['Não seguiu script','Dados incompletos','Falha na verificação','Erro de procedimento','Outros'];
+  const catClrs = ['#e24b4a','#f59e0b','#8b5cf6','#3b82f6','#6b7280'];
+  const cntCat = {}; cats.forEach(c=>cntCat[c]=0);
+  dados.forEach(r=>{cntCat[_categMotivo(r.motivoErro)]++;});
+  const ctxMot = document.getElementById('ind-c-motivo');
+  if (ctxMot) _chartIndMotivo = new Chart(ctxMot, {type:'bar',
+    data:{labels:cats,datasets:[{data:cats.map(c=>cntCat[c]),backgroundColor:catClrs.map(c=>c+'b3'),borderColor:catClrs,borderWidth:1.5,borderRadius:4}]},
+    options:{...baseOpts,scales:{x:{ticks:{color:tickC,font:{size:9}},grid:{display:false}},y:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true}}},
+    plugins:[{id:'motLabels',afterDatasetsDraw(c){const{ctx}=c;c.data.datasets[0].data.forEach((v,i)=>{if(!v)return;const el=c.getDatasetMeta(0).data[i];ctx.save();ctx.fillStyle='#333';ctx.font='bold 11px sans-serif';ctx.textAlign='center';ctx.fillText(v,el.x,el.y-8);ctx.restore();});}}]});
+
+  // Top 5 Postos
+  const cntPosto = {}; dados.forEach(r=>{if(r.loja)cntPosto[r.loja]=(cntPosto[r.loja]||0)+1;});
+  const rankP = Object.entries(cntPosto).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const maxP  = rankP[0]?.[1]||1;
+  const tblP  = document.getElementById('ind-tbl-postos');
+  if (tblP) tblP.innerHTML = rankP.length ? rankP.map(([p,v],i)=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+      <span style="font-size:11px;font-weight:600;color:${i<3?'#f59e0b':'var(--text3)'};min-width:16px">${i+1}</span>
+      <span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p}</span>
+      <div style="width:56px;height:5px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden"><div style="height:100%;background:#e24b4a;width:${Math.round(v/maxP*100)}%;border-radius:3px"></div></div>
+      <span style="font-size:12px;font-weight:600;min-width:22px;text-align:right;color:#e24b4a">${v}</span>
+      <span style="font-size:11px;color:var(--text3);min-width:30px;text-align:right">${dados.length?Math.round(v/dados.length*100)+'%':'—'}</span>
+    </div>`).join('') : '<div style="color:var(--text3);font-size:13px;padding:8px">Sem dados</div>';
+
+  // Top 5 Serviços
+  const cntServ = {}; dados.forEach(r=>{if(r.descricaoServico)cntServ[r.descricaoServico]=(cntServ[r.descricaoServico]||0)+1;});
+  const top5S = Object.entries(cntServ).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const maxS  = top5S[0]?.[1]||1;
+  const tblS  = document.getElementById('ind-tbl-servicos');
+  if (tblS) tblS.innerHTML = top5S.length ? top5S.map(([s,v],i)=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+      <span style="font-size:11px;font-weight:600;color:${i<3?'#f59e0b':'var(--text3)'};min-width:16px">${i+1}</span>
+      <span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s}">${s.length>32?s.slice(0,30)+'…':s}</span>
+      <div style="width:56px;height:5px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden"><div style="height:100%;background:#eda100;width:${Math.round(v/maxS*100)}%;border-radius:3px"></div></div>
+      <span style="font-size:12px;font-weight:600;min-width:22px;text-align:right;color:#eda100">${v}</span>
+    </div>`).join('') : '<div style="color:var(--text3);font-size:13px;padding:8px">Sem dados</div>';
+
+  // Tendência (média móvel 3m)
   const mm3 = _mediaMovel(valsMes,3);
   const ultimo=valsMes[valsMes.length-1]||0, mmAt=mm3[mm3.length-1]||0;
   const tendTxt = mmAt>0?(ultimo>mmAt?'📈 Piora':'📉 Melhora'):'';
@@ -14208,41 +14288,6 @@ function _renderIndevidosCharts(dados) {
       title:{display:!!tendTxt,text:tendTxt,color:ultimo>mmAt?'#ef4444':'#22c55e',font:{size:11,weight:'bold'}}}},
     plugins:[ptLabelPlugin]});
 
-  // Ranking postos — tabela com barra
-  const cntPosto = {}; dados.forEach(r=>{if(r.loja)cntPosto[r.loja]=(cntPosto[r.loja]||0)+1;});
-  const rankP = Object.entries(cntPosto).sort((a,b)=>b[1]-a[1]);
-  const maxP  = rankP[0]?.[1]||1;
-  const tblP  = document.getElementById('ind-tbl-postos');
-  if (tblP) tblP.innerHTML = rankP.length ? rankP.map(([p,v],i)=>`
-    <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">
-      <span style="font-size:11px;font-weight:600;color:${i<3?'#f59e0b':'var(--text3)'};min-width:16px">${i+1}</span>
-      <span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p}</span>
-      <div style="width:60px;height:5px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden"><div style="height:100%;background:#e24b4a;width:${Math.round(v/maxP*100)}%;border-radius:3px"></div></div>
-      <span style="font-size:12px;font-weight:600;min-width:26px;text-align:right;color:#e24b4a">${v}</span>
-      <span style="font-size:11px;color:var(--text3);min-width:32px;text-align:right">${dados.length?Math.round(v/dados.length*100)+'%':'—'}</span>
-    </div>`).join('') : '<div style="color:var(--text3);font-size:13px;padding:8px">Sem dados</div>';
-
-  // Serviços ofensores Top 5 com rótulos
-  const cntServ = {}; dados.forEach(r=>{if(r.descricaoServico)cntServ[r.descricaoServico]=(cntServ[r.descricaoServico]||0)+1;});
-  const top5S = Object.entries(cntServ).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  const ctxS = document.getElementById('ind-c-servicos');
-  if (ctxS && top5S.length) _chartIndServicos = new Chart(ctxS, {type:'bar',
-    data:{labels:top5S.map(([s])=>s.length>30?s.slice(0,28)+'…':s),datasets:[{data:top5S.map(([,v])=>v),backgroundColor:'rgba(237,161,0,.7)',borderColor:'#eda100',borderWidth:1.5,borderRadius:4}]},
-    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-      scales:{x:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true},y:{ticks:{color:tickC,font:{size:10}},grid:{display:false}}}},
-    plugins:[{id:'srvLabels',afterDatasetsDraw(c){const{ctx}=c;c.data.datasets[0].data.forEach((v,i)=>{if(!v)return;const el=c.getDatasetMeta(0).data[i];ctx.save();ctx.fillStyle='#633806';ctx.font='bold 11px sans-serif';ctx.textAlign='left';ctx.fillText(v,el.x+5,el.y+4);ctx.restore();});}}]});
-
-  // Motivo do erro
-  const cats = ['Não seguiu script','Dados incompletos','Falha na verificação','Erro de procedimento','Outros'];
-  const catClrs = ['#e24b4a','#f59e0b','#8b5cf6','#3b82f6','#6b7280'];
-  const cntCat = {}; cats.forEach(c=>cntCat[c]=0);
-  dados.forEach(r=>{cntCat[_categMotivo(r.motivoErro)]++;});
-  const ctxMot = document.getElementById('ind-c-motivo');
-  if (ctxMot) _chartIndMotivo = new Chart(ctxMot, {type:'bar',
-    data:{labels:cats,datasets:[{data:cats.map(c=>cntCat[c]),backgroundColor:catClrs.map(c=>c+'b3'),borderColor:catClrs,borderWidth:1.5,borderRadius:4}]},
-    options:{...baseOpts,scales:{x:{ticks:{color:tickC,font:{size:9}},grid:{display:false}},y:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true}}},
-    plugins:[{id:'motLabels',afterDatasetsDraw(c){const{ctx}=c;c.data.datasets[0].data.forEach((v,i)=>{if(!v)return;const el=c.getDatasetMeta(0).data[i];ctx.save();ctx.fillStyle='#333';ctx.font='bold 11px sans-serif';ctx.textAlign='center';ctx.fillText(v,el.x,el.y-8);ctx.restore();});}}]});
-
   // Reincidência por atendente
   const cntAte = {}; dados.forEach(r=>{if(r.atendente)cntAte[r.atendente]=(cntAte[r.atendente]||0)+1;});
   const top10A = Object.entries(cntAte).sort((a,b)=>b[1]-a[1]).slice(0,10);
@@ -14254,6 +14299,20 @@ function _renderIndevidosCharts(dados) {
       <span style="font-size:13px;font-weight:600;color:${v>=5?'#e24b4a':v>=3?'#f59e0b':'var(--text)'}">${v}</span>
       ${v>=5?'<span style="font-size:10px;background:rgba(239,68,68,.2);color:#e24b4a;padding:2px 6px;border-radius:8px">Crítico</span>':v>=3?'<span style="font-size:10px;background:rgba(245,158,11,.2);color:#f59e0b;padding:2px 6px;border-radius:8px">Alerta</span>':''}
     </div>`).join('') : '<div style="color:var(--text3);font-size:13px;padding:8px">Sem dados</div>';
+
+  // Tabela resumo — últimos 5 registros
+  const tblRes = document.getElementById('ind-tbl-resumo');
+  if (tblRes) {
+    const ult5 = dados.slice(0,5);
+    tblRes.innerHTML = ult5.length ? ult5.map(r=>`
+      <tr style="border-bottom:1px solid rgba(255,255,255,.05)" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background=''">
+        <td style="padding:5px 8px;font-size:11px">${r.loja||'—'}</td>
+        <td style="padding:5px 8px;font-size:11px">${r.atendente||'—'}</td>
+        <td style="padding:5px 8px;font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.descricaoServico||'—'}</td>
+        <td style="padding:5px 8px;font-size:11px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.motivoErro||'—'}</td>
+        <td style="padding:5px 8px;font-size:11px;color:var(--text3)">${r.dia||'—'}</td>
+      </tr>`).join('') : '<tr><td colspan="5" style="padding:12px 8px;text-align:center;color:var(--text3);font-size:12px">Sem dados</td></tr>';
+  }
 }
 
 // ── renderIndevidosDetalhamento ──────────────────────────────────────────────
