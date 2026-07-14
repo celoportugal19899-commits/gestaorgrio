@@ -2514,19 +2514,6 @@ let _readyPostos = false;
 let _autoRepairTriggered = false; // garante execução única do autoRepairUsersDuplicados por sessão
 let _usersInitialLoad   = true;  // ignora docChanges 'added' da carga inicial do onSnapshot
 // ── Indevidos ──
-let allIndevidos          = [];          // docs do(s) mês(es) selecionado(s)
-let unsubIndevidos        = null;        // mantido por compatibilidade com doLogout
-let _indevidosTab         = 'painel';
-let _indevidosMesesSel    = [];          // meses selecionados (multi-select)
-let _indevidosCacheMes    = {};          // cache: mesRef → docs[]
-let _indevidosUltimoImport = '';         // texto do último import para exibir no painel
-let _indFiltroPosto       = '';
-let _indFiltroServico     = '';
-let _indPagina            = 1;
-const IND_POR_PAG         = 50;
-let _chartIndMensal       = null;
-let _chartIndMotivo       = null;
-const MESES_ABREV_IND = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
 const SENHA_PADRAO = 'rg@2026';
 const TOLERANCIA_MIN = 5;
@@ -3584,7 +3571,7 @@ function doLogout() {
   currentUser = null; allUsers = []; allTasks = [];
   _readyUsers = false; _readyTasks = false; _readyPostos = false;
   _indevidosTab = 'painel'; _indFiltroPosto = ''; _indFiltroServico = ''; _indPagina = 1;
-  _indevidosMesesSel = []; _indevidosCacheMes = {}; allIndevidos = []; _indevidosMesesComDados = []; _indevidosUltimoImport = ''; _indFiltroPosto = ''; _indFiltroServico = ''; _indPagina = 1;
+  _indevidosTab = 'painel'; _indevidosMesesSel = []; _indevidosMesesComDados = []; allIndevidos = []; _indevidosUltimoImport = ''; _indFiltroPosto = ''; _indFiltroServico = ''; _indPagina = 1;
   clearTimeout(_refreshTimer); _refreshTimer = null;
   showPage('login');
   document.getElementById('login-email').value = '';
@@ -13658,33 +13645,33 @@ async function confirmarImportPOS(){
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MÓDULO INDEVIDOS — Área de Qualidade
-// Acesso: ADM, Supervisores (Leonardo, Victor), Plicila
-// Arquitetura: Firestore como histórico oficial por competência mensal
-// Fonte de dados: coluna da planilha usada exatamente como fornecida
+// Arquitetura: carga única de todos os meses de 2026 em allIndevidos
+// Filtros, gráficos e detalhamento operam inteiramente em memória
+// Importação: apaga apenas a competência do arquivo, mantém os demais meses
 // ═══════════════════════════════════════════════════════════════════════════
 
-// ── Constantes ──────────────────────────────────────────────────────────────
-const IND_MESES_2026 = ['2026-01','2026-02','2026-03','2026-04','2026-05','2026-06',
-                        '2026-07','2026-08','2026-09','2026-10','2026-11','2026-12'];
-const IND_MESES_LABEL = {
+const IND_MESES_2026 = [
+  '2026-01','2026-02','2026-03','2026-04','2026-05','2026-06',
+  '2026-07','2026-08','2026-09','2026-10','2026-11','2026-12'
+];
+const IND_MES_LABEL = {
   '01':'Jan','02':'Fev','03':'Mar','04':'Abr','05':'Mai','06':'Jun',
   '07':'Jul','08':'Ago','09':'Set','10':'Out','11':'Nov','12':'Dez'
 };
 
-// ── Variáveis globais ────────────────────────────────────────────────────────
-let allIndevidos          = [];
-let unsubIndevidos        = null;
-let _indevidosTab         = 'painel';
-let _indevidosMesesComDados = [];   // quais meses têm dados no Firestore
-let _indevidosMesesSel    = [];     // meses selecionados nos pills
-let _indevidosCacheMes    = {};     // cache: mesRef → docs[]
-let _indevidosUltimoImport = '';
-let _indFiltroPosto       = '';
-let _indFiltroServico     = '';
-let _indPagina            = 1;
-const IND_POR_PAG         = 50;
-let _chartIndMensal       = null;
-let _chartIndMotivo       = null;
+// ── Variáveis do módulo ──────────────────────────────────────────────────────
+let allIndevidos           = [];
+let unsubIndevidos         = null;
+let _indevidosTab          = 'painel';
+let _indevidosMesesSel     = [];
+let _indevidosMesesComDados = [];
+let _indevidosUltimoImport  = '';
+let _indFiltroPosto         = '';
+let _indFiltroServico       = '';
+let _indPagina              = 1;
+const IND_POR_PAG           = 50;
+let _chartIndMensal         = null;
+let _chartIndMotivo         = null;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function podeVerIndevidos() {
@@ -13696,34 +13683,33 @@ function podeVerIndevidos() {
 }
 
 function _indMesLabel(mesRef) {
-  // "2026-06" → "Jun/26"
-  if (!mesRef || !mesRef.includes('-')) return mesRef;
-  const [ano, mes] = mesRef.split('-');
-  return (IND_MESES_LABEL[mes] || mes) + '/' + ano.slice(2);
+  if (!mesRef || !mesRef.includes('-')) return mesRef || '';
+  const [, mes] = mesRef.split('-');
+  return (IND_MES_LABEL[mes] || mes) + '/26';
 }
 
-// Normalizar nome de coluna: trim + colapsar espaços internos + uppercase + remover acentos
+// Normaliza nome de coluna: remove acentos, trim, uppercase, colapsa espaços
 function _normIndCol(k) {
-  return (k || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+  return String(k||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
     .trim().toUpperCase().replace(/\s+/g,' ');
 }
 
-// Categorizar motivo do erro
-function _categMotivo(motivo) {
-  const m = (motivo||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
+function _categMotivoInd(motivo) {
+  const m = _normIndCol(motivo);
   if (m.includes('SCRIPT')||m.includes('IAC')||m.includes('INTRANET')) return 'Não seguiu script';
-  if (m.includes('INCOMPLETO')||m.includes('FALTANDO')||m.includes('DADO')||m.includes('INFORMAT')) return 'Dados incompletos';
-  if (m.includes('VERIFIC')||m.includes('VALID')||m.includes('ANEXO')) return 'Falha na verificação';
+  if (m.includes('INCOMPLETO')||m.includes('FALTANDO')||m.includes('DADO')||m.includes('INFORMAT')||m.includes('ANEXO')) return 'Dados incompletos';
+  if (m.includes('VERIFIC')||m.includes('VALID')) return 'Falha na verificação';
   if (m.includes('PROCEDIMENTO')||m.includes('PROCESSO')||m.includes('PROTOCOLO')||m.includes('ORIENTA')) return 'Erro de procedimento';
   return 'Outros';
 }
 
-function _destroyIndChart(ref) { try { if(ref) ref.destroy(); } catch(e){} return null; }
+function _dstroyIndChart(ref) { try { if (ref) ref.destroy(); } catch(e){} return null; }
 
-// ── Filtro ───────────────────────────────────────────────────────────────────
+// ── Filtro em memória ────────────────────────────────────────────────────────
 function _filtrarIndevidos() {
   return allIndevidos.filter(r => {
-    if (_indFiltroPosto   && r.loja           !== _indFiltroPosto)   return false;
+    if (_indevidosMesesSel.length && !_indevidosMesesSel.includes(r.mesRef)) return false;
+    if (_indFiltroPosto   && r.loja             !== _indFiltroPosto)   return false;
     if (_indFiltroServico && r.descricaoServico !== _indFiltroServico) return false;
     return true;
   });
@@ -13735,38 +13721,30 @@ function _indAplicarFiltro() {
   renderIndevidosPainel();
 }
 
-// ── Carregamento por demanda ─────────────────────────────────────────────────
-async function _carregarMesIndevidos(mesRef) {
-  if (_indevidosCacheMes[mesRef]) return; // já em cache
-  try {
-    const snap = await db.collection('indevidos').where('mesRef','==',mesRef).get();
-    _indevidosCacheMes[mesRef] = snap.docs.map(d => ({id:d.id,...d.data()}));
-    console.log(`[Indevidos] ${mesRef}: ${snap.size} docs carregados`);
-  } catch(e) {
-    console.warn('[Indevidos] Erro ao carregar', mesRef, e);
-    _indevidosCacheMes[mesRef] = [];
-  }
-}
-
 // ── initIndevidos ─────────────────────────────────────────────────────────────
+// Carrega TODOS os meses de 2026 de uma vez via onSnapshot.
+// A partir daí, tudo funciona em memória sem novas consultas ao Firestore.
 function initIndevidos() {
-  db.collection('indevidos_config').doc('geral').get()
-    .then(cfg => {
-      if (cfg.exists) {
-        const d = cfg.data();
-        _indevidosMesesComDados  = (d.mesesComDados || []).sort();
-        _indevidosUltimoImport   = d.ultimoImport || '';
-        // Selecionar o mês mais recente com dados por padrão
-        if (_indevidosMesesSel.length === 0 && d.ultimoMes) {
-          _indevidosMesesSel = [d.ultimoMes];
-        }
+  if (unsubIndevidos) unsubIndevidos();
+  unsubIndevidos = db.collection('indevidos')
+    .where('mesRef','>=','2026-01').where('mesRef','<=','2026-12')
+    .onSnapshot(snap => {
+      allIndevidos = snap.docs.map(d => ({id:d.id,...d.data()}));
+      _indevidosMesesComDados = [...new Set(allIndevidos.map(r=>r.mesRef).filter(Boolean))].sort();
+      // Selecionar o mês mais recente com dados se nenhum ainda selecionado
+      if (_indevidosMesesSel.length === 0 && _indevidosMesesComDados.length > 0) {
+        _indevidosMesesSel = [_indevidosMesesComDados[_indevidosMesesComDados.length - 1]];
       }
       refreshCurrentView();
-    })
-    .catch(e => console.warn('[Indevidos] initIndevidos:', e));
+    }, err => console.error('[Indevidos] onSnapshot:', err));
+
+  // Carregar texto do último import (config separada, leve)
+  db.collection('indevidos_config').doc('geral').get()
+    .then(cfg => { if (cfg.exists) _indevidosUltimoImport = cfg.data().ultimoImport || ''; })
+    .catch(e => console.warn('[Indevidos] config:', e));
 }
 
-// ── switchIndevidosTab ───────────────────────────────────────────────────────
+// ── Nav ───────────────────────────────────────────────────────────────────────
 function switchIndevidosTab(tab) {
   _indevidosTab = tab; _indPagina = 1;
   ['painel','importar','detalhamento'].forEach(t => {
@@ -13785,9 +13763,10 @@ function renderIndevidos() {
   else                                   renderIndevidosDetalhamento();
 }
 
-// ── renderIndevidosImportar ──────────────────────────────────────────────────
+// ── Importar form ─────────────────────────────────────────────────────────────
 async function renderIndevidosImportar() {
   const wrap = document.getElementById('ind-importar-wrap'); if (!wrap) return;
+  // Guard: só recria o form se ele não existe (evita reset ao Firestore trigger)
   if (document.getElementById('indev-form-container')) {
     const el = document.getElementById('indev-ultimo-import-txt');
     if (el && _indevidosUltimoImport) el.textContent = _indevidosUltimoImport;
@@ -13795,131 +13774,134 @@ async function renderIndevidosImportar() {
   }
   wrap.innerHTML = `
     <div id="indev-form-container" style="max-width:540px;margin:24px auto;padding:0 16px">
-      <div style="background:var(--surface2);border-radius:14px;padding:24px;margin-bottom:16px">
-        <h3 style="margin:0 0 18px;font-size:15px;font-weight:600">📥 Importar Indevidos</h3>
+      <div style="background:var(--surface2);border-radius:14px;padding:24px;margin-bottom:14px">
+        <h3 style="margin:0 0 16px;font-size:15px;font-weight:600">📥 Importar Indevidos</h3>
         <div class="form-group">
           <label class="form-label">Arquivo Excel (.xlsx)</label>
           <input type="file" class="form-input" id="indev-import-file" accept=".xlsx,.xls" style="padding:6px"
                  onchange="document.getElementById('indev-file-label').textContent=this.files[0]?'✅ '+this.files[0].name:'Nenhum arquivo selecionado'">
           <div id="indev-file-label" style="font-size:12px;color:var(--text3);margin-top:5px">Nenhum arquivo selecionado</div>
         </div>
-        <p style="font-size:12px;color:var(--text3);margin:10px 0 0">
-          O sistema detecta automaticamente a competência a partir do campo MÊS da planilha.<br>
-          Os dados do mês detectado serão substituídos. Demais meses permanecem intactos.
+        <p style="font-size:12px;color:var(--text3);margin:12px 0 0;line-height:1.5">
+          A competência é detectada automaticamente a partir do campo <strong>MÊS</strong> da planilha.<br>
+          Apenas os registros daquela competência são substituídos. Os demais meses ficam intactos.
         </p>
         <button class="btn btn-primary" style="margin-top:16px;width:100%" onclick="importarIndevidos()">📥 Importar</button>
       </div>
       <div style="background:var(--surface2);border-radius:12px;padding:14px 18px">
-        <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px">Último Import</div>
-        <div id="indev-ultimo-import-txt" style="font-size:13px;color:var(--text)">${_indevidosUltimoImport || '—'}</div>
+        <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Último Import</div>
+        <div id="indev-ultimo-import-txt" style="font-size:13px;color:var(--text)">${_indevidosUltimoImport||'—'}</div>
       </div>
     </div>`;
 }
 
 // ── importarIndevidos ─────────────────────────────────────────────────────────
+// 1. Lê o arquivo Excel exatamente como está (sem filtro por gerente)
+// 2. Filtra apenas CONCLUSÃO = INDEVIDO
+// 3. Detecta automaticamente a competência pelo campo MÊS
+// 4. Apaga somente os docs daquela competência no Firestore
+// 5. Grava os novos registros
+// 6. O onSnapshot atualiza allIndevidos automaticamente
 async function importarIndevidos() {
-  const fileInput = document.getElementById('indev-import-file');
-  if (!fileInput?.files?.length) { toast('Selecione um arquivo Excel','err'); return; }
+  const fi = document.getElementById('indev-import-file');
+  if (!fi?.files?.length) { toast('Selecione um arquivo Excel','err'); return; }
 
   toast('⏳ Processando arquivo...','ok');
   try {
-    const buf = await fileInput.files[0].arrayBuffer();
+    const buf = await fi.files[0].arrayBuffer();
     const wb  = XLSX.read(buf, {type:'array', cellDates:true});
 
-    // Encontrar aba com os dados (preferência: "Base de Análise" ou maior aba com CONCLUSÃO)
+    // Escolher aba: preferir "Base de Análise" ou a com mais linhas
     let wsName = wb.SheetNames[0];
     for (const name of wb.SheetNames) {
       const ws = wb.Sheets[name];
       if (!ws['!ref']) continue;
-      const range = XLSX.utils.decode_range(ws['!ref']);
-      if (range.e.r > XLSX.utils.decode_range(wb.Sheets[wsName]['!ref'] || 'A1').e.r) wsName = name;
-      if (name.includes('Análise') || name.includes('Analise') || name.includes('Base')) { wsName = name; break; }
+      if (name.toLowerCase().includes('analise') || name.toLowerCase().includes('análise') || name.toLowerCase().includes('base')) {
+        wsName = name; break;
+      }
+      const rng = XLSX.utils.decode_range(ws['!ref']);
+      const cur = XLSX.utils.decode_range(wb.Sheets[wsName]['!ref']||'A1:A1');
+      if (rng.e.r > cur.e.r) wsName = name;
     }
-    const ws = wb.Sheets[wsName];
-    console.log('[Indevidos Import] Aba:', wsName);
+    console.log('[Indevidos] Aba:', wsName);
 
-    // Ler como array bruto e construir mapa de colunas normalizado
-    const rawArr = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:false});
+    const ws    = wb.Sheets[wsName];
+    const rawArr = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
     if (rawArr.length < 2) { toast('Planilha sem dados','err'); return; }
 
-    const rawHeaders = rawArr[0];
-    // colMap: nome normalizado → índice
+    // Construir mapa coluna normalizada → índice
     const colMap = {};
-    rawHeaders.forEach((h, i) => {
-      if (h != null && h !== '') colMap[_normIndCol(String(h))] = i;
-    });
+    rawArr[0].forEach((h, i) => { if (h != null && h !== '') colMap[_normIndCol(String(h))] = i; });
+    console.log('[Indevidos] Colunas:', Object.keys(colMap));
 
-    // Confirmar colunas obrigatórias
-    const colsObrigatorias = ['CONCLUSAO','MES','DESCRICAO SERVICO','LOJA','ATENDENTE','MOTIVO DO ERRO'];
-    const faltando = colsObrigatorias.filter(c => colMap[c] === undefined);
-    if (faltando.length) {
-      console.warn('[Indevidos Import] Colunas normalizadas disponíveis:', Object.keys(colMap));
-      toast('Colunas não encontradas: ' + faltando.join(', '), 'err');
+    // Verificar colunas obrigatórias
+    const obrig = ['CONCLUSAO','MES'];
+    const falt  = obrig.filter(c => colMap[c] === undefined);
+    if (falt.length) {
+      toast(`Colunas não encontradas após normalização: ${falt.join(', ')}. Colunas disponíveis: ${Object.keys(colMap).slice(0,8).join(', ')}...`, 'err');
       return;
     }
-    console.log('[Indevidos Import] Colunas mapeadas OK');
 
-    // Helper para ler valor de uma célula por nome de coluna (normalizado)
+    // Helper: pega o valor de uma célula pela coluna normalizada
     const get = (row, colNorm) => {
       const idx = colMap[colNorm];
       if (idx === undefined) return '';
       const v = row[idx];
-      if (v instanceof Date) return `${v.getDate().toString().padStart(2,'0')}/${(v.getMonth()+1).toString().padStart(2,'0')}/${v.getFullYear()}`;
+      if (v instanceof Date) {
+        return `${v.getDate().toString().padStart(2,'0')}/${(v.getMonth()+1).toString().padStart(2,'0')}/${v.getFullYear()}`;
+      }
       return String(v ?? '').trim();
     };
 
-    // Processar linhas: filtrar INDEVIDO e agrupar por mesRef
+    // Processar linhas: apenas INDEVIDO, agrupar por mesRef
     const byMes = {};
-    const rows = rawArr.slice(1);
-    rows.forEach(row => {
-      if (row.every(c => !c || c === '')) return; // linha vazia
-      const conclusao = get(row, 'CONCLUSAO').toUpperCase();
+    rawArr.slice(1).forEach(row => {
+      if (!row || row.every(c => !c && c !== 0)) return;
+      const conclusao = _normIndCol(get(row,'CONCLUSAO'));
       if (!conclusao.includes('INDEVIDO')) return;
 
-      // Derivar mesRef do campo MÊS (valor 202601 → "2026-01")
-      const mesRaw = get(row, 'MES').replace(/\D/g,'');
+      // MÊS → mesRef (ex: 202606 → "2026-06")
+      const mesRaw = get(row,'MES').replace(/\D/g,'');
       if (mesRaw.length !== 6) return;
-      const mesRef = mesRaw.slice(0,4) + '-' + mesRaw.slice(4,6);
+      const mesRef = mesRaw.slice(0,4)+'-'+mesRaw.slice(4,6);
 
       if (!byMes[mesRef]) byMes[mesRef] = [];
       byMes[mesRef].push({
         mesRef,
-        municipio:         get(row, 'MUNICIPIO'),
-        canalAtendimento:  get(row, 'CANAL ATENDIMENTO'),
-        loginAtendente:    get(row, 'LOGIN ATENDENTE'),
-        descricaoServico:  get(row, 'DESCRICAO SERVICO'),
-        retornoIndevido:   get(row, 'RETORNO DE INDEVIDO'),
-        br:                get(row, 'BR'),
-        atendente:         get(row, 'ATENDENTE'),
-        loja:              get(row, 'LOJA'),
-        especialista:      get(row, 'ESPECIALISTA'),
-        coordenador:       get(row, 'COORDENADOR'),
-        gerente:           get(row, 'GERENTE'),
-        empresa:           get(row, 'EMPRESA'),
-        mes:               get(row, 'MES'),
-        dia:               get(row, 'DIA'),
-        motivoErro:        get(row, 'MOTIVO DO ERRO'),
-        conclusao:         get(row, 'CONCLUSAO'),
-        analise:           get(row, 'ANALISE'),
-        causaRaiz:         get(row, 'CAUSA RAIZ'),
-        ano:               get(row, 'ANO'),
-        importadoEm:       new Date().toISOString(),
-        importadoPor:      currentUser.email
+        municipio:        get(row,'MUNICIPIO'),
+        canalAtendimento: get(row,'CANAL ATENDIMENTO'),
+        loginAtendente:   get(row,'LOGIN ATENDENTE'),
+        descricaoServico: get(row,'DESCRICAO SERVICO'),
+        retornoIndevido:  get(row,'RETORNO DE INDEVIDO'),
+        br:               get(row,'BR'),
+        atendente:        get(row,'ATENDENTE'),
+        loja:             get(row,'LOJA'),
+        especialista:     get(row,'ESPECIALISTA'),
+        coordenador:      get(row,'COORDENADOR'),
+        gerente:          get(row,'GERENTE'),
+        empresa:          get(row,'EMPRESA'),
+        mes:              mesRaw,
+        dia:              get(row,'DIA'),
+        motivoErro:       get(row,'MOTIVO DO ERRO'),
+        conclusao:        get(row,'CONCLUSAO'),
+        analise:          get(row,'ANALISE'),
+        causaRaiz:        get(row,'CAUSA RAIZ'),
+        ano:              get(row,'ANO'),
+        importadoEm:      new Date().toISOString(),
+        importadoPor:     currentUser.email
       });
     });
 
-    const mesesDetectados = Object.keys(byMes).sort();
-    const totalIndevidos  = Object.values(byMes).reduce((s,v) => s+v.length, 0);
-    console.log('[Indevidos Import] Meses detectados:', mesesDetectados);
-    console.log('[Indevidos Import] Total INDEVIDO:', totalIndevidos);
-    console.log('[Indevidos Import] Gerentes únicos:', [...new Set(Object.values(byMes).flat().map(r=>r.gerente))]);
-    console.log('[Indevidos Import] Lojas únicas:', [...new Set(Object.values(byMes).flat().map(r=>r.loja))]);
+    const mesesDetec  = Object.keys(byMes).sort();
+    const totalIndev  = Object.values(byMes).reduce((s,v)=>s+v.length,0);
+    console.log('[Indevidos] Meses detectados:', mesesDetec);
+    console.log('[Indevidos] Total INDEVIDO:', totalIndev);
+    console.log('[Indevidos] Lojas únicas:', [...new Set(Object.values(byMes).flat().map(r=>r.loja))]);
 
-    if (!mesesDetectados.length) { toast('Nenhum registro INDEVIDO encontrado','err'); return; }
+    if (!mesesDetec.length) { toast('Nenhum registro INDEVIDO encontrado no arquivo','err'); return; }
 
-    // Para cada mês: DELETE todos os docs do mês, INSERT novos
-    for (const mesRef of mesesDetectados) {
-      // Deletar existentes
+    // Para cada competência detectada: DELETE todos os docs existentes → INSERT novos
+    for (const mesRef of mesesDetec) {
       const existSnap = await db.collection('indevidos').where('mesRef','==',mesRef).get();
       if (existSnap.size > 0) {
         for (let i=0; i<existSnap.docs.length; i+=400) {
@@ -13927,59 +13909,50 @@ async function importarIndevidos() {
           existSnap.docs.slice(i,i+400).forEach(d => b.delete(d.ref));
           await b.commit();
         }
-        console.log(`[Indevidos Import] ${mesRef}: deletados ${existSnap.size} registros antigos`);
+        console.log(`[Indevidos] ${mesRef}: ${existSnap.size} registros antigos removidos`);
       }
-      // Inserir novos
-      const records = byMes[mesRef];
-      for (let i=0; i<records.length; i+=400) {
+      const recs = byMes[mesRef];
+      for (let i=0; i<recs.length; i+=400) {
         const b = db.batch();
-        records.slice(i,i+400).forEach(rec => {
-          const ref = db.collection('indevidos').doc();
-          b.set(ref, {id:ref.id,...rec});
-        });
+        recs.slice(i,i+400).forEach(rec => { const r=db.collection('indevidos').doc(); b.set(r,{id:r.id,...rec}); });
         await b.commit();
       }
-      console.log(`[Indevidos Import] ${mesRef}: ${records.length} registros importados`);
+      console.log(`[Indevidos] ${mesRef}: ${recs.length} registros gravados`);
     }
 
     // Atualizar config
     const cfgSnap = await db.collection('indevidos_config').doc('geral').get();
-    const mesesExistentes = new Set(cfgSnap.exists ? (cfgSnap.data().mesesComDados||[]) : []);
-    mesesDetectados.forEach(m => mesesExistentes.add(m));
-    const mesesArr   = [...mesesExistentes].sort();
-    const ultimoMes  = mesesArr[mesesArr.length-1];
-    const ultimoImport = `${new Date().toLocaleDateString('pt-BR')} — ${totalIndevidos} registros — ${mesesDetectados.map(_indMesLabel).join(', ')}`;
+    const mesesExist = new Set(cfgSnap.exists ? (cfgSnap.data().mesesComDados||[]) : []);
+    mesesDetec.forEach(m => mesesExist.add(m));
+    const mesesArr  = [...mesesExist].sort();
+    const ultimoImport = `${new Date().toLocaleDateString('pt-BR')} — ${totalIndev} registros — ${mesesDetec.map(_indMesLabel).join(', ')}`;
     await db.collection('indevidos_config').doc('geral').set({
-      mesesComDados: mesesArr, ultimoMes, ultimoImport, atualizadoEm: new Date().toISOString()
+      mesesComDados: mesesArr,
+      ultimoMes:    mesesArr[mesesArr.length-1],
+      ultimoImport,
+      atualizadoEm: new Date().toISOString()
     });
 
-    // Atualizar estado
-    mesesDetectados.forEach(m => { delete _indevidosCacheMes[m]; });
-    _indevidosMesesComDados  = mesesArr;
-    _indevidosUltimoImport   = ultimoImport;
-    _indevidosMesesSel       = [mesesDetectados[mesesDetectados.length-1]];
-
-    // Resetar form
+    // Atualizar estado local imediato
+    _indevidosUltimoImport = ultimoImport;
+    _indevidosMesesSel     = [mesesDetec[mesesDetec.length-1]];
     const cont = document.getElementById('indev-form-container');
     if (cont) cont.parentElement.removeChild(cont);
     const ul = document.getElementById('indev-ultimo-import-txt');
     if (ul) ul.textContent = ultimoImport;
 
-    toast(`✅ ${totalIndevidos} indevidos importados — ${mesesDetectados.map(_indMesLabel).join(', ')}`, 'ok');
+    // O onSnapshot de initIndevidos vai atualizar allIndevidos automaticamente
+    toast(`✅ ${totalIndev} indevidos importados — ${mesesDetec.map(_indMesLabel).join(', ')}`, 'ok');
     switchIndevidosTab('painel');
   } catch(e) {
-    console.error('[Indevidos Import] Erro:', e);
-    toast('Erro na importação: ' + e.message, 'err');
+    console.error('[Indevidos] Erro import:', e);
+    toast('Erro: ' + e.message, 'err');
   }
 }
 
 // ── renderIndevidosPainel ─────────────────────────────────────────────────────
-async function renderIndevidosPainel() {
+function renderIndevidosPainel() {
   const wrap = document.getElementById('ind-painel-wrap'); if (!wrap) return;
-
-  // Carregar meses selecionados (cache)
-  for (const m of _indevidosMesesSel) await _carregarMesIndevidos(m);
-  allIndevidos = _indevidosMesesSel.flatMap(m => _indevidosCacheMes[m] || []);
 
   const dados      = _filtrarIndevidos();
   const postosDisp = [...new Set(allIndevidos.map(r=>r.loja).filter(Boolean))].sort();
@@ -13989,148 +13962,144 @@ async function renderIndevidosPainel() {
   const postosOf   = new Set(dados.map(r=>r.loja).filter(Boolean)).size;
   const servicosOf = new Set(dados.map(r=>r.descricaoServico).filter(Boolean)).size;
   const atendentes = new Set(dados.map(r=>r.atendente).filter(Boolean)).size;
-  const periodoLabel = _indevidosMesesSel.map(_indMesLabel).join(', ') || 'Nenhum';
+  const selLabel   = _indevidosMesesSel.length ? _indevidosMesesSel.map(_indMesLabel).join(', ') : 'Nenhum';
 
   wrap.innerHTML = `
-    <!-- TOPBAR INFO -->
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 0 12px">
-      ${_indevidosUltimoImport ? `<span style="font-size:11px;background:rgba(27,175,122,.12);color:#0f6e56;padding:3px 10px;border-radius:12px;border:1px solid rgba(27,175,122,.25)">📅 Dados até: ${_indevidosUltimoImport}</span>` : ''}
-    </div>
+    <!-- Badge última atualização -->
+    ${_indevidosUltimoImport?`<div style="padding:6px 0 10px"><span style="font-size:11px;background:rgba(27,175,122,.12);color:#0f6e56;padding:3px 10px;border-radius:12px;border:1px solid rgba(27,175,122,.25)">📅 Dados até: ${_indevidosUltimoImport}</span></div>`:''}
 
-    <!-- PERÍODO: 12 pills fixos de 2026 -->
-    <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">Período</div>
-    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px">
-      ${IND_MESES_2026.map(m => {
-        const comDados = _indevidosMesesComDados.includes(m);
+    <!-- Seleção de período: 12 meses fixos de 2026 -->
+    <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">Período — 2026</div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:7px">
+      ${IND_MESES_2026.map(m=>{
+        const temDados = _indevidosMesesComDados.includes(m);
         const ativo    = _indevidosMesesSel.includes(m);
-        return `<button onclick="_indToggleMes('${m}',event)"
-          title="${comDados ? 'Clique para selecionar. Shift+clique para acumular.' : 'Sem dados importados para este mês'}"
-          style="font-size:11px;padding:3px 10px;border-radius:14px;
-            border:1px solid ${ativo?'transparent':comDados?'rgba(255,255,255,.22)':'rgba(255,255,255,.08)'};
+        return `<button onclick="${temDados?`_indToggleMes('${m}',event)`:''}"
+          title="${temDados?'Clique: selecionar. Shift+clique: acumular.':'Sem dados importados'}"
+          style="font-size:11px;padding:3px 10px;border-radius:14px;cursor:${temDados?'pointer':'default'};
+            border:1px solid ${ativo?'transparent':temDados?'rgba(255,255,255,.22)':'rgba(255,255,255,.07)'};
             background:${ativo?'#2a78d6':'transparent'};
-            color:${ativo?'#fff':comDados?'var(--text2)':'var(--text3)'};
-            cursor:${comDados?'pointer':'default'};
-            opacity:${comDados?1:.4};transition:all .12s">
-          ${_indMesLabel(m)}
-        </button>`;
+            color:${ativo?'#fff':temDados?'var(--text2)':'var(--text3)'};
+            opacity:${temDados?1:.38};transition:all .12s">${_indMesLabel(m)}</button>`;
       }).join('')}
     </div>
     <div style="display:flex;gap:6px;margin-bottom:12px">
-      <button onclick="_indSelecionarTodos()" style="font-size:11px;padding:2px 10px;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:transparent;color:var(--text3);cursor:pointer">Todos com dados</button>
+      <button onclick="_indTodos()" style="font-size:11px;padding:2px 10px;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:transparent;color:var(--text3);cursor:pointer">Todos com dados</button>
       <button onclick="_indLimpar()" style="font-size:11px;padding:2px 10px;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:transparent;color:var(--text3);cursor:pointer">Limpar</button>
     </div>
 
-    <!-- FILTROS -->
+    <!-- Filtros: Posto e Serviço -->
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:8px 0 14px;border-bottom:1px solid rgba(255,255,255,.07)">
       <div>
         <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Posto</label>
-        <select class="form-select" id="ind-fil-posto" style="min-width:200px" onchange="_indAplicarFiltro()">
+        <select class="form-select" id="ind-fil-posto" style="min-width:190px" onchange="_indAplicarFiltro()">
           <option value="">Todos os postos</option>
           ${postosDisp.map(p=>`<option value="${p}" ${_indFiltroPosto===p?'selected':''}>${p}</option>`).join('')}
         </select>
       </div>
       <div>
-        <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Serviço</label>
-        <select class="form-select" id="ind-fil-servico" style="min-width:220px" onchange="_indAplicarFiltro()">
+        <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Serviço (DESCRIÇÃO_SERVIÇO)</label>
+        <select class="form-select" id="ind-fil-servico" style="min-width:210px" onchange="_indAplicarFiltro()">
           <option value="">Todos os serviços</option>
-          ${servDisp.map(s=>`<option value="${s}" ${_indFiltroServico===s?'selected':''}>${s.length>50?s.slice(0,48)+'…':s}</option>`).join('')}
+          ${servDisp.map(s=>`<option value="${s}" ${_indFiltroServico===s?'selected':''}>${s.length>48?s.slice(0,46)+'…':s}</option>`).join('')}
         </select>
       </div>
-      ${_indevidosMesesSel.length?`<span style="font-size:11px;background:rgba(42,120,214,.12);color:#185fa5;padding:3px 10px;border-radius:12px;border:1px solid rgba(42,120,214,.25);align-self:flex-end">📅 ${periodoLabel}</span>`:''}
+      ${_indevidosMesesSel.length?`<span style="font-size:11px;background:rgba(42,120,214,.12);color:#185fa5;padding:3px 10px;border-radius:12px;border:1px solid rgba(42,120,214,.25);align-self:flex-end">📅 ${selLabel}</span>`:''}
     </div>
 
-    <!-- CARDS -->
+    <!-- Cards -->
     <div class="stats-row" style="margin:14px 0">
-      <div class="stat-card"><div class="label">Indevidos</div><div class="value" style="color:#e24b4a">${totalInd.toLocaleString('pt-BR')}</div><div class="sub">${periodoLabel}</div></div>
+      <div class="stat-card"><div class="label">Indevidos</div><div class="value" style="color:#e24b4a">${totalInd.toLocaleString('pt-BR')}</div><div class="sub">${selLabel}</div></div>
       <div class="stat-card"><div class="label">Postos</div><div class="value" style="color:#f59e0b">${postosOf}</div><div class="sub">com ocorrências</div></div>
       <div class="stat-card"><div class="label">Serviços</div><div class="value" style="color:#3b82f6">${servicosOf}</div><div class="sub">tipos distintos</div></div>
       <div class="stat-card"><div class="label">Atendentes</div><div class="value">${atendentes}</div><div class="sub">envolvidos</div></div>
     </div>
 
-    ${!totalInd ? `<div style="text-align:center;padding:32px;color:var(--text3);font-size:13px">${_indevidosMesesSel.length?'Nenhum registro encontrado para os filtros selecionados.':'Selecione um mês acima para visualizar os dados.'}</div>` : ''}
+    ${!totalInd&&_indevidosMesesSel.length?`<div style="text-align:center;padding:28px;color:var(--text3);font-size:13px">Nenhum registro para o período e filtros selecionados.</div>`:''}
+    ${!_indevidosMesesSel.length?`<div style="text-align:center;padding:28px;color:var(--text3);font-size:13px">Selecione um ou mais meses acima para visualizar os dados.</div>`:''}
 
-    ${totalInd ? `
-    <!-- GRÁFICOS: Evolução | Motivo do Erro -->
+    ${totalInd?`
+    <!-- Gráficos: Evolução | Motivo do Erro -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
       <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
         <div style="font-size:12px;font-weight:600;margin-bottom:10px">📈 Evolução mensal — 2026</div>
-        <div style="position:relative;width:100%;height:160px"><canvas id="ind-c-mensal"></canvas></div>
+        <div style="position:relative;width:100%;height:155px"><canvas id="ind-c-mensal"></canvas></div>
       </div>
       <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
         <div style="font-size:12px;font-weight:600;margin-bottom:10px">📋 Motivo do erro</div>
-        <div style="position:relative;width:100%;height:160px"><canvas id="ind-c-motivo"></canvas></div>
+        <div style="position:relative;width:100%;height:155px"><canvas id="ind-c-motivo"></canvas></div>
       </div>
     </div>
 
-    <!-- RANKINGS: Top 5 Postos | Top 5 Serviços -->
+    <!-- Rankings: Top 5 Postos | Top 5 Serviços (DESCRIÇÃO_SERVIÇO) -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
       <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
         <div style="font-size:12px;font-weight:600;margin-bottom:10px">🏆 Top 5 Postos</div>
         <div id="ind-rank-postos"></div>
       </div>
       <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
-        <div style="font-size:12px;font-weight:600;margin-bottom:10px">🔥 Top 5 Serviços — DESCRIÇÃO_SERVIÇO</div>
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">🔥 Top 5 Serviços</div>
         <div id="ind-rank-servicos"></div>
       </div>
-    </div>` : ''}`;
+    </div>`:``}`;
 
-  if (totalInd) setTimeout(() => _renderIndevidosCharts(dados), 50);
+  if (totalInd) setTimeout(() => _renderIndevidosCharts(dados), 40);
 }
 
-// Controles dos pills
-async function _indToggleMes(mesRef, evt) {
-  if (!_indevidosMesesComDados.includes(mesRef)) return;
-  if (evt && evt.shiftKey) {
-    const idx = _indevidosMesesSel.indexOf(mesRef);
-    if (idx >= 0) _indevidosMesesSel.splice(idx, 1);
-    else _indevidosMesesSel.push(mesRef);
+// Controles pills
+function _indToggleMes(m, evt) {
+  if (!_indevidosMesesComDados.includes(m)) return;
+  if (evt?.shiftKey) {
+    const i = _indevidosMesesSel.indexOf(m);
+    if (i>=0) _indevidosMesesSel.splice(i,1); else _indevidosMesesSel.push(m);
   } else {
-    _indevidosMesesSel = (_indevidosMesesSel.length===1 && _indevidosMesesSel[0]===mesRef) ? [] : [mesRef];
+    _indevidosMesesSel = (_indevidosMesesSel.length===1&&_indevidosMesesSel[0]===m) ? [] : [m];
   }
-  _indPagina = 1;
-  renderIndevidos();
+  _indPagina = 1; renderIndevidosPainel();
 }
-function _indSelecionarTodos() { _indevidosMesesSel = [..._indevidosMesesComDados]; renderIndevidos(); }
-function _indLimpar()          { _indevidosMesesSel = []; renderIndevidos(); }
+function _indTodos()  { _indevidosMesesSel = [..._indevidosMesesComDados]; renderIndevidosPainel(); }
+function _indLimpar() { _indevidosMesesSel = []; renderIndevidosPainel(); }
 
-// ── _renderIndevidosCharts ────────────────────────────────────────────────────
+// ── Charts ────────────────────────────────────────────────────────────────────
 function _renderIndevidosCharts(dados) {
-  _chartIndMensal = _destroyIndChart(_chartIndMensal);
-  _chartIndMotivo = _destroyIndChart(_chartIndMotivo);
+  _chartIndMensal = _dstroyIndChart(_chartIndMensal);
+  _chartIndMotivo = _dstroyIndChart(_chartIndMotivo);
 
-  const gridC  = 'rgba(255,255,255,.06)';
-  const tickC  = '#a0aec0';
+  const gridC = 'rgba(255,255,255,.06)';
+  const tickC = '#a0aec0';
   const baseOpts = { responsive:true, maintainAspectRatio:false,
     plugins:{legend:{display:false}},
-    scales:{ x:{ticks:{color:tickC,font:{size:10}},grid:{display:false}},
-             y:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true} } };
+    scales:{x:{ticks:{color:tickC,font:{size:10}},grid:{display:false}},
+            y:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true}} };
 
-  // Evolução mensal — conta registros por mês em todos os dados carregados em cache (todos os meses)
-  const todosCached = IND_MESES_2026
-    .filter(m => _indevidosCacheMes[m])
-    .flatMap(m => _indevidosCacheMes[m]);
-  const cntMes = {};
-  IND_MESES_2026.forEach(m => { cntMes[m] = 0; });
-  todosCached.forEach(r => { if (r.mesRef && cntMes[r.mesRef]!==undefined) cntMes[r.mesRef]++; });
-  const mesesLabels = IND_MESES_2026.map(_indMesLabel);
-  const valsMes     = IND_MESES_2026.map(m => cntMes[m]);
+  // Evolução mensal: mostra todos os 12 meses de 2026 com contagem de allIndevidos
+  // (sem filtro de mês, para mostrar a evolução completa)
+  const evolDados = allIndevidos.filter(r => {
+    if (_indFiltroPosto   && r.loja             !== _indFiltroPosto)   return false;
+    if (_indFiltroServico && r.descricaoServico !== _indFiltroServico) return false;
+    return true;
+  });
+  const cntMes = {}; IND_MESES_2026.forEach(m => cntMes[m]=0);
+  evolDados.forEach(r => { if (r.mesRef && cntMes[r.mesRef]!==undefined) cntMes[r.mesRef]++; });
+  const valsEvol = IND_MESES_2026.map(m => cntMes[m]);
+  const labsEvol = IND_MESES_2026.map(m => _indMesLabel(m));
 
   const ctxM = document.getElementById('ind-c-mensal');
   if (ctxM) _chartIndMensal = new Chart(ctxM, {type:'line',
-    data:{labels:mesesLabels, datasets:[{
-      data:valsMes, borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,.12)',
-      borderWidth:2, fill:true, tension:.35, pointRadius:4, pointBackgroundColor:'#3b82f6'
-    }]},
+    data:{labels:labsEvol, datasets:[{data:valsEvol,
+      borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,.12)',
+      borderWidth:2, fill:true, tension:.35, pointRadius:4, pointBackgroundColor:'#3b82f6'}]},
     options:baseOpts,
     plugins:[{id:'ptLbl',afterDatasetsDraw(c){const{ctx}=c;c.data.datasets[0].data.forEach((v,i)=>{
-      if(!v)return;const el=c.getDatasetMeta(0).data[i];ctx.save();ctx.fillStyle='#3b82f6';
-      ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.fillText(v,el.x,el.y-9);ctx.restore();});}}]});
+      if(!v)return;const el=c.getDatasetMeta(0).data[i];ctx.save();
+      ctx.fillStyle='#3b82f6';ctx.font='bold 10px sans-serif';ctx.textAlign='center';
+      ctx.fillText(v,el.x,el.y-9);ctx.restore();});}}]});
 
-  // Motivo do erro — usando os dados filtrados do mês selecionado
+  // Motivo do erro — dos dados filtrados (mês + posto + serviço)
   const cats    = ['Não seguiu script','Dados incompletos','Falha na verificação','Erro de procedimento','Outros'];
   const catClrs = ['#e24b4a','#f59e0b','#8b5cf6','#3b82f6','#6b7280'];
-  const cntCat  = {}; cats.forEach(c => cntCat[c] = 0);
-  dados.forEach(r => { cntCat[_categMotivo(r.motivoErro)]++; });
+  const cntCat  = {}; cats.forEach(c=>cntCat[c]=0);
+  dados.forEach(r => { cntCat[_categMotivoInd(r.motivoErro)]++; });
   const ctxMot = document.getElementById('ind-c-motivo');
   if (ctxMot) _chartIndMotivo = new Chart(ctxMot, {type:'bar',
     data:{labels:cats, datasets:[{data:cats.map(c=>cntCat[c]),
@@ -14139,132 +14108,129 @@ function _renderIndevidosCharts(dados) {
       x:{ticks:{color:tickC,font:{size:9}},grid:{display:false}},
       y:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true}}},
     plugins:[{id:'motLbl',afterDatasetsDraw(c){const{ctx}=c;c.data.datasets[0].data.forEach((v,i)=>{
-      if(!v)return;const el=c.getDatasetMeta(0).data[i];ctx.save();ctx.fillStyle='#333';
-      ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.fillText(v,el.x,el.y-8);ctx.restore();});}}]});
+      if(!v)return;const el=c.getDatasetMeta(0).data[i];ctx.save();
+      ctx.fillStyle='#333';ctx.font='bold 10px sans-serif';ctx.textAlign='center';
+      ctx.fillText(v,el.x,el.y-8);ctx.restore();});}}]});
 
   // Top 5 Postos
-  const cntPosto = {}; dados.forEach(r=>{if(r.loja)cntPosto[r.loja]=(cntPosto[r.loja]||0)+1;});
-  const top5P = Object.entries(cntPosto).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const cntP = {}; dados.forEach(r=>{if(r.loja)cntP[r.loja]=(cntP[r.loja]||0)+1;});
+  const top5P = Object.entries(cntP).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const maxP  = top5P[0]?.[1]||1;
   const tblP  = document.getElementById('ind-rank-postos');
   if (tblP) tblP.innerHTML = top5P.length ? top5P.map(([p,v],i)=>`
     <div style="display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">
       <span style="font-size:11px;font-weight:700;color:${i<3?'#f59e0b':'var(--text3)'};min-width:14px">${i+1}</span>
       <span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p}</span>
-      <div style="width:52px;height:5px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden">
-        <div style="height:100%;background:#e24b4a;width:${Math.round(v/maxP*100)}%;border-radius:3px"></div>
-      </div>
-      <span style="font-size:12px;font-weight:600;color:#e24b4a;min-width:20px;text-align:right">${v}</span>
+      <div style="width:50px;height:5px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden">
+        <div style="height:100%;background:#e24b4a;width:${Math.round(v/maxP*100)}%;border-radius:3px"></div></div>
+      <span style="font-size:12px;font-weight:600;color:#e24b4a;min-width:22px;text-align:right">${v}</span>
       <span style="font-size:11px;color:var(--text3);min-width:28px;text-align:right">${dados.length?Math.round(v/dados.length*100)+'%':'—'}</span>
-    </div>`).join('') : '<div style="color:var(--text3);font-size:13px;padding:8px">Sem dados</div>';
+    </div>`).join('') : '<div style="color:var(--text3);font-size:13px;padding:6px">Sem dados</div>';
 
   // Top 5 Serviços — campo DESCRIÇÃO_SERVIÇO (descricaoServico)
-  const cntServ = {}; dados.forEach(r=>{if(r.descricaoServico)cntServ[r.descricaoServico]=(cntServ[r.descricaoServico]||0)+1;});
-  const top5S = Object.entries(cntServ).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const cntS = {}; dados.forEach(r=>{if(r.descricaoServico)cntS[r.descricaoServico]=(cntS[r.descricaoServico]||0)+1;});
+  const top5S = Object.entries(cntS).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const maxS  = top5S[0]?.[1]||1;
   const tblS  = document.getElementById('ind-rank-servicos');
   if (tblS) tblS.innerHTML = top5S.length ? top5S.map(([s,v],i)=>`
     <div style="display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">
       <span style="font-size:11px;font-weight:700;color:${i<3?'#f59e0b':'var(--text3)'};min-width:14px">${i+1}</span>
       <span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s}">${s.length>34?s.slice(0,32)+'…':s}</span>
-      <div style="width:52px;height:5px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden">
-        <div style="height:100%;background:#eda100;width:${Math.round(v/maxS*100)}%;border-radius:3px"></div>
-      </div>
-      <span style="font-size:12px;font-weight:600;color:#eda100;min-width:20px;text-align:right">${v}</span>
-    </div>`).join('') : '<div style="color:var(--text3);font-size:13px;padding:8px">Sem dados</div>';
+      <div style="width:50px;height:5px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden">
+        <div style="height:100%;background:#eda100;width:${Math.round(v/maxS*100)}%;border-radius:3px"></div></div>
+      <span style="font-size:12px;font-weight:600;color:#eda100;min-width:22px;text-align:right">${v}</span>
+    </div>`).join('') : '<div style="color:var(--text3);font-size:13px;padding:6px">Sem dados</div>';
 }
 
-// ── renderIndevidosDetalhamento ───────────────────────────────────────────────
-async function renderIndevidosDetalhamento() {
+// ── Detalhamento ──────────────────────────────────────────────────────────────
+function renderIndevidosDetalhamento() {
   const wrap = document.getElementById('ind-detalhamento-wrap'); if (!wrap) return;
 
-  // Carregar todos os meses com dados para o filtro de mês
-  for (const m of _indevidosMesesComDados) await _carregarMesIndevidos(m);
-  const todosOsDados = _indevidosMesesComDados.flatMap(m => _indevidosCacheMes[m] || []);
+  // Todos os filtros operam em memória sobre allIndevidos
+  const filtMes   = document.getElementById('ind-det-mes')?.value   || '';
+  const filtPosto = document.getElementById('ind-det-posto')?.value || '';
+  const filtServ  = document.getElementById('ind-det-serv')?.value  || '';
 
-  const filtMes    = document.getElementById('ind-det-fil-mes')?.value     || '';
-  const filtPosto  = document.getElementById('ind-det-fil-posto')?.value   || '';
-  const filtServ   = document.getElementById('ind-det-fil-serv')?.value    || '';
-  const filtAte    = document.getElementById('ind-det-fil-ate')?.value     || '';
+  const mesesDisp  = _indevidosMesesComDados;
+  const postosDisp = [...new Set(allIndevidos.map(r=>r.loja).filter(Boolean))].sort();
+  const servDisp   = [...new Set(allIndevidos.map(r=>r.descricaoServico).filter(Boolean))].sort();
 
-  const postosDisp = [...new Set(todosOsDados.map(r=>r.loja).filter(Boolean))].sort();
-  const servDisp   = [...new Set(todosOsDados.map(r=>r.descricaoServico).filter(Boolean))].sort();
-  const ateDisp    = [...new Set(todosOsDados.map(r=>r.atendente).filter(Boolean))].sort();
-
-  const filtrados = todosOsDados.filter(r => {
+  const filtrados = allIndevidos.filter(r => {
     if (filtMes   && r.mesRef           !== filtMes)   return false;
     if (filtPosto && r.loja             !== filtPosto)  return false;
     if (filtServ  && r.descricaoServico !== filtServ)   return false;
-    if (filtAte   && r.atendente        !== filtAte)    return false;
     return true;
   });
 
-  const totalPags = Math.ceil(filtrados.length / IND_POR_PAG) || 1;
+  const totalPags = Math.ceil(filtrados.length/IND_POR_PAG)||1;
   if (_indPagina > totalPags) _indPagina = 1;
-  const paginados = filtrados.slice((_indPagina-1)*IND_POR_PAG, _indPagina*IND_POR_PAG);
+  const pag = filtrados.slice((_indPagina-1)*IND_POR_PAG, _indPagina*IND_POR_PAG);
 
-  const mkSel = (id, opts, cur, lbl) => `
-    <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">${lbl}</label>
-    <select class="form-select" id="${id}" style="min-width:140px" onchange="_indPagina=1;renderIndevidosDetalhamento()">
-      <option value="">Todos</option>
-      ${opts.map(o=>`<option value="${o}" ${cur===o?'selected':''}>${o.length>36?o.slice(0,34)+'…':o}</option>`).join('')}
-    </select></div>`;
+  const sel = (id, opts, cur, label) =>
+    `<div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">${label}</label>
+     <select class="form-select" id="${id}" style="min-width:140px" onchange="_indPagina=1;renderIndevidosDetalhamento()">
+       <option value="">Todos</option>
+       ${opts.map(o=>`<option value="${o}" ${cur===o?'selected':''}>${o.length>38?o.slice(0,36)+'…':o}</option>`).join('')}
+     </select></div>`;
 
   wrap.innerHTML = `
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:14px 0 12px">
-        <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Mês</label>
-      <select class="form-select" id="ind-det-fil-mes" style="min-width:100px" onchange="_indPagina=1;renderIndevidosDetalhamento()">
-        <option value="">Todos</option>
-        ${_indevidosMesesComDados.map(m=>`<option value="${m}" ${filtMes===m?'selected':''}>${_indMesLabel(m)}</option>`).join('')}
-      </select></div>
-      ${mkSel('ind-det-fil-posto', postosDisp, filtPosto, 'Posto')}
-      ${mkSel('ind-det-fil-serv',  servDisp,   filtServ,  'Serviço')}
-      ${mkSel('ind-det-fil-ate',   ateDisp,    filtAte,   'Atendente')}
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Mês</label>
+        <select class="form-select" id="ind-det-mes" style="min-width:110px" onchange="_indPagina=1;renderIndevidosDetalhamento()">
+          <option value="">Todos</option>
+          ${mesesDisp.map(m=>`<option value="${m}" ${filtMes===m?'selected':''}>${_indMesLabel(m)}</option>`).join('')}
+        </select></div>
+      ${sel('ind-det-posto', postosDisp, filtPosto, 'Posto')}
+      ${sel('ind-det-serv',  servDisp,   filtServ,  'Serviço')}
       <button class="btn btn-secondary" onclick="exportarIndevidos()" style="height:38px;align-self:flex-end">⬇ Excel</button>
     </div>
-    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">${filtrados.length.toLocaleString('pt-BR')} registro(s) · Página ${_indPagina} de ${totalPags}</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:8px">${filtrados.length.toLocaleString('pt-BR')} registro(s) · Página ${_indPagina} de ${totalPags}</div>
     <div style="overflow-x:auto">
-      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:780px">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:740px">
         <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15);background:var(--surface3)">
-          ${['Mês','Posto','Atendente','Serviço','Motivo do Erro','Dia'].map(h=>`<th style="padding:7px 10px;text-align:left;color:var(--text3);white-space:nowrap;font-weight:600">${h}</th>`).join('')}
+          ${['Mês','Posto','Atendente','Serviço','Motivo do Erro','Dia'].map(h=>
+            `<th style="padding:7px 10px;text-align:left;color:var(--text3);white-space:nowrap;font-weight:600">${h}</th>`).join('')}
         </tr></thead>
-        <tbody>${paginados.length ? paginados.map(r=>`
-          <tr style="border-bottom:1px solid rgba(255,255,255,.05)" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background=''">
+        <tbody>${pag.length ? pag.map(r=>`
+          <tr style="border-bottom:1px solid rgba(255,255,255,.04)"
+              onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background=''">
             <td style="padding:6px 10px;white-space:nowrap;color:var(--text3)">${_indMesLabel(r.mesRef)||'—'}</td>
             <td style="padding:6px 10px;white-space:nowrap">${r.loja||'—'}</td>
             <td style="padding:6px 10px">${r.atendente||'—'}</td>
             <td style="padding:6px 10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.descricaoServico||''}">${r.descricaoServico||'—'}</td>
             <td style="padding:6px 10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.motivoErro||''}">${r.motivoErro||'—'}</td>
             <td style="padding:6px 10px;white-space:nowrap;color:var(--text3)">${r.dia||'—'}</td>
-          </tr>`).join('') : '<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--text3)">Nenhum registro</td></tr>'}
+          </tr>`).join('') : '<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--text3)">Nenhum registro encontrado</td></tr>'}
         </tbody>
       </table>
     </div>
     ${totalPags>1?`<div style="display:flex;gap:6px;align-items:center;margin-top:12px;flex-wrap:wrap">
       <button class="btn btn-sm btn-secondary" onclick="_indPagina=Math.max(1,_indPagina-1);renderIndevidosDetalhamento()" ${_indPagina===1?'disabled':''}>‹ Ant</button>
-      ${Array.from({length:Math.min(totalPags,7)},(_,i)=>{const p=totalPags<=7?i+1:(_indPagina<=4?i+1:i+_indPagina-3);return p>0&&p<=totalPags?`<button class="btn btn-sm ${p===_indPagina?'btn-primary':'btn-secondary'}" onclick="_indPagina=${p};renderIndevidosDetalhamento()">${p}</button>`:''}).join('')}
+      ${Array.from({length:Math.min(totalPags,7)},(_,i)=>{
+        const p=totalPags<=7?i+1:(_indPagina<=4?i+1:i+_indPagina-3);
+        return p>0&&p<=totalPags?`<button class="btn btn-sm ${p===_indPagina?'btn-primary':'btn-secondary'}" onclick="_indPagina=${p};renderIndevidosDetalhamento()">${p}</button>`:'';
+      }).join('')}
       <button class="btn btn-sm btn-secondary" onclick="_indPagina=Math.min(${totalPags},_indPagina+1);renderIndevidosDetalhamento()" ${_indPagina===totalPags?'disabled':''}>Próx ›</button>
-      <span style="color:var(--text3);font-size:12px;margin-left:8px">${filtrados.length.toLocaleString('pt-BR')} total</span>
-    </div>`:''}`;
+      <span style="color:var(--text3);font-size:12px;margin-left:6px">${filtrados.length.toLocaleString('pt-BR')} total</span>
+    </div>`:``}`;
 }
 
-// ── exportarIndevidos ─────────────────────────────────────────────────────────
+// ── Exportar ──────────────────────────────────────────────────────────────────
 function exportarIndevidos() {
-  const filtMes   = document.getElementById('ind-det-fil-mes')?.value   || '';
-  const filtPosto = document.getElementById('ind-det-fil-posto')?.value || '';
-  const filtServ  = document.getElementById('ind-det-fil-serv')?.value  || '';
-  const filtAte   = document.getElementById('ind-det-fil-ate')?.value   || '';
-  const todosOsDados = _indevidosMesesComDados.flatMap(m => _indevidosCacheMes[m] || []);
-  const filtrados = todosOsDados.filter(r => {
+  const filtMes   = document.getElementById('ind-det-mes')?.value   || '';
+  const filtPosto = document.getElementById('ind-det-posto')?.value || '';
+  const filtServ  = document.getElementById('ind-det-serv')?.value  || '';
+  const filtrados = allIndevidos.filter(r => {
     if (filtMes   && r.mesRef           !== filtMes)   return false;
     if (filtPosto && r.loja             !== filtPosto)  return false;
     if (filtServ  && r.descricaoServico !== filtServ)   return false;
-    if (filtAte   && r.atendente        !== filtAte)    return false;
     return true;
   });
   if (!filtrados.length) { toast('Nenhum dado para exportar','err'); return; }
-  const cols = ['mesRef','loja','atendente','descricaoServico','motivoErro','dia','municipio','canalAtendimento','loginAtendente','retornoIndevido','gerente','empresa','importadoPor','importadoEm'];
-  const rows = filtrados.map(r => { const o={}; cols.forEach(c => o[c]=r[c]||''); return o; });
+  const cols = ['mesRef','loja','atendente','descricaoServico','motivoErro','dia',
+                'municipio','canalAtendimento','loginAtendente','retornoIndevido',
+                'gerente','empresa','importadoPor','importadoEm'];
+  const rows = filtrados.map(r => { const o={}; cols.forEach(c=>o[c]=r[c]||''); return o; });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Indevidos');
   XLSX.writeFile(wb, `Indevidos_${filtMes||'historico'}_${new Date().toISOString().slice(0,10)}.xlsx`);
