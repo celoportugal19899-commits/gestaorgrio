@@ -14663,7 +14663,23 @@ function _diagRenderBackfillPainel() {
 
 function _diagRenderBackfillResumo(p) {
   const comps = Object.keys(p.porCompetencia).sort();
+  const jaTem = p.jaTemOperacaoIdPorMes || {};
+  const jaTemComps = Object.keys(jaTem).sort();
+  const julhoContaminado = jaTem['2026-07'] > 0;
   return `
+    ${jaTemComps.length ? `
+    <div style="background:${julhoContaminado?'rgba(226,75,74,.1)':'var(--surface2)'};border:1px solid ${julhoContaminado?'rgba(226,75,74,.3)':'rgba(255,255,255,.07)'};border-radius:10px;padding:12px 14px;margin-bottom:14px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:6px">${julhoContaminado?'⚠ ':''}Diagnóstico — documentos que já possuem operacaoId (não entram no backfill)</div>
+      <table style="border-collapse:collapse;font-size:12px">
+        <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15)">
+          <th style="padding:3px 14px 3px 0;text-align:left;color:var(--text3)">Competência</th>
+          <th style="padding:3px 0;text-align:left;color:var(--text3)">Já com operacaoId</th>
+        </tr></thead>
+        <tbody>${jaTemComps.map(m=>`<tr><td style="padding:3px 14px 3px 0;${m==='2026-07'?'color:#e24b4a;font-weight:700':''}">${m}</td><td style="padding:3px 0;${m==='2026-07'?'color:#e24b4a;font-weight:700':''}">${jaTem[m].toLocaleString('pt-BR')}</td></tr>`).join('')}</tbody>
+      </table>
+      ${julhoContaminado?`<div style="font-size:12px;color:#e24b4a;margin-top:8px;font-weight:600">2026-07 já possui operacaoId gravado em ${jaTem['2026-07']} registro(s) — isso não deveria ter ocorrido pela regra atual. Provável causa: a execução do backfill aprovada anteriormente rodou antes desta regra de exclusão de Julho existir. Nenhuma correção foi feita automaticamente — aguardando sua decisão.</div>`:''}
+    </div>` : ''}
+
     <div style="font-size:12px;margin-bottom:8px">
       <strong>${p.total.toLocaleString('pt-BR')}</strong> documento(s) serão atualizados — somente o campo <code>operacaoId</code> será adicionado.
     </div>
@@ -14737,9 +14753,14 @@ async function _diagBackfillRodarPrevia() {
     const snap = await db.collection('indevidos').get();
     const alvo = [];
     const porComp = {};
+    const jaTemOperacaoIdPorMes = {}; // diagnóstico: quantos docs por competência já têm operacaoId gravado
     snap.docs.forEach(d => {
       const data = d.data();
-      if (data.operacaoId) return;                                  // já tem — fora do escopo do backfill
+      if (data.operacaoId) {
+        const m = data.mesRef || '(sem competência)';
+        jaTemOperacaoIdPorMes[m] = (jaTemOperacaoIdPorMes[m]||0) + 1;
+        return;                                                        // já tem — fora do escopo do backfill
+      }
       if (!IND_BACKFILL_COMPETENCIAS_VALIDAS.includes(data.mesRef)) return; // competência não aprovada (ex: 2026-07) — nunca elegível
       if (!data.loja || !validos.has(_diagNormPosto(data.loja))) return; // suspeito — não entra no backfill
       alvo.push({
@@ -14752,7 +14773,7 @@ async function _diagBackfillRodarPrevia() {
       const m = data.mesRef || '(sem competência)';
       porComp[m] = (porComp[m]||0) + 1;
     });
-    _diagBackfillPrevia = { total: alvo.length, porCompetencia: porComp, docs: alvo };
+    _diagBackfillPrevia = { total: alvo.length, porCompetencia: porComp, docs: alvo, jaTemOperacaoIdPorMes };
   } catch (e) {
     console.error('[DiagBackfill] erro na prévia:', e);
     toast('Erro ao consultar: ' + e.message, 'err');
