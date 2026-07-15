@@ -780,7 +780,13 @@ const PosCanalLabels = {
           <div class="sidebar-item sidebar-sub" id="nav-indicadores-adm" onclick="showView('adm-indicadores',this)"><span class="icon">📊</span> Indicadores</div>
           <div class="sidebar-item sidebar-sub" id="nav-csat-adm" onclick="showView('adm-csat',this)"><span class="icon">⭐</span> Pesquisa CSAT</div>
           <div class="sidebar-item sidebar-sub" id="nav-pos-adm" onclick="showView('adm-pos',this)"><span class="icon">💳</span> Máquina Cartão POS</div>
-          <div class="sidebar-item sidebar-sub" id="nav-indevidos-adm" onclick="showView('adm-indevidos',this)"><span class="icon">🔍</span> Indevidos</div>
+        </div>
+        <div class="sidebar-item sidebar-group-toggle" id="nav-qualidade-group" onclick="toggleSidebarGroup('qualidade-group',this)"><span class="icon">📊</span> Qualidade <span class="group-arrow" id="arrow-qualidade-group">▸</span></div>
+        <div class="sidebar-group" id="qualidade-group" style="display:none">
+          <div class="sidebar-item sidebar-sub" id="nav-qualidade-dash-adm" onclick="showView('adm-qualidade',this)"><span class="icon">📈</span> Dashboard da Qualidade</div>
+          <div class="sidebar-item sidebar-sub" id="nav-indevidos-adm" onclick="showView('adm-indevidos',this)"><span class="icon">🔍</span> Ordens Indevidas</div>
+          <div class="sidebar-item sidebar-sub" id="nav-qual-reclamacoes-adm" onclick="showView('adm-qualidade-reclamacoes',this)"><span class="icon">🗣</span> Reclamações Improcedentes</div>
+          <div class="sidebar-item sidebar-sub" id="nav-qual-trocas-adm" onclick="showView('adm-qualidade-trocas',this)"><span class="icon">🔁</span> Trocas Improcedentes</div>
         </div>
         <div class="sidebar-item" id="nav-inc-adm" onclick="showView('adm-incidencias',this)"><span class="icon">📋</span> Incidências <span id="inc-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
         <div class="sidebar-item" id="nav-caixas-adm" onclick="showView('adm-caixas',this)"><span class="icon">💰</span> Caixas Rotativos <span id="caixa-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
@@ -841,7 +847,16 @@ const PosCanalLabels = {
           <div class="sidebar-item sidebar-sub" id="nav-indicadores-sup" onclick="showView('adm-indicadores',this)"><span class="icon">📊</span> Indicadores</div>
           <div class="sidebar-item sidebar-sub" id="nav-csat-sup" onclick="showView('adm-csat',this)"><span class="icon">⭐</span> Pesquisa CSAT</div>
           <div class="sidebar-item sidebar-sub" id="nav-pos-sup" onclick="showView('adm-pos',this)"><span class="icon">💳</span> Máquina Cartão POS</div>
-          <div class="sidebar-item sidebar-sub" id="nav-indevidos-sup" onclick="showView('adm-indevidos',this)"><span class="icon">🔍</span> Indevidos</div>
+        </div>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-section-label">Qualidade</div>
+        <div class="sidebar-item sidebar-group-toggle" id="nav-sup-qualidade-group" onclick="toggleSidebarGroup('sup-qualidade-group',this)"><span class="icon">📊</span> Qualidade <span class="group-arrow" id="arrow-sup-qualidade-group">▸</span></div>
+        <div class="sidebar-group" id="sup-qualidade-group" style="display:none">
+          <div class="sidebar-item sidebar-sub" id="nav-qualidade-dash-sup" onclick="showView('adm-qualidade',this)"><span class="icon">📈</span> Dashboard da Qualidade</div>
+          <div class="sidebar-item sidebar-sub" id="nav-indevidos-sup" onclick="showView('adm-indevidos',this)"><span class="icon">🔍</span> Ordens Indevidas</div>
+          <div class="sidebar-item sidebar-sub" id="nav-qual-reclamacoes-sup" onclick="showView('adm-qualidade-reclamacoes',this)"><span class="icon">🗣</span> Reclamações Improcedentes</div>
+          <div class="sidebar-item sidebar-sub" id="nav-qual-trocas-sup" onclick="showView('adm-qualidade-trocas',this)"><span class="icon">🔁</span> Trocas Improcedentes</div>
         </div>
       </div>
     </div>
@@ -1339,6 +1354,44 @@ const PosCanalLabels = {
         <div id="ind-painel-wrap"></div>
         <div id="ind-importar-wrap"     style="display:none"></div>
         <div id="ind-detalhamento-wrap" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- DASHBOARD DA QUALIDADE — Gestão à Vista executiva/operacional (só leitura, consolida submódulos) -->
+    <div id="view-adm-qualidade" class="view">
+      <div class="topbar">
+        <div class="topbar-title">📈 Dashboard da Qualidade</div>
+      </div>
+      <div class="view-content">
+        <div id="qual-dash-wrap"></div>
+      </div>
+    </div>
+
+    <!-- QUALIDADE — Reclamações Improcedentes (navegação inicial, funcionalidade futura) -->
+    <div id="view-adm-qualidade-reclamacoes" class="view">
+      <div class="topbar">
+        <div class="topbar-title">🗣 Reclamações Improcedentes</div>
+      </div>
+      <div class="view-content">
+        <div style="text-align:center;padding:60px 20px;color:var(--text3)">
+          <div style="font-size:40px;margin-bottom:12px">🗣</div>
+          <div style="font-size:15px;font-weight:600;color:var(--text)">Módulo ainda não disponível</div>
+          <p style="font-size:13px;max-width:420px;margin:8px auto 0">Este submódulo de Qualidade será implementado em uma próxima etapa.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- QUALIDADE — Trocas Improcedentes (navegação inicial, funcionalidade futura) -->
+    <div id="view-adm-qualidade-trocas" class="view">
+      <div class="topbar">
+        <div class="topbar-title">🔁 Trocas Improcedentes</div>
+      </div>
+      <div class="view-content">
+        <div style="text-align:center;padding:60px 20px;color:var(--text3)">
+          <div style="font-size:40px;margin-bottom:12px">🔁</div>
+          <div style="font-size:15px;font-weight:600;color:var(--text)">Módulo ainda não disponível</div>
+          <p style="font-size:13px;max-width:420px;margin:8px auto 0">Este submódulo de Qualidade será implementado em uma próxima etapa.</p>
+        </div>
       </div>
     </div>
 
@@ -3899,6 +3952,7 @@ function _doRefreshCurrentView() {
   if (id === 'adm-csat') { (async()=>{ await initCsatMesFiltro(); await renderCSAT(); })(); }
   if (id === 'adm-indevidos') renderIndevidos();
   if (id === 'adm-diag-import') renderDiagImport();
+  if (id === 'adm-qualidade') renderQualidadeDashboard();
   if (id === 'supervisor-postos') renderSupervisorPostos();
   if (id === 'sup-caixa') renderSupCaixa();
   if (id === 'adm-caixas') renderAdmCaixas();
@@ -3950,6 +4004,7 @@ function showView(name, el) {
   if (name === 'adm-medidas-disciplinares') md_renderTudo();
   if (name === 'sup-medidas-disciplinares') md_renderTudo();
   if (name === 'adm-diag-import') renderDiagImport();
+  if (name === 'adm-qualidade') renderQualidadeDashboard();
   // Render imediato ao navegar (cancela debounce pendente e renderiza já)
   clearTimeout(_refreshTimer);
   _refreshTimer = null;
@@ -14279,6 +14334,179 @@ function _indLimpar() { _indevidosMesesSel = []; renderIndevidosPainel(); }
 function _indTogglePrioridades() { _indPrioridadesExpandido = !_indPrioridadesExpandido; renderIndevidosPainel(); }
 
 // ── Charts ────────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// FUNÇÕES PURAS DE CÁLCULO — ORDENS INDEVIDAS
+// Única fonte de verdade dos cálculos homologados (recorrência, causa raiz,
+// concentração, prioridades, tendência), consumida tanto pelo módulo Ordens
+// Indevidas quanto pelo Dashboard da Qualidade. Nunca escrevem no DOM.
+// ═══════════════════════════════════════════════════════════════════════════
+
+function _indClassifRecorrencia(n) {
+  return n>=3 ? {label:'Recorrente', color:'#e24b4a', bg:'rgba(226,75,74,.1)', bd:'rgba(226,75,74,.3)'}
+       : n===2 ? {label:'Atenção',    color:'#f59e0b', bg:'rgba(245,158,11,.1)', bd:'rgba(245,158,11,.3)'}
+       :         {label:'Pontual',    color:'#94a3b8', bg:'rgba(255,255,255,.05)', bd:'rgba(255,255,255,.1)'};
+}
+
+function _indCalcRankingPostos(dados) {
+  const cntP = {}; dados.forEach(r=>{if(r.loja)cntP[r.loja]=(cntP[r.loja]||0)+1;});
+  return Object.entries(cntP).sort((a,b)=>b[1]-a[1]);
+}
+
+function _indCalcRankingServicos(dados) {
+  const cntS = {}; dados.forEach(r=>{if(r.descricaoServico)cntS[r.descricaoServico]=(cntS[r.descricaoServico]||0)+1;});
+  return Object.entries(cntS).sort((a,b)=>b[1]-a[1]);
+}
+
+function _indCalcCruzadoPostoServico(dados) {
+  const byPosto = {};
+  dados.forEach(r=>{
+    if(!r.loja||!r.descricaoServico)return;
+    if(!byPosto[r.loja])byPosto[r.loja]={total:0,servicos:{}};
+    byPosto[r.loja].total++;
+    byPosto[r.loja].servicos[r.descricaoServico]=(byPosto[r.loja].servicos[r.descricaoServico]||0)+1;
+  });
+  return byPosto;
+}
+
+function _indCalcCruzadoServicoPosto(dados) {
+  const byServ = {};
+  dados.forEach(r=>{
+    if(!r.descricaoServico||!r.loja)return;
+    if(!byServ[r.descricaoServico])byServ[r.descricaoServico]={total:0,postos:{}};
+    byServ[r.descricaoServico].total++;
+    byServ[r.descricaoServico].postos[r.loja]=(byServ[r.descricaoServico].postos[r.loja]||0)+1;
+  });
+  return byServ;
+}
+
+// Recorrência por Posto — considera TODAS as competências válidas em baseDados (tipicamente
+// allIndevidos, ignorando seleção de mês, já que recorrência é por definição multi-mês),
+// respeitando filtroPosto/filtroServico quando informados. Cada posto conta 1x por competência.
+function _indCalcRecorrenciaPorPosto(baseDados, filtroPosto, filtroServico) {
+  const recorrDados = baseDados.filter(r => {
+    if (filtroPosto   && r.loja             !== filtroPosto)   return false;
+    if (filtroServico && r.descricaoServico !== filtroServico) return false;
+    return true;
+  });
+  const recPorPosto = {}; // loja -> {competencias:Set, total:number}
+  recorrDados.forEach(r => {
+    if (!r.loja) return;
+    if (!recPorPosto[r.loja]) recPorPosto[r.loja] = { competencias: new Set(), total: 0 };
+    recPorPosto[r.loja].total++;
+    if (r.mesRef) recPorPosto[r.loja].competencias.add(r.mesRef);
+  });
+  return recPorPosto;
+}
+
+function _indRankRecorrencia(recPorPosto) {
+  return Object.entries(recPorPosto)
+    .map(([posto,d]) => ({ posto, nComp: d.competencias.size, total: d.total, competencias:[...d.competencias].sort() }))
+    .sort((a,b) => b.nComp - a.nComp || b.total - a.total);
+}
+
+// Causa Raiz Predominante — sobre `dados` (competência(s) + filtros ativos)
+function _indCalcCausaRaiz(dados) {
+  const cntCR = {}, crPostos = {};
+  dados.forEach(r => {
+    const cr = r.causaRaiz || '(não informado)';
+    cntCR[cr] = (cntCR[cr]||0) + 1;
+    if (r.loja) { crPostos[cr] = crPostos[cr] || {}; crPostos[cr][r.loja] = (crPostos[cr][r.loja]||0) + 1; }
+  });
+  const rankCR = Object.entries(cntCR).sort((a,b)=>b[1]-a[1]);
+  return rankCR.map(([cr,v]) => ({
+    causaRaiz: cr, qtd: v,
+    pct: dados.length ? Math.round(v/dados.length*100) : 0,
+    topPostos: Object.entries(crPostos[cr]||{}).sort((a,b)=>b[1]-a[1]).slice(0,3)
+  }));
+}
+
+// Concentração Operacional — frases dinâmicas, sobre `dados` + rankings já calculados
+function _indCalcConcentracao(dados, rankP, rankS) {
+  if (!dados.length || !rankP.length) return null;
+  const top5P = rankP.slice(0,5), somaTop5P = top5P.reduce((s,[,v])=>s+v,0);
+  const top3S = rankS.slice(0,3), somaTop3S = top3S.reduce((s,[,v])=>s+v,0);
+  const postoMax = rankP[0];
+  return {
+    top5P, pctTop5P: Math.round(somaTop5P/dados.length*100),
+    top3S, pctTop3S: dados.length ? Math.round(somaTop3S/dados.length*100) : 0,
+    postoMax, pctPostoMax: Math.round(postoMax[1]/dados.length*100)
+  };
+}
+
+// Prioridades de Treinamento — cruza volume + recorrência + serviço crítico + atendentes + concentração
+function _indCalcPrioridadesTreinamento(dados, recPorPosto, byPosto) {
+  const cntP = {}; dados.forEach(r=>{if(r.loja)cntP[r.loja]=(cntP[r.loja]||0)+1;});
+  const atendPorPosto = {};
+  dados.forEach(r => { if (r.loja && r.atendente) (atendPorPosto[r.loja] = atendPorPosto[r.loja] || new Set()).add(r.atendente); });
+  const nPostosDados = new Set(dados.map(r=>r.loja).filter(Boolean)).size;
+  const mediaPorPosto = nPostosDados ? dados.length / nPostosDados : 0;
+
+  return Object.entries(cntP).map(([posto,total]) => {
+    const rec = recPorPosto[posto] || { competencias: new Set(), total: 0 };
+    const nComp = rec.competencias.size;
+    const classif = _indClassifRecorrencia(nComp);
+    const servicosPosto = byPosto[posto]?.servicos || {};
+    const principalServico = Object.entries(servicosPosto).sort((a,b)=>b[1]-a[1])[0];
+    const atendCount = atendPorPosto[posto]?.size || 0;
+    const pct = dados.length ? Math.round(total/dados.length*100) : 0;
+    const critico = nComp >= 2 || total >= mediaPorPosto; // criticidade real — dinâmico, não fixo
+    const score = nComp*100 + total;
+    return { posto, total, nComp, classif, principalServico: principalServico ? principalServico[0] : '—', atendCount, pct, critico, score };
+  }).filter(p => p.critico).sort((a,b) => b.score - a.score);
+}
+
+function _indMontarRecomendacao(p) {
+  const partes = [];
+  if (p.classif.label === 'Recorrente') partes.push(`recorrente há ${p.nComp} competências`);
+  else if (p.classif.label === 'Atenção') partes.push(`ocorrência em ${p.nComp} competências`);
+  if (p.principalServico !== '—') partes.push(`foco no serviço "${p.principalServico}"`);
+  if (p.atendCount > 1) partes.push(`${p.atendCount} atendentes envolvidos`);
+  return `Treinamento prioritário para <strong>${p.posto}</strong>: ${partes.join(', ')} — ${p.total} indevidos (${p.pct}% do total no período analisado).`;
+}
+
+// Tendência por Posto — as 2 competências mais recentes de mesesComDados, ignora seleção de mês,
+// respeita filtroPosto/filtroServico. Retorna null se houver menos de 2 competências.
+function _indCalcTendenciaPorPosto(baseDados, mesesComDados, filtroPosto, filtroServico) {
+  const compsOrdenadas = [...mesesComDados].sort();
+  const mesAnt = compsOrdenadas[compsOrdenadas.length-2];
+  const mesAtu = compsOrdenadas[compsOrdenadas.length-1];
+  if (!mesAnt || !mesAtu) return null;
+
+  const baseFiltro = r => {
+    if (filtroPosto   && r.loja             !== filtroPosto)   return false;
+    if (filtroServico && r.descricaoServico !== filtroServico) return false;
+    return true;
+  };
+  const cntAnt = {}, cntAtu = {};
+  baseDados.filter(r => r.mesRef===mesAnt && baseFiltro(r)).forEach(r => { if (r.loja) cntAnt[r.loja]=(cntAnt[r.loja]||0)+1; });
+  baseDados.filter(r => r.mesRef===mesAtu && baseFiltro(r)).forEach(r => { if (r.loja) cntAtu[r.loja]=(cntAtu[r.loja]||0)+1; });
+  const todosPostosT = new Set([...Object.keys(cntAnt), ...Object.keys(cntAtu)]);
+  const linhas = [...todosPostosT].map(posto => {
+    const a = cntAnt[posto]||0, b = cntAtu[posto]||0;
+    const varAbs = b - a;
+    let classif;
+    if (a===0 && b>0) classif = 'Nova ocorrência';
+    else if (a>0 && b===0) classif = 'Sem ocorrência na competência atual';
+    else if (b<a) classif = 'Melhorou';
+    else if (b>a) classif = 'Piorou';
+    else classif = 'Estável';
+    const varPct = a>0 ? Math.round((b-a)/a*100) : null; // evita divisão por zero
+    return { posto, a, b, varAbs, varPct, classif };
+  }).sort((x,y) => Math.abs(y.varAbs) - Math.abs(x.varAbs));
+
+  const melhoraram = linhas.filter(l=>l.classif==='Melhorou').length;
+  const pioraram   = linhas.filter(l=>l.classif==='Piorou').length;
+  const maiorMelhora = linhas.filter(l=>l.classif==='Melhorou' && l.varPct!==null).sort((x,y)=>x.varPct-y.varPct)[0];
+  const maiorPiora   = linhas.filter(l=>l.classif==='Piorou'   && l.varPct!==null).sort((x,y)=>y.varPct-x.varPct)[0];
+
+  return { mesAnt, mesAtu, linhas, melhoraram, pioraram, maiorMelhora, maiorPiora };
+}
+
+function _indCorClassifTendencia(c) {
+  return c==='Melhorou' ? '#1baf7a' : c==='Piorou' ? '#e24b4a' : c==='Nova ocorrência' ? '#f59e0b'
+       : c==='Sem ocorrência na competência atual' ? 'var(--text3)' : '#94a3b8';
+}
+
 function _renderIndevidosCharts(dados) {
   _chartIndMensal = _dstroyIndChart(_chartIndMensal);
   _chartIndMotivo = _dstroyIndChart(_chartIndMotivo);
@@ -14324,8 +14552,7 @@ function _renderIndevidosCharts(dados) {
       ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.fillText(v,el.x,el.y-8);ctx.restore();});}}]});
 
   // Ranking completo de postos (sem slice — destaque visual nos 5 primeiros)
-  const cntP={}; dados.forEach(r=>{if(r.loja)cntP[r.loja]=(cntP[r.loja]||0)+1;});
-  const rankP=Object.entries(cntP).sort((a,b)=>b[1]-a[1]);
+  const rankP=_indCalcRankingPostos(dados);
   const maxP=rankP[0]?.[1]||1;
   const tblP=document.getElementById('ind-rank-postos');
   if(tblP) tblP.innerHTML=rankP.length?rankP.map(([p,v],i)=>`
@@ -14339,8 +14566,7 @@ function _renderIndevidosCharts(dados) {
     </div>`).join(''):'<div style="color:var(--text3);font-size:13px;padding:6px">Sem dados</div>';
 
   // Ranking de serviços usando DESCRIÇÃO_SERVIÇO (descricaoServico)
-  const cntS={}; dados.forEach(r=>{if(r.descricaoServico)cntS[r.descricaoServico]=(cntS[r.descricaoServico]||0)+1;});
-  const rankS=Object.entries(cntS).sort((a,b)=>b[1]-a[1]);
+  const rankS=_indCalcRankingServicos(dados);
   const maxS=rankS[0]?.[1]||1;
   const tblS=document.getElementById('ind-rank-servicos');
   if(tblS) tblS.innerHTML=rankS.length?rankS.map(([s,v],i)=>`
@@ -14354,25 +14580,8 @@ function _renderIndevidosCharts(dados) {
 
   // Recorrência por Posto — considera TODAS as competências válidas (ignora a seleção de pills,
   // já que recorrência é por definição multi-mês), respeita filtros ativos de Posto/Serviço.
-  // Cada posto conta 1x por competência em que aparece, independente da quantidade naquele mês.
-  const _indClassifRecorrencia = n => n>=3 ? {label:'Recorrente', color:'#e24b4a', bg:'rgba(226,75,74,.1)', bd:'rgba(226,75,74,.3)'}
-                                     : n===2 ? {label:'Atenção',    color:'#f59e0b', bg:'rgba(245,158,11,.1)', bd:'rgba(245,158,11,.3)'}
-                                     :         {label:'Pontual',    color:'#94a3b8', bg:'rgba(255,255,255,.05)', bd:'rgba(255,255,255,.1)'};
-  const recorrDados = allIndevidos.filter(r => {
-    if (_indFiltroPosto   && r.loja             !== _indFiltroPosto)   return false;
-    if (_indFiltroServico && r.descricaoServico !== _indFiltroServico) return false;
-    return true;
-  });
-  const recPorPosto = {}; // loja -> {competencias:Set, total:number}
-  recorrDados.forEach(r => {
-    if (!r.loja) return;
-    if (!recPorPosto[r.loja]) recPorPosto[r.loja] = { competencias: new Set(), total: 0 };
-    recPorPosto[r.loja].total++;
-    if (r.mesRef) recPorPosto[r.loja].competencias.add(r.mesRef);
-  });
-  const rankRec = Object.entries(recPorPosto)
-    .map(([posto,d]) => ({ posto, nComp: d.competencias.size, total: d.total, competencias:[...d.competencias].sort() }))
-    .sort((a,b) => b.nComp - a.nComp || b.total - a.total);
+  const recPorPosto = _indCalcRecorrenciaPorPosto(allIndevidos, _indFiltroPosto, _indFiltroServico);
+  const rankRec = _indRankRecorrencia(recPorPosto);
   const tblRec = document.getElementById('ind-recorrencia-posto');
   if (tblRec) tblRec.innerHTML = rankRec.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px">${rankRec.map(r=>{
     const c = _indClassifRecorrencia(r.nComp);
@@ -14384,13 +14593,7 @@ function _renderIndevidosCharts(dados) {
   }).join('')}</div>` : '<div style="color:var(--text3);font-size:13px;padding:6px">Sem dados</div>';
 
   // Cruzado Posto → Serviços
-  const byPosto={};
-  dados.forEach(r=>{
-    if(!r.loja||!r.descricaoServico)return;
-    if(!byPosto[r.loja])byPosto[r.loja]={total:0,servicos:{}};
-    byPosto[r.loja].total++;
-    byPosto[r.loja].servicos[r.descricaoServico]=(byPosto[r.loja].servicos[r.descricaoServico]||0)+1;
-  });
+  const byPosto=_indCalcCruzadoPostoServico(dados);
   const rankPosto=Object.entries(byPosto).sort((a,b)=>b[1].total-a[1].total);
   const tblCP=document.getElementById('ind-cruzado-posto');
   if(tblCP) tblCP.innerHTML=rankPosto.length?rankPosto.map(([p,d])=>`
@@ -14404,13 +14607,7 @@ function _renderIndevidosCharts(dados) {
     </div>`).join(''):'<div style="color:var(--text3);font-size:13px;padding:6px">Sem dados</div>';
 
   // Cruzado Serviço → Postos
-  const byServ={};
-  dados.forEach(r=>{
-    if(!r.descricaoServico||!r.loja)return;
-    if(!byServ[r.descricaoServico])byServ[r.descricaoServico]={total:0,postos:{}};
-    byServ[r.descricaoServico].total++;
-    byServ[r.descricaoServico].postos[r.loja]=(byServ[r.descricaoServico].postos[r.loja]||0)+1;
-  });
+  const byServ=_indCalcCruzadoServicoPosto(dados);
   const rankServ=Object.entries(byServ).sort((a,b)=>b[1].total-a[1].total);
   const tblCS=document.getElementById('ind-cruzado-servico');
   if(tblCS) tblCS.innerHTML=rankServ.length?rankServ.map(([s,d])=>`
@@ -14424,26 +14621,19 @@ function _renderIndevidosCharts(dados) {
     </div>`).join(''):'<div style="color:var(--text3);font-size:13px;padding:6px">Sem dados</div>';
 
   // ── Análise: Causa Raiz Predominante (sobre `dados` — competência(s) + filtros ativos) ──
-  const cntCR = {}, crPostos = {};
-  dados.forEach(r => {
-    const cr = r.causaRaiz || '(não informado)';
-    cntCR[cr] = (cntCR[cr]||0) + 1;
-    if (r.loja) { crPostos[cr] = crPostos[cr] || {}; crPostos[cr][r.loja] = (crPostos[cr][r.loja]||0) + 1; }
-  });
-  const rankCR = Object.entries(cntCR).sort((a,b)=>b[1]-a[1]);
+  const causaRaizArr = _indCalcCausaRaiz(dados);
   const tblCR = document.getElementById('ind-causa-raiz');
-  if (tblCR) tblCR.innerHTML = rankCR.length ? `
+  if (tblCR) tblCR.innerHTML = causaRaizArr.length ? `
     <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
       <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15)">
         ${['Causa Raiz','Qtd','%','Postos mais associados'].map(h=>`<th style="padding:5px 10px;text-align:left;color:var(--text3);font-weight:600">${h}</th>`).join('')}
       </tr></thead>
-      <tbody>${rankCR.map(([cr,v])=>{
-        const pct = dados.length ? Math.round(v/dados.length*100) : 0;
-        const topPostos = Object.entries(crPostos[cr]||{}).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([p,n])=>`${p} (${n})`).join(', ');
+      <tbody>${causaRaizArr.map(cr=>{
+        const topPostos = cr.topPostos.map(([p,n])=>`${p} (${n})`).join(', ');
         return `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
-          <td style="padding:5px 10px;font-weight:600">${cr}</td>
-          <td style="padding:5px 10px">${v}</td>
-          <td style="padding:5px 10px">${pct}%</td>
+          <td style="padding:5px 10px;font-weight:600">${cr.causaRaiz}</td>
+          <td style="padding:5px 10px">${cr.qtd}</td>
+          <td style="padding:5px 10px">${cr.pct}%</td>
           <td style="padding:5px 10px;color:var(--text2)">${topPostos||'—'}</td>
         </tr>`;
       }).join('')}</tbody>
@@ -14452,50 +14642,20 @@ function _renderIndevidosCharts(dados) {
   // ── Análise: Concentração Operacional (frases 100% dinâmicas, sobre `dados`) ──
   const divConc = document.getElementById('ind-concentracao');
   if (divConc) {
-    if (!dados.length || !rankP.length) {
+    const conc = _indCalcConcentracao(dados, rankP, rankS);
+    if (!conc) {
       divConc.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:6px">Sem dados</div>';
     } else {
-      const top5P = rankP.slice(0,5), somaTop5P = top5P.reduce((s,[,v])=>s+v,0);
-      const pctTop5P = Math.round(somaTop5P/dados.length*100);
-      const top3S = rankS.slice(0,3), somaTop3S = top3S.reduce((s,[,v])=>s+v,0);
-      const pctTop3S = dados.length ? Math.round(somaTop3S/dados.length*100) : 0;
-      const postoMax = rankP[0];
-      const pctPostoMax = Math.round(postoMax[1]/dados.length*100);
       divConc.innerHTML = `<div style="font-size:13px;line-height:1.9">
-        <div>📍 Os <strong>${top5P.length}</strong> postos mais críticos representam <strong>${pctTop5P}%</strong> dos indevidos.</div>
-        ${rankS.length?`<div>🔧 Os <strong>${top3S.length}</strong> serviços mais críticos representam <strong>${pctTop3S}%</strong> dos indevidos.</div>`:''}
-        <div>🏪 O posto <strong>${postoMax[0]}</strong> concentra <strong>${pctPostoMax}%</strong> dos registros.</div>
+        <div>📍 Os <strong>${conc.top5P.length}</strong> postos mais críticos representam <strong>${conc.pctTop5P}%</strong> dos indevidos.</div>
+        ${rankS.length?`<div>🔧 Os <strong>${conc.top3S.length}</strong> serviços mais críticos representam <strong>${conc.pctTop3S}%</strong> dos indevidos.</div>`:''}
+        <div>🏪 O posto <strong>${conc.postoMax[0]}</strong> concentra <strong>${conc.pctPostoMax}%</strong> dos registros.</div>
       </div>`;
     }
   }
 
   // ── Análise: Prioridades de Treinamento (cruza volume + recorrência + serviço crítico + atendentes + concentração) ──
-  const atendPorPosto = {};
-  dados.forEach(r => { if (r.loja && r.atendente) (atendPorPosto[r.loja] = atendPorPosto[r.loja] || new Set()).add(r.atendente); });
-  const nPostosDados = new Set(dados.map(r=>r.loja).filter(Boolean)).size;
-  const mediaPorPosto = nPostosDados ? dados.length / nPostosDados : 0;
-
-  const prioridades = Object.entries(cntP).map(([posto,total]) => {
-    const rec = recPorPosto[posto] || { competencias: new Set(), total: 0 };
-    const nComp = rec.competencias.size;
-    const classif = _indClassifRecorrencia(nComp);
-    const servicosPosto = byPosto[posto]?.servicos || {};
-    const principalServico = Object.entries(servicosPosto).sort((a,b)=>b[1]-a[1])[0];
-    const atendCount = atendPorPosto[posto]?.size || 0;
-    const pct = dados.length ? Math.round(total/dados.length*100) : 0;
-    const critico = nComp >= 2 || total >= mediaPorPosto; // criticidade real — dinâmico, não fixo
-    const score = nComp*100 + total;
-    return { posto, total, nComp, classif, principalServico: principalServico ? principalServico[0] : '—', atendCount, pct, critico, score };
-  }).filter(p => p.critico).sort((a,b) => b.score - a.score);
-
-  const _indMontarRecomendacao = p => {
-    const partes = [];
-    if (p.classif.label === 'Recorrente') partes.push(`recorrente há ${p.nComp} competências`);
-    else if (p.classif.label === 'Atenção') partes.push(`ocorrência em ${p.nComp} competências`);
-    if (p.principalServico !== '—') partes.push(`foco no serviço "${p.principalServico}"`);
-    if (p.atendCount > 1) partes.push(`${p.atendCount} atendentes envolvidos`);
-    return `Treinamento prioritário para <strong>${p.posto}</strong>: ${partes.join(', ')} — ${p.total} indevidos (${p.pct}% do total no período analisado).`;
-  };
+  const prioridades = _indCalcPrioridadesTreinamento(dados, recPorPosto, byPosto);
 
   const divPrio = document.getElementById('ind-prioridades-treinamento');
   if (divPrio) {
@@ -14528,45 +14688,15 @@ function _renderIndevidosCharts(dados) {
   //    respeita filtros ativos de Posto/Serviço — a comparação depende de dois períodos fixos) ──
   const divTend = document.getElementById('ind-tendencia-posto');
   if (divTend) {
-    const compsOrdenadas = [..._indevidosMesesComDados].sort();
-    const mesAnt = compsOrdenadas[compsOrdenadas.length-2];
-    const mesAtu = compsOrdenadas[compsOrdenadas.length-1];
-    if (!mesAnt || !mesAtu) {
+    const tend = _indCalcTendenciaPorPosto(allIndevidos, _indevidosMesesComDados, _indFiltroPosto, _indFiltroServico);
+    if (!tend) {
       divTend.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:6px">Menos de duas competências disponíveis para comparação.</div>';
     } else {
-      const baseFiltro = r => {
-        if (_indFiltroPosto   && r.loja             !== _indFiltroPosto)   return false;
-        if (_indFiltroServico && r.descricaoServico !== _indFiltroServico) return false;
-        return true;
-      };
-      const cntAnt = {}, cntAtu = {};
-      allIndevidos.filter(r => r.mesRef===mesAnt && baseFiltro(r)).forEach(r => { if (r.loja) cntAnt[r.loja]=(cntAnt[r.loja]||0)+1; });
-      allIndevidos.filter(r => r.mesRef===mesAtu && baseFiltro(r)).forEach(r => { if (r.loja) cntAtu[r.loja]=(cntAtu[r.loja]||0)+1; });
-      const todosPostosT = new Set([...Object.keys(cntAnt), ...Object.keys(cntAtu)]);
-      const linhasT = [...todosPostosT].map(posto => {
-        const a = cntAnt[posto]||0, b = cntAtu[posto]||0;
-        const varAbs = b - a;
-        let classif;
-        if (a===0 && b>0) classif = 'Nova ocorrência';
-        else if (a>0 && b===0) classif = 'Sem ocorrência na competência atual';
-        else if (b<a) classif = 'Melhorou';
-        else if (b>a) classif = 'Piorou';
-        else classif = 'Estável';
-        const varPct = a>0 ? Math.round((b-a)/a*100) : null; // evita divisão por zero
-        return { posto, a, b, varAbs, varPct, classif };
-      }).sort((x,y) => Math.abs(y.varAbs) - Math.abs(x.varAbs));
-
-      const melhoraram = linhasT.filter(l=>l.classif==='Melhorou').length;
-      const pioraram   = linhasT.filter(l=>l.classif==='Piorou').length;
-      const maiorMelhora = linhasT.filter(l=>l.classif==='Melhorou' && l.varPct!==null).sort((x,y)=>x.varPct-y.varPct)[0];
-      const maiorPiora   = linhasT.filter(l=>l.classif==='Piorou'   && l.varPct!==null).sort((x,y)=>y.varPct-x.varPct)[0];
-
+      const { mesAnt, mesAtu, linhas: linhasT, melhoraram, pioraram, maiorMelhora, maiorPiora } = tend;
       const resumoPartes = [];
       if (maiorMelhora) resumoPartes.push(`O posto ${maiorMelhora.posto} reduziu seus indevidos em ${Math.abs(maiorMelhora.varPct)}% em relação à competência anterior.`);
       if (maiorPiora)   resumoPartes.push(`O posto ${maiorPiora.posto} aumentou seus indevidos em ${maiorPiora.varPct}%.`);
       resumoPartes.push(`${melhoraram} posto(s) melhoraram e ${pioraram} posto(s) pioraram.`);
-
-      const corClassif = c => c==='Melhorou' ? '#1baf7a' : c==='Piorou' ? '#e24b4a' : c==='Nova ocorrência' ? '#f59e0b' : c==='Sem ocorrência na competência atual' ? 'var(--text3)' : '#94a3b8';
 
       divTend.innerHTML = `
         <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Comparando <strong>${_indMesLabel(mesAnt)}</strong> → <strong>${_indMesLabel(mesAtu)}</strong></div>
@@ -14582,7 +14712,7 @@ function _renderIndevidosCharts(dados) {
               <td style="padding:5px 10px">${l.b}</td>
               <td style="padding:5px 10px;color:${l.varAbs<0?'#1baf7a':l.varAbs>0?'#e24b4a':'var(--text3)'}">${l.varAbs>0?'+':''}${l.varAbs}</td>
               <td style="padding:5px 10px;color:${l.varPct===null?'var(--text3)':l.varPct<0?'#1baf7a':l.varPct>0?'#e24b4a':'var(--text3)'}">${l.varPct===null?'—':(l.varPct>0?'+':'')+l.varPct+'%'}</td>
-              <td style="padding:5px 10px;font-weight:600;color:${corClassif(l.classif)}">${l.classif}</td>
+              <td style="padding:5px 10px;font-weight:600;color:${_indCorClassifTendencia(l.classif)}">${l.classif}</td>
             </tr>`).join('')}</tbody>
         </table></div>
       `;
@@ -15195,8 +15325,371 @@ async function _diagReversaoJulhoExecutarClick() {
   renderDiagImport();
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// FERRAMENTAS ADMINISTRATIVAS DE MANUTENÇÃO — window.* (console do navegador)
+// ═══════════════════════════════════════════════════════════════════════════
+// DASHBOARD DA QUALIDADE — Gestão à Vista executiva/operacional
+// Somente leitura e consolidação. Sem importação própria, sem collection
+// própria, sem novo listener — consome allIndevidos/_indevidosMesesComDados
+// (já mantidos vivos por initIndevidos(), chamado uma vez no bootstrap) e as
+// funções puras _indCalc*/_indClassifRecorrencia já homologadas.
+// Nesta versão, só Ordens Indevidas está disponível.
+// ═══════════════════════════════════════════════════════════════════════════
+
+let _qualMesesSel     = []; // seleção própria do Dashboard, independente das pills de Ordens Indevidas
+let _qualFiltroPosto  = '';
+
+const QUAL_META_INDEVIDOS = 10; // menor que 10/mês — meta geral da gerência, não individual por posto
+
+function _qualPostosDisponiveis() {
+  return [...new Set(allIndevidos.map(r=>r.loja).filter(Boolean))].sort();
+}
+
+// Base para recorrência/tendência: histórico completo, só filtro de Posto (ignora meses selecionados)
+function _qualDadosBase() {
+  return _qualFiltroPosto ? allIndevidos.filter(r=>r.loja===_qualFiltroPosto) : allIndevidos;
+}
+
+// Base para cards/ranking/causa raiz/concentração: respeita meses + posto selecionados
+function _qualDadosPeriodo() {
+  const meses = _qualMesesSel.length ? _qualMesesSel : _indevidosMesesComDados;
+  return allIndevidos.filter(r => meses.includes(r.mesRef) && (!_qualFiltroPosto || r.loja===_qualFiltroPosto));
+}
+
+// ── Card 1: Ordens Indevidas — regra mensal vs. período (aprovada) ─────────
+function _qualCalcCardIndevidos() {
+  const porMes = {};
+  (_qualFiltroPosto ? allIndevidos.filter(r=>r.loja===_qualFiltroPosto) : allIndevidos)
+    .forEach(r => { if (r.mesRef) porMes[r.mesRef] = (porMes[r.mesRef]||0)+1; });
+
+  const mesesSel = _qualMesesSel.length ? _qualMesesSel : _indevidosMesesComDados;
+  if (!mesesSel.length) return { modo:'vazio' };
+
+  if (mesesSel.length === 1) {
+    const mes = mesesSel[0];
+    const resultado = porMes[mes] || 0;
+    const status = resultado < QUAL_META_INDEVIDOS ? 'verde' : resultado === QUAL_META_INDEVIDOS ? 'amarelo' : 'vermelho';
+    const todosOrdenados = [..._indevidosMesesComDados].sort();
+    const idx = todosOrdenados.indexOf(mes);
+    const mesAnteriorRef = idx > 0 ? todosOrdenados[idx-1] : null;
+    const resultadoAnterior = mesAnteriorRef ? (porMes[mesAnteriorRef]||0) : null;
+    return { modo:'unico', mes, resultado, meta:QUAL_META_INDEVIDOS, status, metaAtingida: status==='verde',
+             mesAnteriorRef, resultadoAnterior };
+  }
+
+  const mesesValidos = mesesSel.filter(m => _indevidosMesesComDados.includes(m));
+  const total = mesesValidos.reduce((s,m)=>s+(porMes[m]||0),0);
+  const media = mesesValidos.length ? total/mesesValidos.length : 0;
+  const mesesDentroMeta = mesesValidos.filter(m => (porMes[m]||0) < QUAL_META_INDEVIDOS).length;
+  const pctMesesOk = mesesValidos.length ? Math.round(mesesDentroMeta/mesesValidos.length*100) : 0;
+  const status = mesesDentroMeta===mesesValidos.length ? 'verde' : pctMesesOk>50 ? 'amarelo' : 'vermelho';
+  return { modo:'periodo', meses:mesesValidos, total, media, meta:QUAL_META_INDEVIDOS,
+           mesesDentroMeta, totalMeses:mesesValidos.length, pctMesesOk, status };
+}
+
+// ── Card 4: Qualidade Geral — só conta metas DISPONÍVEIS, sem peso, sem soma incompatível ──
+function _qualCalcCardGeral(cardInd) {
+  if (cardInd.modo === 'vazio') return null;
+  if (cardInd.modo === 'unico') {
+    const atingida = cardInd.metaAtingida;
+    return { texto: `${atingida?1:0} de 1 meta atingida`, status: atingida?'verde':'vermelho', indicadoresDisponiveis:1 };
+  }
+  const status = cardInd.mesesDentroMeta===cardInd.totalMeses ? 'verde' : cardInd.pctMesesOk>50 ? 'amarelo' : 'vermelho';
+  return { texto:`Ordens Indevidas dentro da meta em ${cardInd.mesesDentroMeta} de ${cardInd.totalMeses} meses (${cardInd.pctMesesOk}%)`, status, indicadoresDisponiveis:1 };
+}
+
+const _qualCorStatus = s => s==='verde' ? '#1baf7a' : s==='amarelo' ? '#eda100' : '#e24b4a';
+const _qualBgStatus  = s => s==='verde' ? 'rgba(27,175,122,.1)' : s==='amarelo' ? 'rgba(237,161,0,.1)' : 'rgba(226,75,74,.1)';
+const _qualBdStatus  = s => s==='verde' ? 'rgba(27,175,122,.3)' : s==='amarelo' ? 'rgba(237,161,0,.3)' : 'rgba(226,75,74,.3)';
+const _qualLabelStatus = s => s==='verde' ? 'Dentro da meta' : s==='amarelo' ? 'No limite da meta' : 'Fora da meta';
+
+function _qualClassifPrioridade(p, maxScore) {
+  if (p.classif.label === 'Recorrente') {
+    return p.score >= maxScore*0.7
+      ? {label:'Prioridade crítica', color:'#e24b4a', bg:'rgba(226,75,74,.1)', bd:'rgba(226,75,74,.3)'}
+      : {label:'Prioridade alta',    color:'#f59e0b', bg:'rgba(245,158,11,.1)', bd:'rgba(245,158,11,.3)'};
+  }
+  if (p.classif.label === 'Atenção') return {label:'Atenção', color:'#eda100', bg:'rgba(237,161,0,.1)', bd:'rgba(237,161,0,.3)'};
+  return {label:'Acompanhamento', color:'#94a3b8', bg:'rgba(255,255,255,.05)', bd:'rgba(255,255,255,.1)'};
+}
+
+// ── Controles dos filtros do Dashboard ──────────────────────────────────────
+function _qualToggleMes(m, evt) {
+  if (!_indevidosMesesComDados.includes(m)) return;
+  if (evt?.shiftKey) {
+    const i = _qualMesesSel.indexOf(m);
+    if (i>=0) _qualMesesSel.splice(i,1); else _qualMesesSel.push(m);
+  } else {
+    _qualMesesSel = (_qualMesesSel.length===1 && _qualMesesSel[0]===m) ? [] : [m];
+  }
+  renderQualidadeDashboard();
+}
+function _qualTodosMeses()  { _qualMesesSel = [..._indevidosMesesComDados]; renderQualidadeDashboard(); }
+function _qualLimparMeses() { _qualMesesSel = []; renderQualidadeDashboard(); }
+function _qualAplicarFiltroPosto() {
+  _qualFiltroPosto = document.getElementById('qual-fil-posto')?.value || '';
+  renderQualidadeDashboard();
+}
+
+// ── Render principal ─────────────────────────────────────────────────────
+function renderQualidadeDashboard() {
+  if (!podeVerIndevidos()) return;
+  const wrap = document.getElementById('qual-dash-wrap'); if (!wrap) return;
+
+  if (!_indevidosMesesComDados.length) {
+    wrap.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text3)">Nenhuma Ocorrência importada ainda em Ordens Indevidas.</div>';
+    return;
+  }
+
+  const mesesSel = _qualMesesSel.length ? _qualMesesSel : _indevidosMesesComDados;
+  const dadosPeriodo = _qualDadosPeriodo();
+  const dadosBase    = _qualDadosBase();
+  const postosDisp   = _qualPostosDisponiveis();
+  const selLabel     = _qualMesesSel.length ? _qualMesesSel.map(_indMesLabel).join(', ') : `Todos (${_indevidosMesesComDados.length})`;
+
+  const cardInd   = _qualCalcCardIndevidos();
+  const cardGeral = _qualCalcCardGeral(cardInd);
+
+  const rankP = _indCalcRankingPostos(dadosPeriodo);
+  const rankS = _indCalcRankingServicos(dadosPeriodo);
+  const causaRaizArr = _indCalcCausaRaiz(dadosPeriodo);
+  const conc  = _indCalcConcentracao(dadosPeriodo, rankP, rankS);
+  const byPosto = _indCalcCruzadoPostoServico(dadosPeriodo);
+  const recPorPosto = _indCalcRecorrenciaPorPosto(dadosBase, '', ''); // já filtrado por posto em dadosBase
+  const prioridades = _indCalcPrioridadesTreinamento(dadosPeriodo, recPorPosto, byPosto);
+  const maxScorePrio = prioridades.reduce((m,p)=>Math.max(m,p.score),1);
+  const tend = _indCalcTendenciaPorPosto(dadosBase, _indevidosMesesComDados, '', '');
+
+  // ── Resumo Executivo (texto 100% dinâmico) ──
+  const resumoPartes = [];
+  if (cardInd.modo==='unico') {
+    resumoPartes.push(`Ordens Indevidas em ${_indMesLabel(cardInd.mes)}: ${cardInd.resultado} ocorrência(s) (meta: menor que ${cardInd.meta}) — ${_qualLabelStatus(cardInd.status).toLowerCase()}.`);
+    if (cardInd.resultadoAnterior!==null) {
+      const diff = cardInd.resultado - cardInd.resultadoAnterior;
+      resumoPartes.push(diff<0 ? `Redução de ${Math.abs(diff)} ocorrência(s) frente ao mês anterior.` : diff>0 ? `Aumento de ${diff} ocorrência(s) frente ao mês anterior.` : 'Mesmo resultado do mês anterior.');
+    }
+  } else {
+    resumoPartes.push(`Ordens Indevidas no período (${selLabel}): total de ${cardInd.total}, média de ${cardInd.media.toFixed(1)}/mês — meta atingida em ${cardInd.mesesDentroMeta} de ${cardInd.totalMeses} meses (${cardInd.pctMesesOk}%).`);
+  }
+  if (conc) resumoPartes.push(`O posto ${conc.postoMax[0]} concentra ${conc.pctPostoMax}% das ocorrências do período.`);
+  if (causaRaizArr[0]) resumoPartes.push(`Principal causa raiz: ${causaRaizArr[0].causaRaiz} (${causaRaizArr[0].pct}% das ocorrências).`);
+  if (prioridades[0]) resumoPartes.push(`Prioridade de atuação: ${prioridades[0].posto}.`);
+
+  // ── Alertas Estratégicos (máx. 5, fundamentados) ──
+  const alertas = [];
+  if (cardInd.status!=='verde') alertas.push({
+    titulo: cardInd.modo==='unico' ? `Meta geral de Ordens Indevidas não atingida em ${_indMesLabel(cardInd.mes)}` : `Meta geral de Ordens Indevidas não atingida em ${cardInd.totalMeses-cardInd.mesesDentroMeta} mês(es) do período`,
+    dados: cardInd.modo==='unico' ? `Resultado: ${cardInd.resultado} · Meta: menor que ${cardInd.meta}` : `Meta atingida em ${cardInd.mesesDentroMeta} de ${cardInd.totalMeses} meses (${cardInd.pctMesesOk}%)`
+  });
+  if (cardInd.modo==='unico' && cardInd.resultadoAnterior!==null && cardInd.resultado > cardInd.resultadoAnterior) alertas.push({
+    titulo: 'Crescimento em relação ao mês anterior',
+    dados: `${_indMesLabel(cardInd.mesAnteriorRef)}: ${cardInd.resultadoAnterior} → ${_indMesLabel(cardInd.mes)}: ${cardInd.resultado}`
+  });
+  const postoRecorrente = prioridades.find(p=>p.classif.label==='Recorrente');
+  if (postoRecorrente) alertas.push({
+    titulo: `Posto ${postoRecorrente.posto} crítico em competências consecutivas`,
+    dados: `${postoRecorrente.nComp} competências com ocorrência · ${postoRecorrente.total} indevidos · serviço principal: ${postoRecorrente.principalServico}`
+  });
+  if (conc && conc.pctTop5P>=50) alertas.push({
+    titulo: `Concentração elevada nos ${conc.top5P.length} postos mais críticos`,
+    dados: `${conc.pctTop5P}% das ocorrências do período concentradas nesses postos`
+  });
+  if (causaRaizArr[0] && causaRaizArr[0].pct>=30) alertas.push({
+    titulo: `Causa raiz recorrente: ${causaRaizArr[0].causaRaiz}`,
+    dados: `${causaRaizArr[0].qtd} ocorrência(s) — ${causaRaizArr[0].pct}% do período · postos mais associados: ${causaRaizArr[0].topPostos.map(([p,n])=>`${p} (${n})`).join(', ')||'—'}`
+  });
+  const alertasFinal = alertas.slice(0,5);
+
+  // ── O que priorizar agora (máx. 5 ações, fundamentadas) ──
+  const acoes = [];
+  prioridades.slice(0,2).forEach(p => acoes.push(`Treinar ${p.posto} no serviço "${p.principalServico}" — ${p.total} indevidos em ${p.nComp} competência(s).`));
+  if (postoRecorrente) acoes.push(`Acompanhar o posto ${postoRecorrente.posto}, recorrente há ${postoRecorrente.nComp} competências.`);
+  if (causaRaizArr[0]) acoes.push(`Revisar a causa raiz predominante "${causaRaizArr[0].causaRaiz}" (${causaRaizArr[0].pct}% das ocorrências).`);
+  if (tend?.maiorPiora) acoes.push(`Verificar o aumento de ${tend.maiorPiora.varPct}% no posto ${tend.maiorPiora.posto} entre ${_indMesLabel(tend.mesAnt)} e ${_indMesLabel(tend.mesAtu)}.`);
+  const acoesFinal = acoes.slice(0,5);
+
+  wrap.innerHTML = `
+    <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">Mês</div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:7px">
+      ${_indevidosMesesComDados.map(m=>{
+        const ativo = _qualMesesSel.includes(m);
+        return `<button onclick="_qualToggleMes('${m}',event)" title="Clique: selecionar. Shift+clique: acumular."
+          style="font-size:11px;padding:3px 10px;border-radius:14px;cursor:pointer;
+            border:1px solid ${ativo?'transparent':'rgba(255,255,255,.22)'};
+            background:${ativo?'#2a78d6':'transparent'};color:${ativo?'#fff':'var(--text2)'};transition:all .12s">${_indMesLabel(m)}</button>`;
+      }).join('')}
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
+      <button onclick="_qualTodosMeses()" style="font-size:11px;padding:2px 10px;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:transparent;color:var(--text3);cursor:pointer">Todos os meses</button>
+      <button onclick="_qualLimparMeses()" style="font-size:11px;padding:2px 10px;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:transparent;color:var(--text3);cursor:pointer">Limpar</button>
+      <div style="margin-left:8px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Posto (Minha Operação)</label>
+        <select class="form-select" id="qual-fil-posto" style="min-width:200px" onchange="_qualAplicarFiltroPosto()">
+          <option value="">Todos os postos</option>
+          ${postosDisp.map(p=>`<option value="${p}" ${_qualFiltroPosto===p?'selected':''}>${p}</option>`).join('')}
+        </select></div>
+      <span style="font-size:11px;background:rgba(42,120,214,.12);color:#185fa5;padding:3px 10px;border-radius:12px;border:1px solid rgba(42,120,214,.25);align-self:flex-end">📅 Meses selecionados: ${selLabel}</span>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Gestão à Vista</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+      <div style="background:${_qualBgStatus(cardInd.status)};border:1px solid ${_qualBdStatus(cardInd.status)};border-radius:12px;padding:14px">
+        <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:6px">ORDENS INDEVIDAS</div>
+        ${cardInd.modo==='unico' ? `
+          <div style="font-size:26px;font-weight:800;color:${_qualCorStatus(cardInd.status)}">${cardInd.resultado}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Meta: menor que ${cardInd.meta}</div>
+          ${cardInd.resultadoAnterior!==null?`<div style="font-size:11px;color:var(--text3)">Mês anterior: ${cardInd.resultadoAnterior}</div>`:''}
+        ` : `
+          <div style="font-size:22px;font-weight:800;color:${_qualCorStatus(cardInd.status)}">${cardInd.total}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Média mensal: ${cardInd.media.toFixed(1)} · Meta: menor que ${cardInd.meta}/mês</div>
+          <div style="font-size:11px;color:var(--text3)">Meta atingida em: ${cardInd.mesesDentroMeta} de ${cardInd.totalMeses} meses (${cardInd.pctMesesOk}%)</div>
+        `}
+        <div style="font-size:11px;font-weight:700;color:${_qualCorStatus(cardInd.status)};margin-top:6px">${_qualLabelStatus(cardInd.status)}</div>
+      </div>
+      <div style="background:var(--surface2);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:14px">
+        <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:6px">RECLAMAÇÕES IMPROCEDENTES</div>
+        <div style="font-size:13px;color:var(--text3);margin-top:8px">Módulo ainda não disponível</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:6px">Meta: menor que 40%</div>
+      </div>
+      <div style="background:var(--surface2);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:14px">
+        <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:6px">TROCAS IMPROCEDENTES</div>
+        <div style="font-size:13px;color:var(--text3);margin-top:8px">Módulo ainda não disponível</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:6px">Meta: menor que 5</div>
+      </div>
+      <div style="background:${cardGeral?_qualBgStatus(cardGeral.status):'var(--surface2)'};border:1px solid ${cardGeral?_qualBdStatus(cardGeral.status):'rgba(255,255,255,.07)'};border-radius:12px;padding:14px">
+        <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:6px">QUALIDADE GERAL</div>
+        <div style="font-size:13px;font-weight:700;color:${cardGeral?_qualCorStatus(cardGeral.status):'var(--text)'};margin-top:8px">${cardGeral?cardGeral.texto:'—'}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:6px">1 indicador disponível</div>
+      </div>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Resumo Executivo</div>
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:16px;font-size:13px;line-height:1.8">
+      ${resumoPartes.map(p=>`<div>${p}</div>`).join('')}
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Evolução Mensal</div>
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:16px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:10px">Ordens Indevidas — ocorrências por mês</div>
+      <div style="position:relative;width:100%;height:170px"><canvas id="qual-c-evolucao"></canvas></div>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Painel de Metas</div>
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:16px">
+      ${_qualFaixaMeta('Ordens Indevidas', cardInd.modo==='unico'?String(cardInd.resultado):`${cardInd.total} (média ${cardInd.media.toFixed(1)}/mês)`, `menor que ${QUAL_META_INDEVIDOS}${cardInd.modo==='unico'?'':'/mês'}`, cardInd.status)}
+      ${_qualFaixaMeta('Reclamações Improcedentes', null, 'menor que 40%', null)}
+      ${_qualFaixaMeta('Trocas Improcedentes', null, 'menor que 5', null)}
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Ranking Geral dos Postos</div>
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:16px;max-height:340px;overflow-y:auto">
+      ${rankP.length ? rankP.map(([p,v],i)=>{
+        const nivel = i<3?{l:'Crítico',c:'#e24b4a'}:i<8?{l:'Atenção',c:'#f59e0b'}:{l:'Normal',c:'var(--text3)'};
+        return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+          <span style="font-size:11px;color:var(--text3);min-width:22px">${i+1}º</span>
+          <span style="font-size:12px;flex:1">${p}</span>
+          <span style="font-size:10px;font-weight:700;color:${nivel.c};background:${nivel.c}1a;border-radius:8px;padding:1px 8px">${nivel.l}</span>
+          <span style="font-size:12px;font-weight:600;min-width:22px;text-align:right">${v}</span>
+        </div>`;
+      }).join('') : '<div style="color:var(--text3);font-size:13px">Sem dados no período</div>'}
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Radar da Qualidade</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px">🏪 Postos críticos</div>
+        ${rankP.slice(0,5).map(([p,v],i)=>`<div style="font-size:12px;padding:3px 0;color:var(--text2)">${i+1}º ${p} <span style="color:var(--text3)">(${v})</span></div>`).join('')||'<div style="color:var(--text3);font-size:12px">Sem dados</div>'}
+      </div>
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px">🔧 Serviços críticos</div>
+        ${rankS.slice(0,5).map(([s,v],i)=>`<div style="font-size:12px;padding:3px 0;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s}">${i+1}º ${s} <span style="color:var(--text3)">(${v})</span></div>`).join('')||'<div style="color:var(--text3);font-size:12px">Sem dados</div>'}
+      </div>
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px">🎯 Principais causas</div>
+        ${causaRaizArr.slice(0,5).map((cr,i)=>`<div style="font-size:12px;padding:3px 0;color:var(--text2)">${i+1}º ${cr.causaRaiz} <span style="color:var(--text3)">(${cr.pct}%)</span></div>`).join('')||'<div style="color:var(--text3);font-size:12px">Sem dados</div>'}
+      </div>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Prioridades Gerenciais</div>
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:16px">
+      ${prioridades.length ? prioridades.slice(0,5).map(p=>{
+        const cl = _qualClassifPrioridade(p, maxScorePrio);
+        const causaPosto = _indCalcCausaRaiz(dadosPeriodo.filter(r=>r.loja===p.posto))[0];
+        return `<div style="padding:9px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+            <span style="font-size:13px;font-weight:700">${p.posto}</span>
+            <span style="font-size:11px;font-weight:700;color:${cl.color};background:${cl.bg};border:1px solid ${cl.bd};border-radius:10px;padding:1px 8px">${cl.label}</span>
+          </div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:3px">Indicador crítico: Ordens Indevidas · Serviço crítico: ${p.principalServico} · Causa: ${causaPosto?causaPosto.causaRaiz:'—'} · Recorrência: ${p.classif.label} (${p.nComp} comp.)</div>
+          <div style="font-size:12px;color:var(--text2);line-height:1.5">${_indMontarRecomendacao(p)}</div>
+        </div>`;
+      }).join('') : '<div style="color:var(--text3);font-size:13px">Nenhuma prioridade relevante no período analisado.</div>'}
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Tendência Geral</div>
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:16px">
+      ${tend ? `
+        <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Comparando <strong>${_indMesLabel(tend.mesAnt)}</strong> → <strong>${_indMesLabel(tend.mesAtu)}</strong></div>
+        <table style="border-collapse:collapse;font-size:12px">
+          <tbody>
+            <tr><td style="padding:4px 14px 4px 0;color:var(--text3)">Indicador</td><td style="padding:4px 0;font-weight:600">Ordens Indevidas</td></tr>
+            <tr><td style="padding:4px 14px 4px 0;color:var(--text3)">Resultado anterior</td><td style="padding:4px 0">${tend.linhas.reduce((s,l)=>s+l.a,0)}</td></tr>
+            <tr><td style="padding:4px 14px 4px 0;color:var(--text3)">Resultado atual</td><td style="padding:4px 0">${tend.linhas.reduce((s,l)=>s+l.b,0)}</td></tr>
+            <tr><td style="padding:4px 14px 4px 0;color:var(--text3)">Variação absoluta</td><td style="padding:4px 0">${(()=>{const v=tend.linhas.reduce((s,l)=>s+l.varAbs,0);return (v>0?'+':'')+v;})()}</td></tr>
+            <tr><td style="padding:4px 14px 4px 0;color:var(--text3)">Classificação</td><td style="padding:4px 0;font-weight:700;color:${tend.melhoraram>tend.pioraram?'#1baf7a':tend.pioraram>tend.melhoraram?'#e24b4a':'var(--text3)'}">${tend.melhoraram>tend.pioraram?'Melhorou':tend.pioraram>tend.melhoraram?'Piorou':'Estável'}</td></tr>
+          </tbody>
+        </table>
+        <div style="font-size:12px;color:var(--text2);margin-top:8px">${tend.melhoraram} posto(s) melhoraram e ${tend.pioraram} posto(s) pioraram entre as duas competências mais recentes.</div>
+      ` : '<div style="color:var(--text3);font-size:13px">Menos de duas competências disponíveis para comparação.</div>'}
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Alertas Estratégicos</div>
+    <div style="margin-bottom:16px">
+      ${alertasFinal.length ? alertasFinal.map(a=>`
+        <details style="background:var(--surface2);border-radius:10px;padding:12px 14px;border:1px solid rgba(255,255,255,.07);margin-bottom:8px">
+          <summary style="cursor:pointer;font-size:13px;font-weight:600">⚠ ${a.titulo}</summary>
+          <div style="margin-top:8px;font-size:12px;color:var(--text2)">${a.dados}</div>
+        </details>`).join('') : '<div style="color:var(--text3);font-size:13px">Nenhum alerta no momento.</div>'}
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">O que priorizar agora</div>
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:16px">
+      ${acoesFinal.length ? `<ol style="margin:0;padding-left:18px;font-size:13px;line-height:2">${acoesFinal.map(a=>`<li>${a}</li>`).join('')}</ol>` : '<div style="color:var(--text3);font-size:13px">Nenhuma ação prioritária identificada no momento.</div>'}
+    </div>
+  `;
+
+  setTimeout(() => _qualRenderEvolucaoChart(mesesSel), 40);
+}
+
+function _qualFaixaMeta(nome, resultado, meta, status) {
+  return `<div style="display:flex;align-items:center;gap:14px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+    <span style="font-size:13px;font-weight:600;flex:1">${nome}</span>
+    <span style="font-size:12px;color:var(--text2);min-width:120px">${resultado===null?'Módulo ainda não disponível':`Resultado: ${resultado}`}</span>
+    <span style="font-size:12px;color:var(--text3);min-width:130px">Meta: ${meta}</span>
+    ${status?`<span style="font-size:11px;font-weight:700;color:${_qualCorStatus(status)}">${_qualLabelStatus(status)}</span>`:'<span style="font-size:11px;color:var(--text3)">—</span>'}
+  </div>`;
+}
+
+let _chartQualEvolucao = null;
+function _qualRenderEvolucaoChart(mesesSel) {
+  _chartQualEvolucao = _dstroyIndChart(_chartQualEvolucao);
+  const ctx = document.getElementById('qual-c-evolucao'); if (!ctx) return;
+  const dadosBase = _qualFiltroPosto ? allIndevidos.filter(r=>r.loja===_qualFiltroPosto) : allIndevidos;
+  const mesesOrdenados = [...mesesSel].sort();
+  const cnt = {}; mesesOrdenados.forEach(m=>cnt[m]=0);
+  dadosBase.forEach(r=>{ if (r.mesRef && cnt[r.mesRef]!==undefined) cnt[r.mesRef]++; });
+  const tickC='#a0aec0', gridC='rgba(255,255,255,.06)';
+  _chartQualEvolucao = new Chart(ctx, {type:'line',
+    data:{labels:mesesOrdenados.map(_indMesLabel),
+          datasets:[{data:mesesOrdenados.map(m=>cnt[m]),borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,.12)',
+            borderWidth:2,fill:true,tension:.35,pointRadius:4,pointBackgroundColor:'#3b82f6'}]},
+    options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},
+      plugins:{legend:{display:false}},
+      scales:{x:{ticks:{color:tickC,font:{size:10}},grid:{display:false}},
+              y:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true}}},
+    plugins:[{id:'qEvL',afterDatasetsDraw(c){const{ctx}=c;c.data.datasets[0].data.forEach((v,i)=>{
+      if(!v)return;const el=c.getDatasetMeta(0).data[i];ctx.save();ctx.fillStyle='#3b82f6';
+      ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.fillText(v,el.x,el.y-9);ctx.restore();});}}]});
+}
+
+
 // Uso: abra o console com o ADM logado e chame cada função na sequência:
 //   1. window.relatorioUsuariosDuplicados()
 //   2. window.marcarDuplicatas()
