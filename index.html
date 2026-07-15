@@ -13819,14 +13819,20 @@ function renderIndevidos() {
 }
 
 // ── Importar form ─────────────────────────────────────────────────────────────
+let _indImportPrevia = null;        // { byMes, dataBase } — resultado da análise, ainda não gravado
+let _indImportSelecionados = new Set(); // mesRef selecionados para importar
+
 async function renderIndevidosImportar() {
   const wrap = document.getElementById('ind-importar-wrap'); if (!wrap) return;
-  // Guard: só recria o form se ele não existe (evita reset ao Firestore trigger)
-  if (document.getElementById('indev-form-container')) {
+  // Guard: só recria o form se ele não existe (evita reset ao Firestore trigger) — só antes de analisar
+  if (document.getElementById('indev-form-container') && !_indImportPrevia) {
     const el = document.getElementById('indev-ultimo-import-txt');
     if (el && _indevidosUltimoImport) el.textContent = _indevidosUltimoImport;
     return;
   }
+
+  if (_indImportPrevia) { wrap.innerHTML = _indRenderPreviaImportacao(); return; }
+
   wrap.innerHTML = `
     <div id="indev-form-container" style="max-width:540px;margin:24px auto;padding:0 16px">
       <div style="background:var(--surface2);border-radius:14px;padding:24px;margin-bottom:14px">
@@ -13842,10 +13848,11 @@ async function renderIndevidosImportar() {
           <input type="date" class="form-input" id="indev-data-base" style="max-width:200px" value="${_indDataBase||''}">
         </div>
         <p style="font-size:12px;color:var(--text3);margin:12px 0 0;line-height:1.5">
-          A competência é detectada automaticamente a partir do campo <strong>MÊS</strong> da planilha.<br>
-          Apenas os registros daquela competência são substituídos. Os demais meses ficam intactos.
+          Todas as competências presentes no arquivo são identificadas automaticamente e tratadas de forma independente.
+          Você escolhe quais serão substituídas antes de qualquer gravação. Competências fora do arquivo, ou desmarcadas,
+          permanecem intactas.
         </p>
-        <button class="btn btn-primary" style="margin-top:16px;width:100%" onclick="importarIndevidos()">📥 Importar</button>
+        <button class="btn btn-primary" style="margin-top:16px;width:100%" onclick="analisarArquivoIndevidos()">🔍 Analisar arquivo</button>
       </div>
       <div style="background:var(--surface2);border-radius:12px;padding:14px 18px">
         <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Último Import</div>
@@ -13854,14 +13861,76 @@ async function renderIndevidosImportar() {
     </div>`;
 }
 
-// ── importarIndevidos ─────────────────────────────────────────────────────────
-// 1. Lê o arquivo Excel exatamente como está (sem filtro por gerente)
-// 2. Filtra apenas CONCLUSÃO = INDEVIDO
-// 3. Detecta automaticamente a competência pelo campo MÊS
-// 4. Apaga somente os docs daquela competência no Firestore
-// 5. Grava os novos registros
-// 6. O onSnapshot atualiza allIndevidos automaticamente
-async function importarIndevidos() {
+function _indRenderPreviaImportacao() {
+  const p = _indImportPrevia;
+  const meses = Object.keys(p.byMes).sort();
+  const selecionadosArr = meses.filter(m => _indImportSelecionados.has(m));
+  return `
+    <div style="max-width:760px;margin:24px auto;padding:0 16px">
+      <div style="background:var(--surface2);border-radius:14px;padding:24px;margin-bottom:14px">
+        <h3 style="margin:0 0 6px;font-size:15px;font-weight:600">🔍 Prévia da Importação</h3>
+        <p style="font-size:12px;color:var(--text3);margin:0 0 16px;line-height:1.5">
+          Nenhum dado foi gravado ainda. Marque as competências que devem ser substituídas — as desmarcadas
+          permanecem exatamente como estão no Firestore.
+        </p>
+        <div style="overflow-x:auto;margin-bottom:16px">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15);background:var(--surface3)">
+              ${['','Competência','Registros','Postos','Serviços preenchidos','Serviços vazios'].map(h=>
+                `<th style="padding:7px 10px;text-align:left;color:var(--text3);white-space:nowrap;font-weight:600">${h}</th>`).join('')}
+            </tr></thead>
+            <tbody>${meses.map(m=>{
+              const recs = p.byMes[m];
+              const postos = new Set(recs.map(r=>r.loja).filter(Boolean)).size;
+              const servPreench = recs.filter(r=>r.descricaoServico).length;
+              const servVazio = recs.length - servPreench;
+              const marcado = _indImportSelecionados.has(m);
+              return `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+                <td style="padding:6px 10px"><input type="checkbox" ${marcado?'checked':''} onchange="_indToggleCompetencia('${m}')"></td>
+                <td style="padding:6px 10px;font-weight:600;white-space:nowrap">${_indMesLabel(m)} (${m})</td>
+                <td style="padding:6px 10px">${recs.length.toLocaleString('pt-BR')}</td>
+                <td style="padding:6px 10px">${postos}</td>
+                <td style="padding:6px 10px;color:#1baf7a">${servPreench.toLocaleString('pt-BR')}</td>
+                <td style="padding:6px 10px;${servVazio>0?'color:#e24b4a;font-weight:600':''}">${servVazio.toLocaleString('pt-BR')}</td>
+              </tr>`;
+            }).join('')}</tbody>
+          </table>
+        </div>
+
+        <div style="background:var(--surface3);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:12px">
+          ${selecionadosArr.length
+            ? `<strong>Serão substituídas:</strong> ${selecionadosArr.map(m=>`${_indMesLabel(m)} (${m})`).join(', ')}. As demais competências existentes no Firestore não são tocadas.`
+            : '<strong>Nenhuma competência selecionada</strong> — nada será gravado.'}
+        </div>
+
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary" onclick="_indCancelarPrevia()">← Cancelar</button>
+          <button class="btn btn-primary" style="flex:1" onclick="confirmarImportacaoIndevidos()" ${!selecionadosArr.length?'disabled':''}>
+            ✅ Confirmar e importar ${selecionadosArr.length} competência(s)
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function _indToggleCompetencia(mesRef) {
+  if (_indImportSelecionados.has(mesRef)) _indImportSelecionados.delete(mesRef);
+  else _indImportSelecionados.add(mesRef);
+  renderIndevidosImportar();
+}
+
+function _indCancelarPrevia() {
+  _indImportPrevia = null;
+  _indImportSelecionados = new Set();
+  renderIndevidosImportar();
+}
+
+// ── analisarArquivoIndevidos ────────────────────────────────────────────────
+// Lê e processa o arquivo em memória (nenhuma escrita no Firestore).
+// Detecta automaticamente todas as competências presentes, calcula estatísticas
+// por competência e monta a prévia para seleção manual antes de gravar.
+async function analisarArquivoIndevidos() {
   const fi = document.getElementById('indev-import-file');
   const dataBase = document.getElementById('indev-data-base')?.value || '';
   if (!fi?.files?.length) { toast('Selecione um arquivo Excel','err'); return; }
@@ -13876,7 +13945,7 @@ async function importarIndevidos() {
     return;
   }
 
-  toast('⏳ Processando arquivo...','ok');
+  toast('⏳ Analisando arquivo...','ok');
   try {
     const buf = await fi.files[0].arrayBuffer();
     const wb  = XLSX.read(buf, {type:'array', cellDates:true});
@@ -13941,7 +14010,8 @@ async function importarIndevidos() {
       return String(v ?? '').trim();
     };
 
-    // Processar linhas: apenas INDEVIDO, agrupar por mesRef
+    // Processar linhas: apenas INDEVIDO, agrupar por mesRef — qualquer combinação de competências,
+    // em qualquer ordem, sem presumir mês atual nem fechamento de meses anteriores.
     const byMes = {};
     rawArr.slice(1).forEach(row => {
       if (!row || row.every(c => !c && c !== 0)) return;
@@ -13982,24 +14052,47 @@ async function importarIndevidos() {
       });
     });
 
-    const mesesDetec  = Object.keys(byMes).sort();
-    const totalIndev  = Object.values(byMes).reduce((s,v)=>s+v.length,0);
-    console.log('[Indevidos] Meses detectados:', mesesDetec);
-    console.log('[Indevidos] Total INDEVIDO:', totalIndev);
-    console.log('[Indevidos] Lojas únicas:', [...new Set(Object.values(byMes).flat().map(r=>r.loja))]);
-
+    const mesesDetec = Object.keys(byMes).sort();
     if (!mesesDetec.length) { toast('Nenhum registro INDEVIDO encontrado no arquivo','err'); return; }
 
-    // Para cada competência detectada: DELETE todos os docs existentes → INSERT novos
-    for (const mesRef of mesesDetec) {
-      const existSnap = await db.collection('indevidos').where('mesRef','==',mesRef).get();
+    console.log('[Indevidos] Meses detectados:', mesesDetec);
+    console.log('[Indevidos] Total INDEVIDO:', Object.values(byMes).reduce((s,v)=>s+v.length,0));
+
+    // Nenhuma escrita — monta a prévia e aguarda seleção/confirmação manual
+    _indImportPrevia = { byMes, dataBase, operacaoId };
+    _indImportSelecionados = new Set(mesesDetec); // todas pré-marcadas por padrão
+    renderIndevidosImportar();
+  } catch(e) {
+    console.error('[Indevidos] Erro na análise:', e);
+    toast('Erro: ' + e.message, 'err');
+  }
+}
+
+// ── confirmarImportacaoIndevidos ────────────────────────────────────────────
+// Grava exclusivamente as competências marcadas na prévia. Para cada uma:
+// remove somente os documentos daquela competência E da operacaoId atual
+// (nunca afeta registros de outras operações), depois insere os novos.
+async function confirmarImportacaoIndevidos() {
+  if (!_indImportPrevia || !_indImportSelecionados.size) { toast('Nenhuma competência selecionada','err'); return; }
+  const { byMes, dataBase, operacaoId } = _indImportPrevia;
+  const mesesSelecionados = Object.keys(byMes).filter(m => _indImportSelecionados.has(m)).sort();
+
+  toast('⏳ Gravando...','ok');
+  try {
+    let totalGravado = 0;
+    for (const mesRef of mesesSelecionados) {
+      // Remove apenas os docs desta competência E desta operação — nunca afeta outras operações
+      const existSnap = await db.collection('indevidos')
+        .where('mesRef','==',mesRef)
+        .where('operacaoId','==',operacaoId)
+        .get();
       if (existSnap.size > 0) {
         for (let i=0; i<existSnap.docs.length; i+=400) {
           const b = db.batch();
           existSnap.docs.slice(i,i+400).forEach(d => b.delete(d.ref));
           await b.commit();
         }
-        console.log(`[Indevidos] ${mesRef}: ${existSnap.size} registros antigos removidos`);
+        console.log(`[Indevidos] ${mesRef}: ${existSnap.size} registros antigos (desta operação) removidos`);
       }
       const recs = byMes[mesRef];
       for (let i=0; i<recs.length; i+=400) {
@@ -14007,15 +14100,16 @@ async function importarIndevidos() {
         recs.slice(i,i+400).forEach(rec => { const r=db.collection('indevidos').doc(); b.set(r,{id:r.id,...rec}); });
         await b.commit();
       }
+      totalGravado += recs.length;
       console.log(`[Indevidos] ${mesRef}: ${recs.length} registros gravados`);
     }
 
     // Atualizar config
     const cfgSnap = await db.collection('indevidos_config').doc('geral').get();
     const mesesExist = new Set(cfgSnap.exists ? (cfgSnap.data().mesesComDados||[]) : []);
-    mesesDetec.forEach(m => mesesExist.add(m));
+    mesesSelecionados.forEach(m => mesesExist.add(m));
     const mesesArr  = [...mesesExist].sort();
-    const ultimoImport = `${new Date().toLocaleDateString('pt-BR')} — ${totalIndev} registros — ${mesesDetec.map(_indMesLabel).join(', ')}`;
+    const ultimoImport = `${new Date().toLocaleDateString('pt-BR')} — ${totalGravado} registros — ${mesesSelecionados.map(_indMesLabel).join(', ')}`;
     await db.collection('indevidos_config').doc('geral').set({
       mesesComDados: mesesArr,
       ultimoMes:    mesesArr[mesesArr.length-1],
@@ -14027,17 +14121,15 @@ async function importarIndevidos() {
     // Atualizar estado local imediato
     _indevidosUltimoImport = ultimoImport;
     _indDataBase           = dataBase;
-    _indevidosMesesSel     = [mesesDetec[mesesDetec.length-1]];
-    const cont = document.getElementById('indev-form-container');
-    if (cont) cont.parentElement.removeChild(cont);
-    const ul = document.getElementById('indev-ultimo-import-txt');
-    if (ul) ul.textContent = ultimoImport;
+    _indevidosMesesSel     = [mesesSelecionados[mesesSelecionados.length-1]];
+    _indImportPrevia       = null;
+    _indImportSelecionados = new Set();
 
-    // O onSnapshot de initIndevidos vai atualizar allIndevidos automaticamente
-    toast(`✅ ${totalIndev} indevidos importados — ${mesesDetec.map(_indMesLabel).join(', ')}`, 'ok');
+    toast(`✅ ${totalGravado} indevidos importados — ${mesesSelecionados.map(_indMesLabel).join(', ')}`, 'ok');
     switchIndevidosTab('painel');
+    renderIndevidosImportar();
   } catch(e) {
-    console.error('[Indevidos] Erro import:', e);
+    console.error('[Indevidos] Erro ao gravar:', e);
     toast('Erro: ' + e.message, 'err');
   }
 }
