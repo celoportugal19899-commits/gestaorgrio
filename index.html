@@ -13672,6 +13672,32 @@ const IND_MES_LABEL = {
   '07':'Jul','08':'Ago','09':'Set','10':'Out','11':'Nov','12':'Dez'
 };
 
+// Variações usuais de cabeçalho aceitas por campo (a chave é o nome canônico
+// usado em get(row, chave); a lista são as formas normalizadas aceitas).
+// Corrige o caso em que a planilha de origem usa um cabeçalho ligeiramente
+// diferente do esperado (ex: "DESCRIÇÃO DO SERVIÇO" em vez de "DESCRIÇÃO SERVIÇO").
+const IND_COL_ALIASES = {
+  'CONCLUSAO':          ['CONCLUSAO'],
+  'MES':                ['MES'],
+  'MUNICIPIO':          ['MUNICIPIO'],
+  'CANAL ATENDIMENTO':  ['CANAL ATENDIMENTO','CANAL DE ATENDIMENTO'],
+  'LOGIN ATENDENTE':    ['LOGIN ATENDENTE','LOGIN DO ATENDENTE'],
+  'DESCRICAO SERVICO':  ['DESCRICAO SERVICO','DESCRICAO DO SERVICO','SERVICO','DESCRICAO DE SERVICO'],
+  'RETORNO DE INDEVIDO':['RETORNO DE INDEVIDO','RETORNO INDEVIDO','RETORNO DO INDEVIDO'],
+  'BR':                 ['BR'],
+  'ATENDENTE':          ['ATENDENTE'],
+  'LOJA':               ['LOJA','POSTO'],
+  'ESPECIALISTA':       ['ESPECIALISTA'],
+  'COORDENADOR':        ['COORDENADOR'],
+  'GERENTE':            ['GERENTE'],
+  'EMPRESA':            ['EMPRESA'],
+  'DIA':                ['DIA'],
+  'MOTIVO DO ERRO':     ['MOTIVO DO ERRO','MOTIVO ERRO'],
+  'ANALISE':            ['ANALISE'],
+  'CAUSA RAIZ':         ['CAUSA RAIZ','CAUSA RAIZ DO ERRO'],
+  'ANO':                ['ANO']
+};
+
 // ── Variáveis do módulo ──────────────────────────────────────────────────────
 let allIndevidos           = [];
 let unsubIndevidos         = null;
@@ -13741,17 +13767,15 @@ function _indAplicarFiltro() {
 function initIndevidos() {
   if (unsubIndevidos) unsubIndevidos();
 
-  // 1. Carregar config primeiro → pills aparecem com meses reais imediatamente
+  // 1. Carregar config primeiro apenas para textos informativos (último import, data base).
+  //    NÃO usar mesesComDados da config para as pills — pode ficar desatualizada/conter
+  //    competência sem documento real. As pills vêm exclusivamente do passo 2, dos dados reais.
   db.collection('indevidos_config').doc('geral').get().then(cfg => {
     if (cfg.exists) {
       const d = cfg.data();
-      _indevidosMesesComDados = (d.mesesComDados || []).sort();
       _indevidosUltimoImport  = d.ultimoImport || '';
       _indDataBase            = d.dataBase     || '';
-      if (_indevidosMesesSel.length === 0 && _indevidosMesesComDados.length > 0) {
-        _indevidosMesesSel = [_indevidosMesesComDados[_indevidosMesesComDados.length - 1]];
-      }
-      refreshCurrentView(); // renderiza pills antes mesmo dos dados chegarem
+      refreshCurrentView();
     }
   }).catch(e => console.warn('[Indevidos] config:', e));
 
@@ -13760,10 +13784,9 @@ function initIndevidos() {
     .where('mesRef','>=','2026-01').where('mesRef','<=','2026-12')
     .onSnapshot(snap => {
       allIndevidos = snap.docs.map(d => ({id:d.id,...d.data()}));
-      // Derivar meses com dados dos registros reais (fonte mais confiável)
-      const fromData = [...new Set(allIndevidos.map(r=>r.mesRef).filter(Boolean))].sort();
-      // Unir com o que veio da config (evita inconsistência se config estiver desatualizada)
-      _indevidosMesesComDados = [...new Set([..._indevidosMesesComDados,...fromData])].sort();
+      // Competências exibidas = exclusivamente as que têm documento real na base
+      // (elimina meses futuros/"fantasma" que só existiam na config)
+      _indevidosMesesComDados = [...new Set(allIndevidos.map(r=>r.mesRef).filter(Boolean))].sort();
       if (_indevidosMesesSel.length === 0 && _indevidosMesesComDados.length > 0) {
         _indevidosMesesSel = [_indevidosMesesComDados[_indevidosMesesComDados.length - 1]];
       }
@@ -13838,6 +13861,16 @@ async function importarIndevidos() {
   const dataBase = document.getElementById('indev-data-base')?.value || '';
   if (!fi?.files?.length) { toast('Selecione um arquivo Excel','err'); return; }
 
+  // Identificador de operação vem da configuração oficial do sistema (sistema_config/geral),
+  // nunca de valor fixo no código — permite reuso futuro por outros módulos sem alterar código.
+  let operacaoId;
+  try {
+    operacaoId = await getOperacaoId();
+  } catch (e) {
+    toast('Identificador da operação (operacaoId) não configurado. Configure em Diagnóstico de Importações antes de importar.', 'err');
+    return;
+  }
+
   toast('⏳ Processando arquivo...','ok');
   try {
     const buf = await fi.files[0].arrayBuffer();
@@ -13866,17 +13899,25 @@ async function importarIndevidos() {
     rawArr[0].forEach((h, i) => { if (h != null && h !== '') colMap[_normIndCol(String(h))] = i; });
     console.log('[Indevidos] Colunas:', Object.keys(colMap));
 
+    // Resolve o índice de uma coluna testando variações usuais de cabeçalho
+    // (mesma planilha de origem, exportações diferentes podem nomear a coluna de forma levemente distinta)
+    const resolveCol = (aliasKey) => {
+      const aliases = IND_COL_ALIASES[aliasKey] || [aliasKey];
+      for (const a of aliases) { if (colMap[a] !== undefined) return colMap[a]; }
+      return undefined;
+    };
+
     // Verificar colunas obrigatórias
     const obrig = ['CONCLUSAO','MES'];
-    const falt  = obrig.filter(c => colMap[c] === undefined);
+    const falt  = obrig.filter(c => resolveCol(c) === undefined);
     if (falt.length) {
       toast(`Colunas não encontradas após normalização: ${falt.join(', ')}. Colunas disponíveis: ${Object.keys(colMap).slice(0,8).join(', ')}...`, 'err');
       return;
     }
 
-    // Helper: pega o valor de uma célula pela coluna normalizada
-    const get = (row, colNorm) => {
-      const idx = colMap[colNorm];
+    // Helper: pega o valor de uma célula pelo nome canônico do campo (via alias)
+    const get = (row, aliasKey) => {
+      const idx = resolveCol(aliasKey);
       if (idx === undefined) return '';
       const v = row[idx];
       if (v instanceof Date) {
@@ -13921,7 +13962,8 @@ async function importarIndevidos() {
         ano:              get(row,'ANO'),
         importadoEm:      new Date().toISOString(),
         importadoPor:     currentUser.email,
-        dataBase:         dataBase
+        dataBase:         dataBase,
+        operacaoId:       operacaoId
       });
     });
 
@@ -14327,6 +14369,34 @@ function exportarIndevidos() {
 
 
 // ═══════════════════════════════════════════════════════════════════════════
+// CONFIGURAÇÃO OFICIAL DO SISTEMA — sistema_config/geral (Firestore)
+// Fonte única de identificadores globais reutilizáveis por qualquer módulo,
+// sem necessidade de alterar código. Nesta etapa: operacaoId (identificador
+// permanente da operação, usado para segregar dados entre operações que
+// compartilham as mesmas collections). Definido pelo admin em Diagnóstico
+// de Importações — nunca hardcoded.
+// ═══════════════════════════════════════════════════════════════════════════
+
+let _sistemaOperacaoId = null; // cache em memória após 1ª leitura
+
+async function getOperacaoId() {
+  if (_sistemaOperacaoId) return _sistemaOperacaoId;
+  const snap = await db.collection('sistema_config').doc('geral').get();
+  const val = snap.exists ? snap.data().operacaoId : null;
+  if (!val) throw new Error('operacaoId não configurado em sistema_config/geral');
+  _sistemaOperacaoId = val;
+  return val;
+}
+
+async function setOperacaoId(valor) {
+  const v = String(valor||'').trim();
+  if (!v) throw new Error('Valor vazio');
+  await db.collection('sistema_config').doc('geral').set({ operacaoId: v }, { merge:true });
+  _sistemaOperacaoId = v;
+  return v;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // FERRAMENTA ADMINISTRATIVA DE DIAGNÓSTICO DE IMPORTAÇÕES
 // Arquitetura oficial GestãoRGRio: todo módulo com importação deve poder ser
 // auditado aqui. SOMENTE LEITURA — nunca escreve, corrige ou remove nada.
@@ -14420,14 +14490,32 @@ async function renderDiagImport() {
   if (!currentUser || currentUser.role !== 'admin') return;
   const wrap = document.getElementById('diag-import-wrap'); if (!wrap) return;
 
+  let opIdAtual = null;
+  try { opIdAtual = await getOperacaoId(); } catch(e) { opIdAtual = null; }
+
   const opts = Object.entries(DIAGNOSTICO_MODULOS)
     .map(([k,m]) => `<option value="${k}" ${!m.ativo?'disabled':''} ${k===_diagModuloAtivo?'selected':''}>${m.label}${!m.ativo?' (em breve)':''}</option>`).join('');
 
   wrap.innerHTML = `
     <p style="font-size:12px;color:var(--text3);margin:0 0 14px;line-height:1.5">
-      Ferramenta somente leitura. Não altera, corrige ou remove nenhum registro — serve para validar a integridade
-      de uma base importada antes de qualquer intervenção manual.
+      Ferramenta somente leitura para diagnóstico. Não altera, corrige ou remove nenhum registro — serve para validar a integridade
+      de uma base importada antes de qualquer intervenção manual. A seção de Backfill abaixo é a única exceção: escreve
+      exclusivamente o campo <code>operacaoId</code>, de forma aditiva, mediante prévia e confirmação explícita.
     </p>
+
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;margin-bottom:18px;border:1px solid rgba(255,255,255,.07)">
+      <div style="font-size:12px;font-weight:600;margin-bottom:8px">⚙ Configuração Oficial do Sistema — Identificador de Operação</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:10px;line-height:1.5">
+        Gravado em <code>sistema_config/geral</code> (campo <code>operacaoId</code>). Fonte única, reutilizável por qualquer módulo
+        atual ou futuro sem necessidade de alterar código.
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input class="form-input" id="diag-operacaoid-input" style="max-width:280px" value="${opIdAtual||''}" placeholder="ex: gruporgbrasil-rj">
+        <button class="btn btn-secondary" onclick="_diagSalvarOperacaoId()">💾 Salvar</button>
+        <span style="font-size:12px;color:${opIdAtual?'#1baf7a':'#e24b4a'}">${opIdAtual?`✅ Configurado: ${opIdAtual}`:'⚠ Ainda não configurado'}</span>
+      </div>
+    </div>
+
     <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:16px">
       <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Módulo</label>
         <select class="form-select" id="diag-mod-sel" style="min-width:220px" onchange="_diagModuloAtivo=this.value;_diagResultado=null;renderDiagImport()">
@@ -14438,7 +14526,20 @@ async function renderDiagImport() {
       </button>
     </div>
     <div id="diag-resultado-area">${_diagResultado ? _diagRenderResultado(_diagResultado) : '<div style="color:var(--text3);font-size:13px">Clique em "Executar diagnóstico" para consultar a base atual.</div>'}</div>
+
+    ${_diagModuloAtivo === 'indevidos' ? _diagRenderBackfillPainel() : ''}
   `;
+}
+
+async function _diagSalvarOperacaoId() {
+  const v = document.getElementById('diag-operacaoid-input')?.value || '';
+  try {
+    await setOperacaoId(v);
+    toast('✅ operacaoId salvo em sistema_config','ok');
+  } catch(e) {
+    toast('Erro ao salvar: ' + e.message, 'err');
+  }
+  renderDiagImport();
 }
 
 async function _diagExecutar() {
@@ -14514,6 +14615,102 @@ function _diagRenderResultado(res) {
           </table>
         </div>`}
   `;
+}
+
+// ── Backfill operacaoId — Indevidos (prévia somente-leitura + execução aditiva gated) ──
+let _diagBackfillPrevia    = null;
+let _diagBackfillCarregando = false;
+
+function _diagRenderBackfillPainel() {
+  return `
+    <div style="margin-top:24px;padding-top:18px;border-top:1px solid rgba(255,255,255,.1)">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px">🔧 Backfill de operacaoId — Indevidos</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px;line-height:1.5">
+        Adiciona o campo <code>operacaoId</code> apenas nos registros já legítimos (posto pertencente à sua operação) que ainda
+        não o possuem. Nenhum outro campo é alterado. Registros suspeitos (fora da whitelist de postos) não são tocados.
+        Nenhum documento é removido ou sobrescrito — apenas um campo novo é adicionado.
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <button class="btn btn-secondary" onclick="_diagBackfillRodarPrevia()" ${_diagBackfillCarregando?'disabled':''}>
+          ${_diagBackfillCarregando?'⏳ Consultando…':'👁 Rodar prévia (somente leitura)'}
+        </button>
+        <button class="btn btn-primary" onclick="_diagBackfillExecutarClick()" ${(!_diagBackfillPrevia || !_diagBackfillPrevia.total)?'disabled':''}>
+          ✅ Executar backfill
+        </button>
+      </div>
+      <div id="diag-backfill-resultado">${_diagBackfillPrevia ? _diagRenderBackfillResumo(_diagBackfillPrevia) : '<div style="color:var(--text3);font-size:13px">Nenhuma prévia executada ainda nesta sessão. O botão "Executar backfill" só habilita depois da prévia.</div>'}</div>
+    </div>
+  `;
+}
+
+function _diagRenderBackfillResumo(p) {
+  const comps = Object.keys(p.porCompetencia).sort();
+  return `
+    <div style="font-size:12px;margin-bottom:8px">
+      <strong>${p.total.toLocaleString('pt-BR')}</strong> documento(s) serão atualizados — somente o campo <code>operacaoId</code> será adicionado.
+    </div>
+    <table style="border-collapse:collapse;font-size:12px;margin-bottom:10px">
+      <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15)">
+        <th style="padding:4px 14px 4px 0;text-align:left;color:var(--text3)">Competência</th>
+        <th style="padding:4px 0;text-align:left;color:var(--text3)">Registros afetados</th>
+      </tr></thead>
+      <tbody>${comps.map(m=>`<tr><td style="padding:4px 14px 4px 0">${m}</td><td style="padding:4px 0">${p.porCompetencia[m].toLocaleString('pt-BR')}</td></tr>`).join('')}</tbody>
+    </table>
+    <div style="font-size:11px;color:var(--text3)">
+      Confirmado: somente o campo operacaoId é adicionado · nenhum outro campo é alterado · registros suspeitos não são tocados · nenhum documento é removido ou sobrescrito.
+    </div>
+  `;
+}
+
+async function _diagBackfillRodarPrevia() {
+  _diagBackfillCarregando = true;
+  renderDiagImport();
+  try {
+    const validos = new Set(TODOS_POSTOS_RG.map(_diagNormPosto));
+    const snap = await db.collection('indevidos').get();
+    const alvo = [];
+    const porComp = {};
+    snap.docs.forEach(d => {
+      const data = d.data();
+      if (data.operacaoId) return;                                  // já tem — fora do escopo do backfill
+      if (!data.loja || !validos.has(_diagNormPosto(data.loja))) return; // suspeito — não entra no backfill
+      alvo.push({ ref: d.ref });
+      const m = data.mesRef || '(sem competência)';
+      porComp[m] = (porComp[m]||0) + 1;
+    });
+    _diagBackfillPrevia = { total: alvo.length, porCompetencia: porComp, docs: alvo };
+  } catch (e) {
+    console.error('[DiagBackfill] erro na prévia:', e);
+    toast('Erro ao consultar: ' + e.message, 'err');
+  } finally {
+    _diagBackfillCarregando = false;
+    renderDiagImport();
+  }
+}
+
+async function _diagBackfillExecutarClick() {
+  if (!_diagBackfillPrevia || !_diagBackfillPrevia.total) { toast('Rode a prévia primeiro', 'err'); return; }
+  let operacaoId;
+  try {
+    operacaoId = await getOperacaoId();
+  } catch (e) {
+    toast('Configure o operacaoId (acima) antes de executar o backfill', 'err');
+    return;
+  }
+  const docs = _diagBackfillPrevia.docs;
+  try {
+    for (let i = 0; i < docs.length; i += 400) {
+      const batch = db.batch();
+      docs.slice(i, i+400).forEach(d => batch.update(d.ref, { operacaoId })); // aditivo — só este campo
+      await batch.commit();
+    }
+    toast(`✅ Backfill concluído: ${docs.length.toLocaleString('pt-BR')} registros atualizados com operacaoId`, 'ok');
+    _diagBackfillPrevia = null;
+  } catch (e) {
+    console.error('[DiagBackfill] erro na execução:', e);
+    toast('Erro no backfill: ' + e.message, 'err');
+  }
+  renderDiagImport();
 }
 
 // ══════════════════════════════════════════════════════════════════════════
