@@ -786,6 +786,7 @@ const PosCanalLabels = {
         <div class="sidebar-item" id="nav-caixas-adm" onclick="showView('adm-caixas',this)"><span class="icon">💰</span> Caixas Rotativos <span id="caixa-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
         <div class="sidebar-item" id="nav-comb-adm" onclick="showView('adm-combustivel',this)"><span class="icon">⛽</span> Combustível <span id="comb-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
         <div class="sidebar-item" id="nav-relatorio-comb" onclick="showView('adm-relatorio-comb',this)"><span class="icon">📊</span> Relatório Combustível</div>
+        <div class="sidebar-item" id="nav-diag-import-adm" onclick="showView('adm-diag-import',this)"><span class="icon">🔎</span> Diagnóstico de Importações</div>
       </div>
       <div class="sidebar-section">
         <div class="sidebar-section-label">Recursos Humanos</div>
@@ -1338,6 +1339,16 @@ const PosCanalLabels = {
         <div id="ind-painel-wrap"></div>
         <div id="ind-importar-wrap"     style="display:none"></div>
         <div id="ind-detalhamento-wrap" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- DIAGNÓSTICO DE IMPORTAÇÕES — Ferramenta Administrativa (somente leitura) -->
+    <div id="view-adm-diag-import" class="view">
+      <div class="topbar">
+        <div class="topbar-title">🔎 Diagnóstico de Importações</div>
+      </div>
+      <div class="view-content">
+        <div id="diag-import-wrap"></div>
       </div>
     </div>
 
@@ -3887,6 +3898,7 @@ function _doRefreshCurrentView() {
   if (id === 'adm-indicadores') { (async()=>{ await initIndicadoresMesFiltro(); await renderIndicadores(); })(); }
   if (id === 'adm-csat') { (async()=>{ await initCsatMesFiltro(); await renderCSAT(); })(); }
   if (id === 'adm-indevidos') renderIndevidos();
+  if (id === 'adm-diag-import') renderDiagImport();
   if (id === 'supervisor-postos') renderSupervisorPostos();
   if (id === 'sup-caixa') renderSupCaixa();
   if (id === 'adm-caixas') renderAdmCaixas();
@@ -3937,6 +3949,7 @@ function showView(name, el) {
   if (name === 'col-rh-folha') renderColRhFolha();
   if (name === 'adm-medidas-disciplinares') md_renderTudo();
   if (name === 'sup-medidas-disciplinares') md_renderTudo();
+  if (name === 'adm-diag-import') renderDiagImport();
   // Render imediato ao navegar (cancela debounce pendente e renderiza já)
   clearTimeout(_refreshTimer);
   _refreshTimer = null;
@@ -14312,6 +14325,196 @@ function exportarIndevidos() {
 }
 
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FERRAMENTA ADMINISTRATIVA DE DIAGNÓSTICO DE IMPORTAÇÕES
+// Arquitetura oficial GestãoRGRio: todo módulo com importação deve poder ser
+// auditado aqui. SOMENTE LEITURA — nunca escreve, corrige ou remove nada.
+// Para adicionar um novo módulo no futuro: acrescentar uma entrada em
+// DIAGNOSTICO_MODULOS. Nenhuma lógica abaixo precisa mudar.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const DIAGNOSTICO_MODULOS = {
+  indevidos: {
+    label: 'Indevidos',
+    collection: 'indevidos',
+    campos: {
+      mes: 'mesRef', posto: 'loja', servico: 'descricaoServico',
+      atendente: 'atendente', empresa: 'empresa', gerente: 'gerente',
+      importadoPor: 'importadoPor', importadoEm: 'importadoEm'
+    },
+    postosValidos: TODOS_POSTOS_RG,
+    ativo: true
+  },
+  ordens_indevidas: { label: 'Ordens Indevidas', ativo: false },
+  reclamacoes_improcedentes: { label: 'Reclamações Improcedentes', ativo: false },
+  trocas_improcedentes: { label: 'Trocas Improcedentes', ativo: false },
+  csat: { label: 'CSAT', ativo: false },
+  pos: { label: 'Máquina Cartão POS', ativo: false }
+};
+
+let _diagModuloAtivo = 'indevidos';
+let _diagResultado    = null;
+let _diagCarregando   = false;
+
+function _diagNormPosto(v) {
+  return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .trim().toUpperCase().replace(/\s+/g,' ');
+}
+
+// ── Carga sob demanda: get() único, sem listener, sem escrita ──────────────
+async function _diagCarregar(moduloKey) {
+  const mod = DIAGNOSTICO_MODULOS[moduloKey];
+  if (!mod || !mod.ativo) return null;
+
+  const snap = await db.collection(mod.collection).get();
+  const regs = snap.docs.map(d => d.data());
+  const c = mod.campos;
+  const postosValidosNorm = new Set((mod.postosValidos||[]).map(_diagNormPosto));
+
+  const porMes = {};
+  const empresas = new Set();
+  const gerentes = new Set();
+  const suspeitos = [];
+
+  regs.forEach(r => {
+    const mes = r[c.mes] || '(sem competência)';
+    if (!porMes[mes]) porMes[mes] = {
+      total: 0, postos: new Set(), servicos: new Set(), atendentes: new Set(),
+      importadoPor: {}, importadoEmMin: null, importadoEmMax: null
+    };
+    const g = porMes[mes];
+    g.total++;
+    if (r[c.posto])      g.postos.add(r[c.posto]);
+    if (r[c.servico])    g.servicos.add(r[c.servico]);
+    if (r[c.atendente])  g.atendentes.add(r[c.atendente]);
+    if (r[c.empresa])    empresas.add(r[c.empresa]);
+    if (r[c.gerente])    gerentes.add(r[c.gerente]);
+
+    const imp = r[c.importadoPor] || '(desconhecido)';
+    g.importadoPor[imp] = (g.importadoPor[imp]||0) + 1;
+
+    const dt = r[c.importadoEm];
+    if (dt) {
+      if (!g.importadoEmMin || dt < g.importadoEmMin) g.importadoEmMin = dt;
+      if (!g.importadoEmMax || dt > g.importadoEmMax) g.importadoEmMax = dt;
+    }
+
+    if (postosValidosNorm.size && r[c.posto] && !postosValidosNorm.has(_diagNormPosto(r[c.posto]))) {
+      suspeitos.push({
+        mes, posto: r[c.posto], empresa: r[c.empresa]||'', gerente: r[c.gerente]||'',
+        importadoPor: r[c.importadoPor]||'', importadoEm: r[c.importadoEm]||''
+      });
+    }
+  });
+
+  return {
+    moduloKey, totalGeral: regs.length,
+    competencias: Object.keys(porMes).sort(),
+    porMes, empresas: [...empresas].sort(), gerentes: [...gerentes].sort(),
+    suspeitos
+  };
+}
+
+async function renderDiagImport() {
+  if (!currentUser || currentUser.role !== 'admin') return;
+  const wrap = document.getElementById('diag-import-wrap'); if (!wrap) return;
+
+  const opts = Object.entries(DIAGNOSTICO_MODULOS)
+    .map(([k,m]) => `<option value="${k}" ${!m.ativo?'disabled':''} ${k===_diagModuloAtivo?'selected':''}>${m.label}${!m.ativo?' (em breve)':''}</option>`).join('');
+
+  wrap.innerHTML = `
+    <p style="font-size:12px;color:var(--text3);margin:0 0 14px;line-height:1.5">
+      Ferramenta somente leitura. Não altera, corrige ou remove nenhum registro — serve para validar a integridade
+      de uma base importada antes de qualquer intervenção manual.
+    </p>
+    <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:16px">
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Módulo</label>
+        <select class="form-select" id="diag-mod-sel" style="min-width:220px" onchange="_diagModuloAtivo=this.value;_diagResultado=null;renderDiagImport()">
+          ${opts}
+        </select></div>
+      <button class="btn btn-primary" onclick="_diagExecutar()" ${_diagCarregando?'disabled':''}>
+        ${_diagCarregando?'⏳ Consultando…':'🔎 Executar diagnóstico'}
+      </button>
+    </div>
+    <div id="diag-resultado-area">${_diagResultado ? _diagRenderResultado(_diagResultado) : '<div style="color:var(--text3);font-size:13px">Clique em "Executar diagnóstico" para consultar a base atual.</div>'}</div>
+  `;
+}
+
+async function _diagExecutar() {
+  _diagCarregando = true;
+  renderDiagImport();
+  try {
+    _diagResultado = await _diagCarregar(_diagModuloAtivo);
+  } catch (e) {
+    console.error('[DiagImport] Erro:', e);
+    toast('Erro ao consultar: ' + e.message, 'err');
+  } finally {
+    _diagCarregando = false;
+    renderDiagImport();
+  }
+}
+
+function _diagRenderResultado(res) {
+  if (!res) return '<div style="color:var(--text3);font-size:13px">Sem dados.</div>';
+  return `
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
+      <div class="stat-card"><div class="label">Total de registros</div><div class="value">${res.totalGeral.toLocaleString('pt-BR')}</div></div>
+      <div class="stat-card"><div class="label">Competências</div><div class="value">${res.competencias.length}</div></div>
+      <div class="stat-card"><div class="label">Registros suspeitos</div><div class="value" style="color:${res.suspeitos.length?'#e24b4a':'inherit'}">${res.suspeitos.length}</div></div>
+    </div>
+
+    <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:16px;font-size:12px">
+      <div><strong>Empresas encontradas:</strong> ${res.empresas.length?res.empresas.join(', '):'—'}</div>
+      <div><strong>Gerentes encontrados:</strong> ${res.gerentes.length?res.gerentes.join(', '):'—'}</div>
+    </div>
+
+    <div style="overflow-x:auto;margin-bottom:20px">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:900px">
+        <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15);background:var(--surface3)">
+          ${['Competência','Registros','Postos distintos','Serviços distintos','Atendentes distintos','Importado por (qtd)','1ª importação','Última importação'].map(h=>
+            `<th style="padding:7px 10px;text-align:left;color:var(--text3);white-space:nowrap;font-weight:600">${h}</th>`).join('')}
+        </tr></thead>
+        <tbody>${res.competencias.map(m=>{
+          const g = res.porMes[m];
+          const impStr = Object.entries(g.importadoPor).sort((a,b)=>b[1]-a[1])
+            .map(([who,n])=>`${who} (${n})`).join(', ');
+          return `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+            <td style="padding:6px 10px;white-space:nowrap;font-weight:600">${m}</td>
+            <td style="padding:6px 10px">${g.total.toLocaleString('pt-BR')}</td>
+            <td style="padding:6px 10px">${g.postos.size}</td>
+            <td style="padding:6px 10px">${g.servicos.size}</td>
+            <td style="padding:6px 10px">${g.atendentes.size}</td>
+            <td style="padding:6px 10px;max-width:260px">${impStr||'—'}</td>
+            <td style="padding:6px 10px;white-space:nowrap;color:var(--text3)">${g.importadoEmMin?new Date(g.importadoEmMin).toLocaleString('pt-BR'):'—'}</td>
+            <td style="padding:6px 10px;white-space:nowrap;color:var(--text3)">${g.importadoEmMax?new Date(g.importadoEmMax).toLocaleString('pt-BR'):'—'}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div>
+
+    <div style="font-size:13px;font-weight:600;margin-bottom:8px">⚠ Registros suspeitos ${res.suspeitos.length?`(${res.suspeitos.length})`:''}</div>
+    ${!res.suspeitos.length
+      ? '<div style="color:var(--text3);font-size:13px">Nenhum registro com posto fora da whitelist configurada.</div>'
+      : `<div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:900px">
+            <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15);background:var(--surface3)">
+              ${['Competência','Posto','Empresa','Gerente','Importado por','Importado em'].map(h=>
+                `<th style="padding:7px 10px;text-align:left;color:var(--text3);white-space:nowrap;font-weight:600">${h}</th>`).join('')}
+            </tr></thead>
+            <tbody>${res.suspeitos.map(s=>`
+              <tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+                <td style="padding:6px 10px;white-space:nowrap">${s.mes}</td>
+                <td style="padding:6px 10px;white-space:nowrap;color:#e24b4a;font-weight:600">${s.posto}</td>
+                <td style="padding:6px 10px">${s.empresa||'—'}</td>
+                <td style="padding:6px 10px">${s.gerente||'—'}</td>
+                <td style="padding:6px 10px">${s.importadoPor||'—'}</td>
+                <td style="padding:6px 10px;white-space:nowrap;color:var(--text3)">${s.importadoEm?new Date(s.importadoEm).toLocaleString('pt-BR'):'—'}</td>
+              </tr>`).join('')}</tbody>
+          </table>
+        </div>`}
+  `;
+}
 
 // ══════════════════════════════════════════════════════════════════════════
 // FERRAMENTAS ADMINISTRATIVAS DE MANUTENÇÃO — window.* (console do navegador)
