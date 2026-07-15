@@ -13682,7 +13682,7 @@ const IND_COL_ALIASES = {
   'MUNICIPIO':          ['MUNICIPIO'],
   'CANAL ATENDIMENTO':  ['CANAL ATENDIMENTO','CANAL DE ATENDIMENTO'],
   'LOGIN ATENDENTE':    ['LOGIN ATENDENTE','LOGIN DO ATENDENTE'],
-  'DESCRICAO SERVICO':  ['DESCRICAO SERVICO','DESCRICAO DO SERVICO','SERVICO','DESCRICAO DE SERVICO'],
+  'DESCRICAO SERVICO':  ['DESCRICAO SERVICO','DESCRICAO DO SERVICO','SERVICO','DESCRICAO DE SERVICO','TIPO DE SERVICO','TIPO SERVICO','SERVICO PRESTADO'],
   'RETORNO DE INDEVIDO':['RETORNO DE INDEVIDO','RETORNO INDEVIDO','RETORNO DO INDEVIDO'],
   'BR':                 ['BR'],
   'ATENDENTE':          ['ATENDENTE'],
@@ -13762,14 +13762,14 @@ function _indAplicarFiltro() {
 }
 
 // ── initIndevidos ─────────────────────────────────────────────────────────────
-// Carrega TODOS os meses de 2026 de uma vez via onSnapshot.
-// A partir daí, tudo funciona em memória sem novas consultas ao Firestore.
+// Leitura exclusivamente por operacaoId (critério permanente de segregação).
+// Registros de outras operações nunca mais entram em allIndevidos — ficam
+// fisicamente intocados no Firestore, porém definitivamente fora do alcance
+// deste módulo, em qualquer competência.
 function initIndevidos() {
   if (unsubIndevidos) unsubIndevidos();
 
-  // 1. Carregar config primeiro apenas para textos informativos (último import, data base).
-  //    NÃO usar mesesComDados da config para as pills — pode ficar desatualizada/conter
-  //    competência sem documento real. As pills vêm exclusivamente do passo 2, dos dados reais.
+  // Config apenas para textos informativos (último import, data base) — não é mais usada para segregação
   db.collection('indevidos_config').doc('geral').get().then(cfg => {
     if (cfg.exists) {
       const d = cfg.data();
@@ -13779,19 +13779,24 @@ function initIndevidos() {
     }
   }).catch(e => console.warn('[Indevidos] config:', e));
 
-  // 2. onSnapshot carrega todos os dados; filtro em memória garante independência por competência
-  unsubIndevidos = db.collection('indevidos')
-    .where('mesRef','>=','2026-01').where('mesRef','<=','2026-12')
-    .onSnapshot(snap => {
-      allIndevidos = snap.docs.map(d => ({id:d.id,...d.data()}));
-      // Competências exibidas = exclusivamente as que têm documento real na base
-      // (elimina meses futuros/"fantasma" que só existiam na config)
-      _indevidosMesesComDados = [...new Set(allIndevidos.map(r=>r.mesRef).filter(Boolean))].sort();
-      if (_indevidosMesesSel.length === 0 && _indevidosMesesComDados.length > 0) {
-        _indevidosMesesSel = [_indevidosMesesComDados[_indevidosMesesComDados.length - 1]];
-      }
-      refreshCurrentView();
-    }, err => console.error('[Indevidos] onSnapshot:', err));
+  getOperacaoId().then(operacaoId => {
+    unsubIndevidos = db.collection('indevidos')
+      .where('operacaoId','==', operacaoId)
+      .onSnapshot(snap => {
+        allIndevidos = snap.docs.map(d => ({id:d.id,...d.data()}));
+        // Competências exibidas = exclusivamente as que têm documento real na sua operação
+        _indevidosMesesComDados = [...new Set(allIndevidos.map(r=>r.mesRef).filter(Boolean))].sort();
+        if (_indevidosMesesSel.length === 0 && _indevidosMesesComDados.length > 0) {
+          _indevidosMesesSel = [_indevidosMesesComDados[_indevidosMesesComDados.length - 1]];
+        }
+        refreshCurrentView();
+      }, err => console.error('[Indevidos] onSnapshot:', err));
+  }).catch(e => {
+    console.error('[Indevidos] operacaoId não configurado:', e);
+    allIndevidos = []; _indevidosMesesComDados = [];
+    toast('Identificador de operação (operacaoId) não configurado. Configure em Diagnóstico de Importações.', 'err');
+    refreshCurrentView();
+  });
 }
 
 // ── Nav ───────────────────────────────────────────────────────────────────────
@@ -13900,10 +13905,20 @@ async function importarIndevidos() {
     console.log('[Indevidos] Colunas:', Object.keys(colMap));
 
     // Resolve o índice de uma coluna testando variações usuais de cabeçalho
-    // (mesma planilha de origem, exportações diferentes podem nomear a coluna de forma levemente distinta)
+    // (mesma planilha de origem, exportações diferentes podem nomear a coluna de forma levemente distinta).
+    // Fallback específico para Serviço (problema confirmado em 2026-07): se nenhum alias exato bater,
+    // procura uma coluna cujo nome normalizado contenha "SERVICO" — cobre variações de cabeçalho não
+    // previstas na lista, sem nunca inventar valor de negócio (só resolve QUAL coluna ler).
     const resolveCol = (aliasKey) => {
       const aliases = IND_COL_ALIASES[aliasKey] || [aliasKey];
       for (const a of aliases) { if (colMap[a] !== undefined) return colMap[a]; }
+      if (aliasKey === 'DESCRICAO SERVICO') {
+        const achouParcial = Object.keys(colMap).find(k => k.includes('SERVICO'));
+        if (achouParcial) {
+          console.warn(`[Indevidos] Coluna Serviço não bateu com alias exato — usando correspondência parcial com "${achouParcial}"`);
+          return colMap[achouParcial];
+        }
+      }
       return undefined;
     };
 
@@ -14628,9 +14643,10 @@ function _diagRenderBackfillPainel() {
     <div style="margin-top:24px;padding-top:18px;border-top:1px solid rgba(255,255,255,.1)">
       <div style="font-size:13px;font-weight:600;margin-bottom:8px">🔧 Backfill de operacaoId — Indevidos</div>
       <div style="font-size:12px;color:var(--text3);margin-bottom:12px;line-height:1.5">
-        Adiciona o campo <code>operacaoId</code> apenas nos registros já legítimos (posto pertencente à sua operação) que ainda
-        não o possuem. Nenhum outro campo é alterado. Registros suspeitos (fora da whitelist de postos) não são tocados.
-        Nenhum documento é removido ou sobrescrito — apenas um campo novo é adicionado.
+        Adiciona o campo <code>operacaoId</code> apenas nos registros já legítimos (posto pertencente à sua operação
+        <strong>e</strong> competência oficialmente válida: Janeiro a Junho de 2026) que ainda não o possuem.
+        Nenhum outro campo é alterado. Registros suspeitos e qualquer competência fora dessa lista — incluindo 2026-07 —
+        não são tocados, independentemente de posto, empresa ou gerente informados. Nenhum documento é removido ou sobrescrito.
       </div>
       <div style="display:flex;gap:8px;margin-bottom:14px">
         <button class="btn btn-secondary" onclick="_diagBackfillRodarPrevia()" ${_diagBackfillCarregando?'disabled':''}>
@@ -14706,6 +14722,11 @@ function _diagRenderBackfillDocs(p, comps) {
   `;
 }
 
+// Competências oficialmente válidas para o backfill — regra de negócio explícita,
+// independente da whitelist de posto. 2026-07 não foi importação aprovada e nunca
+// entra aqui, mesmo que passe na validação de posto/empresa/gerente.
+const IND_BACKFILL_COMPETENCIAS_VALIDAS = ['2026-01','2026-02','2026-03','2026-04','2026-05','2026-06'];
+
 async function _diagBackfillRodarPrevia() {
   _diagBackfillCarregando = true;
   _diagBackfillMostrarDocs = false;
@@ -14719,6 +14740,7 @@ async function _diagBackfillRodarPrevia() {
     snap.docs.forEach(d => {
       const data = d.data();
       if (data.operacaoId) return;                                  // já tem — fora do escopo do backfill
+      if (!IND_BACKFILL_COMPETENCIAS_VALIDAS.includes(data.mesRef)) return; // competência não aprovada (ex: 2026-07) — nunca elegível
       if (!data.loja || !validos.has(_diagNormPosto(data.loja))) return; // suspeito — não entra no backfill
       alvo.push({
         ref: d.ref,
