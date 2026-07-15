@@ -13709,6 +13709,7 @@ let _indDataBase            = '';
 let _indFiltroPosto         = '';
 let _indFiltroServico       = '';
 let _indPagina              = 1;
+let _indPrioridadesExpandido = false;
 const IND_POR_PAG           = 50;
 let _chartIndMensal         = null;
 let _chartIndMotivo         = null;
@@ -14222,8 +14223,8 @@ function renderIndevidosPainel() {
       </div>
     </div>
     <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:12px">
-      <div style="font-size:12px;font-weight:600;margin-bottom:10px">👤 Recorrência por atendente</div>
-      <div id="ind-rank-atendentes"></div>
+      <div style="font-size:12px;font-weight:600;margin-bottom:10px">🏪 Recorrência por Posto</div>
+      <div id="ind-recorrencia-posto"></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
       <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
@@ -14234,6 +14235,28 @@ function renderIndevidosPainel() {
         <div style="font-size:12px;font-weight:600;margin-bottom:10px">🔧 Serviço → Postos com mais indevidos</div>
         <div id="ind-cruzado-servico" style="max-height:360px;overflow-y:auto"></div>
       </div>
+    </div>
+
+    <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:20px 0 10px">🧠 Análises Inteligentes</div>
+
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:12px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:10px">🎯 Causa Raiz Predominante</div>
+      <div id="ind-causa-raiz"></div>
+    </div>
+
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:12px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:10px">📊 Concentração Operacional</div>
+      <div id="ind-concentracao"></div>
+    </div>
+
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:12px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:10px">🎓 Prioridades de Treinamento</div>
+      <div id="ind-prioridades-treinamento"></div>
+    </div>
+
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:12px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:10px">📈 Tendência por Posto</div>
+      <div id="ind-tendencia-posto"></div>
     </div>`:``}`;
 
   if (totalInd) setTimeout(() => _renderIndevidosCharts(dados), 40);
@@ -14253,6 +14276,7 @@ function _indToggleMes(m, evt) {
 }
 function _indTodos()  { _indevidosMesesSel = [..._indevidosMesesComDados]; renderIndevidosPainel(); }
 function _indLimpar() { _indevidosMesesSel = []; renderIndevidosPainel(); }
+function _indTogglePrioridades() { _indPrioridadesExpandido = !_indPrioridadesExpandido; renderIndevidosPainel(); }
 
 // ── Charts ────────────────────────────────────────────────────────────────────
 function _renderIndevidosCharts(dados) {
@@ -14279,7 +14303,7 @@ function _renderIndevidosCharts(dados) {
           datasets:[{data:_indevidosMesesComDados.map(m=>cntMes[m]),
             borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,.12)',
             borderWidth:2,fill:true,tension:.35,pointRadius:4,pointBackgroundColor:'#3b82f6'}]},
-    options:baseOpts,
+    options:{...baseOpts, layout:{padding:{top:22}}}, // headroom para o rótulo não cortar nas colunas mais altas
     plugins:[{id:'ptL',afterDatasetsDraw(c){const{ctx}=c;c.data.datasets[0].data.forEach((v,i)=>{
       if(!v)return;const el=c.getDatasetMeta(0).data[i];ctx.save();ctx.fillStyle='#3b82f6';
       ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.fillText(v,el.x,el.y-9);ctx.restore();});}}]});
@@ -14328,16 +14352,36 @@ function _renderIndevidosCharts(dados) {
       <span style="font-size:12px;font-weight:${i<5?'600':'400'};color:${i<5?'#eda100':'var(--text2)'};min-width:22px;text-align:right">${v}</span>
     </div>`).join(''):'<div style="color:var(--text3);font-size:13px;padding:6px">Sem dados</div>';
 
-  // Recorrência por atendente
-  const cntA={}; dados.forEach(r=>{if(r.atendente)cntA[r.atendente]=(cntA[r.atendente]||0)+1;});
-  const rankA=Object.entries(cntA).sort((a,b)=>b[1]-a[1]);
-  const tblA=document.getElementById('ind-rank-atendentes');
-  if(tblA) tblA.innerHTML=rankA.length?`<div style="display:flex;flex-wrap:wrap;gap:6px">${rankA.map(([a,v])=>`
-    <div style="display:flex;align-items:center;gap:5px;background:${v>=3?'rgba(239,68,68,.1)':v>=2?'rgba(245,158,11,.1)':'rgba(255,255,255,.05)'};border-radius:8px;padding:4px 10px;border:1px solid ${v>=3?'rgba(239,68,68,.3)':v>=2?'rgba(245,158,11,.3)':'rgba(255,255,255,.1)'}">
-      <span style="font-size:12px;color:var(--text)">${a}</span>
-      <span style="font-size:12px;font-weight:700;color:${v>=3?'#e24b4a':v>=2?'#f59e0b':'var(--text3)'}">${v}x</span>
-      ${v>=3?'<span style="font-size:10px;color:#e24b4a">⚠</span>':''}
-    </div>`).join('')}</div>`:'<div style="color:var(--text3);font-size:13px;padding:6px">Sem dados</div>';
+  // Recorrência por Posto — considera TODAS as competências válidas (ignora a seleção de pills,
+  // já que recorrência é por definição multi-mês), respeita filtros ativos de Posto/Serviço.
+  // Cada posto conta 1x por competência em que aparece, independente da quantidade naquele mês.
+  const _indClassifRecorrencia = n => n>=3 ? {label:'Recorrente', color:'#e24b4a', bg:'rgba(226,75,74,.1)', bd:'rgba(226,75,74,.3)'}
+                                     : n===2 ? {label:'Atenção',    color:'#f59e0b', bg:'rgba(245,158,11,.1)', bd:'rgba(245,158,11,.3)'}
+                                     :         {label:'Pontual',    color:'#94a3b8', bg:'rgba(255,255,255,.05)', bd:'rgba(255,255,255,.1)'};
+  const recorrDados = allIndevidos.filter(r => {
+    if (_indFiltroPosto   && r.loja             !== _indFiltroPosto)   return false;
+    if (_indFiltroServico && r.descricaoServico !== _indFiltroServico) return false;
+    return true;
+  });
+  const recPorPosto = {}; // loja -> {competencias:Set, total:number}
+  recorrDados.forEach(r => {
+    if (!r.loja) return;
+    if (!recPorPosto[r.loja]) recPorPosto[r.loja] = { competencias: new Set(), total: 0 };
+    recPorPosto[r.loja].total++;
+    if (r.mesRef) recPorPosto[r.loja].competencias.add(r.mesRef);
+  });
+  const rankRec = Object.entries(recPorPosto)
+    .map(([posto,d]) => ({ posto, nComp: d.competencias.size, total: d.total, competencias:[...d.competencias].sort() }))
+    .sort((a,b) => b.nComp - a.nComp || b.total - a.total);
+  const tblRec = document.getElementById('ind-recorrencia-posto');
+  if (tblRec) tblRec.innerHTML = rankRec.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px">${rankRec.map(r=>{
+    const c = _indClassifRecorrencia(r.nComp);
+    return `<div style="display:flex;align-items:center;gap:6px;background:${c.bg};border-radius:8px;padding:4px 10px;border:1px solid ${c.bd}" title="Competências: ${r.competencias.map(_indMesLabel).join(', ')}">
+      <span style="font-size:12px;color:var(--text)">${r.posto}</span>
+      <span style="font-size:11px;font-weight:700;color:${c.color}">${c.label}</span>
+      <span style="font-size:11px;color:var(--text3)">${r.nComp} comp. · ${r.total} indev.</span>
+    </div>`;
+  }).join('')}</div>` : '<div style="color:var(--text3);font-size:13px;padding:6px">Sem dados</div>';
 
   // Cruzado Posto → Serviços
   const byPosto={};
@@ -14378,6 +14422,172 @@ function _renderIndevidosCharts(dados) {
           <span style="font-weight:600;color:#eda100;margin-left:6px;white-space:nowrap">${v}</span>
         </div>`).join('')}
     </div>`).join(''):'<div style="color:var(--text3);font-size:13px;padding:6px">Sem dados</div>';
+
+  // ── Análise: Causa Raiz Predominante (sobre `dados` — competência(s) + filtros ativos) ──
+  const cntCR = {}, crPostos = {};
+  dados.forEach(r => {
+    const cr = r.causaRaiz || '(não informado)';
+    cntCR[cr] = (cntCR[cr]||0) + 1;
+    if (r.loja) { crPostos[cr] = crPostos[cr] || {}; crPostos[cr][r.loja] = (crPostos[cr][r.loja]||0) + 1; }
+  });
+  const rankCR = Object.entries(cntCR).sort((a,b)=>b[1]-a[1]);
+  const tblCR = document.getElementById('ind-causa-raiz');
+  if (tblCR) tblCR.innerHTML = rankCR.length ? `
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15)">
+        ${['Causa Raiz','Qtd','%','Postos mais associados'].map(h=>`<th style="padding:5px 10px;text-align:left;color:var(--text3);font-weight:600">${h}</th>`).join('')}
+      </tr></thead>
+      <tbody>${rankCR.map(([cr,v])=>{
+        const pct = dados.length ? Math.round(v/dados.length*100) : 0;
+        const topPostos = Object.entries(crPostos[cr]||{}).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([p,n])=>`${p} (${n})`).join(', ');
+        return `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+          <td style="padding:5px 10px;font-weight:600">${cr}</td>
+          <td style="padding:5px 10px">${v}</td>
+          <td style="padding:5px 10px">${pct}%</td>
+          <td style="padding:5px 10px;color:var(--text2)">${topPostos||'—'}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>` : '<div style="color:var(--text3);font-size:13px;padding:6px">Sem dados</div>';
+
+  // ── Análise: Concentração Operacional (frases 100% dinâmicas, sobre `dados`) ──
+  const divConc = document.getElementById('ind-concentracao');
+  if (divConc) {
+    if (!dados.length || !rankP.length) {
+      divConc.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:6px">Sem dados</div>';
+    } else {
+      const top5P = rankP.slice(0,5), somaTop5P = top5P.reduce((s,[,v])=>s+v,0);
+      const pctTop5P = Math.round(somaTop5P/dados.length*100);
+      const top3S = rankS.slice(0,3), somaTop3S = top3S.reduce((s,[,v])=>s+v,0);
+      const pctTop3S = dados.length ? Math.round(somaTop3S/dados.length*100) : 0;
+      const postoMax = rankP[0];
+      const pctPostoMax = Math.round(postoMax[1]/dados.length*100);
+      divConc.innerHTML = `<div style="font-size:13px;line-height:1.9">
+        <div>📍 Os <strong>${top5P.length}</strong> postos mais críticos representam <strong>${pctTop5P}%</strong> dos indevidos.</div>
+        ${rankS.length?`<div>🔧 Os <strong>${top3S.length}</strong> serviços mais críticos representam <strong>${pctTop3S}%</strong> dos indevidos.</div>`:''}
+        <div>🏪 O posto <strong>${postoMax[0]}</strong> concentra <strong>${pctPostoMax}%</strong> dos registros.</div>
+      </div>`;
+    }
+  }
+
+  // ── Análise: Prioridades de Treinamento (cruza volume + recorrência + serviço crítico + atendentes + concentração) ──
+  const atendPorPosto = {};
+  dados.forEach(r => { if (r.loja && r.atendente) (atendPorPosto[r.loja] = atendPorPosto[r.loja] || new Set()).add(r.atendente); });
+  const nPostosDados = new Set(dados.map(r=>r.loja).filter(Boolean)).size;
+  const mediaPorPosto = nPostosDados ? dados.length / nPostosDados : 0;
+
+  const prioridades = Object.entries(cntP).map(([posto,total]) => {
+    const rec = recPorPosto[posto] || { competencias: new Set(), total: 0 };
+    const nComp = rec.competencias.size;
+    const classif = _indClassifRecorrencia(nComp);
+    const servicosPosto = byPosto[posto]?.servicos || {};
+    const principalServico = Object.entries(servicosPosto).sort((a,b)=>b[1]-a[1])[0];
+    const atendCount = atendPorPosto[posto]?.size || 0;
+    const pct = dados.length ? Math.round(total/dados.length*100) : 0;
+    const critico = nComp >= 2 || total >= mediaPorPosto; // criticidade real — dinâmico, não fixo
+    const score = nComp*100 + total;
+    return { posto, total, nComp, classif, principalServico: principalServico ? principalServico[0] : '—', atendCount, pct, critico, score };
+  }).filter(p => p.critico).sort((a,b) => b.score - a.score);
+
+  const _indMontarRecomendacao = p => {
+    const partes = [];
+    if (p.classif.label === 'Recorrente') partes.push(`recorrente há ${p.nComp} competências`);
+    else if (p.classif.label === 'Atenção') partes.push(`ocorrência em ${p.nComp} competências`);
+    if (p.principalServico !== '—') partes.push(`foco no serviço "${p.principalServico}"`);
+    if (p.atendCount > 1) partes.push(`${p.atendCount} atendentes envolvidos`);
+    return `Treinamento prioritário para <strong>${p.posto}</strong>: ${partes.join(', ')} — ${p.total} indevidos (${p.pct}% do total no período analisado).`;
+  };
+
+  const divPrio = document.getElementById('ind-prioridades-treinamento');
+  if (divPrio) {
+    if (!prioridades.length) {
+      divPrio.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:6px">Nenhum posto com criticidade relevante no período analisado.</div>';
+    } else {
+      const top5Prio = prioridades.slice(0,5);
+      const restante = prioridades.slice(5);
+      const linhaHtml = p => `
+        <div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+            <span style="font-size:13px;font-weight:700">${p.posto}</span>
+            <span style="font-size:11px;font-weight:700;color:${p.classif.color};background:${p.classif.bg};border:1px solid ${p.classif.bd};border-radius:10px;padding:1px 8px">${p.classif.label}</span>
+          </div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Serviço principal: ${p.principalServico} · ${p.total} indevidos · ${p.nComp} competência(s) · ${p.atendCount} atendente(s)</div>
+          <div style="font-size:12px;color:var(--text2);line-height:1.5">${_indMontarRecomendacao(p)}</div>
+        </div>`;
+      divPrio.innerHTML = `
+        <div>${top5Prio.map(linhaHtml).join('')}</div>
+        ${restante.length ? `
+          <div id="ind-prio-extra" style="display:${_indPrioridadesExpandido?'block':'none'}">${restante.map(linhaHtml).join('')}</div>
+          <button class="btn btn-secondary" style="margin-top:10px;font-size:12px" onclick="_indTogglePrioridades()">
+            ${_indPrioridadesExpandido ? '▾ Ver menos' : `▸ Ver mais ${restante.length} prioridade(s)`}
+          </button>` : ''}
+      `;
+    }
+  }
+
+  // ── Análise: Tendência por Posto (as 2 competências mais recentes, ignora seleção de pills,
+  //    respeita filtros ativos de Posto/Serviço — a comparação depende de dois períodos fixos) ──
+  const divTend = document.getElementById('ind-tendencia-posto');
+  if (divTend) {
+    const compsOrdenadas = [..._indevidosMesesComDados].sort();
+    const mesAnt = compsOrdenadas[compsOrdenadas.length-2];
+    const mesAtu = compsOrdenadas[compsOrdenadas.length-1];
+    if (!mesAnt || !mesAtu) {
+      divTend.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:6px">Menos de duas competências disponíveis para comparação.</div>';
+    } else {
+      const baseFiltro = r => {
+        if (_indFiltroPosto   && r.loja             !== _indFiltroPosto)   return false;
+        if (_indFiltroServico && r.descricaoServico !== _indFiltroServico) return false;
+        return true;
+      };
+      const cntAnt = {}, cntAtu = {};
+      allIndevidos.filter(r => r.mesRef===mesAnt && baseFiltro(r)).forEach(r => { if (r.loja) cntAnt[r.loja]=(cntAnt[r.loja]||0)+1; });
+      allIndevidos.filter(r => r.mesRef===mesAtu && baseFiltro(r)).forEach(r => { if (r.loja) cntAtu[r.loja]=(cntAtu[r.loja]||0)+1; });
+      const todosPostosT = new Set([...Object.keys(cntAnt), ...Object.keys(cntAtu)]);
+      const linhasT = [...todosPostosT].map(posto => {
+        const a = cntAnt[posto]||0, b = cntAtu[posto]||0;
+        const varAbs = b - a;
+        let classif;
+        if (a===0 && b>0) classif = 'Nova ocorrência';
+        else if (a>0 && b===0) classif = 'Sem ocorrência na competência atual';
+        else if (b<a) classif = 'Melhorou';
+        else if (b>a) classif = 'Piorou';
+        else classif = 'Estável';
+        const varPct = a>0 ? Math.round((b-a)/a*100) : null; // evita divisão por zero
+        return { posto, a, b, varAbs, varPct, classif };
+      }).sort((x,y) => Math.abs(y.varAbs) - Math.abs(x.varAbs));
+
+      const melhoraram = linhasT.filter(l=>l.classif==='Melhorou').length;
+      const pioraram   = linhasT.filter(l=>l.classif==='Piorou').length;
+      const maiorMelhora = linhasT.filter(l=>l.classif==='Melhorou' && l.varPct!==null).sort((x,y)=>x.varPct-y.varPct)[0];
+      const maiorPiora   = linhasT.filter(l=>l.classif==='Piorou'   && l.varPct!==null).sort((x,y)=>y.varPct-x.varPct)[0];
+
+      const resumoPartes = [];
+      if (maiorMelhora) resumoPartes.push(`O posto ${maiorMelhora.posto} reduziu seus indevidos em ${Math.abs(maiorMelhora.varPct)}% em relação à competência anterior.`);
+      if (maiorPiora)   resumoPartes.push(`O posto ${maiorPiora.posto} aumentou seus indevidos em ${maiorPiora.varPct}%.`);
+      resumoPartes.push(`${melhoraram} posto(s) melhoraram e ${pioraram} posto(s) pioraram.`);
+
+      const corClassif = c => c==='Melhorou' ? '#1baf7a' : c==='Piorou' ? '#e24b4a' : c==='Nova ocorrência' ? '#f59e0b' : c==='Sem ocorrência na competência atual' ? 'var(--text3)' : '#94a3b8';
+
+      divTend.innerHTML = `
+        <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Comparando <strong>${_indMesLabel(mesAnt)}</strong> → <strong>${_indMesLabel(mesAtu)}</strong></div>
+        <div style="font-size:12px;margin-bottom:12px;line-height:1.6">${resumoPartes.join(' ')}</div>
+        <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15)">
+            ${['Posto',`${_indMesLabel(mesAnt)}`,`${_indMesLabel(mesAtu)}`,'Variação','Variação %','Classificação'].map(h=>`<th style="padding:5px 10px;text-align:left;color:var(--text3);font-weight:600">${h}</th>`).join('')}
+          </tr></thead>
+          <tbody>${linhasT.map(l=>`
+            <tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+              <td style="padding:5px 10px;font-weight:600">${l.posto}</td>
+              <td style="padding:5px 10px">${l.a}</td>
+              <td style="padding:5px 10px">${l.b}</td>
+              <td style="padding:5px 10px;color:${l.varAbs<0?'#1baf7a':l.varAbs>0?'#e24b4a':'var(--text3)'}">${l.varAbs>0?'+':''}${l.varAbs}</td>
+              <td style="padding:5px 10px;color:${l.varPct===null?'var(--text3)':l.varPct<0?'#1baf7a':l.varPct>0?'#e24b4a':'var(--text3)'}">${l.varPct===null?'—':(l.varPct>0?'+':'')+l.varPct+'%'}</td>
+              <td style="padding:5px 10px;font-weight:600;color:${corClassif(l.classif)}">${l.classif}</td>
+            </tr>`).join('')}</tbody>
+        </table></div>
+      `;
+    }
+  }
 }
 
 
