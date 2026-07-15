@@ -14620,6 +14620,8 @@ function _diagRenderResultado(res) {
 // ── Backfill operacaoId — Indevidos (prévia somente-leitura + execução aditiva gated) ──
 let _diagBackfillPrevia    = null;
 let _diagBackfillCarregando = false;
+let _diagBackfillMostrarDocs = false;
+let _diagBackfillFiltroMes   = '';
 
 function _diagRenderBackfillPainel() {
   return `
@@ -14656,14 +14658,58 @@ function _diagRenderBackfillResumo(p) {
       </tr></thead>
       <tbody>${comps.map(m=>`<tr><td style="padding:4px 14px 4px 0">${m}</td><td style="padding:4px 0">${p.porCompetencia[m].toLocaleString('pt-BR')}</td></tr>`).join('')}</tbody>
     </table>
-    <div style="font-size:11px;color:var(--text3)">
+    <div style="font-size:11px;color:var(--text3);margin-bottom:14px">
       Confirmado: somente o campo operacaoId é adicionado · nenhum outro campo é alterado · registros suspeitos não são tocados · nenhum documento é removido ou sobrescrito.
+    </div>
+
+    <button class="btn btn-secondary" onclick="_diagBackfillMostrarDocs=!_diagBackfillMostrarDocs;renderDiagImport()">
+      ${_diagBackfillMostrarDocs ? '▾ Ocultar documentos elegíveis' : '👁 Visualizar documentos elegíveis'}
+    </button>
+
+    ${_diagBackfillMostrarDocs ? _diagRenderBackfillDocs(p, comps) : ''}
+  `;
+}
+
+function _diagRenderBackfillDocs(p, comps) {
+  const docs = _diagBackfillFiltroMes ? p.docs.filter(d => d.mesRef === _diagBackfillFiltroMes) : p.docs;
+  return `
+    <div style="margin-top:12px">
+      <div style="margin-bottom:8px">
+        <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Filtrar por competência</label>
+        <select class="form-select" style="min-width:180px" onchange="_diagBackfillFiltroMes=this.value;renderDiagImport()">
+          <option value="">Todas (${p.total})</option>
+          ${comps.map(m=>`<option value="${m}" ${m===_diagBackfillFiltroMes?'selected':''}>${m} (${p.porCompetencia[m]})</option>`).join('')}
+        </select>
+      </div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:8px">${docs.length.toLocaleString('pt-BR')} documento(s) — apenas visualização, nenhum dado é alterado aqui.</div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:900px">
+          <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15);background:var(--surface3)">
+            ${['Competência','Posto','Empresa','Gerente','Atendente','Serviço','Importado por','Data da importação'].map(h=>
+              `<th style="padding:7px 10px;text-align:left;color:var(--text3);white-space:nowrap;font-weight:600">${h}</th>`).join('')}
+          </tr></thead>
+          <tbody>${docs.length ? docs.map(d=>`
+            <tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+              <td style="padding:6px 10px;white-space:nowrap">${d.mesRef}</td>
+              <td style="padding:6px 10px;white-space:nowrap">${d.loja||'—'}</td>
+              <td style="padding:6px 10px">${d.empresa||'—'}</td>
+              <td style="padding:6px 10px">${d.gerente||'—'}</td>
+              <td style="padding:6px 10px">${d.atendente||'—'}</td>
+              <td style="padding:6px 10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${d.descricaoServico||''}">${d.descricaoServico||'—'}</td>
+              <td style="padding:6px 10px;white-space:nowrap">${d.importadoPor||'—'}</td>
+              <td style="padding:6px 10px;white-space:nowrap;color:var(--text3)">${d.importadoEm?new Date(d.importadoEm).toLocaleString('pt-BR'):'—'}</td>
+            </tr>`).join('') : '<tr><td colspan="8" style="padding:16px;text-align:center;color:var(--text3)">Nenhum documento para esta competência</td></tr>'}
+          </tbody>
+        </table>
+      </div>
     </div>
   `;
 }
 
 async function _diagBackfillRodarPrevia() {
   _diagBackfillCarregando = true;
+  _diagBackfillMostrarDocs = false;
+  _diagBackfillFiltroMes = '';
   renderDiagImport();
   try {
     const validos = new Set(TODOS_POSTOS_RG.map(_diagNormPosto));
@@ -14674,7 +14720,13 @@ async function _diagBackfillRodarPrevia() {
       const data = d.data();
       if (data.operacaoId) return;                                  // já tem — fora do escopo do backfill
       if (!data.loja || !validos.has(_diagNormPosto(data.loja))) return; // suspeito — não entra no backfill
-      alvo.push({ ref: d.ref });
+      alvo.push({
+        ref: d.ref,
+        mesRef: data.mesRef || '(sem competência)',
+        loja: data.loja || '', empresa: data.empresa || '', gerente: data.gerente || '',
+        atendente: data.atendente || '', descricaoServico: data.descricaoServico || '',
+        importadoPor: data.importadoPor || '', importadoEm: data.importadoEm || ''
+      });
       const m = data.mesRef || '(sem competência)';
       porComp[m] = (porComp[m]||0) + 1;
     });
