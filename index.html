@@ -15760,7 +15760,8 @@ const RECL_COL_ALIASES = {
   'RETORNO DA ORDEM':  ['RETORNO DA ORDEM','RETORNO ORDEM','RETORNO'],
   'REGUA DISCIPLINAR': ['REGUA DISCIPLINAR','REGUA','REGUA DISCIPLINAR APLICADA'],
   'DIA':               ['DIA'],
-  'ANO':               ['ANO']
+  'ANO':               ['ANO'],
+  'INSTALACAO':        ['INSTALACAO','NUMERO DA INSTALACAO','N INSTALACAO','INSTALACAO ENEL','COD INSTALACAO']
 };
 // Causa: aliases próprios — NUNCA cai em ANÁLISE DA ORDEM como fallback (regra explícita)
 const RECL_COL_ALIASES_CAUSA = ['CAUSA','MOTIVO','CAUSA RAIZ','CLASSIFICACAO','MOTIVO DA RECLAMACAO','CLASSIFICACAO DA CAUSA'];
@@ -16027,8 +16028,8 @@ function _reclCalcPrioridades(dados, recPorPosto) {
 
 function _reclMontarRecomendacao(p, principalServico) {
   const partes = [];
-  if (p.classif.label === 'Recorrente') partes.push(`recorrente há ${p.nComp} competências`);
-  else if (p.classif.label === 'Atenção') partes.push(`ocorrência em ${p.nComp} competências`);
+  if (p.classif.label === 'Recorrente') partes.push(`recorrente há ${p.nComp} meses`);
+  else if (p.classif.label === 'Atenção') partes.push(`ocorrência em ${p.nComp} meses`);
   if (principalServico) partes.push(`foco no serviço "${principalServico}"`);
   return `Atenção da Qualidade para <strong>${p.posto}</strong>: ${partes.join(', ')} — ${p.pct.toFixed(1)}% de improcedência (${p.improcedentes} de ${p.validas} reclamações válidas).`;
 }
@@ -16313,6 +16314,7 @@ async function analisarArquivoReclamacoes() {
         mesRef, loja, empresa: get(row, resolveCol('EMPRESA')), gerente: get(row, resolveCol('GERENTE')),
         atendente, loginAtendente: get(row, resolveCol('LOGIN ATENDENTE')),
         descricaoServico: servico, procedencia,
+        instalacao: get(row, resolveCol('INSTALACAO')),
         causa: idxCausa!==undefined ? get(row, idxCausa) : '',
         analiseOrdem: get(row, resolveCol('ANALISE DA ORDEM')),
         retornoOrdem: get(row, resolveCol('RETORNO DA ORDEM')),
@@ -16342,7 +16344,7 @@ async function analisarArquivoReclamacoes() {
     }
 
     const mesesDetec = Object.keys(byMes).sort();
-    if (!mesesDetec.length) { toast('Nenhuma competência reconhecida no arquivo.', 'err'); return; }
+    if (!mesesDetec.length) { toast('Nenhum mês reconhecido no arquivo.', 'err'); return; }
 
     _reclImportPrevia = {
       byMes, dataBase, operacaoId,
@@ -16497,14 +16499,14 @@ function _reclRenderPreviaImportacao() {
 
         <div style="background:var(--surface3);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:12px">
           ${selecionadosArr.length
-            ? `<strong>Serão substituídas:</strong> ${selecionadosArr.map(m=>`${_indMesLabel(m)} (${m})`).join(', ')}. As demais competências existentes não são tocadas.`
-            : '<strong>Nenhuma competência selecionada</strong> — nada será gravado.'}
+            ? `<strong>Serão substituídos:</strong> ${selecionadosArr.map(m=>`${_indMesLabel(m)} (${m})`).join(', ')}. Os demais meses existentes não são tocados.`
+            : '<strong>Nenhum mês selecionado</strong> — nada será gravado.'}
         </div>
 
         <div style="display:flex;gap:8px">
           <button class="btn btn-secondary" onclick="_reclCancelarPrevia()">← Cancelar</button>
           <button class="btn btn-primary" style="flex:1" onclick="confirmarImportacaoReclamacoes()" ${!selecionadosArr.length?'disabled':''}>
-            ✅ Confirmar e importar ${selecionadosArr.length} competência(s)
+            ✅ Confirmar e importar ${selecionadosArr.length} mês(es)
           </button>
         </div>
       </div>
@@ -16682,7 +16684,8 @@ function renderReclamacoesPainel() {
       </div>
     </div>
 
-    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:20px 0 10px">🧠 Análises Inteligentes</div>
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:20px 0 4px">🧠 Análises Inteligentes</div>
+    <div id="recl-analises-base" style="font-size:11px;color:var(--text3);margin-bottom:10px"></div>
 
     <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:12px">
       <div style="font-size:12px;font-weight:600;margin-bottom:10px">🏪 Recorrência por Posto</div>
@@ -16808,26 +16811,32 @@ function _renderReclamacoesCharts(dados) {
       <span style="font-size:11px;color:var(--text3);min-width:44px;text-align:right">${s.pct.toFixed(1)}%</span>
     </div>`).join('') : '<div style="color:var(--text3);font-size:13px">Sem dados</div>';
 
-  // ── Recorrência por Posto (histórico completo, ignora seleção de mês) ──
-  const recPorPosto = _reclCalcRecorrencia(allReclamacoes, _reclFiltroPosto, _reclFiltroServico, _reclFiltroAtendente);
+  // Análises Inteligentes: recorte = meses selecionados (ou todo o período disponível quando nada selecionado)
+  const mesesParaAnalise = _reclMesesSel.length ? _reclMesesSel : _reclMesesComDados;
+  const dadosBaseSelecionados = allReclamacoes.filter(r => mesesParaAnalise.includes(r.mesRef));
+  const elBaseAnalise = document.getElementById('recl-analises-base');
+  if (elBaseAnalise) elBaseAnalise.textContent = `Baseado em: ${mesesParaAnalise.length ? mesesParaAnalise.map(_indMesLabel).join(', ') : 'nenhum mês selecionado'}`;
+
+  // ── Recorrência por Posto (recorte dos meses selecionados) ──
+  const recPorPosto = _reclCalcRecorrencia(dadosBaseSelecionados, _reclFiltroPosto, _reclFiltroServico, _reclFiltroAtendente);
   const rankRec = _reclRankRecorrencia(recPorPosto);
-  const totalMesesHist = _reclMesesComDados.length;
+  const totalMesesHist = mesesParaAnalise.length;
   const elRec = document.getElementById('recl-recorrencia-posto');
   if (elRec) elRec.innerHTML = rankRec.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px">${rankRec.map(r=>{
     const c = _indClassifRecorrencia(r.nComp);
     return `<div style="display:flex;align-items:center;gap:6px;background:${c.bg};border-radius:8px;padding:4px 10px;border:1px solid ${c.bd}">
       <span style="font-size:12px;color:var(--text)">${r.posto}</span>
       <span style="font-size:11px;font-weight:700;color:${c.color}">${c.label}</span>
-      <span style="font-size:11px;color:var(--text3)">${r.nComp} de ${totalMesesHist} últimos meses</span>
+      <span style="font-size:11px;color:var(--text3)">${r.nComp} de ${totalMesesHist} meses selecionados</span>
     </div>`;
   }).join('')}</div>` : '<div style="color:var(--text3);font-size:13px">Sem dados</div>';
 
-  // ── Tendência (mês atual vs. anterior) ──
-  const tend = _reclCalcTendencia(allReclamacoes, _reclMesesComDados, _reclFiltroPosto, _reclFiltroServico, _reclFiltroAtendente);
+  // ── Tendência (mês atual vs. anterior, dentro do recorte selecionado) ──
+  const tend = _reclCalcTendencia(dadosBaseSelecionados, mesesParaAnalise, _reclFiltroPosto, _reclFiltroServico, _reclFiltroAtendente);
   const elTend = document.getElementById('recl-tendencia');
   if (elTend) {
     if (!tend) {
-      elTend.innerHTML = '<div style="color:var(--text3);font-size:13px">Menos de dois meses disponíveis para comparação.</div>';
+      elTend.innerHTML = '<div style="color:var(--text3);font-size:13px">Menos de dois meses no recorte selecionado para comparação.</div>';
     } else {
       const cor = tend.classif==='Melhorou'?'#1baf7a':tend.classif==='Piorou'?'#e24b4a':'var(--text3)';
       elTend.innerHTML = `
@@ -16896,7 +16905,7 @@ function _renderReclamacoesCharts(dados) {
     dados: `${_indMesLabel(card.mesAnteriorRef)}: ${card.pctAnterior.toFixed(1)}% → ${_indMesLabel(card.mes)}: ${card.pct.toFixed(1)}%`
   });
   const postoRecorrente = rankRec.find(r=>r.nComp>=3);
-  if (postoRecorrente) alertas.push({ titulo:`Posto ${postoRecorrente.posto} recorrente em competências consecutivas`, dados:`${postoRecorrente.nComp} de ${totalMesesHist} últimos meses · ${postoRecorrente.total} improcedências` });
+  if (postoRecorrente) alertas.push({ titulo:`Posto ${postoRecorrente.posto} recorrente em meses consecutivos`, dados:`${postoRecorrente.nComp} de ${totalMesesHist} meses selecionados · ${postoRecorrente.total} improcedências` });
   if (rankServPct[0] && rankServPct[0].pct>=RECL_META_PCT) alertas.push({ titulo:`Serviço recorrente acima da meta: ${rankServPct[0].servico}`, dados:`${rankServPct[0].pct.toFixed(1)}% de improcedência (${rankServPct[0].improcedentes}/${rankServPct[0].validas})` });
   if (causasArr && causasArr[0] && causasArr[0].pct>=30) alertas.push({ titulo:`Mesma causa recorrente: ${causasArr[0].causa}`, dados:`${causasArr[0].qtd} ocorrência(s) — ${causasArr[0].pct}% do período` });
 
@@ -16932,16 +16941,18 @@ function renderReclamacoesDetalhamento() {
   const filtMes   = document.getElementById('recl-det-mes')?.value   || '';
   const filtPosto = document.getElementById('recl-det-posto')?.value || '';
   const filtServ  = document.getElementById('recl-det-serv')?.value  || '';
-  const filtProc  = document.getElementById('recl-det-proc')?.value  || '';
 
-  const postosDisp = [...new Set(allReclamacoes.map(r=>r.loja).filter(Boolean))].sort();
-  const servDisp   = [...new Set(allReclamacoes.map(r=>r.descricaoServico).filter(Boolean))].sort();
+  // Detalhamento é usado pela Qualidade para atuação — mostra somente Improcedentes.
+  // Procedentes continuam existindo normalmente na base e nos cálculos/cards/gráficos/rankings.
+  const baseImprocedentes = allReclamacoes.filter(r => r.procedencia === 'IMPROCEDENTE');
 
-  const filtrados = allReclamacoes.filter(r => {
+  const postosDisp = [...new Set(baseImprocedentes.map(r=>r.loja).filter(Boolean))].sort();
+  const servDisp   = [...new Set(baseImprocedentes.map(r=>r.descricaoServico).filter(Boolean))].sort();
+
+  const filtrados = baseImprocedentes.filter(r => {
     if (filtMes   && r.mesRef       !== filtMes)   return false;
     if (filtPosto && r.loja         !== filtPosto) return false;
     if (filtServ  && r.descricaoServico !== filtServ) return false;
-    if (filtProc  && r.procedencia  !== filtProc)  return false;
     return true;
   });
 
@@ -16965,19 +16976,14 @@ function renderReclamacoesDetalhamento() {
         </select></div>
       ${sel('recl-det-posto', postosDisp, filtPosto, 'Posto')}
       ${sel('recl-det-serv',  servDisp,   filtServ,  'Serviço')}
-      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Procedência</label>
-        <select class="form-select" id="recl-det-proc" style="min-width:140px" onchange="_reclPagina=1;renderReclamacoesDetalhamento()">
-          <option value="">Todas</option>
-          <option value="PROCEDENTE" ${filtProc==='PROCEDENTE'?'selected':''}>Procedente</option>
-          <option value="IMPROCEDENTE" ${filtProc==='IMPROCEDENTE'?'selected':''}>Improcedente</option>
-        </select></div>
+      <span style="font-size:11px;background:rgba(226,75,74,.1);color:#e24b4a;border:1px solid rgba(226,75,74,.3);padding:5px 10px;border-radius:8px;align-self:flex-end;font-weight:600">Mostrando apenas Improcedentes</span>
       <button class="btn btn-secondary" onclick="exportarReclamacoes()" style="height:38px;align-self:flex-end">⬇ Excel</button>
     </div>
     <div style="font-size:12px;color:var(--text3);margin-bottom:8px">${filtrados.length.toLocaleString('pt-BR')} registro(s) · Página ${_reclPagina} de ${totalPags}</div>
     <div style="overflow-x:auto">
-      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:960px">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:1040px">
         <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15);background:var(--surface3)">
-          ${['Mês','Posto','Atendente','Serviço','Procedência','Causa','Dia'].map(h=>
+          ${['Mês','Posto','Atendente','Serviço','Instalação','Procedência','Causa','Dia'].map(h=>
             `<th style="padding:7px 10px;text-align:left;color:var(--text3);white-space:nowrap;font-weight:600">${h}</th>`).join('')}
         </tr></thead>
         <tbody>${pag.length ? pag.map(r=>`
@@ -16987,10 +16993,11 @@ function renderReclamacoesDetalhamento() {
             <td style="padding:6px 10px;white-space:nowrap">${r.loja||'—'}</td>
             <td style="padding:6px 10px">${r.atendente||'—'}</td>
             <td style="padding:6px 10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.descricaoServico||''}">${r.descricaoServico||'—'}</td>
+            <td style="padding:6px 10px;white-space:nowrap;font-family:monospace">${r.instalacao||'—'}</td>
             <td style="padding:6px 10px;white-space:nowrap;font-weight:600;color:${r.procedencia==='IMPROCEDENTE'?'#e24b4a':'#1baf7a'}">${r.procedencia||'—'}</td>
             <td style="padding:6px 10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.causa||''}">${r.causa||'—'}</td>
             <td style="padding:6px 10px;white-space:nowrap;color:var(--text3)">${r.dia||'—'}</td>
-          </tr>`).join('') : '<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--text3)">Nenhum registro encontrado</td></tr>'}
+          </tr>`).join('') : '<tr><td colspan="8" style="padding:20px;text-align:center;color:var(--text3)">Nenhum registro encontrado</td></tr>'}
         </tbody>
       </table>
     </div>
@@ -17009,21 +17016,21 @@ function exportarReclamacoes() {
   const filtMes   = document.getElementById('recl-det-mes')?.value   || '';
   const filtPosto = document.getElementById('recl-det-posto')?.value || '';
   const filtServ  = document.getElementById('recl-det-serv')?.value  || '';
-  const filtProc  = document.getElementById('recl-det-proc')?.value  || '';
+  // Mesmo recorte do Detalhamento: só Improcedentes (Procedentes seguem intactos na base/cálculos)
   const filtrados = allReclamacoes.filter(r => {
+    if (r.procedencia !== 'IMPROCEDENTE') return false;
     if (filtMes   && r.mesRef           !== filtMes)   return false;
     if (filtPosto && r.loja             !== filtPosto)  return false;
     if (filtServ  && r.descricaoServico !== filtServ)   return false;
-    if (filtProc  && r.procedencia      !== filtProc)   return false;
     return true;
   });
   if (!filtrados.length) { toast('Nenhum dado para exportar','err'); return; }
-  const cols = ['mesRef','loja','atendente','loginAtendente','descricaoServico','procedencia','causa',
+  const cols = ['mesRef','loja','atendente','loginAtendente','descricaoServico','instalacao','procedencia','causa',
                 'analiseOrdem','retornoOrdem','reguaDisciplinar','dia','gerente','empresa','importadoPor','importadoEm'];
-  const rows = filtrados.map(r => { const o={}; cols.forEach(c=>o[c]=r[c]||''); return o; });
+  const rows = filtrados.map(r => { const o={}; cols.forEach(c=>o[c]=r[c]||''); return o; }); // instalacao permanece string — preserva zeros à esquerda
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Reclamacoes');
-  XLSX.writeFile(wb, `Reclamacoes_${filtMes||'historico'}_${new Date().toISOString().slice(0,10)}.xlsx`);
+  XLSX.writeFile(wb, `Reclamacoes_Improcedentes_${filtMes||'historico'}_${new Date().toISOString().slice(0,10)}.xlsx`);
   toast(`✅ ${filtrados.length.toLocaleString('pt-BR')} registros exportados`,'ok');
 }
 
