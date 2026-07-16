@@ -15734,9 +15734,18 @@ function _qualRenderEvolucaoChart(mesesSel) {
 const RECL_META_PCT = 40; // menor que 40% — meta geral da gerência, não individual por posto
 const RECL_POR_PAG  = 50;
 
+// Normalização de coluna/valor específica de Reclamações — superset de _normIndCol (mesma lógica,
+// mas também trata underscore como espaço). Usada só neste módulo — não altera _normIndCol nem o
+// reconhecimento de coluna de Ordens Indevidas/Diagnóstico genérico.
+function _reclNormCol(k) {
+  return String(k||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/_/g,' ')
+    .trim().toUpperCase().replace(/\s+/g,' ');
+}
+
 // Serviços expurgados: nunca gravados no Firestore — ficam fora de tudo desde a importação
 const RECL_SERVICOS_EXPURGADOS = ['RECL. DE CONSUMO - 10D','RECL DE CONSUMO GD - 10D','RECURSO DE TOI - 1º NÍVEL'];
-const RECL_SERVICOS_EXPURGADOS_NORM = new Set(RECL_SERVICOS_EXPURGADOS.map(_normIndCol));
+const RECL_SERVICOS_EXPURGADOS_NORM = new Set(RECL_SERVICOS_EXPURGADOS.map(_reclNormCol));
 
 const RECL_COL_ALIASES = {
   'MES':               ['MES'],
@@ -15785,7 +15794,7 @@ function _reclResolverMesRef(row, idxAno, idxMes) {
       mesNum = String(mesCell.getMonth()+1).padStart(2,'0');
       if (!ano) ano = String(mesCell.getFullYear());
     } else {
-      const mesTxt = _normIndCol(String(mesCell ?? '').trim());
+      const mesTxt = _reclNormCol(String(mesCell ?? '').trim());
       if (RECL_MESES_NOME[mesTxt]) {
         mesNum = RECL_MESES_NOME[mesTxt];
       } else {
@@ -15825,6 +15834,7 @@ let _reclImportPrevia         = null;
 let _reclImportSelecionados   = new Set();
 let _reclDiagPrevia           = null; // diagnóstico de reconhecimento da coluna Procedência (não afeta validação/importação)
 let _reclDiagMesPrevia        = null; // diagnóstico de reconhecimento de Mês (mesma função da rotina principal)
+let _reclDiagServicoPrevia    = null; // diagnóstico de reconhecimento de Serviço
 
 // Leitura exclusivamente por operacaoId, desde o primeiro import (sem necessidade de backfill)
 function initReclamacoes() {
@@ -16037,7 +16047,7 @@ function _reclDiagnosticarColunaProcedencia(rawArr, idxProced, colunaLabel) {
     const bruto = row[idxProced];
     const tipo = bruto instanceof Date ? 'Date' : typeof bruto;
     const trimmed = String(bruto ?? '').trim();
-    const normalizado = _normIndCol(trimmed);
+    const normalizado = _reclNormCol(trimmed);
     let reconhecido = null;
     if (!trimmed) { qtdVazio++; }
     else if (normalizado === 'PROCEDENTE') { qtdProcedente++; reconhecido='PROCEDENTE'; }
@@ -16127,6 +16137,39 @@ function _reclRenderDiagMes(diag) {
     </div>`;
 }
 
+// ── Diagnóstico de reconhecimento de Serviço (somente leitura) ─────────────
+function _reclDiagnosticarServico(rawArr, idxServico, colunaLabel) {
+  const linhas = rawArr.slice(1).filter(row => row && !row.every(c => !c && c!==0));
+  const distintos = new Set();
+  const amostra = [];
+  let qtdVazios = 0;
+  linhas.forEach((row,i) => {
+    const bruto = row[idxServico];
+    const trimmed = String(bruto ?? '').trim();
+    if (!trimmed) { qtdVazios++; }
+    else distintos.add(_reclNormCol(trimmed));
+    if (i < 20 && trimmed) amostra.push(trimmed);
+  });
+  return { colunaLabel, colunaIndice:idxServico, qtdDistintos:distintos.size, qtdVazios, amostra };
+}
+
+function _reclRenderDiagServico(diag) {
+  if (!diag) return '';
+  return `
+    <div style="background:var(--surface3);border-radius:10px;padding:14px;margin-top:14px;font-size:12px;line-height:1.6">
+      <div style="font-weight:700;margin-bottom:8px">🔬 Diagnóstico de Reconhecimento de Serviço</div>
+      <div>Coluna reconhecida: <strong>${diag.colunaLabel}</strong> (índice ${diag.colunaIndice})</div>
+      <div style="margin:8px 0;display:flex;gap:16px;flex-wrap:wrap">
+        <span>Serviços distintos: <strong style="color:${diag.qtdDistintos>0?'#1baf7a':'#e24b4a'}">${diag.qtdDistintos}</strong></span>
+        <span>Valores vazios: <strong style="color:var(--text3)">${diag.qtdVazios}</strong></span>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Primeiros ${diag.amostra.length} valores reconhecidos:</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${diag.amostra.map(s=>`<span style="background:rgba(255,255,255,.06);border-radius:8px;padding:2px 8px;font-size:11px">${s}</span>`).join('') || '<span style="color:var(--text3);font-size:11px">Nenhum valor não-vazio encontrado</span>'}
+      </div>
+    </div>`;
+}
+
 async function analisarArquivoReclamacoes() {
   const fi = document.getElementById('recl-import-file');
   const dataBase = document.getElementById('recl-data-base')?.value || '';
@@ -16155,7 +16198,7 @@ async function analisarArquivoReclamacoes() {
     if (rawArr.length < 2) { toast('Planilha sem dados','err'); return; }
 
     const colMap = {};
-    rawArr[0].forEach((h,i) => { if (h!=null && h!=='') colMap[_normIndCol(String(h))] = i; });
+    rawArr[0].forEach((h,i) => { if (h!=null && h!=='') colMap[_reclNormCol(String(h))] = i; });
     console.log('[Reclamações] Colunas:', Object.keys(colMap));
 
     const resolveCol = aliasKey => {
@@ -16189,6 +16232,14 @@ async function analisarArquivoReclamacoes() {
     const idxCausa = resolveCausa();
     const colunaProcedRotulo = Object.keys(colMap).find(k => colMap[k]===idxProced) || 'PROCEDENCIA';
 
+    // BLOQUEIO: coluna de Serviço não encontrada
+    const idxServico = resolveCol('DESCRICAO SERVICO');
+    if (idxServico === undefined) {
+      toast(`Coluna de Serviço não encontrada. Colunas disponíveis: ${Object.keys(colMap).slice(0,10).join(', ')}...`, 'err');
+      return;
+    }
+    const colunaServicoRotulo = Object.keys(colMap).find(k => colMap[k]===idxServico) || 'DESCRICAO SERVICO';
+
     // Diagnóstico de reconhecimento (somente leitura — não influencia a validação nem a importação abaixo)
     _reclDiagPrevia = _reclDiagnosticarColunaProcedencia(rawArr, idxProced, colunaProcedRotulo);
     const diagEl = document.getElementById('recl-diag-coluna');
@@ -16197,6 +16248,16 @@ async function analisarArquivoReclamacoes() {
     _reclDiagMesPrevia = _reclDiagnosticarMes(rawArr, idxAno, idxMes);
     const diagMesEl = document.getElementById('recl-diag-mes');
     if (diagMesEl) diagMesEl.innerHTML = _reclRenderDiagMes(_reclDiagMesPrevia);
+
+    _reclDiagServicoPrevia = _reclDiagnosticarServico(rawArr, idxServico, colunaServicoRotulo);
+    const diagServEl = document.getElementById('recl-diag-servico');
+    if (diagServEl) diagServEl.innerHTML = _reclRenderDiagServico(_reclDiagServicoPrevia);
+
+    // BLOQUEIO: todos os Serviços vazios / zero Serviços distintos
+    if (_reclDiagServicoPrevia.qtdDistintos === 0) {
+      toast('Coluna de Serviço encontrada, porém todos os valores estão vazios (0 Serviços distintos). Importação bloqueada.', 'err');
+      return;
+    }
 
     const byMes = {};
     const amostraValores = new Set();
@@ -16217,8 +16278,9 @@ async function analisarArquivoReclamacoes() {
       const g = byMes[mesRef];
       g.lidos++;
 
-      const servicoRaw = get(row, resolveCol('DESCRICAO SERVICO'));
-      if (RECL_SERVICOS_EXPURGADOS_NORM.has(_normIndCol(servicoRaw))) {
+      // Serviço reconhecido e normalizado ANTES de qualquer classificação de expurgo/procedência
+      const servicoRaw = get(row, idxServico);
+      if (RECL_SERVICOS_EXPURGADOS_NORM.has(_reclNormCol(servicoRaw))) {
         g.expurgados++; totalExpurgado++;
         expurgadoPorServico[servicoRaw] = (expurgadoPorServico[servicoRaw]||0)+1;
         return; // expurgado — nunca entra em nenhuma métrica ou gravação
@@ -16226,7 +16288,7 @@ async function analisarArquivoReclamacoes() {
 
       const procedRaw = get(row, idxProced);
       if (procedRaw) amostraValores.add(procedRaw);
-      const procedNorm = _normIndCol(procedRaw);
+      const procedNorm = _reclNormCol(procedRaw);
 
       let procedencia = null;
       if (procedNorm === 'PROCEDENTE') procedencia = 'PROCEDENTE';
@@ -16372,6 +16434,7 @@ async function renderReclamacoesImportar() {
         <button class="btn btn-primary" style="margin-top:16px;width:100%" onclick="analisarArquivoReclamacoes()">🔍 Analisar arquivo</button>
         <div id="recl-diag-coluna">${_reclDiagPrevia ? _reclRenderDiagColuna(_reclDiagPrevia) : ''}</div>
         <div id="recl-diag-mes">${_reclDiagMesPrevia ? _reclRenderDiagMes(_reclDiagMesPrevia) : ''}</div>
+        <div id="recl-diag-servico">${_reclDiagServicoPrevia ? _reclRenderDiagServico(_reclDiagServicoPrevia) : ''}</div>
       </div>
       <div style="background:var(--surface2);border-radius:12px;padding:14px 18px">
         <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Último Import</div>
