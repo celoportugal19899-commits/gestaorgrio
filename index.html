@@ -1369,15 +1369,18 @@ const PosCanalLabels = {
 
     <!-- QUALIDADE — Reclamações Improcedentes (navegação inicial, funcionalidade futura) -->
     <div id="view-adm-qualidade-reclamacoes" class="view">
-      <div class="topbar">
+      <div class="topbar" style="flex-wrap:wrap;gap:10px;align-items:center">
         <div class="topbar-title">🗣 Reclamações Improcedentes</div>
+        <div class="csat-tabs" style="margin-left:auto;display:flex;gap:4px">
+          <button class="csat-tab active" id="recl-tab-painel"        onclick="switchReclamacoesTab('painel')">📊 Painel</button>
+          <button class="csat-tab"        id="recl-tab-importar"      onclick="switchReclamacoesTab('importar')">📥 Importar</button>
+          <button class="csat-tab"        id="recl-tab-detalhamento"  onclick="switchReclamacoesTab('detalhamento')">📋 Detalhamento</button>
+        </div>
       </div>
       <div class="view-content">
-        <div style="text-align:center;padding:60px 20px;color:var(--text3)">
-          <div style="font-size:40px;margin-bottom:12px">🗣</div>
-          <div style="font-size:15px;font-weight:600;color:var(--text)">Módulo ainda não disponível</div>
-          <p style="font-size:13px;max-width:420px;margin:8px auto 0">Este submódulo de Qualidade será implementado em uma próxima etapa.</p>
-        </div>
+        <div id="recl-painel-wrap"></div>
+        <div id="recl-importar-wrap"     style="display:none"></div>
+        <div id="recl-detalhamento-wrap" style="display:none"></div>
       </div>
     </div>
 
@@ -3724,7 +3727,7 @@ function startApp() {
   initNotificacoes();
   initPropostas();
   if (!isPosto) { initCsatAcoes(); if (isAdmin) seedCsatSugestoesSeNecessario(); }
-  if (!isPosto) initIndevidos();
+  if (!isPosto) { initIndevidos(); initReclamacoes(); }
   setTimeout(verificarAlertas, 5000);
 }
 
@@ -3953,6 +3956,7 @@ function _doRefreshCurrentView() {
   if (id === 'adm-indevidos') renderIndevidos();
   if (id === 'adm-diag-import') renderDiagImport();
   if (id === 'adm-qualidade') renderQualidadeDashboard();
+  if (id === 'adm-qualidade-reclamacoes') renderReclamacoes();
   if (id === 'supervisor-postos') renderSupervisorPostos();
   if (id === 'sup-caixa') renderSupCaixa();
   if (id === 'adm-caixas') renderAdmCaixas();
@@ -4005,6 +4009,7 @@ function showView(name, el) {
   if (name === 'sup-medidas-disciplinares') md_renderTudo();
   if (name === 'adm-diag-import') renderDiagImport();
   if (name === 'adm-qualidade') renderQualidadeDashboard();
+  if (name === 'adm-qualidade-reclamacoes') renderReclamacoes();
   // Render imediato ao navegar (cancela debounce pendente e renderiza já)
   clearTimeout(_refreshTimer);
   _refreshTimer = null;
@@ -14863,8 +14868,19 @@ const DIAGNOSTICO_MODULOS = {
     postosValidos: TODOS_POSTOS_RG,
     ativo: true
   },
+  reclamacoes: {
+    label: 'Reclamações Improcedentes',
+    collection: 'reclamacoes',
+    campos: {
+      mes: 'mesRef', posto: 'loja', servico: 'descricaoServico',
+      atendente: 'atendente', empresa: 'empresa', gerente: 'gerente',
+      importadoPor: 'importadoPor', importadoEm: 'importadoEm',
+      procedencia: 'procedencia'
+    },
+    postosValidos: TODOS_POSTOS_RG,
+    ativo: true
+  },
   ordens_indevidas: { label: 'Ordens Indevidas', ativo: false },
-  reclamacoes_improcedentes: { label: 'Reclamações Improcedentes', ativo: false },
   trocas_improcedentes: { label: 'Trocas Improcedentes', ativo: false },
   csat: { label: 'CSAT', ativo: false },
   pos: { label: 'Máquina Cartão POS', ativo: false }
@@ -14898,7 +14914,8 @@ async function _diagCarregar(moduloKey) {
     const mes = r[c.mes] || '(sem competência)';
     if (!porMes[mes]) porMes[mes] = {
       total: 0, postos: new Set(), servicos: new Set(), atendentes: new Set(),
-      importadoPor: {}, importadoEmMin: null, importadoEmMax: null
+      importadoPor: {}, importadoEmMin: null, importadoEmMax: null,
+      procedentes: 0, improcedentes: 0, procedenciaInvalidos: 0
     };
     const g = porMes[mes];
     g.total++;
@@ -14907,6 +14924,13 @@ async function _diagCarregar(moduloKey) {
     if (r[c.atendente])  g.atendentes.add(r[c.atendente]);
     if (r[c.empresa])    empresas.add(r[c.empresa]);
     if (r[c.gerente])    gerentes.add(r[c.gerente]);
+
+    if (c.procedencia) {
+      const v = r[c.procedencia];
+      if (v === 'PROCEDENTE') g.procedentes++;
+      else if (v === 'IMPROCEDENTE') g.improcedentes++;
+      else g.procedenciaInvalidos++;
+    }
 
     const imp = r[c.importadoPor] || '(desconhecido)';
     g.importadoPor[imp] = (g.importadoPor[imp]||0) + 1;
@@ -14929,7 +14953,7 @@ async function _diagCarregar(moduloKey) {
     moduloKey, totalGeral: regs.length,
     competencias: Object.keys(porMes).sort(),
     porMes, empresas: [...empresas].sort(), gerentes: [...gerentes].sort(),
-    suspeitos
+    suspeitos, temProcedencia: !!c.procedencia
   };
 }
 
@@ -15021,19 +15045,29 @@ function _diagRenderResultado(res) {
     <div style="overflow-x:auto;margin-bottom:20px">
       <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:900px">
         <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15);background:var(--surface3)">
-          ${['Competência','Registros','Postos distintos','Serviços distintos','Atendentes distintos','Importado por (qtd)','1ª importação','Última importação'].map(h=>
-            `<th style="padding:7px 10px;text-align:left;color:var(--text3);white-space:nowrap;font-weight:600">${h}</th>`).join('')}
+          ${[
+            'Competência','Registros','Postos distintos','Serviços distintos','Atendentes distintos',
+            ...(res.temProcedencia?['Procedentes','Improcedentes','% Improcedência','Procedência inválida']:[]),
+            'Importado por (qtd)','1ª importação','Última importação'
+          ].map(h=>`<th style="padding:7px 10px;text-align:left;color:var(--text3);white-space:nowrap;font-weight:600">${h}</th>`).join('')}
         </tr></thead>
         <tbody>${res.competencias.map(m=>{
           const g = res.porMes[m];
           const impStr = Object.entries(g.importadoPor).sort((a,b)=>b[1]-a[1])
             .map(([who,n])=>`${who} (${n})`).join(', ');
+          const validas = (g.procedentes||0)+(g.improcedentes||0);
+          const pctImproc = validas ? (g.improcedentes/validas*100).toFixed(1)+'%' : '—';
           return `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
             <td style="padding:6px 10px;white-space:nowrap;font-weight:600">${m}</td>
             <td style="padding:6px 10px">${g.total.toLocaleString('pt-BR')}</td>
             <td style="padding:6px 10px">${g.postos.size}</td>
             <td style="padding:6px 10px">${g.servicos.size}</td>
             <td style="padding:6px 10px">${g.atendentes.size}</td>
+            ${res.temProcedencia?`
+            <td style="padding:6px 10px;color:#1baf7a">${g.procedentes||0}</td>
+            <td style="padding:6px 10px;color:#e24b4a">${g.improcedentes||0}</td>
+            <td style="padding:6px 10px;font-weight:600">${pctImproc}</td>
+            <td style="padding:6px 10px;${(g.procedenciaInvalidos||0)>0?'color:#f59e0b':''}">${g.procedenciaInvalidos||0}</td>`:''}
             <td style="padding:6px 10px;max-width:260px">${impStr||'—'}</td>
             <td style="padding:6px 10px;white-space:nowrap;color:var(--text3)">${g.importadoEmMin?new Date(g.importadoEmMin).toLocaleString('pt-BR'):'—'}</td>
             <td style="padding:6px 10px;white-space:nowrap;color:var(--text3)">${g.importadoEmMax?new Date(g.importadoEmMax).toLocaleString('pt-BR'):'—'}</td>
@@ -15690,6 +15724,1075 @@ function _qualRenderEvolucaoChart(mesesSel) {
 }
 
 
+// ═══════════════════════════════════════════════════════════════════════════
+// MÓDULO RECLAMAÇÕES IMPROCEDENTES (QUALIDADE)
+// Segue rigorosamente o padrão homologado de Ordens Indevidas: import
+// Analisar→Confirmar, operacaoId desde a 1ª importação, Diagnóstico ativado,
+// mesmo layout de página. Métrica é PERCENTUAL (improcedência), não contagem.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const RECL_META_PCT = 40; // menor que 40% — meta geral da gerência, não individual por posto
+const RECL_POR_PAG  = 50;
+
+// Serviços expurgados: nunca gravados no Firestore — ficam fora de tudo desde a importação
+const RECL_SERVICOS_EXPURGADOS = ['RECL. DE CONSUMO - 10D','RECL DE CONSUMO GD - 10D','RECURSO DE TOI - 1º NÍVEL'];
+const RECL_SERVICOS_EXPURGADOS_NORM = new Set(RECL_SERVICOS_EXPURGADOS.map(_normIndCol));
+
+const RECL_COL_ALIASES = {
+  'MES':               ['MES'],
+  'LOJA':              ['LOJA','POSTO'],
+  'EMPRESA':           ['EMPRESA'],
+  'GERENTE':           ['GERENTE'],
+  'ATENDENTE':         ['ATENDENTE'],
+  'LOGIN ATENDENTE':   ['LOGIN ATENDENTE','LOGIN_ATENDENTE','LOGIN DO ATENDENTE'],
+  'DESCRICAO SERVICO': ['DESCRICAO SERVICO','DESCRICAO DO SERVICO','SERVICO','DESCRICAO DE SERVICO','TIPO DE SERVICO','TIPO SERVICO','SERVICO PRESTADO'],
+  'PROCEDENCIA':       ['PROCEDENCIA','PROCEDENCIA DA RECLAMACAO','STATUS PROCEDENCIA','STATUS DA PROCEDENCIA'],
+  'ANALISE DA ORDEM':  ['ANALISE DA ORDEM','ANALISE ORDEM','ANALISE'],
+  'RETORNO DA ORDEM':  ['RETORNO DA ORDEM','RETORNO ORDEM','RETORNO'],
+  'REGUA DISCIPLINAR': ['REGUA DISCIPLINAR','REGUA','REGUA DISCIPLINAR APLICADA'],
+  'DIA':               ['DIA'],
+  'ANO':               ['ANO']
+};
+// Causa: aliases próprios — NUNCA cai em ANÁLISE DA ORDEM como fallback (regra explícita)
+const RECL_COL_ALIASES_CAUSA = ['CAUSA','MOTIVO','CAUSA RAIZ','CLASSIFICACAO','MOTIVO DA RECLAMACAO','CLASSIFICACAO DA CAUSA'];
+
+let allReclamacoes        = [];
+let _reclMesesComDados    = [];
+let unsubReclamacoes      = null;
+let _reclUltimoImport     = '';
+let _reclDataBase         = '';
+let _reclTab              = 'painel';
+let _reclMesesSel         = [];
+let _reclFiltroPosto      = '';
+let _reclFiltroServico    = '';
+let _reclFiltroAtendente  = '';
+let _reclPagina           = 1;
+let _reclImportPrevia         = null;
+let _reclImportSelecionados   = new Set();
+
+// Leitura exclusivamente por operacaoId, desde o primeiro import (sem necessidade de backfill)
+function initReclamacoes() {
+  if (unsubReclamacoes) unsubReclamacoes();
+  getOperacaoId().then(operacaoId => {
+    unsubReclamacoes = db.collection('reclamacoes')
+      .where('operacaoId','==', operacaoId)
+      .onSnapshot(snap => {
+        allReclamacoes = snap.docs.map(d => ({id:d.id,...d.data()}));
+        _reclMesesComDados = [...new Set(allReclamacoes.map(r=>r.mesRef).filter(Boolean))].sort();
+        if (_reclMesesSel.length === 0 && _reclMesesComDados.length > 0) {
+          _reclMesesSel = [_reclMesesComDados[_reclMesesComDados.length - 1]];
+        }
+        refreshCurrentView();
+      }, err => console.error('[Reclamações] onSnapshot:', err));
+  }).catch(e => {
+    console.error('[Reclamações] operacaoId não configurado:', e);
+    allReclamacoes = []; _reclMesesComDados = [];
+  });
+}
+
+// ── Funções puras de cálculo (métrica percentual — improcedência) ──────────
+
+function _reclCalcCardPrincipal(mesesSelIn, filtroPosto, filtroServico, filtroAtendente) {
+  const porMes = {};
+  allReclamacoes.forEach(r => {
+    if (filtroPosto     && r.loja             !== filtroPosto)     return;
+    if (filtroServico   && r.descricaoServico !== filtroServico)   return;
+    if (filtroAtendente && r.atendente        !== filtroAtendente) return;
+    if (!r.mesRef) return;
+    if (!porMes[r.mesRef]) porMes[r.mesRef] = { proc:0, improc:0 };
+    if (r.procedencia === 'PROCEDENTE') porMes[r.mesRef].proc++;
+    else if (r.procedencia === 'IMPROCEDENTE') porMes[r.mesRef].improc++;
+  });
+  const pctMes = m => { const d=porMes[m]; if(!d) return null; const v=d.proc+d.improc; return v ? d.improc/v*100 : null; };
+
+  const meses = mesesSelIn.length ? mesesSelIn : _reclMesesComDados;
+  if (!meses.length) return { modo:'vazio' };
+
+  if (meses.length === 1) {
+    const mes = meses[0];
+    const d = porMes[mes] || { proc:0, improc:0 };
+    const validas = d.proc + d.improc;
+    const pct = validas ? d.improc/validas*100 : 0;
+    const status = pct < RECL_META_PCT ? 'verde' : pct === RECL_META_PCT ? 'amarelo' : 'vermelho';
+    const todosOrd = [..._reclMesesComDados].sort();
+    const idx = todosOrd.indexOf(mes);
+    const mesAnteriorRef = idx>0 ? todosOrd[idx-1] : null;
+    const pctAnterior = mesAnteriorRef ? pctMes(mesAnteriorRef) : null;
+    return { modo:'unico', mes, validas, procedentes:d.proc, improcedentes:d.improc, pct,
+             meta:RECL_META_PCT, status, metaAtingida: status==='verde', mesAnteriorRef, pctAnterior };
+  }
+
+  const mesesValidos = meses.filter(m => _reclMesesComDados.includes(m));
+  let totalProc=0, totalImproc=0;
+  const mesesDetalhe = mesesValidos.map(m => {
+    const d = porMes[m] || { proc:0, improc:0 };
+    totalProc += d.proc; totalImproc += d.improc;
+    const validas = d.proc+d.improc;
+    return { mes:m, proc:d.proc, improc:d.improc, validas, pct: validas ? d.improc/validas*100 : null };
+  });
+  const totalValidas = totalProc + totalImproc;
+  const pctConsolidado = totalValidas ? totalImproc/totalValidas*100 : 0;
+  const mesesComDado = mesesDetalhe.filter(x => x.pct !== null);
+  const mesesDentroMeta = mesesComDado.filter(x => x.pct < RECL_META_PCT).length;
+  const pctMesesOk = mesesComDado.length ? Math.round(mesesDentroMeta/mesesComDado.length*100) : 0;
+  const status = mesesComDado.length && mesesDentroMeta===mesesComDado.length ? 'verde' : pctMesesOk>50 ? 'amarelo' : 'vermelho';
+  return { modo:'periodo', meses:mesesValidos, totalProc, totalImproc, totalValidas, pctConsolidado,
+           meta:RECL_META_PCT, mesesDentroMeta, totalMesesAvaliados:mesesComDado.length, pctMesesOk, status, mesesDetalhe };
+}
+
+function _reclCalcRankingPostosPct(dados) {
+  const agg = {};
+  dados.forEach(r => {
+    if (!r.loja) return;
+    if (!agg[r.loja]) agg[r.loja] = { proc:0, improc:0 };
+    if (r.procedencia==='PROCEDENTE') agg[r.loja].proc++;
+    else if (r.procedencia==='IMPROCEDENTE') agg[r.loja].improc++;
+  });
+  return Object.entries(agg).map(([posto,d]) => {
+    const v = d.proc+d.improc;
+    return { posto, pct: v ? d.improc/v*100 : 0, procedentes:d.proc, improcedentes:d.improc, validas:v };
+  }).sort((a,b) => b.pct-a.pct);
+}
+function _reclCalcRankingPostosQtd(dados) { return [..._reclCalcRankingPostosPct(dados)].sort((a,b)=>b.improcedentes-a.improcedentes); }
+
+function _reclCalcRankingServicosPct(dados) {
+  const agg = {};
+  dados.forEach(r => {
+    if (!r.descricaoServico) return;
+    if (!agg[r.descricaoServico]) agg[r.descricaoServico] = { proc:0, improc:0 };
+    if (r.procedencia==='PROCEDENTE') agg[r.descricaoServico].proc++;
+    else if (r.procedencia==='IMPROCEDENTE') agg[r.descricaoServico].improc++;
+  });
+  return Object.entries(agg).map(([servico,d]) => {
+    const v = d.proc+d.improc;
+    return { servico, pct: v ? d.improc/v*100 : 0, procedentes:d.proc, improcedentes:d.improc, validas:v };
+  }).sort((a,b) => b.pct-a.pct);
+}
+function _reclCalcRankingServicosQtd(dados) { return [..._reclCalcRankingServicosPct(dados)].sort((a,b)=>b.improcedentes-a.improcedentes); }
+
+function _reclCalcCruzadoPostoServico(dados) {
+  const byPosto = {};
+  dados.filter(r=>r.procedencia==='IMPROCEDENTE').forEach(r => {
+    if (!r.loja || !r.descricaoServico) return;
+    if (!byPosto[r.loja]) byPosto[r.loja] = { total:0, servicos:{} };
+    byPosto[r.loja].total++;
+    byPosto[r.loja].servicos[r.descricaoServico] = (byPosto[r.loja].servicos[r.descricaoServico]||0)+1;
+  });
+  return byPosto;
+}
+
+// Recorrência: quantidade de meses em que o posto apresentou IMPROCEDÊNCIAS (não reclamações em geral)
+function _reclCalcRecorrencia(baseDados, filtroPosto, filtroServico, filtroAtendente) {
+  const f = baseDados.filter(r => {
+    if (filtroPosto     && r.loja             !== filtroPosto)     return false;
+    if (filtroServico   && r.descricaoServico !== filtroServico)   return false;
+    if (filtroAtendente && r.atendente        !== filtroAtendente) return false;
+    return r.procedencia === 'IMPROCEDENTE';
+  });
+  const agg = {};
+  f.forEach(r => {
+    if (!r.loja) return;
+    if (!agg[r.loja]) agg[r.loja] = { competencias:new Set(), total:0 };
+    agg[r.loja].total++;
+    if (r.mesRef) agg[r.loja].competencias.add(r.mesRef);
+  });
+  return agg;
+}
+function _reclRankRecorrencia(recPorPosto) {
+  return Object.entries(recPorPosto)
+    .map(([posto,d]) => ({ posto, nComp:d.competencias.size, total:d.total, competencias:[...d.competencias].sort() }))
+    .sort((a,b) => b.nComp-a.nComp || b.total-a.total);
+}
+
+// Tendência: percentual geral, mês atual vs. mês anterior (nível indicador, não por posto)
+function _reclCalcTendencia(baseDados, mesesComDados, filtroPosto, filtroServico, filtroAtendente) {
+  const ord = [...mesesComDados].sort();
+  const mesAnt = ord[ord.length-2], mesAtu = ord[ord.length-1];
+  if (!mesAnt || !mesAtu) return null;
+  const f = r => {
+    if (filtroPosto     && r.loja             !== filtroPosto)     return false;
+    if (filtroServico   && r.descricaoServico !== filtroServico)   return false;
+    if (filtroAtendente && r.atendente        !== filtroAtendente) return false;
+    return true;
+  };
+  const calc = mes => {
+    const regs = baseDados.filter(r => r.mesRef===mes && f(r));
+    const proc = regs.filter(r=>r.procedencia==='PROCEDENTE').length;
+    const improc = regs.filter(r=>r.procedencia==='IMPROCEDENTE').length;
+    const v = proc+improc;
+    return { pct: v ? improc/v*100 : null, proc, improc, validas:v };
+  };
+  const ant = calc(mesAnt), atu = calc(mesAtu);
+  let classif = 'Estável';
+  if (ant.pct!==null && atu.pct!==null) { if (atu.pct<ant.pct) classif='Melhorou'; else if (atu.pct>ant.pct) classif='Piorou'; }
+  const varAbs = (ant.pct!==null && atu.pct!==null) ? atu.pct-ant.pct : null;
+  const varPct = (ant.pct!==null && ant.pct>0 && atu.pct!==null) ? ((atu.pct-ant.pct)/ant.pct*100) : null;
+  return { mesAnt, mesAtu, ant, atu, varAbs, varPct, classif };
+}
+
+// Causas: só existe se houver coluna real de causa com dado (nunca inferida de Análise da Ordem)
+function _reclCalcCausas(dados) {
+  const comCausa = dados.filter(r => r.causa);
+  if (!comCausa.length) return null;
+  const cnt = {}, postos = {};
+  comCausa.forEach(r => {
+    cnt[r.causa] = (cnt[r.causa]||0)+1;
+    if (r.loja) { postos[r.causa] = postos[r.causa]||{}; postos[r.causa][r.loja] = (postos[r.causa][r.loja]||0)+1; }
+  });
+  const total = comCausa.length;
+  return Object.entries(cnt).sort((a,b)=>b[1]-a[1]).map(([causa,v]) => ({
+    causa, qtd:v, pct:Math.round(v/total*100),
+    topPostos: Object.entries(postos[causa]||{}).sort((a,b)=>b[1]-a[1]).slice(0,3)
+  }));
+}
+
+function _reclCalcPrioridades(dados, recPorPosto) {
+  const rankPct = _reclCalcRankingPostosPct(dados).filter(p=>p.validas>0);
+  const mediaPct = rankPct.length ? rankPct.reduce((s,p)=>s+p.pct,0)/rankPct.length : 0;
+  return rankPct.map(p => {
+    const rec = recPorPosto[p.posto] || { competencias:new Set(), total:0 };
+    const nComp = rec.competencias.size;
+    const classif = _indClassifRecorrencia(nComp);
+    const critico = nComp>=2 || p.pct >= mediaPct;
+    const score = nComp*100 + p.pct;
+    return { ...p, nComp, classif, critico, score };
+  }).filter(p => p.critico).sort((a,b) => b.score-a.score);
+}
+
+function _reclMontarRecomendacao(p, principalServico) {
+  const partes = [];
+  if (p.classif.label === 'Recorrente') partes.push(`recorrente há ${p.nComp} competências`);
+  else if (p.classif.label === 'Atenção') partes.push(`ocorrência em ${p.nComp} competências`);
+  if (principalServico) partes.push(`foco no serviço "${principalServico}"`);
+  return `Atenção da Qualidade para <strong>${p.posto}</strong>: ${partes.join(', ')} — ${p.pct.toFixed(1)}% de improcedência (${p.improcedentes} de ${p.validas} reclamações válidas).`;
+}
+
+// ── analisarArquivoReclamacoes ──────────────────────────────────────────────
+// Somente leitura. Detecta meses, aplica expurgo de serviços, valida a coluna
+// de Procedência e bloqueia a importação em caso de inconsistência crítica.
+async function analisarArquivoReclamacoes() {
+  const fi = document.getElementById('recl-import-file');
+  const dataBase = document.getElementById('recl-data-base')?.value || '';
+  if (!fi?.files?.length) { toast('Selecione um arquivo Excel','err'); return; }
+
+  let operacaoId;
+  try { operacaoId = await getOperacaoId(); }
+  catch (e) { toast('Identificador da operação (operacaoId) não configurado. Configure em Diagnóstico de Importações.', 'err'); return; }
+
+  toast('⏳ Analisando arquivo...','ok');
+  try {
+    const buf = await fi.files[0].arrayBuffer();
+    const wb  = XLSX.read(buf, {type:'array', cellDates:true});
+    let wsName = wb.SheetNames[0];
+    for (const name of wb.SheetNames) {
+      const ws = wb.Sheets[name]; if (!ws['!ref']) continue;
+      if (name.toLowerCase().includes('analise') || name.toLowerCase().includes('análise') || name.toLowerCase().includes('base')) { wsName = name; break; }
+      const rng = XLSX.utils.decode_range(ws['!ref']);
+      const cur = XLSX.utils.decode_range(wb.Sheets[wsName]['!ref']||'A1:A1');
+      if (rng.e.r > cur.e.r) wsName = name;
+    }
+    console.log('[Reclamações] Aba:', wsName);
+
+    const ws = wb.Sheets[wsName];
+    const rawArr = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+    if (rawArr.length < 2) { toast('Planilha sem dados','err'); return; }
+
+    const colMap = {};
+    rawArr[0].forEach((h,i) => { if (h!=null && h!=='') colMap[_normIndCol(String(h))] = i; });
+    console.log('[Reclamações] Colunas:', Object.keys(colMap));
+
+    const resolveCol = aliasKey => {
+      const aliases = RECL_COL_ALIASES[aliasKey] || [aliasKey];
+      for (const a of aliases) { if (colMap[a] !== undefined) return colMap[a]; }
+      return undefined;
+    };
+    const resolveCausa = () => {
+      for (const a of RECL_COL_ALIASES_CAUSA) { if (colMap[a] !== undefined) return colMap[a]; }
+      return undefined;
+    };
+
+    const get = (row, idx) => {
+      if (idx === undefined) return '';
+      const v = row[idx];
+      if (v instanceof Date) return `${v.getDate().toString().padStart(2,'0')}/${(v.getMonth()+1).toString().padStart(2,'0')}/${v.getFullYear()}`;
+      return String(v ?? '').trim();
+    };
+
+    // BLOQUEIO 1: coluna de Procedência não encontrada
+    const idxProced = resolveCol('PROCEDENCIA');
+    if (idxProced === undefined) {
+      toast(`Coluna de Procedência não encontrada. Colunas disponíveis: ${Object.keys(colMap).slice(0,10).join(', ')}...`, 'err');
+      return;
+    }
+    const idxMes = resolveCol('MES');
+    if (idxMes === undefined) { toast('Coluna MÊS não encontrada.', 'err'); return; }
+    const idxCausa = resolveCausa();
+    const colunaProcedRotulo = Object.keys(colMap).find(k => colMap[k]===idxProced) || 'PROCEDENCIA';
+
+    const byMes = {};
+    const amostraValores = new Set();
+    const valoresNaoReconhecidos = {}; // valor bruto -> contagem
+    const expurgadoPorServico = {};
+    let totalLidos=0, totalValidos=0, totalExpurgado=0, totalVazioInvalido=0;
+
+    rawArr.slice(1).forEach(row => {
+      if (!row || row.every(c => !c && c!==0)) return;
+      totalLidos++;
+
+      const mesRaw = get(row, idxMes).replace(/\D/g,'');
+      if (mesRaw.length !== 6) return; // linha sem mês reconhecível — ignorada, não conta em nenhuma métrica
+      const mesRef = mesRaw.slice(0,4)+'-'+mesRaw.slice(4,6);
+      if (!byMes[mesRef]) byMes[mesRef] = {
+        lidos:0, validos:0, procedentes:0, improcedentes:0, expurgados:0, vaziosInvalidos:0,
+        postos:new Set(), servicos:new Set(), atendentes:new Set(), registros:[]
+      };
+      const g = byMes[mesRef];
+      g.lidos++;
+
+      const servicoRaw = get(row, resolveCol('DESCRICAO SERVICO'));
+      if (RECL_SERVICOS_EXPURGADOS_NORM.has(_normIndCol(servicoRaw))) {
+        g.expurgados++; totalExpurgado++;
+        expurgadoPorServico[servicoRaw] = (expurgadoPorServico[servicoRaw]||0)+1;
+        return; // expurgado — nunca entra em nenhuma métrica ou gravação
+      }
+
+      const procedRaw = get(row, idxProced);
+      if (procedRaw) amostraValores.add(procedRaw);
+      const procedNorm = _normIndCol(procedRaw);
+
+      let procedencia = null;
+      if (procedNorm === 'PROCEDENTE') procedencia = 'PROCEDENTE';
+      else if (procedNorm === 'IMPROCEDENTE') procedencia = 'IMPROCEDENTE';
+
+      if (!procedencia) {
+        g.vaziosInvalidos++; totalVazioInvalido++;
+        if (procedRaw) valoresNaoReconhecidos[procedRaw] = (valoresNaoReconhecidos[procedRaw]||0)+1;
+        return; // vazio ou não reconhecido — não entra na base gravada
+      }
+
+      g.validos++; totalValidos++;
+      if (procedencia==='PROCEDENTE') g.procedentes++; else g.improcedentes++;
+      const loja = get(row, resolveCol('LOJA'));
+      const servico = servicoRaw;
+      const atendente = get(row, resolveCol('ATENDENTE'));
+      if (loja) g.postos.add(loja);
+      if (servico) g.servicos.add(servico);
+      if (atendente) g.atendentes.add(atendente);
+
+      g.registros.push({
+        mesRef, loja, empresa: get(row, resolveCol('EMPRESA')), gerente: get(row, resolveCol('GERENTE')),
+        atendente, loginAtendente: get(row, resolveCol('LOGIN ATENDENTE')),
+        descricaoServico: servico, procedencia,
+        causa: idxCausa!==undefined ? get(row, idxCausa) : '',
+        analiseOrdem: get(row, resolveCol('ANALISE DA ORDEM')),
+        retornoOrdem: get(row, resolveCol('RETORNO DA ORDEM')),
+        reguaDisciplinar: get(row, resolveCol('REGUA DISCIPLINAR')),
+        dia: get(row, resolveCol('DIA')),
+        importadoEm: new Date().toISOString(), importadoPor: currentUser.email,
+        dataBase, operacaoId
+      });
+    });
+
+    // BLOQUEIO 2: nenhum registro válido em todo o arquivo
+    if (totalValidos === 0) {
+      toast('Nenhum registro com Procedência reconhecida (PROCEDENTE/IMPROCEDENTE) foi encontrado. Importação bloqueada.', 'err');
+      return;
+    }
+    // BLOQUEIO 3: existem valores não reconhecidos sem validação clara
+    const naoReconhecidosArr = Object.entries(valoresNaoReconhecidos);
+    if (naoReconhecidosArr.length) {
+      const amostra = naoReconhecidosArr.slice(0,5).map(([v,n])=>`"${v}" (${n}x)`).join(', ');
+      toast(`Importação bloqueada: valores de Procedência não reconhecidos: ${amostra}. Corrija a planilha (esperado: PROCEDENTE ou IMPROCEDENTE) e importe novamente.`, 'err');
+      return;
+    }
+
+    const mesesDetec = Object.keys(byMes).sort();
+    if (!mesesDetec.length) { toast('Nenhuma competência reconhecida no arquivo.', 'err'); return; }
+
+    _reclImportPrevia = {
+      byMes, dataBase, operacaoId,
+      colunaProcedencia: colunaProcedRotulo, causaEncontrada: idxCausa !== undefined,
+      amostraValores: [...amostraValores].slice(0,6),
+      expurgadoPorServico, totalLidos, totalValidos, totalExpurgado, totalVazioInvalido
+    };
+    _reclImportSelecionados = new Set(mesesDetec);
+    renderReclamacoesImportar();
+  } catch (e) {
+    console.error('[Reclamações] Erro na análise:', e);
+    toast('Erro: ' + e.message, 'err');
+  }
+}
+
+// ── confirmarImportacaoReclamacoes ──────────────────────────────────────────
+async function confirmarImportacaoReclamacoes() {
+  if (!_reclImportPrevia || !_reclImportSelecionados.size) { toast('Nenhum mês selecionado','err'); return; }
+  const { byMes, dataBase, operacaoId } = _reclImportPrevia;
+  const mesesSelecionados = Object.keys(byMes).filter(m => _reclImportSelecionados.has(m)).sort();
+
+  toast('⏳ Gravando...','ok');
+  try {
+    let totalGravado = 0;
+    for (const mesRef of mesesSelecionados) {
+      const existSnap = await db.collection('reclamacoes')
+        .where('mesRef','==',mesRef).where('operacaoId','==',operacaoId).get();
+      if (existSnap.size > 0) {
+        for (let i=0;i<existSnap.docs.length;i+=400) {
+          const b = db.batch();
+          existSnap.docs.slice(i,i+400).forEach(d => b.delete(d.ref));
+          await b.commit();
+        }
+      }
+      const recs = byMes[mesRef].registros;
+      for (let i=0;i<recs.length;i+=400) {
+        const b = db.batch();
+        recs.slice(i,i+400).forEach(rec => { const r=db.collection('reclamacoes').doc(); b.set(r,{id:r.id,...rec}); });
+        await b.commit();
+      }
+      totalGravado += recs.length;
+    }
+
+    const ultimoImport = `${new Date().toLocaleDateString('pt-BR')} — ${totalGravado} registros — ${mesesSelecionados.map(_indMesLabel).join(', ')}`;
+    _reclUltimoImport = ultimoImport;
+    _reclDataBase = dataBase;
+    _reclMesesSel = [mesesSelecionados[mesesSelecionados.length-1]];
+    _reclImportPrevia = null;
+    _reclImportSelecionados = new Set();
+
+    toast(`✅ ${totalGravado} reclamações válidas importadas — ${mesesSelecionados.map(_indMesLabel).join(', ')}`, 'ok');
+    switchReclamacoesTab('painel');
+    renderReclamacoesImportar();
+  } catch (e) {
+    console.error('[Reclamações] Erro ao gravar:', e);
+    toast('Erro: ' + e.message, 'err');
+  }
+}
+
+// ── UI: Importar / Prévia ───────────────────────────────────────────────────
+async function renderReclamacoesImportar() {
+  const wrap = document.getElementById('recl-importar-wrap'); if (!wrap) return;
+  if (document.getElementById('recl-form-container') && !_reclImportPrevia) {
+    const el = document.getElementById('recl-ultimo-import-txt');
+    if (el && _reclUltimoImport) el.textContent = _reclUltimoImport;
+    return;
+  }
+  if (_reclImportPrevia) { wrap.innerHTML = _reclRenderPreviaImportacao(); return; }
+
+  wrap.innerHTML = `
+    <div id="recl-form-container" style="max-width:560px;margin:24px auto;padding:0 16px">
+      <div style="background:var(--surface2);border-radius:14px;padding:24px;margin-bottom:14px">
+        <h3 style="margin:0 0 16px;font-size:15px;font-weight:600">📥 Importar Reclamações Improcedentes</h3>
+        <div class="form-group">
+          <label class="form-label">Arquivo Excel (base oficial Enel)</label>
+          <input type="file" class="form-input" id="recl-import-file" accept=".xlsx,.xls" style="padding:6px"
+                 onchange="document.getElementById('recl-file-label').textContent=this.files[0]?'✅ '+this.files[0].name:'Nenhum arquivo selecionado'">
+          <div id="recl-file-label" style="font-size:12px;color:var(--text3);margin-top:5px">Nenhum arquivo selecionado</div>
+        </div>
+        <div class="form-group" style="margin-top:14px">
+          <label class="form-label">Data da base utilizada <span style="color:var(--text3);font-weight:400">(opcional)</span></label>
+          <input type="date" class="form-input" id="recl-data-base" style="max-width:200px" value="${_reclDataBase||''}">
+        </div>
+        <p style="font-size:12px;color:var(--text3);margin:12px 0 0;line-height:1.5">
+          Todos os meses do arquivo são identificados automaticamente. Serviços expurgados (RECL. DE CONSUMO - 10D,
+          RECL DE CONSUMO GD - 10D, RECURSO DE TOI - 1º NÍVEL) nunca são gravados. Você confere tudo na prévia antes
+          de qualquer gravação.
+        </p>
+        <button class="btn btn-primary" style="margin-top:16px;width:100%" onclick="analisarArquivoReclamacoes()">🔍 Analisar arquivo</button>
+      </div>
+      <div style="background:var(--surface2);border-radius:12px;padding:14px 18px">
+        <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Último Import</div>
+        <div id="recl-ultimo-import-txt" style="font-size:13px;color:var(--text)">${_reclUltimoImport||'—'}</div>
+      </div>
+    </div>`;
+}
+
+function _reclRenderPreviaImportacao() {
+  const p = _reclImportPrevia;
+  const meses = Object.keys(p.byMes).sort();
+  const selecionadosArr = meses.filter(m => _reclImportSelecionados.has(m));
+  const expurgoServ = Object.entries(p.expurgadoPorServico).sort((a,b)=>b[1]-a[1]);
+  return `
+    <div style="max-width:960px;margin:24px auto;padding:0 16px">
+      <div style="background:var(--surface2);border-radius:14px;padding:24px;margin-bottom:14px">
+        <h3 style="margin:0 0 6px;font-size:15px;font-weight:600">🔍 Prévia da Importação</h3>
+        <p style="font-size:12px;color:var(--text3);margin:0 0 14px;line-height:1.5">Nenhum dado foi gravado ainda.</p>
+
+        <div style="background:var(--surface3);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:12px;line-height:1.7">
+          <div>Coluna reconhecida como Procedência: <strong>${p.colunaProcedencia}</strong></div>
+          <div>Amostra de valores encontrados: ${p.amostraValores.map(v=>`"${v}"`).join(', ')||'—'}</div>
+          <div>Coluna de Causa: ${p.causaEncontrada ? '<strong style="color:#1baf7a">encontrada e será armazenada</strong>' : '<span style="color:var(--text3)">não encontrada — seção de Causas não será exibida</span>'}</div>
+          <div style="margin-top:6px">Total lido: <strong>${p.totalLidos}</strong> · Válidos: <strong style="color:#1baf7a">${p.totalValidos}</strong> · Expurgados: <strong style="color:#f59e0b">${p.totalExpurgado}</strong> · Vazios/inválidos: <strong style="color:var(--text3)">${p.totalVazioInvalido}</strong></div>
+        </div>
+
+        ${expurgoServ.length ? `
+        <div style="margin-bottom:14px">
+          <div style="font-size:12px;font-weight:600;margin-bottom:6px">Expurgado por Serviço</div>
+          <table style="border-collapse:collapse;font-size:12px">${expurgoServ.map(([s,n])=>`<tr><td style="padding:2px 14px 2px 0;color:var(--text2)">${s}</td><td style="padding:2px 0;font-weight:600;color:#f59e0b">${n}</td></tr>`).join('')}</table>
+        </div>` : ''}
+
+        <div style="overflow-x:auto;margin-bottom:16px">
+          <table style="width:100%;border-collapse:collapse;font-size:11.5px">
+            <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15);background:var(--surface3)">
+              ${['','Mês','Lidos','Válidos','Proc.','Improc.','% Improc.','Postos','Serviços','Atend.','Vazios/Inv.','Expurg.'].map(h=>
+                `<th style="padding:6px 8px;text-align:left;color:var(--text3);white-space:nowrap;font-weight:600">${h}</th>`).join('')}
+            </tr></thead>
+            <tbody>${meses.map(m=>{
+              const g = p.byMes[m];
+              const pct = g.validos ? (g.improcedentes/g.validos*100).toFixed(1) : '—';
+              const marcado = _reclImportSelecionados.has(m);
+              return `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+                <td style="padding:5px 8px"><input type="checkbox" ${marcado?'checked':''} onchange="_reclToggleCompetencia('${m}')"></td>
+                <td style="padding:5px 8px;font-weight:600;white-space:nowrap">${_indMesLabel(m)} (${m})</td>
+                <td style="padding:5px 8px">${g.lidos}</td>
+                <td style="padding:5px 8px">${g.validos}</td>
+                <td style="padding:5px 8px;color:#1baf7a">${g.procedentes}</td>
+                <td style="padding:5px 8px;color:#e24b4a">${g.improcedentes}</td>
+                <td style="padding:5px 8px;font-weight:600">${pct}${pct!=='—'?'%':''}</td>
+                <td style="padding:5px 8px">${g.postos.size}</td>
+                <td style="padding:5px 8px">${g.servicos.size}</td>
+                <td style="padding:5px 8px">${g.atendentes.size}</td>
+                <td style="padding:5px 8px;${g.vaziosInvalidos>0?'color:#f59e0b':''}">${g.vaziosInvalidos}</td>
+                <td style="padding:5px 8px;${g.expurgados>0?'color:#94a3b8':''}">${g.expurgados}</td>
+              </tr>`;
+            }).join('')}</tbody>
+          </table>
+        </div>
+
+        <div style="background:var(--surface3);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:12px">
+          ${selecionadosArr.length
+            ? `<strong>Serão substituídas:</strong> ${selecionadosArr.map(m=>`${_indMesLabel(m)} (${m})`).join(', ')}. As demais competências existentes não são tocadas.`
+            : '<strong>Nenhuma competência selecionada</strong> — nada será gravado.'}
+        </div>
+
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary" onclick="_reclCancelarPrevia()">← Cancelar</button>
+          <button class="btn btn-primary" style="flex:1" onclick="confirmarImportacaoReclamacoes()" ${!selecionadosArr.length?'disabled':''}>
+            ✅ Confirmar e importar ${selecionadosArr.length} competência(s)
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function _reclToggleCompetencia(mesRef) {
+  if (_reclImportSelecionados.has(mesRef)) _reclImportSelecionados.delete(mesRef);
+  else _reclImportSelecionados.add(mesRef);
+  renderReclamacoesImportar();
+}
+function _reclCancelarPrevia() { _reclImportPrevia = null; _reclImportSelecionados = new Set(); renderReclamacoesImportar(); }
+
+// ── Filtros / abas ───────────────────────────────────────────────────────
+function switchReclamacoesTab(tab) {
+  _reclTab = tab; _reclPagina = 1;
+  ['painel','importar','detalhamento'].forEach(t => {
+    const w = document.getElementById('recl-'+t+'-wrap');
+    const b = document.getElementById('recl-tab-'+t);
+    if (w) w.style.display = t===tab ? '' : 'none';
+    if (b) b.classList.toggle('active', t===tab);
+  });
+  renderReclamacoes();
+}
+function renderReclamacoes() {
+  if (!podeVerIndevidos()) return;
+  if (_reclTab === 'painel')        renderReclamacoesPainel();
+  else if (_reclTab === 'importar') renderReclamacoesImportar();
+  else                               renderReclamacoesDetalhamento();
+}
+function _reclToggleMes(m, evt) {
+  if (!_reclMesesComDados.includes(m)) return;
+  if (evt?.shiftKey) {
+    const i = _reclMesesSel.indexOf(m);
+    if (i>=0) _reclMesesSel.splice(i,1); else _reclMesesSel.push(m);
+  } else {
+    _reclMesesSel = (_reclMesesSel.length===1 && _reclMesesSel[0]===m) ? [] : [m];
+  }
+  renderReclamacoesPainel();
+}
+function _reclTodos()  { _reclMesesSel = [..._reclMesesComDados]; renderReclamacoesPainel(); }
+function _reclLimpar() { _reclMesesSel = []; renderReclamacoesPainel(); }
+function _reclAplicarFiltro() {
+  _reclFiltroPosto     = document.getElementById('recl-fil-posto')?.value     || '';
+  _reclFiltroServico   = document.getElementById('recl-fil-servico')?.value   || '';
+  _reclFiltroAtendente = document.getElementById('recl-fil-atendente')?.value || '';
+  renderReclamacoesPainel();
+}
+function _filtrarReclamacoes() {
+  return allReclamacoes.filter(r => {
+    if (_reclMesesSel.length && !_reclMesesSel.includes(r.mesRef)) return false;
+    if (_reclFiltroPosto     && r.loja             !== _reclFiltroPosto)     return false;
+    if (_reclFiltroServico   && r.descricaoServico !== _reclFiltroServico)   return false;
+    if (_reclFiltroAtendente && r.atendente        !== _reclFiltroAtendente) return false;
+    return true;
+  });
+}
+
+const _reclCorStatus   = s => s==='verde' ? '#1baf7a' : s==='amarelo' ? '#eda100' : '#e24b4a';
+const _reclBgStatus    = s => s==='verde' ? 'rgba(27,175,122,.1)' : s==='amarelo' ? 'rgba(237,161,0,.1)' : 'rgba(226,75,74,.1)';
+const _reclBdStatus    = s => s==='verde' ? 'rgba(27,175,122,.3)' : s==='amarelo' ? 'rgba(237,161,0,.3)' : 'rgba(226,75,74,.3)';
+const _reclLabelStatus = s => s==='verde' ? 'Dentro da meta' : s==='amarelo' ? 'No limite da meta' : 'Fora da meta';
+
+function renderReclamacoesPainel() {
+  const wrap = document.getElementById('recl-painel-wrap'); if (!wrap) return;
+
+  const dados = _filtrarReclamacoes();
+  const dadosMes = allReclamacoes.filter(r => _reclMesesSel.includes(r.mesRef));
+  const postosDisp     = [...new Set(dadosMes.map(r=>r.loja).filter(Boolean))].sort();
+  const servDisp       = [...new Set(dadosMes.map(r=>r.descricaoServico).filter(Boolean))].sort();
+  const atendentesDisp = [...new Set(dadosMes.map(r=>r.atendente).filter(Boolean))].sort();
+  const selLabel = _reclMesesSel.length ? _reclMesesSel.map(_indMesLabel).join(', ') : 'Nenhum';
+
+  const card = _reclCalcCardPrincipal(_reclMesesSel, _reclFiltroPosto, _reclFiltroServico, _reclFiltroAtendente);
+
+  wrap.innerHTML = `
+    ${_reclUltimoImport?`<div style="padding:6px 0 10px;display:flex;gap:8px;flex-wrap:wrap">
+      <span style="font-size:11px;background:rgba(27,175,122,.12);color:#0f6e56;padding:3px 10px;border-radius:12px;border:1px solid rgba(27,175,122,.25)">📅 Dados até: ${_reclUltimoImport}</span>
+      ${_reclDataBase?`<span style="font-size:11px;background:rgba(59,130,246,.12);color:#185fa5;padding:3px 10px;border-radius:12px;border:1px solid rgba(59,130,246,.25)">📂 Base: ${_reclDataBase}</span>`:''}
+    </div>`:''}
+
+    <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">Mês</div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:7px">
+      ${_reclMesesComDados.length
+        ? _reclMesesComDados.map(m=>{
+            const ativo = _reclMesesSel.includes(m);
+            return `<button onclick="_reclToggleMes('${m}',event)" title="Clique: selecionar. Shift+clique: acumular."
+              style="font-size:11px;padding:3px 10px;border-radius:14px;cursor:pointer;
+                border:1px solid ${ativo?'transparent':'rgba(255,255,255,.22)'};
+                background:${ativo?'#2a78d6':'transparent'};color:${ativo?'#fff':'var(--text2)'};transition:all .12s">${_indMesLabel(m)}</button>`;
+          }).join('')
+        : '<span style="font-size:12px;color:var(--text3)">Nenhum dado importado ainda</span>'}
+    </div>
+    ${_reclMesesComDados.length?`<div style="display:flex;gap:6px;margin-bottom:12px">
+      <button onclick="_reclTodos()" style="font-size:11px;padding:2px 10px;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:transparent;color:var(--text3);cursor:pointer">Todos</button>
+      <button onclick="_reclLimpar()" style="font-size:11px;padding:2px 10px;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:transparent;color:var(--text3);cursor:pointer">Limpar</button>
+    </div>`:''}
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:8px 0 14px;border-bottom:1px solid rgba(255,255,255,.07)">
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Posto</label>
+        <select class="form-select" id="recl-fil-posto" style="min-width:180px" onchange="_reclAplicarFiltro()">
+          <option value="">Todos os postos</option>
+          ${postosDisp.map(p=>`<option value="${p}" ${_reclFiltroPosto===p?'selected':''}>${p}</option>`).join('')}
+        </select></div>
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Serviço</label>
+        <select class="form-select" id="recl-fil-servico" style="min-width:200px" onchange="_reclAplicarFiltro()">
+          <option value="">Todos os serviços</option>
+          ${servDisp.map(s=>`<option value="${s}" ${_reclFiltroServico===s?'selected':''}>${s.length>44?s.slice(0,42)+'…':s}</option>`).join('')}
+        </select></div>
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Atendente</label>
+        <select class="form-select" id="recl-fil-atendente" style="min-width:180px" onchange="_reclAplicarFiltro()">
+          <option value="">Todos os atendentes</option>
+          ${atendentesDisp.map(a=>`<option value="${a}" ${_reclFiltroAtendente===a?'selected':''}>${a}</option>`).join('')}
+        </select></div>
+      ${_reclMesesSel.length?`<span style="font-size:11px;background:rgba(42,120,214,.12);color:#185fa5;padding:3px 10px;border-radius:12px;border:1px solid rgba(42,120,214,.25);align-self:flex-end">📅 ${selLabel}</span>`:''}
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:16px 0 10px">Gestão à Vista</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+      <div style="background:${card.modo!=='vazio'?_reclBgStatus(card.status):'var(--surface2)'};border:1px solid ${card.modo!=='vazio'?_reclBdStatus(card.status):'rgba(255,255,255,.07)'};border-radius:12px;padding:14px">
+        <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:6px">% IMPROCEDÊNCIA</div>
+        ${card.modo==='unico' ? `
+          <div style="font-size:26px;font-weight:800;color:${_reclCorStatus(card.status)}">${card.pct.toFixed(1)}%</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Meta: menor que ${card.meta}%</div>
+          ${card.pctAnterior!==null?`<div style="font-size:11px;color:var(--text3)">Mês anterior: ${card.pctAnterior.toFixed(1)}%</div>`:''}
+        ` : card.modo==='periodo' ? `
+          <div style="font-size:22px;font-weight:800;color:${_reclCorStatus(card.status)}">${card.pctConsolidado.toFixed(1)}%</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Meta: menor que ${card.meta}%/mês</div>
+          <div style="font-size:11px;color:var(--text3)">Meta atingida em: ${card.mesesDentroMeta} de ${card.totalMesesAvaliados} meses (${card.pctMesesOk}%)</div>
+        ` : '<div style="font-size:13px;color:var(--text3);margin-top:8px">Selecione um mês</div>'}
+        ${card.modo!=='vazio'?`<div style="font-size:11px;font-weight:700;color:${_reclCorStatus(card.status)};margin-top:6px">${_reclLabelStatus(card.status)}</div>`:''}
+      </div>
+      <div class="stat-card"><div class="label">Reclamações Válidas</div><div class="value" style="color:#3b82f6">${(card.modo==='unico'?card.validas:card.modo==='periodo'?card.totalValidas:0).toLocaleString('pt-BR')}</div><div class="sub">excl. expurgados</div></div>
+      <div class="stat-card"><div class="label">Improcedentes</div><div class="value" style="color:#e24b4a">${(card.modo==='unico'?card.improcedentes:card.modo==='periodo'?card.totalImproc:0).toLocaleString('pt-BR')}</div><div class="sub">quantidade</div></div>
+      <div class="stat-card"><div class="label">Procedentes</div><div class="value" style="color:#1baf7a">${(card.modo==='unico'?card.procedentes:card.modo==='periodo'?card.totalProc:0).toLocaleString('pt-BR')}</div><div class="sub">quantidade</div></div>
+    </div>
+
+    ${!_reclMesesSel.length?`<div style="text-align:center;padding:28px;color:var(--text3);font-size:13px">Selecione um mês acima para visualizar os dados.</div>`:''}
+    ${_reclMesesSel.length&&!dados.length?`<div style="text-align:center;padding:28px;color:var(--text3);font-size:13px">Nenhum registro para os filtros selecionados.</div>`:''}
+
+    ${dados.length?`
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Resumo Executivo</div>
+    <div id="recl-resumo-executivo" style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:16px;font-size:13px;line-height:1.8"></div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Evolução Mensal</div>
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:16px">
+      <div style="position:relative;width:100%;height:220px"><canvas id="recl-c-evolucao"></canvas></div>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Painel de Metas</div>
+    <div id="recl-painel-metas" style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:16px"></div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Ranking dos Postos</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">Maior % de Improcedência</div>
+        <div id="recl-rank-postos-pct"></div>
+      </div>
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">Maior Quantidade de Improcedências</div>
+        <div id="recl-rank-postos-qtd"></div>
+      </div>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Serviços</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">Maior Percentual</div>
+        <div id="recl-rank-servicos-pct"></div>
+      </div>
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">Maior Quantidade</div>
+        <div id="recl-rank-servicos-qtd"></div>
+      </div>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:20px 0 10px">🧠 Análises Inteligentes</div>
+
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:12px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:10px">🏪 Recorrência por Posto</div>
+      <div id="recl-recorrencia-posto"></div>
+    </div>
+
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:12px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:10px">📈 Tendência</div>
+      <div id="recl-tendencia"></div>
+    </div>
+
+    <div id="recl-causas-wrap"></div>
+
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:12px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:10px">🎓 Prioridades da Qualidade</div>
+      <div id="recl-prioridades"></div>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Alertas Estratégicos</div>
+    <div id="recl-alertas" style="margin-bottom:16px"></div>
+    `:''}
+  `;
+
+  if (dados.length) setTimeout(() => _renderReclamacoesCharts(dados), 40);
+}
+
+let _chartReclEvolucao = null;
+function _renderReclamacoesCharts(dados) {
+  _chartReclEvolucao = _dstroyIndChart(_chartReclEvolucao);
+  const tickC='#a0aec0', gridC='rgba(255,255,255,.06)';
+
+  // ── Evolução Mensal — gráfico combinado (barras Proc/Improc + linha % + linha de meta) ──
+  const mesesEvol = [..._reclMesesComDados].sort();
+  const evolBase = allReclamacoes.filter(r => {
+    if (_reclFiltroPosto     && r.loja             !== _reclFiltroPosto)     return false;
+    if (_reclFiltroServico   && r.descricaoServico !== _reclFiltroServico)   return false;
+    if (_reclFiltroAtendente && r.atendente        !== _reclFiltroAtendente) return false;
+    return true;
+  });
+  const porMesEvol = {};
+  mesesEvol.forEach(m => porMesEvol[m] = {proc:0, improc:0});
+  evolBase.forEach(r => { if (porMesEvol[r.mesRef]) { if (r.procedencia==='PROCEDENTE') porMesEvol[r.mesRef].proc++; else if (r.procedencia==='IMPROCEDENTE') porMesEvol[r.mesRef].improc++; } });
+  const ctxEv = document.getElementById('recl-c-evolucao');
+  if (ctxEv && mesesEvol.length) {
+    const pctData = mesesEvol.map(m => { const d=porMesEvol[m]; const v=d.proc+d.improc; return v ? +(d.improc/v*100).toFixed(1) : 0; });
+    _chartReclEvolucao = new Chart(ctxEv, {
+      data: {
+        labels: mesesEvol.map(_indMesLabel),
+        datasets: [
+          {type:'bar', label:'Procedentes', data:mesesEvol.map(m=>porMesEvol[m].proc), backgroundColor:'#1baf7ab3', borderColor:'#1baf7a', borderWidth:1, yAxisID:'yQtd', order:2},
+          {type:'bar', label:'Improcedentes', data:mesesEvol.map(m=>porMesEvol[m].improc), backgroundColor:'#e24b4ab3', borderColor:'#e24b4a', borderWidth:1, yAxisID:'yQtd', order:2},
+          {type:'line', label:'% Improcedência', data:pctData, borderColor:'#3b82f6', backgroundColor:'transparent', borderWidth:2, tension:.3, pointRadius:4, pointBackgroundColor:'#3b82f6', yAxisID:'yPct', order:1},
+          {type:'line', label:`Meta ${RECL_META_PCT}%`, data:mesesEvol.map(()=>RECL_META_PCT), borderColor:'#94a3b8', borderWidth:1.5, borderDash:[6,4], pointRadius:0, yAxisID:'yPct', order:0}
+        ]
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false, layout:{padding:{top:24}},
+        plugins:{legend:{display:true, position:'bottom', labels:{color:tickC, font:{size:10}, boxWidth:12}}},
+        scales: {
+          x:{ticks:{color:tickC,font:{size:10}},grid:{display:false}},
+          yQtd:{position:'left', ticks:{color:tickC,font:{size:10}}, grid:{color:gridC}, beginAtZero:true, title:{display:true,text:'Quantidade',color:tickC,font:{size:10}}},
+          yPct:{position:'right', ticks:{color:tickC,font:{size:10},callback:v=>v+'%'}, grid:{drawOnChartArea:false}, beginAtZero:true, title:{display:true,text:'Percentual',color:tickC,font:{size:10}}}
+        }
+      },
+      plugins:[{id:'reclLbl', afterDatasetsDraw(c){
+        const {ctx} = c;
+        c.data.datasets.forEach((ds,di)=>{
+          if (ds.type!=='line' || ds.label.startsWith('Meta')) return;
+          ds.data.forEach((v,i)=>{
+            const el = c.getDatasetMeta(di).data[i]; if(!el) return;
+            ctx.save(); ctx.fillStyle='#3b82f6'; ctx.font='bold 10px sans-serif'; ctx.textAlign='center';
+            ctx.fillText(v+'%', el.x, el.y-9); ctx.restore();
+          });
+        });
+      }}]
+    });
+  }
+
+  // ── Painel de Metas ──
+  const card = _reclCalcCardPrincipal(_reclMesesSel, _reclFiltroPosto, _reclFiltroServico, _reclFiltroAtendente);
+  const divMetas = document.getElementById('recl-painel-metas');
+  if (divMetas) {
+    const resultado = card.modo==='unico' ? `${card.pct.toFixed(1)}%` : card.modo==='periodo' ? `${card.pctConsolidado.toFixed(1)}% (média do período)` : '—';
+    divMetas.innerHTML = `<div style="display:flex;align-items:center;gap:14px;padding:6px 0">
+      <span style="font-size:13px;font-weight:600;flex:1">Reclamações Improcedentes</span>
+      <span style="font-size:12px;color:var(--text2);min-width:170px">Resultado: ${resultado}</span>
+      <span style="font-size:12px;color:var(--text3);min-width:130px">Meta: menor que ${RECL_META_PCT}%</span>
+      ${card.modo!=='vazio'?`<span style="font-size:11px;font-weight:700;color:${_reclCorStatus(card.status)}">${_reclLabelStatus(card.status)}</span>`:''}
+    </div>`;
+  }
+
+  // ── Rankings (4) ──
+  const rankPostosPct = _reclCalcRankingPostosPct(dados).filter(p=>p.validas>0);
+  const rankPostosQtd = _reclCalcRankingPostosQtd(dados).filter(p=>p.validas>0);
+  const rankServPct   = _reclCalcRankingServicosPct(dados).filter(s=>s.validas>0);
+  const rankServQtd   = _reclCalcRankingServicosQtd(dados).filter(s=>s.validas>0);
+
+  const _reclBarraPct = (label, pct, sub) => `
+    <div style="display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+      <span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${label}">${label}</span>
+      <span style="font-size:12px;font-weight:600;color:#e24b4a;min-width:44px;text-align:right">${pct.toFixed(1)}%</span>
+      <span style="font-size:11px;color:var(--text3);min-width:70px;text-align:right">${sub}</span>
+    </div>`;
+
+  const elRPP = document.getElementById('recl-rank-postos-pct');
+  if (elRPP) elRPP.innerHTML = rankPostosPct.length ? rankPostosPct.slice(0,10).map(p=>_reclBarraPct(p.posto, p.pct, `${p.improcedentes} improc.`)).join('') : '<div style="color:var(--text3);font-size:13px">Sem dados</div>';
+  const elRPQ = document.getElementById('recl-rank-postos-qtd');
+  if (elRPQ) elRPQ.innerHTML = rankPostosQtd.length ? rankPostosQtd.slice(0,10).map((p,i)=>`
+    <div style="display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+      <span style="font-size:11px;color:var(--text3);min-width:18px">${i+1}º</span>
+      <span style="font-size:12px;flex:1">${p.posto}</span>
+      <span style="font-size:12px;font-weight:600;color:#e24b4a">${p.improcedentes}</span>
+      <span style="font-size:11px;color:var(--text3);min-width:44px;text-align:right">${p.pct.toFixed(1)}%</span>
+    </div>`).join('') : '<div style="color:var(--text3);font-size:13px">Sem dados</div>';
+  const elRSP = document.getElementById('recl-rank-servicos-pct');
+  if (elRSP) elRSP.innerHTML = rankServPct.length ? rankServPct.slice(0,10).map(s=>_reclBarraPct(s.servico, s.pct, `${s.improcedentes} improc.`)).join('') : '<div style="color:var(--text3);font-size:13px">Sem dados</div>';
+  const elRSQ = document.getElementById('recl-rank-servicos-qtd');
+  if (elRSQ) elRSQ.innerHTML = rankServQtd.length ? rankServQtd.slice(0,10).map((s,i)=>`
+    <div style="display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+      <span style="font-size:11px;color:var(--text3);min-width:18px">${i+1}º</span>
+      <span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s.servico}">${s.servico}</span>
+      <span style="font-size:12px;font-weight:600;color:#e24b4a">${s.improcedentes}</span>
+      <span style="font-size:11px;color:var(--text3);min-width:44px;text-align:right">${s.pct.toFixed(1)}%</span>
+    </div>`).join('') : '<div style="color:var(--text3);font-size:13px">Sem dados</div>';
+
+  // ── Recorrência por Posto (histórico completo, ignora seleção de mês) ──
+  const recPorPosto = _reclCalcRecorrencia(allReclamacoes, _reclFiltroPosto, _reclFiltroServico, _reclFiltroAtendente);
+  const rankRec = _reclRankRecorrencia(recPorPosto);
+  const totalMesesHist = _reclMesesComDados.length;
+  const elRec = document.getElementById('recl-recorrencia-posto');
+  if (elRec) elRec.innerHTML = rankRec.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px">${rankRec.map(r=>{
+    const c = _indClassifRecorrencia(r.nComp);
+    return `<div style="display:flex;align-items:center;gap:6px;background:${c.bg};border-radius:8px;padding:4px 10px;border:1px solid ${c.bd}">
+      <span style="font-size:12px;color:var(--text)">${r.posto}</span>
+      <span style="font-size:11px;font-weight:700;color:${c.color}">${c.label}</span>
+      <span style="font-size:11px;color:var(--text3)">${r.nComp} de ${totalMesesHist} últimos meses</span>
+    </div>`;
+  }).join('')}</div>` : '<div style="color:var(--text3);font-size:13px">Sem dados</div>';
+
+  // ── Tendência (mês atual vs. anterior) ──
+  const tend = _reclCalcTendencia(allReclamacoes, _reclMesesComDados, _reclFiltroPosto, _reclFiltroServico, _reclFiltroAtendente);
+  const elTend = document.getElementById('recl-tendencia');
+  if (elTend) {
+    if (!tend) {
+      elTend.innerHTML = '<div style="color:var(--text3);font-size:13px">Menos de dois meses disponíveis para comparação.</div>';
+    } else {
+      const cor = tend.classif==='Melhorou'?'#1baf7a':tend.classif==='Piorou'?'#e24b4a':'var(--text3)';
+      elTend.innerHTML = `
+        <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Comparando <strong>${_indMesLabel(tend.mesAnt)}</strong> → <strong>${_indMesLabel(tend.mesAtu)}</strong></div>
+        <table style="border-collapse:collapse;font-size:12px">
+          <tbody>
+            <tr><td style="padding:4px 14px 4px 0;color:var(--text3)">% anterior</td><td style="padding:4px 0">${tend.ant.pct!==null?tend.ant.pct.toFixed(1)+'%':'—'}</td></tr>
+            <tr><td style="padding:4px 14px 4px 0;color:var(--text3)">% atual</td><td style="padding:4px 0">${tend.atu.pct!==null?tend.atu.pct.toFixed(1)+'%':'—'}</td></tr>
+            <tr><td style="padding:4px 14px 4px 0;color:var(--text3)">Variação absoluta</td><td style="padding:4px 0">${tend.varAbs!==null?(tend.varAbs>0?'+':'')+tend.varAbs.toFixed(1)+' p.p.':'—'}</td></tr>
+            <tr><td style="padding:4px 14px 4px 0;color:var(--text3)">Variação percentual</td><td style="padding:4px 0">${tend.varPct!==null?(tend.varPct>0?'+':'')+tend.varPct.toFixed(1)+'%':'—'}</td></tr>
+            <tr><td style="padding:4px 14px 4px 0;color:var(--text3)">Classificação</td><td style="padding:4px 0;font-weight:700;color:${cor}">${tend.classif}</td></tr>
+          </tbody>
+        </table>`;
+    }
+  }
+
+  // ── Causas (só aparece se houver dado real) ──
+  const causasArr = _reclCalcCausas(dados);
+  const elCausasWrap = document.getElementById('recl-causas-wrap');
+  if (elCausasWrap) {
+    elCausasWrap.innerHTML = causasArr ? `
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:12px">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">🎯 Principais Causas</div>
+        <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15)">
+            ${['Causa','Qtd','%','Postos mais associados'].map(h=>`<th style="padding:5px 10px;text-align:left;color:var(--text3);font-weight:600">${h}</th>`).join('')}
+          </tr></thead>
+          <tbody>${causasArr.map(c=>`<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+            <td style="padding:5px 10px;font-weight:600">${c.causa}</td>
+            <td style="padding:5px 10px">${c.qtd}</td>
+            <td style="padding:5px 10px">${c.pct}%</td>
+            <td style="padding:5px 10px;color:var(--text2)">${c.topPostos.map(([p,n])=>`${p} (${n})`).join(', ')||'—'}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>
+      </div>` : '';
+  }
+
+  // ── Prioridades da Qualidade ──
+  const byPostoServ = _reclCalcCruzadoPostoServico(dados);
+  const prioridades = _reclCalcPrioridades(dados, recPorPosto);
+  const elPrio = document.getElementById('recl-prioridades');
+  if (elPrio) {
+    elPrio.innerHTML = prioridades.length ? prioridades.slice(0,5).map(p=>{
+      const servicos = byPostoServ[p.posto]?.servicos || {};
+      const principalServico = Object.entries(servicos).sort((a,b)=>b[1]-a[1])[0];
+      const causaPosto = _reclCalcCausas(dados.filter(r=>r.loja===p.posto));
+      return `<div style="padding:9px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+          <span style="font-size:13px;font-weight:700">${p.posto}</span>
+          <span style="font-size:11px;font-weight:700;color:${p.classif.color};background:${p.classif.bg};border:1px solid ${p.classif.bd};border-radius:10px;padding:1px 8px">${p.classif.label}</span>
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:4px">% improcedência: ${p.pct.toFixed(1)}% (${p.improcedentes}/${p.validas}) · Serviço crítico: ${principalServico?principalServico[0]:'—'} ${causaPosto&&causaPosto[0]?`· Causa: ${causaPosto[0].causa}`:''}</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.5">${_reclMontarRecomendacao(p, principalServico?principalServico[0]:null)}</div>
+      </div>`;
+    }).join('') : '<div style="color:var(--text3);font-size:13px">Nenhuma prioridade relevante no período analisado.</div>';
+  }
+
+  // ── Alertas Estratégicos (máx. 5) ──
+  const alertas = [];
+  if (card.modo!=='vazio' && card.status!=='verde') alertas.push({
+    titulo: card.modo==='unico' ? `Meta geral acima de ${RECL_META_PCT}% em ${_indMesLabel(card.mes)}` : `Meta geral não atingida em ${card.totalMesesAvaliados-card.mesesDentroMeta} mês(es) do período`,
+    dados: card.modo==='unico' ? `Resultado: ${card.pct.toFixed(1)}% · Meta: menor que ${RECL_META_PCT}%` : `Meta atingida em ${card.mesesDentroMeta} de ${card.totalMesesAvaliados} meses (${card.pctMesesOk}%)`
+  });
+  if (card.modo==='unico' && card.pctAnterior!==null && card.pct>card.pctAnterior) alertas.push({
+    titulo: 'Aumento do percentual em relação ao mês anterior',
+    dados: `${_indMesLabel(card.mesAnteriorRef)}: ${card.pctAnterior.toFixed(1)}% → ${_indMesLabel(card.mes)}: ${card.pct.toFixed(1)}%`
+  });
+  const postoRecorrente = rankRec.find(r=>r.nComp>=3);
+  if (postoRecorrente) alertas.push({ titulo:`Posto ${postoRecorrente.posto} recorrente em competências consecutivas`, dados:`${postoRecorrente.nComp} de ${totalMesesHist} últimos meses · ${postoRecorrente.total} improcedências` });
+  if (rankServPct[0] && rankServPct[0].pct>=RECL_META_PCT) alertas.push({ titulo:`Serviço recorrente acima da meta: ${rankServPct[0].servico}`, dados:`${rankServPct[0].pct.toFixed(1)}% de improcedência (${rankServPct[0].improcedentes}/${rankServPct[0].validas})` });
+  if (causasArr && causasArr[0] && causasArr[0].pct>=30) alertas.push({ titulo:`Mesma causa recorrente: ${causasArr[0].causa}`, dados:`${causasArr[0].qtd} ocorrência(s) — ${causasArr[0].pct}% do período` });
+
+  const elAlertas = document.getElementById('recl-alertas');
+  if (elAlertas) {
+    const alertasFinal = alertas.slice(0,5);
+    elAlertas.innerHTML = alertasFinal.length ? alertasFinal.map(a=>`
+      <details style="background:var(--surface2);border-radius:10px;padding:12px 14px;border:1px solid rgba(255,255,255,.07);margin-bottom:8px">
+        <summary style="cursor:pointer;font-size:13px;font-weight:600">⚠ ${a.titulo}</summary>
+        <div style="margin-top:8px;font-size:12px;color:var(--text2)">${a.dados}</div>
+      </details>`).join('') : '<div style="color:var(--text3);font-size:13px">Nenhum alerta no momento.</div>';
+  }
+
+  // ── Resumo Executivo (texto dinâmico) ──
+  const resumoPartes = [];
+  if (card.modo==='unico') {
+    resumoPartes.push(`Reclamações Improcedentes em ${_indMesLabel(card.mes)}: ${card.pct.toFixed(1)}% de improcedência (${card.improcedentes} de ${card.validas} válidas, meta: menor que ${RECL_META_PCT}%) — ${_reclLabelStatus(card.status).toLowerCase()}.`);
+    if (card.pctAnterior!==null) { const diff=card.pct-card.pctAnterior; resumoPartes.push(diff<0?`Redução de ${Math.abs(diff).toFixed(1)} ponto(s) percentual frente ao mês anterior.`:diff>0?`Aumento de ${diff.toFixed(1)} ponto(s) percentual frente ao mês anterior.`:'Mesmo percentual do mês anterior.'); }
+  } else if (card.modo==='periodo') {
+    resumoPartes.push(`Reclamações Improcedentes no período (${selLabelResumo(_reclMesesSel)}): ${card.pctConsolidado.toFixed(1)}% consolidado — meta atingida em ${card.mesesDentroMeta} de ${card.totalMesesAvaliados} meses (${card.pctMesesOk}%).`);
+  }
+  if (rankPostosPct[0]) resumoPartes.push(`O posto ${rankPostosPct[0].posto} apresenta o maior percentual de improcedência (${rankPostosPct[0].pct.toFixed(1)}%).`);
+  if (causasArr && causasArr[0]) resumoPartes.push(`Principal causa: ${causasArr[0].causa} (${causasArr[0].pct}% das reclamações improcedentes).`);
+  if (prioridades[0]) resumoPartes.push(`Prioridade de atuação da Qualidade: ${prioridades[0].posto}.`);
+  const elResumo = document.getElementById('recl-resumo-executivo');
+  if (elResumo) elResumo.innerHTML = resumoPartes.map(p=>`<div>${p}</div>`).join('');
+}
+function selLabelResumo(meses) { return meses.map(_indMesLabel).join(', '); }
+
+function renderReclamacoesDetalhamento() {
+  const wrap = document.getElementById('recl-detalhamento-wrap'); if (!wrap) return;
+
+  const filtMes   = document.getElementById('recl-det-mes')?.value   || '';
+  const filtPosto = document.getElementById('recl-det-posto')?.value || '';
+  const filtServ  = document.getElementById('recl-det-serv')?.value  || '';
+  const filtProc  = document.getElementById('recl-det-proc')?.value  || '';
+
+  const postosDisp = [...new Set(allReclamacoes.map(r=>r.loja).filter(Boolean))].sort();
+  const servDisp   = [...new Set(allReclamacoes.map(r=>r.descricaoServico).filter(Boolean))].sort();
+
+  const filtrados = allReclamacoes.filter(r => {
+    if (filtMes   && r.mesRef       !== filtMes)   return false;
+    if (filtPosto && r.loja         !== filtPosto) return false;
+    if (filtServ  && r.descricaoServico !== filtServ) return false;
+    if (filtProc  && r.procedencia  !== filtProc)  return false;
+    return true;
+  });
+
+  const totalPags = Math.ceil(filtrados.length/RECL_POR_PAG)||1;
+  if (_reclPagina > totalPags) _reclPagina = 1;
+  const pag = filtrados.slice((_reclPagina-1)*RECL_POR_PAG, _reclPagina*RECL_POR_PAG);
+
+  const sel = (id, opts, cur, label) =>
+    `<div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">${label}</label>
+     <select class="form-select" id="${id}" style="min-width:140px" onchange="_reclPagina=1;renderReclamacoesDetalhamento()">
+       <option value="">Todos</option>
+       ${opts.map(o=>`<option value="${o}" ${cur===o?'selected':''}>${o.length>38?o.slice(0,36)+'…':o}</option>`).join('')}
+     </select></div>`;
+
+  wrap.innerHTML = `
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:14px 0 12px">
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Mês</label>
+        <select class="form-select" id="recl-det-mes" style="min-width:110px" onchange="_reclPagina=1;renderReclamacoesDetalhamento()">
+          <option value="">Todos</option>
+          ${_reclMesesComDados.map(m=>`<option value="${m}" ${filtMes===m?'selected':''}>${_indMesLabel(m)}</option>`).join('')}
+        </select></div>
+      ${sel('recl-det-posto', postosDisp, filtPosto, 'Posto')}
+      ${sel('recl-det-serv',  servDisp,   filtServ,  'Serviço')}
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Procedência</label>
+        <select class="form-select" id="recl-det-proc" style="min-width:140px" onchange="_reclPagina=1;renderReclamacoesDetalhamento()">
+          <option value="">Todas</option>
+          <option value="PROCEDENTE" ${filtProc==='PROCEDENTE'?'selected':''}>Procedente</option>
+          <option value="IMPROCEDENTE" ${filtProc==='IMPROCEDENTE'?'selected':''}>Improcedente</option>
+        </select></div>
+      <button class="btn btn-secondary" onclick="exportarReclamacoes()" style="height:38px;align-self:flex-end">⬇ Excel</button>
+    </div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:8px">${filtrados.length.toLocaleString('pt-BR')} registro(s) · Página ${_reclPagina} de ${totalPags}</div>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:960px">
+        <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15);background:var(--surface3)">
+          ${['Mês','Posto','Atendente','Serviço','Procedência','Causa','Dia'].map(h=>
+            `<th style="padding:7px 10px;text-align:left;color:var(--text3);white-space:nowrap;font-weight:600">${h}</th>`).join('')}
+        </tr></thead>
+        <tbody>${pag.length ? pag.map(r=>`
+          <tr style="border-bottom:1px solid rgba(255,255,255,.04)"
+              onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background=''">
+            <td style="padding:6px 10px;white-space:nowrap;color:var(--text3)">${_indMesLabel(r.mesRef)||'—'}</td>
+            <td style="padding:6px 10px;white-space:nowrap">${r.loja||'—'}</td>
+            <td style="padding:6px 10px">${r.atendente||'—'}</td>
+            <td style="padding:6px 10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.descricaoServico||''}">${r.descricaoServico||'—'}</td>
+            <td style="padding:6px 10px;white-space:nowrap;font-weight:600;color:${r.procedencia==='IMPROCEDENTE'?'#e24b4a':'#1baf7a'}">${r.procedencia||'—'}</td>
+            <td style="padding:6px 10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.causa||''}">${r.causa||'—'}</td>
+            <td style="padding:6px 10px;white-space:nowrap;color:var(--text3)">${r.dia||'—'}</td>
+          </tr>`).join('') : '<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--text3)">Nenhum registro encontrado</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+    ${totalPags>1?`<div style="display:flex;gap:6px;align-items:center;margin-top:12px;flex-wrap:wrap">
+      <button class="btn btn-sm btn-secondary" onclick="_reclPagina=Math.max(1,_reclPagina-1);renderReclamacoesDetalhamento()" ${_reclPagina===1?'disabled':''}>‹ Ant</button>
+      ${Array.from({length:Math.min(totalPags,7)},(_,i)=>{
+        const p=totalPags<=7?i+1:(_reclPagina<=4?i+1:i+_reclPagina-3);
+        return p>0&&p<=totalPags?`<button class="btn btn-sm ${p===_reclPagina?'btn-primary':'btn-secondary'}" onclick="_reclPagina=${p};renderReclamacoesDetalhamento()">${p}</button>`:'';
+      }).join('')}
+      <button class="btn btn-sm btn-secondary" onclick="_reclPagina=Math.min(${totalPags},_reclPagina+1);renderReclamacoesDetalhamento()" ${_reclPagina===totalPags?'disabled':''}>Próx ›</button>
+      <span style="color:var(--text3);font-size:12px;margin-left:6px">${filtrados.length.toLocaleString('pt-BR')} total</span>
+    </div>`:``}`;
+}
+
+function exportarReclamacoes() {
+  const filtMes   = document.getElementById('recl-det-mes')?.value   || '';
+  const filtPosto = document.getElementById('recl-det-posto')?.value || '';
+  const filtServ  = document.getElementById('recl-det-serv')?.value  || '';
+  const filtProc  = document.getElementById('recl-det-proc')?.value  || '';
+  const filtrados = allReclamacoes.filter(r => {
+    if (filtMes   && r.mesRef           !== filtMes)   return false;
+    if (filtPosto && r.loja             !== filtPosto)  return false;
+    if (filtServ  && r.descricaoServico !== filtServ)   return false;
+    if (filtProc  && r.procedencia      !== filtProc)   return false;
+    return true;
+  });
+  if (!filtrados.length) { toast('Nenhum dado para exportar','err'); return; }
+  const cols = ['mesRef','loja','atendente','loginAtendente','descricaoServico','procedencia','causa',
+                'analiseOrdem','retornoOrdem','reguaDisciplinar','dia','gerente','empresa','importadoPor','importadoEm'];
+  const rows = filtrados.map(r => { const o={}; cols.forEach(c=>o[c]=r[c]||''); return o; });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Reclamacoes');
+  XLSX.writeFile(wb, `Reclamacoes_${filtMes||'historico'}_${new Date().toISOString().slice(0,10)}.xlsx`);
+  toast(`✅ ${filtrados.length.toLocaleString('pt-BR')} registros exportados`,'ok');
+}
+
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// FERRAMENTAS ADMINISTRATIVAS DE MANUTENÇÃO — window.* (console do navegador)
 // Uso: abra o console com o ADM logado e chame cada função na sequência:
 //   1. window.relatorioUsuariosDuplicados()
 //   2. window.marcarDuplicatas()
