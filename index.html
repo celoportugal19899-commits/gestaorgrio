@@ -15756,6 +15756,60 @@ const RECL_COL_ALIASES = {
 // Causa: aliases próprios — NUNCA cai em ANÁLISE DA ORDEM como fallback (regra explícita)
 const RECL_COL_ALIASES_CAUSA = ['CAUSA','MOTIVO','CAUSA RAIZ','CLASSIFICACAO','MOTIVO DA RECLAMACAO','CLASSIFICACAO DA CAUSA'];
 
+// Nomes/abreviações de mês (já normalizados: sem acento, maiúsculo) → número do mês
+const RECL_MESES_NOME = {
+  'JANEIRO':'01','JAN':'01', 'FEVEREIRO':'02','FEV':'02', 'MARCO':'03','MAR':'03',
+  'ABRIL':'04','ABR':'04',   'MAIO':'05','MAI':'05',      'JUNHO':'06','JUN':'06',
+  'JULHO':'07','JUL':'07',   'AGOSTO':'08','AGO':'08',    'SETEMBRO':'09','SET':'09',
+  'OUTUBRO':'10','OUT':'10', 'NOVEMBRO':'11','NOV':'11',  'DEZEMBRO':'12','DEZ':'12'
+};
+
+// Função ÚNICA para resolver mesRef (padrão interno YYYY-MM), reutilizada pela rotina
+// principal e por qualquer diagnóstico — evita lógica paralela. Ordem de reconhecimento:
+// 1) colunas ANO + MÊS separadas (nome completo, abreviação ou número 1–12);
+// 2) célula de MÊS como Date real do Excel;
+// 3) campo único no formato YYYYMM ou YYYY-MM.
+// Retorna null quando nenhum formato é reconhecido (Mês inválido) — nunca descarta silenciosamente.
+function _reclResolverMesRef(row, idxAno, idxMes) {
+  // 1) ANO + MÊS separados
+  if (idxMes !== undefined) {
+    const mesCell = row[idxMes];
+    let mesNum = null, ano = null;
+
+    if (idxAno !== undefined) {
+      const anoDigits = String(row[idxAno] ?? '').trim().replace(/\D/g,'');
+      if (anoDigits.length === 4) ano = anoDigits;
+    }
+
+    if (mesCell instanceof Date) {
+      mesNum = String(mesCell.getMonth()+1).padStart(2,'0');
+      if (!ano) ano = String(mesCell.getFullYear());
+    } else {
+      const mesTxt = _normIndCol(String(mesCell ?? '').trim());
+      if (RECL_MESES_NOME[mesTxt]) {
+        mesNum = RECL_MESES_NOME[mesTxt];
+      } else {
+        const mesDig = mesTxt.replace(/\D/g,'');
+        if (mesDig && +mesDig>=1 && +mesDig<=12 && mesDig.length<=2) mesNum = mesDig.padStart(2,'0');
+      }
+    }
+    if (ano && mesNum) return `${ano}-${mesNum}`;
+
+    // 2) MÊS como Date real do Excel (sem ANO separado utilizável)
+    if (mesCell instanceof Date) {
+      return `${mesCell.getFullYear()}-${String(mesCell.getMonth()+1).padStart(2,'0')}`;
+    }
+
+    // 3) Campo único YYYYMM ou YYYY-MM
+    const raw = String(mesCell ?? '').trim();
+    const digits = raw.replace(/\D/g,'');
+    if (digits.length === 6) return digits.slice(0,4)+'-'+digits.slice(4,6);
+    const m = raw.match(/^(\d{4})-(\d{2})$/);
+    if (m) return `${m[1]}-${m[2]}`;
+  }
+  return null; // Mês inválido — nenhum formato reconhecido
+}
+
 let allReclamacoes        = [];
 let _reclMesesComDados    = [];
 let unsubReclamacoes      = null;
@@ -15770,6 +15824,7 @@ let _reclPagina           = 1;
 let _reclImportPrevia         = null;
 let _reclImportSelecionados   = new Set();
 let _reclDiagPrevia           = null; // diagnóstico de reconhecimento da coluna Procedência (não afeta validação/importação)
+let _reclDiagMesPrevia        = null; // diagnóstico de reconhecimento de Mês (mesma função da rotina principal)
 
 // Leitura exclusivamente por operacaoId, desde o primeiro import (sem necessidade de backfill)
 function initReclamacoes() {
@@ -16026,6 +16081,52 @@ function _reclRenderDiagColuna(diag) {
     </div>`;
 }
 
+// ── Diagnóstico de reconhecimento de Mês (somente leitura) — usa a MESMA
+// função _reclResolverMesRef da rotina principal, sem lógica paralela.
+function _reclDiagnosticarMes(rawArr, idxAno, idxMes) {
+  const linhas = rawArr.slice(1).filter(row => row && !row.every(c => !c && c!==0));
+  const amostra = [];
+  let qtdReconhecido=0, qtdInvalido=0;
+  linhas.forEach((row,i) => {
+    const mesRef = _reclResolverMesRef(row, idxAno, idxMes);
+    if (mesRef) qtdReconhecido++; else qtdInvalido++;
+    if (i < 20) amostra.push({
+      anoBruto: idxAno!==undefined ? row[idxAno] : '(sem coluna ANO)',
+      mesBruto: row[idxMes],
+      resolvido: mesRef
+    });
+  });
+  return { colunaMes: idxMes, colunaAno: idxAno, qtdReconhecido, qtdInvalido, amostra };
+}
+
+function _reclRenderDiagMes(diag) {
+  if (!diag) return '';
+  return `
+    <div style="background:var(--surface3);border-radius:10px;padding:14px;margin-top:14px;font-size:12px;line-height:1.6">
+      <div style="font-weight:700;margin-bottom:8px">🔬 Diagnóstico de Reconhecimento de Mês</div>
+      <div>Coluna MÊS: índice ${diag.colunaMes} · Coluna ANO: ${diag.colunaAno!==undefined?'índice '+diag.colunaAno:'não encontrada (ok se MÊS já vier com ano embutido)'}</div>
+      <div style="margin:8px 0;display:flex;gap:16px;flex-wrap:wrap">
+        <span>Reconhecidos: <strong style="color:#1baf7a">${diag.qtdReconhecido}</strong></span>
+        <span>Inválidos: <strong style="color:${diag.qtdInvalido>0?'#e24b4a':'var(--text3)'}">${diag.qtdInvalido}</strong></span>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Primeiros ${diag.amostra.length} valores lidos:</div>
+      <div style="overflow-x:auto">
+        <table style="border-collapse:collapse;font-size:11px;min-width:520px">
+          <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15)">
+            ${['#','ANO (bruto)','MÊS (bruto)','mesRef resolvido'].map(h=>`<th style="padding:4px 8px;text-align:left;color:var(--text3)">${h}</th>`).join('')}
+          </tr></thead>
+          <tbody>${diag.amostra.map((a,i)=>`
+            <tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+              <td style="padding:3px 8px">${i+1}</td>
+              <td style="padding:3px 8px;font-family:monospace">${JSON.stringify(a.anoBruto instanceof Date ? a.anoBruto.toISOString() : a.anoBruto)}</td>
+              <td style="padding:3px 8px;font-family:monospace">${JSON.stringify(a.mesBruto instanceof Date ? a.mesBruto.toISOString() : a.mesBruto)}</td>
+              <td style="padding:3px 8px;font-weight:600;color:${a.resolvido?'#1baf7a':'#e24b4a'}">${a.resolvido||'inválido'}</td>
+            </tr>`).join('')}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
 async function analisarArquivoReclamacoes() {
   const fi = document.getElementById('recl-import-file');
   const dataBase = document.getElementById('recl-data-base')?.value || '';
@@ -16084,6 +16185,7 @@ async function analisarArquivoReclamacoes() {
     }
     const idxMes = resolveCol('MES');
     if (idxMes === undefined) { toast('Coluna MÊS não encontrada.', 'err'); return; }
+    const idxAno = resolveCol('ANO');
     const idxCausa = resolveCausa();
     const colunaProcedRotulo = Object.keys(colMap).find(k => colMap[k]===idxProced) || 'PROCEDENCIA';
 
@@ -16092,19 +16194,22 @@ async function analisarArquivoReclamacoes() {
     const diagEl = document.getElementById('recl-diag-coluna');
     if (diagEl) diagEl.innerHTML = _reclRenderDiagColuna(_reclDiagPrevia);
 
+    _reclDiagMesPrevia = _reclDiagnosticarMes(rawArr, idxAno, idxMes);
+    const diagMesEl = document.getElementById('recl-diag-mes');
+    if (diagMesEl) diagMesEl.innerHTML = _reclRenderDiagMes(_reclDiagMesPrevia);
+
     const byMes = {};
     const amostraValores = new Set();
     const valoresNaoReconhecidos = {}; // valor bruto -> contagem
     const expurgadoPorServico = {};
-    let totalLidos=0, totalValidos=0, totalExpurgado=0, totalVazioInvalido=0;
+    let totalLidos=0, totalValidos=0, totalExpurgado=0, totalVazioInvalido=0, totalMesInvalido=0;
 
     rawArr.slice(1).forEach(row => {
       if (!row || row.every(c => !c && c!==0)) return;
       totalLidos++;
 
-      const mesRaw = get(row, idxMes).replace(/\D/g,'');
-      if (mesRaw.length !== 6) return; // linha sem mês reconhecível — ignorada, não conta em nenhuma métrica
-      const mesRef = mesRaw.slice(0,4)+'-'+mesRaw.slice(4,6);
+      const mesRef = _reclResolverMesRef(row, idxAno, idxMes);
+      if (!mesRef) { totalMesInvalido++; return; } // Mês inválido — contado, nunca descartado silenciosamente
       if (!byMes[mesRef]) byMes[mesRef] = {
         lidos:0, validos:0, procedentes:0, improcedentes:0, expurgados:0, vaziosInvalidos:0,
         postos:new Set(), servicos:new Set(), atendentes:new Set(), registros:[]
@@ -16156,6 +16261,11 @@ async function analisarArquivoReclamacoes() {
       });
     });
 
+    // BLOQUEIO 1.5: nenhuma linha possui Mês válido reconhecido (ANO+MÊS, Date ou YYYYMM)
+    if (Object.keys(byMes).length === 0) {
+      toast(`Nenhuma linha possui Mês válido reconhecido (${totalMesInvalido} de ${totalLidos} linhas com Mês não reconhecido). Importação bloqueada.`, 'err');
+      return;
+    }
     // BLOQUEIO 2: nenhum registro válido em todo o arquivo
     if (totalValidos === 0) {
       toast('Nenhum registro com Procedência reconhecida (PROCEDENTE/IMPROCEDENTE) foi encontrado. Importação bloqueada.', 'err');
@@ -16176,7 +16286,7 @@ async function analisarArquivoReclamacoes() {
       byMes, dataBase, operacaoId,
       colunaProcedencia: colunaProcedRotulo, causaEncontrada: idxCausa !== undefined,
       amostraValores: [...amostraValores].slice(0,6),
-      expurgadoPorServico, totalLidos, totalValidos, totalExpurgado, totalVazioInvalido
+      expurgadoPorServico, totalLidos, totalValidos, totalExpurgado, totalVazioInvalido, totalMesInvalido
     };
     _reclImportSelecionados = new Set(mesesDetec);
     renderReclamacoesImportar();
@@ -16261,6 +16371,7 @@ async function renderReclamacoesImportar() {
         </p>
         <button class="btn btn-primary" style="margin-top:16px;width:100%" onclick="analisarArquivoReclamacoes()">🔍 Analisar arquivo</button>
         <div id="recl-diag-coluna">${_reclDiagPrevia ? _reclRenderDiagColuna(_reclDiagPrevia) : ''}</div>
+        <div id="recl-diag-mes">${_reclDiagMesPrevia ? _reclRenderDiagMes(_reclDiagMesPrevia) : ''}</div>
       </div>
       <div style="background:var(--surface2);border-radius:12px;padding:14px 18px">
         <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Último Import</div>
@@ -16284,7 +16395,7 @@ function _reclRenderPreviaImportacao() {
           <div>Coluna reconhecida como Procedência: <strong>${p.colunaProcedencia}</strong></div>
           <div>Amostra de valores encontrados: ${p.amostraValores.map(v=>`"${v}"`).join(', ')||'—'}</div>
           <div>Coluna de Causa: ${p.causaEncontrada ? '<strong style="color:#1baf7a">encontrada e será armazenada</strong>' : '<span style="color:var(--text3)">não encontrada — seção de Causas não será exibida</span>'}</div>
-          <div style="margin-top:6px">Total lido: <strong>${p.totalLidos}</strong> · Válidos: <strong style="color:#1baf7a">${p.totalValidos}</strong> · Expurgados: <strong style="color:#f59e0b">${p.totalExpurgado}</strong> · Vazios/inválidos: <strong style="color:var(--text3)">${p.totalVazioInvalido}</strong></div>
+          <div style="margin-top:6px">Total lido: <strong>${p.totalLidos}</strong> · Válidos: <strong style="color:#1baf7a">${p.totalValidos}</strong> · Expurgados: <strong style="color:#f59e0b">${p.totalExpurgado}</strong> · Vazios/inválidos (Procedência): <strong style="color:var(--text3)">${p.totalVazioInvalido}</strong> · Mês inválido: <strong style="color:${p.totalMesInvalido>0?'#e24b4a':'var(--text3)'}">${p.totalMesInvalido}</strong></div>
         </div>
 
         ${expurgoServ.length ? `
