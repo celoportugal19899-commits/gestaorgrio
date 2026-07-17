@@ -1386,15 +1386,20 @@ const PosCanalLabels = {
 
     <!-- QUALIDADE — Trocas Improcedentes (navegação inicial, funcionalidade futura) -->
     <div id="view-adm-qualidade-trocas" class="view">
-      <div class="topbar">
+      <div class="topbar" style="flex-wrap:wrap;gap:10px;align-items:center">
         <div class="topbar-title">🔁 Trocas Improcedentes</div>
+        <div class="csat-tabs" style="margin-left:auto;display:flex;gap:4px">
+          <button class="csat-tab active" id="troca-tab-painel"        onclick="switchTrocasTab('painel')">📊 Painel</button>
+          <button class="csat-tab"        id="troca-tab-esforco"       onclick="switchTrocasTab('esforco')">🛠 Esforço de Troca</button>
+          <button class="csat-tab"        id="troca-tab-detalhamento"  onclick="switchTrocasTab('detalhamento')">📋 Detalhamento</button>
+          <button class="csat-tab"        id="troca-tab-ferramentas"   onclick="switchTrocasTab('ferramentas')">⚙ Ferramentas Administrativas</button>
+        </div>
       </div>
       <div class="view-content">
-        <div style="text-align:center;padding:60px 20px;color:var(--text3)">
-          <div style="font-size:40px;margin-bottom:12px">🔁</div>
-          <div style="font-size:15px;font-weight:600;color:var(--text)">Módulo ainda não disponível</div>
-          <p style="font-size:13px;max-width:420px;margin:8px auto 0">Este submódulo de Qualidade será implementado em uma próxima etapa.</p>
-        </div>
+        <div id="troca-painel-wrap"></div>
+        <div id="troca-esforco-wrap"       style="display:none"></div>
+        <div id="troca-detalhamento-wrap"  style="display:none"></div>
+        <div id="troca-ferramentas-wrap"   style="display:none"></div>
       </div>
     </div>
 
@@ -3727,7 +3732,7 @@ function startApp() {
   initNotificacoes();
   initPropostas();
   if (!isPosto) { initCsatAcoes(); if (isAdmin) seedCsatSugestoesSeNecessario(); }
-  if (!isPosto) { initIndevidos(); initReclamacoes(); }
+  if (!isPosto) { initIndevidos(); initReclamacoes(); initTrocaOficial(); initEsforcoTroca(); }
   setTimeout(verificarAlertas, 5000);
 }
 
@@ -3957,6 +3962,7 @@ function _doRefreshCurrentView() {
   if (id === 'adm-diag-import') renderDiagImport();
   if (id === 'adm-qualidade') renderQualidadeDashboard();
   if (id === 'adm-qualidade-reclamacoes') renderReclamacoes();
+  if (id === 'adm-qualidade-trocas') renderTrocas();
   if (id === 'supervisor-postos') renderSupervisorPostos();
   if (id === 'sup-caixa') renderSupCaixa();
   if (id === 'adm-caixas') renderAdmCaixas();
@@ -4010,6 +4016,7 @@ function showView(name, el) {
   if (name === 'adm-diag-import') renderDiagImport();
   if (name === 'adm-qualidade') renderQualidadeDashboard();
   if (name === 'adm-qualidade-reclamacoes') renderReclamacoes();
+  if (name === 'adm-qualidade-trocas') renderTrocas();
   // Render imediato ao navegar (cancela debounce pendente e renderiza já)
   clearTimeout(_refreshTimer);
   _refreshTimer = null;
@@ -14880,8 +14887,26 @@ const DIAGNOSTICO_MODULOS = {
     postosValidos: TODOS_POSTOS_RG,
     ativo: true
   },
-  ordens_indevidas: { label: 'Ordens Indevidas', ativo: false },
-  trocas_improcedentes: { label: 'Trocas Improcedentes', ativo: false },
+  trocas_improcedentes: {
+    label: 'Trocas Improcedentes',
+    collection: 'trocasImprocedentes',
+    campos: {
+      mes: 'mesRef', posto: 'loja', atendente: 'atendenteCurto',
+      importadoPor: 'importadoPor', importadoEm: 'importadoEm'
+    },
+    postosValidos: TODOS_POSTOS_RG,
+    ativo: true
+  },
+  esforco_troca: {
+    label: 'Esforço de Troca',
+    collection: 'esforcoTroca',
+    campos: {
+      mes: 'mesRef', posto: 'posto', atendente: 'atendente',
+      importadoPor: 'importadoPor', importadoEm: 'importadoEm'
+    },
+    postosValidos: TODOS_POSTOS_RG,
+    ativo: true
+  },
   csat: { label: 'CSAT', ativo: false },
   pos: { label: 'Máquina Cartão POS', ativo: false }
 };
@@ -17035,6 +17060,1428 @@ function exportarReclamacoes() {
 }
 
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MÓDULO TROCAS IMPROCEDENTES (QUALIDADE)
+// DUAS bases totalmente independentes — nunca misturadas:
+//   • Base Oficial (trocasImprocedentes) — casos oficialmente classificados
+//   • Base Esforço de Troca (esforcoTroca) — controle operacional do Backoffice
+// Mesmo padrão homologado: Analisar→Confirmar, operacaoId, Diagnóstico,
+// leitura por operacaoId — mas regras de leitura 100% independentes entre as duas.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const TROCA_POR_PAG = 50;
+
+// Normalização própria do módulo (não compartilhada com Reclamações/Indevidos)
+function _trocaNormCol(k) {
+  return String(k||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/_/g,' ')
+    .trim().toUpperCase().replace(/\s+/g,' ');
+}
+
+// Tolerância a variações comuns de digitação do nome do mês — lista explícita
+// (nunca fuzzy-matching algorítmico, para manter previsível o que é aceito)
+const TROCA_MESES_TOLERANTE = {
+  'JANEIRO':'01','JAN':'01','JANEIR':'01','JANERO':'01','JANIERO':'01','JANEURO':'01',
+  'FEVEREIRO':'02','FEV':'02','FEVEREIO':'02','FEVERERO':'02','FEVEREIRRO':'02',
+  'MARCO':'03','MAR':'03','MARSO':'03','MARCCO':'03',
+  'ABRIL':'04','ABR':'04','ABIRL':'04',
+  'MAIO':'05','MAI':'05','MAYO':'05',
+  'JUNHO':'06','JUN':'06','JUNHOO':'06',
+  'JULHO':'07','JUL':'07','JULHOO':'07',
+  'AGOSTO':'08','AGO':'08','AGOSTOO':'08',
+  'SETEMBRO':'09','SET':'09','SETEMBO':'09','SETEMBRO':'09',
+  'OUTUBRO':'10','OUT':'10','OUTUBOR':'10',
+  'NOVEMBRO':'11','NOV':'11','NOVEMBOR':'11',
+  'DEZEMBRO':'12','DEZ':'12','DEZEMBOR':'12'
+};
+
+// ── BASE OFICIAL — aliases de coluna ────────────────────────────────────────
+const TROCA_OFICIAL_COL_ALIASES = {
+  'MES':               ['MES'],
+  'ANO':               ['ANO'],
+  'LOJA':              ['LOJA','POSTO'],
+  'GERENTE':           ['GERENTE'],
+  'RESPONSAVEL':       ['RESPONSAVEL'],
+  'NOME SALLES':       ['NOME SALLES'],
+  'NOME NEOBPO':       ['NOME NEOBPO'],
+  'BR COLABORADOR':    ['BR DO COLABORADOR'],
+  'OS':                ['OS'],
+  'DATA':              ['DATA'],
+  'TIPO DE TROCA':     ['TIPO DE TROCA'],
+  'CAUSA RAIZ':        ['CAUSA RAIZ DO IMPROCEDENTE','CAUSA RAIZ'],
+  'DETALHE CAUSA':     ['QUANTIDADE'], // campo mal nomeado na origem — na verdade é texto de subcausa
+  'OBSERVACAO':        ['OBSERVACAO'],
+  'USUARIO SF':        ['USUARIO (SF)','USUARIO SF'],
+  'CANAL DE ORIGEM':   ['CANAL DE ORIGEM'],
+  'RETORNO DE CARTA':  ['RETORNO DE CARTA']
+};
+
+// ── BASE ESFORÇO — aliases de coluna (independentes da Base Oficial) ───────
+const TROCA_ESFORCO_COL_ALIASES = {
+  'MES':          ['MES'],
+  'POSTO':        ['POSTO','LOJA'],
+  'ATENDENTE':    ['ATENDENTE'],
+  'ORDEM':        ['ORDEM'],
+  'CAUSA RAIZ':   ['CAUSA RAIZ'],
+  'OBSERVACAO':   ['OBSERVACAO']
+};
+
+// ── Estado — Base Oficial ───────────────────────────────────────────────────
+let allTrocasOficial          = [];
+let _trocaOficialMesesComDados = [];
+let unsubTrocaOficial          = null;
+let _trocaOficialUltimoImport  = '';
+let _trocaOficialDataBase      = '';
+let _trocaMesesSel             = [];
+let _trocaFiltroPosto          = '';
+let _trocaFiltroAtendente      = '';
+let _trocaFiltroCausa          = '';
+let _trocaPagina               = 1;
+let _trocaOficialImportPrevia       = null;
+let _trocaOficialImportSelecionados = new Set();
+let _trocaOficialDiagPrevia    = null;
+let _trocaOficialDiagMesPrevia = null;
+
+// ── Estado — Base Esforço ────────────────────────────────────────────────────
+let allEsforcoTroca           = [];
+let _esforcoMesesComDados     = [];
+let unsubEsforcoTroca         = null;
+let _esforcoUltimoImport      = '';
+let _esforcoDataBase          = '';
+let _esforcoMesesSel          = [];
+let _esforcoFiltroPosto       = '';
+let _esforcoFiltroAtendente   = '';
+let _esforcoImportPrevia          = null;
+let _esforcoImportSelecionados    = new Set();
+let _esforcoAnoReferencia         = null; // preenchido pelo admin na importação
+let _esforcoDiagPrevia        = null;
+let _esforcoDiagMesPrevia     = null;
+
+let _trocaTab = 'painel'; // painel | esforco | detalhamento | ferramentas
+let _trocaDetOrigem = 'oficial'; // oficial | esforco
+
+function initTrocaOficial() {
+  if (unsubTrocaOficial) unsubTrocaOficial();
+  getOperacaoId().then(operacaoId => {
+    unsubTrocaOficial = db.collection('trocasImprocedentes')
+      .where('operacaoId','==', operacaoId)
+      .onSnapshot(snap => {
+        allTrocasOficial = snap.docs.map(d => ({id:d.id,...d.data()}));
+        _trocaOficialMesesComDados = [...new Set(allTrocasOficial.map(r=>r.mesRef).filter(Boolean))].sort();
+        if (_trocaMesesSel.length === 0 && _trocaOficialMesesComDados.length > 0) {
+          _trocaMesesSel = [_trocaOficialMesesComDados[_trocaOficialMesesComDados.length - 1]];
+        }
+        refreshCurrentView();
+      }, err => console.error('[TrocaOficial] onSnapshot:', err));
+  }).catch(e => { console.error('[TrocaOficial] operacaoId não configurado:', e); allTrocasOficial=[]; _trocaOficialMesesComDados=[]; });
+}
+
+function initEsforcoTroca() {
+  if (unsubEsforcoTroca) unsubEsforcoTroca();
+  getOperacaoId().then(operacaoId => {
+    unsubEsforcoTroca = db.collection('esforcoTroca')
+      .where('operacaoId','==', operacaoId)
+      .onSnapshot(snap => {
+        allEsforcoTroca = snap.docs.map(d => ({id:d.id,...d.data()}));
+        _esforcoMesesComDados = [...new Set(allEsforcoTroca.map(r=>r.mesRef).filter(Boolean))].sort();
+        if (_esforcoMesesSel.length === 0 && _esforcoMesesComDados.length > 0) {
+          _esforcoMesesSel = [_esforcoMesesComDados[_esforcoMesesComDados.length - 1]];
+        }
+        refreshCurrentView();
+      }, err => console.error('[EsforcoTroca] onSnapshot:', err));
+  }).catch(e => { console.error('[EsforcoTroca] operacaoId não configurado:', e); allEsforcoTroca=[]; _esforcoMesesComDados=[]; });
+}
+
+// ── Resolução de mesRef — Base Oficial (ANO + MÊS textual, tolerante) ──────
+function _trocaOficialResolverMesRef(row, idxAno, idxMes) {
+  if (idxMes === undefined || idxAno === undefined) return null;
+  const anoDigits = String(row[idxAno] ?? '').trim().replace(/\D/g,'');
+  if (anoDigits.length !== 4) return null;
+  const mesTxt = _trocaNormCol(String(row[idxMes] ?? '').trim());
+  const mesNum = TROCA_MESES_TOLERANTE[mesTxt] || (() => {
+    const d = mesTxt.replace(/\D/g,''); return (d && +d>=1 && +d<=12 && d.length<=2) ? d.padStart(2,'0') : null;
+  })();
+  if (!mesNum) return null;
+  return `${anoDigits}-${mesNum}`;
+}
+
+// ── Resolução de mesRef — Base Esforço (MÊS textual, tolerante + Ano de Referência informado) ──
+function _esforcoResolverMesRef(row, idxMes, anoReferencia) {
+  if (idxMes === undefined || !anoReferencia) return null;
+  const mesTxt = _trocaNormCol(String(row[idxMes] ?? '').trim());
+  const mesNum = TROCA_MESES_TOLERANTE[mesTxt] || (() => {
+    const d = mesTxt.replace(/\D/g,''); return (d && +d>=1 && +d<=12 && d.length<=2) ? d.padStart(2,'0') : null;
+  })();
+  if (!mesNum) return null;
+  return `${anoReferencia}-${mesNum}`;
+}
+
+function _esforcoSugerirAno() {
+  if (_esforcoMesesComDados.length) return Math.max(..._esforcoMesesComDados.map(m=>+m.split('-')[0]));
+  return new Date().getFullYear();
+}
+
+// ── BASE OFICIAL — Analisar / Confirmar ─────────────────────────────────────
+async function analisarArquivoTrocaOficial() {
+  const fi = document.getElementById('trocaof-import-file');
+  const dataBase = document.getElementById('trocaof-data-base')?.value || '';
+  if (!fi?.files?.length) { toast('Selecione um arquivo Excel','err'); return; }
+  let operacaoId;
+  try { operacaoId = await getOperacaoId(); }
+  catch (e) { toast('Identificador da operação (operacaoId) não configurado. Configure em Diagnóstico de Importações.', 'err'); return; }
+
+  toast('⏳ Analisando arquivo...','ok');
+  try {
+    const buf = await fi.files[0].arrayBuffer();
+    const wb  = XLSX.read(buf, {type:'array', cellDates:true});
+    let wsName = wb.SheetNames[0];
+    for (const name of wb.SheetNames) {
+      const ws = wb.Sheets[name]; if (!ws['!ref']) continue;
+      const rng = XLSX.utils.decode_range(ws['!ref']);
+      const cur = XLSX.utils.decode_range(wb.Sheets[wsName]['!ref']||'A1:A1');
+      if (rng.e.r > cur.e.r) wsName = name;
+    }
+    const ws = wb.Sheets[wsName];
+    const rawArr = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+    if (rawArr.length < 2) { toast('Planilha sem dados','err'); return; }
+
+    const colMap = {};
+    rawArr[0].forEach((h,i) => { if (h!=null && h!=='') colMap[_trocaNormCol(String(h))] = i; });
+    console.log('[TrocaOficial] Colunas:', Object.keys(colMap));
+
+    const resolveCol = aliasKey => {
+      const aliases = TROCA_OFICIAL_COL_ALIASES[aliasKey] || [aliasKey];
+      for (const a of aliases) { if (colMap[a] !== undefined) return colMap[a]; }
+      return undefined;
+    };
+    const get = (row, idx) => {
+      if (idx === undefined) return '';
+      const v = row[idx];
+      if (v instanceof Date) return `${v.getDate().toString().padStart(2,'0')}/${(v.getMonth()+1).toString().padStart(2,'0')}/${v.getFullYear()}`;
+      return String(v ?? '').trim();
+    };
+
+    const idxMes = resolveCol('MES'), idxAno = resolveCol('ANO'), idxLoja = resolveCol('LOJA'), idxCausa = resolveCol('CAUSA RAIZ');
+    const idxResp = resolveCol('RESPONSAVEL'), idxSalles = resolveCol('NOME SALLES'), idxNeobpo = resolveCol('NOME NEOBPO');
+
+    const faltantes = [];
+    if (idxMes===undefined) faltantes.push('MÊS');
+    if (idxAno===undefined) faltantes.push('ANO');
+    if (idxLoja===undefined) faltantes.push('LOJA');
+    if (idxCausa===undefined) faltantes.push('CAUSA RAIZ');
+    if (idxResp===undefined && idxSalles===undefined && idxNeobpo===undefined) faltantes.push('Nome do Atendente (Responsável / NOME SALLES / NOME NEOBPO)');
+    if (faltantes.length) {
+      toast(`Colunas obrigatórias não encontradas: ${faltantes.join(', ')}. Colunas disponíveis: ${Object.keys(colMap).slice(0,10).join(', ')}...`, 'err');
+      return;
+    }
+
+    _trocaOficialDiagPrevia = {
+      reconhecidas: Object.keys(TROCA_OFICIAL_COL_ALIASES).filter(k=>resolveCol(k)!==undefined),
+      naoEncontradas: Object.keys(TROCA_OFICIAL_COL_ALIASES).filter(k=>resolveCol(k)===undefined),
+      colunasArquivo: Object.keys(colMap)
+    };
+
+    const byMes = {};
+    let totalLidos=0, totalValidos=0, totalMesInvalido=0;
+    rawArr.slice(1).forEach(row => {
+      if (!row || row.every(c => !c && c!==0)) return;
+      totalLidos++;
+      const mesRef = _trocaOficialResolverMesRef(row, idxAno, idxMes);
+      if (!mesRef) { totalMesInvalido++; return; }
+      if (!byMes[mesRef]) byMes[mesRef] = { lidos:0, postos:new Set(), causas:new Set(), atendentes:new Set(), registros:[] };
+      const g = byMes[mesRef]; g.lidos++;
+
+      const loja = get(row, idxLoja);
+      const causaRaiz = get(row, idxCausa);
+      const responsavel = get(row, idxResp), nomeSalles = get(row, idxSalles), nomeNeobpo = get(row, idxNeobpo);
+      const atendenteCurto = responsavel || nomeSalles || nomeNeobpo || '';
+      if (loja) g.postos.add(loja);
+      if (causaRaiz) g.causas.add(causaRaiz);
+      if (atendenteCurto) g.atendentes.add(atendenteCurto);
+
+      g.registros.push({
+        mesRef, ano: get(row, idxAno), loja,
+        gerente: get(row, resolveCol('GERENTE')),
+        atendenteCurto, nomeSalles, nomeNeobpo,       // três nomes preservados separadamente
+        brColaborador: get(row, resolveCol('BR COLABORADOR')),
+        os: get(row, resolveCol('OS')), data: get(row, resolveCol('DATA')),
+        tipoTroca: get(row, resolveCol('TIPO DE TROCA')),
+        causaRaiz, detalheCausa: get(row, resolveCol('DETALHE CAUSA')), // "QUANTIDADE" origem — texto, nunca numérico
+        observacao: get(row, resolveCol('OBSERVACAO')),
+        usuarioSF: get(row, resolveCol('USUARIO SF')),
+        canalOrigem: get(row, resolveCol('CANAL DE ORIGEM')),
+        retornoDeCarta: get(row, resolveCol('RETORNO DE CARTA')),
+        importadoEm: new Date().toISOString(), importadoPor: currentUser.email,
+        dataBase, operacaoId
+      });
+      totalValidos++;
+    });
+
+    const mesesDetec = Object.keys(byMes).sort();
+    if (!mesesDetec.length) {
+      toast(`Nenhum mês válido reconhecido (${totalMesInvalido} de ${totalLidos} linhas com mês não reconhecido). Importação bloqueada.`, 'err');
+      renderTrocaFerramentas();
+      return;
+    }
+
+    _trocaOficialImportPrevia = { byMes, dataBase, operacaoId, totalLidos, totalValidos, totalMesInvalido };
+    _trocaOficialImportSelecionados = new Set(mesesDetec);
+    renderTrocaFerramentas();
+  } catch (e) {
+    console.error('[TrocaOficial] Erro na análise:', e);
+    toast('Erro: ' + e.message, 'err');
+  }
+}
+
+async function confirmarImportacaoTrocaOficial() {
+  if (!_trocaOficialImportPrevia || !_trocaOficialImportSelecionados.size) { toast('Nenhum mês selecionado','err'); return; }
+  const { byMes, dataBase, operacaoId } = _trocaOficialImportPrevia;
+  const mesesSelecionados = Object.keys(byMes).filter(m => _trocaOficialImportSelecionados.has(m)).sort();
+
+  toast('⏳ Gravando...','ok');
+  try {
+    let totalGravado = 0;
+    for (const mesRef of mesesSelecionados) {
+      const existSnap = await db.collection('trocasImprocedentes')
+        .where('mesRef','==',mesRef).where('operacaoId','==',operacaoId).get();
+      if (existSnap.size > 0) {
+        for (let i=0;i<existSnap.docs.length;i+=400) {
+          const b = db.batch();
+          existSnap.docs.slice(i,i+400).forEach(d => b.delete(d.ref));
+          await b.commit();
+        }
+      }
+      const recs = byMes[mesRef].registros;
+      for (let i=0;i<recs.length;i+=400) {
+        const b = db.batch();
+        recs.slice(i,i+400).forEach(rec => {
+          const r = db.collection('trocasImprocedentes').doc();
+          b.set(r, { id:r.id, ...rec, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() });
+        });
+        await b.commit();
+      }
+      totalGravado += recs.length;
+    }
+
+    _trocaOficialUltimoImport = `${new Date().toLocaleDateString('pt-BR')} — ${totalGravado} registros — ${mesesSelecionados.map(_indMesLabel).join(', ')}`;
+    _trocaOficialDataBase = dataBase;
+    _trocaMesesSel = [mesesSelecionados[mesesSelecionados.length-1]];
+    _trocaOficialImportPrevia = null;
+    _trocaOficialImportSelecionados = new Set();
+
+    toast(`✅ ${totalGravado} trocas improcedentes importadas — ${mesesSelecionados.map(_indMesLabel).join(', ')}`, 'ok');
+    renderTrocaFerramentas();
+  } catch (e) {
+    console.error('[TrocaOficial] Erro ao gravar:', e);
+    toast('Erro: ' + e.message, 'err');
+  }
+}
+
+// ── BASE ESFORÇO — Analisar / Confirmar ─────────────────────────────────────
+async function analisarArquivoEsforcoTroca() {
+  const fi = document.getElementById('esforco-import-file');
+  const dataBase = document.getElementById('esforco-data-base')?.value || '';
+  const anoReferencia = parseInt(document.getElementById('esforco-ano-ref')?.value, 10);
+  if (!fi?.files?.length) { toast('Selecione um arquivo Excel','err'); return; }
+  if (!anoReferencia || anoReferencia < 2000 || anoReferencia > 2100) { toast('Informe um Ano de Referência válido','err'); return; }
+  let operacaoId;
+  try { operacaoId = await getOperacaoId(); }
+  catch (e) { toast('Identificador da operação (operacaoId) não configurado. Configure em Diagnóstico de Importações.', 'err'); return; }
+
+  toast('⏳ Analisando arquivo...','ok');
+  try {
+    const buf = await fi.files[0].arrayBuffer();
+    const wb  = XLSX.read(buf, {type:'array', cellDates:true});
+    let wsName = wb.SheetNames[0];
+    for (const name of wb.SheetNames) {
+      const ws = wb.Sheets[name]; if (!ws['!ref']) continue;
+      const rng = XLSX.utils.decode_range(ws['!ref']);
+      const cur = XLSX.utils.decode_range(wb.Sheets[wsName]['!ref']||'A1:A1');
+      if (rng.e.r > cur.e.r) wsName = name;
+    }
+    const ws = wb.Sheets[wsName];
+    const rawArr = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+    if (rawArr.length < 2) { toast('Planilha sem dados','err'); return; }
+
+    const colMap = {};
+    rawArr[0].forEach((h,i) => { if (h!=null && h!=='') colMap[_trocaNormCol(String(h))] = i; });
+    console.log('[EsforcoTroca] Colunas:', Object.keys(colMap));
+
+    const resolveCol = aliasKey => {
+      const aliases = TROCA_ESFORCO_COL_ALIASES[aliasKey] || [aliasKey];
+      for (const a of aliases) { if (colMap[a] !== undefined) return colMap[a]; }
+      return undefined;
+    };
+    const get = (row, idx) => {
+      if (idx === undefined) return '';
+      const v = row[idx];
+      if (v instanceof Date) return `${v.getDate().toString().padStart(2,'0')}/${(v.getMonth()+1).toString().padStart(2,'0')}/${v.getFullYear()}`;
+      return String(v ?? '').trim();
+    };
+
+    const idxMes = resolveCol('MES'), idxPosto = resolveCol('POSTO'), idxAtend = resolveCol('ATENDENTE'), idxCausa = resolveCol('CAUSA RAIZ');
+    // Colunas de referência soltas (ex.: listas de apoio em colunas isoladas) são ignoradas — só as
+    // colunas mapeadas em TROCA_ESFORCO_COL_ALIASES entram na leitura.
+
+    const faltantes = [];
+    if (idxMes===undefined) faltantes.push('MÊS');
+    if (idxPosto===undefined) faltantes.push('POSTO');
+    if (idxAtend===undefined) faltantes.push('ATENDENTE');
+    if (idxCausa===undefined) faltantes.push('CAUSA RAIZ');
+    if (faltantes.length) {
+      toast(`Colunas obrigatórias não encontradas: ${faltantes.join(', ')}. Colunas disponíveis: ${Object.keys(colMap).slice(0,10).join(', ')}...`, 'err');
+      return;
+    }
+
+    _esforcoDiagPrevia = {
+      reconhecidas: Object.keys(TROCA_ESFORCO_COL_ALIASES).filter(k=>resolveCol(k)!==undefined),
+      naoEncontradas: Object.keys(TROCA_ESFORCO_COL_ALIASES).filter(k=>resolveCol(k)===undefined),
+      colunasArquivo: Object.keys(colMap)
+    };
+
+    const byMes = {};
+    let totalLidos=0, totalValidos=0, totalMesInvalido=0;
+    rawArr.slice(1).forEach(row => {
+      if (!row || row.every(c => !c && c!==0)) return;
+      totalLidos++;
+      const mesRef = _esforcoResolverMesRef(row, idxMes, anoReferencia);
+      if (!mesRef) { totalMesInvalido++; return; }
+      if (!byMes[mesRef]) byMes[mesRef] = { lidos:0, postos:new Set(), causas:new Set(), atendentes:new Set(), registros:[] };
+      const g = byMes[mesRef]; g.lidos++;
+
+      const posto = get(row, idxPosto), atendente = get(row, idxAtend), causaRaiz = get(row, idxCausa);
+      if (posto) g.postos.add(posto);
+      if (causaRaiz) g.causas.add(causaRaiz);
+      if (atendente) g.atendentes.add(atendente);
+
+      g.registros.push({
+        mesRef, posto, atendente, causaRaiz,
+        ordem: get(row, resolveCol('ORDEM')),
+        observacao: get(row, resolveCol('OBSERVACAO')),
+        importadoEm: new Date().toISOString(), importadoPor: currentUser.email,
+        dataBase, operacaoId
+      });
+      totalValidos++;
+    });
+
+    const mesesDetec = Object.keys(byMes).sort();
+    if (!mesesDetec.length) {
+      toast(`Nenhum mês válido reconhecido (${totalMesInvalido} de ${totalLidos} linhas com mês não reconhecido). Importação bloqueada.`, 'err');
+      renderTrocaFerramentas();
+      return;
+    }
+
+    _esforcoImportPrevia = { byMes, dataBase, operacaoId, anoReferencia, totalLidos, totalValidos, totalMesInvalido };
+    _esforcoImportSelecionados = new Set(mesesDetec);
+    renderTrocaFerramentas();
+  } catch (e) {
+    console.error('[EsforcoTroca] Erro na análise:', e);
+    toast('Erro: ' + e.message, 'err');
+  }
+}
+
+async function confirmarImportacaoEsforcoTroca() {
+  if (!_esforcoImportPrevia || !_esforcoImportSelecionados.size) { toast('Nenhum mês selecionado','err'); return; }
+  const { byMes, dataBase, operacaoId } = _esforcoImportPrevia;
+  const mesesSelecionados = Object.keys(byMes).filter(m => _esforcoImportSelecionados.has(m)).sort();
+
+  toast('⏳ Gravando...','ok');
+  try {
+    let totalGravado = 0;
+    for (const mesRef of mesesSelecionados) {
+      const existSnap = await db.collection('esforcoTroca')
+        .where('mesRef','==',mesRef).where('operacaoId','==',operacaoId).get();
+      if (existSnap.size > 0) {
+        for (let i=0;i<existSnap.docs.length;i+=400) {
+          const b = db.batch();
+          existSnap.docs.slice(i,i+400).forEach(d => b.delete(d.ref));
+          await b.commit();
+        }
+      }
+      const recs = byMes[mesRef].registros;
+      for (let i=0;i<recs.length;i+=400) {
+        const b = db.batch();
+        recs.slice(i,i+400).forEach(rec => {
+          const r = db.collection('esforcoTroca').doc();
+          b.set(r, { id:r.id, ...rec, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() });
+        });
+        await b.commit();
+      }
+      totalGravado += recs.length;
+    }
+
+    _esforcoUltimoImport = `${new Date().toLocaleDateString('pt-BR')} — ${totalGravado} registros — ${mesesSelecionados.map(_indMesLabel).join(', ')}`;
+    _esforcoDataBase = dataBase;
+    _esforcoMesesSel = [mesesSelecionados[mesesSelecionados.length-1]];
+    _esforcoImportPrevia = null;
+    _esforcoImportSelecionados = new Set();
+
+    toast(`✅ ${totalGravado} registros de esforço importados — ${mesesSelecionados.map(_indMesLabel).join(', ')}`, 'ok');
+    renderTrocaFerramentas();
+  } catch (e) {
+    console.error('[EsforcoTroca] Erro ao gravar:', e);
+    toast('Erro: ' + e.message, 'err');
+  }
+}
+
+// ── Funções puras de cálculo — BASE OFICIAL ─────────────────────────────────
+function _trocaCalcRankingPostos(dados) {
+  const cnt={}; dados.forEach(r=>{if(r.loja)cnt[r.loja]=(cnt[r.loja]||0)+1;});
+  return Object.entries(cnt).sort((a,b)=>b[1]-a[1]);
+}
+function _trocaCalcRankingAtendentes(dados) {
+  const cnt={}; dados.forEach(r=>{if(r.atendenteCurto)cnt[r.atendenteCurto]=(cnt[r.atendenteCurto]||0)+1;});
+  return Object.entries(cnt).sort((a,b)=>b[1]-a[1]);
+}
+function _trocaCalcRankingCausas(dados) {
+  const cnt={}; dados.forEach(r=>{if(r.causaRaiz)cnt[r.causaRaiz]=(cnt[r.causaRaiz]||0)+1;});
+  return Object.entries(cnt).sort((a,b)=>b[1]-a[1]);
+}
+function _trocaCalcRankingTipoTroca(dados) {
+  const cnt={}; dados.forEach(r=>{if(r.tipoTroca)cnt[r.tipoTroca]=(cnt[r.tipoTroca]||0)+1;});
+  return Object.entries(cnt).sort((a,b)=>b[1]-a[1]);
+}
+// Pareto de causas: ordenado desc + percentual acumulado
+function _trocaCalcPareto(dados) {
+  const rank = _trocaCalcRankingCausas(dados);
+  const total = dados.length;
+  let acumulado = 0;
+  return rank.map(([causa,v]) => {
+    acumulado += v;
+    return { causa, qtd:v, pct: total?Math.round(v/total*100):0, pctAcumulado: total?Math.round(acumulado/total*100):0 };
+  });
+}
+// Recorrência por posto — quantidade de meses (dentro do recorte) em que o posto teve ocorrência
+function _trocaCalcRecorrencia(baseDados, filtroPosto, filtroAtendente, filtroCausa) {
+  const f = baseDados.filter(r => {
+    if (filtroPosto     && r.loja           !== filtroPosto)     return false;
+    if (filtroAtendente && r.atendenteCurto !== filtroAtendente) return false;
+    if (filtroCausa     && r.causaRaiz      !== filtroCausa)     return false;
+    return true;
+  });
+  const agg = {};
+  f.forEach(r => {
+    if (!r.loja) return;
+    if (!agg[r.loja]) agg[r.loja] = { competencias:new Set(), total:0 };
+    agg[r.loja].total++;
+    if (r.mesRef) agg[r.loja].competencias.add(r.mesRef);
+  });
+  return agg;
+}
+function _trocaRankRecorrencia(rec) {
+  return Object.entries(rec).map(([posto,d])=>({posto,nComp:d.competencias.size,total:d.total})).sort((a,b)=>b.nComp-a.nComp||b.total-a.total);
+}
+// Causas recorrentes — mesma lógica, por causa em vez de posto
+function _trocaCalcCausasRecorrentes(baseDados) {
+  const agg = {};
+  baseDados.forEach(r => {
+    if (!r.causaRaiz) return;
+    if (!agg[r.causaRaiz]) agg[r.causaRaiz] = { competencias:new Set(), total:0 };
+    agg[r.causaRaiz].total++;
+    if (r.mesRef) agg[r.causaRaiz].competencias.add(r.mesRef);
+  });
+  return Object.entries(agg).map(([causa,d])=>({causa,nComp:d.competencias.size,total:d.total})).sort((a,b)=>b.nComp-a.nComp||b.total-a.total);
+}
+// Tendência — total de ocorrências, mês atual vs. anterior dentro do recorte
+function _trocaCalcTendencia(baseDados, mesesComDados, filtroPosto, filtroAtendente, filtroCausa) {
+  const ord = [...mesesComDados].sort();
+  const mesAnt = ord[ord.length-2], mesAtu = ord[ord.length-1];
+  if (!mesAnt || !mesAtu) return null;
+  const f = r => {
+    if (filtroPosto     && r.loja           !== filtroPosto)     return false;
+    if (filtroAtendente && r.atendenteCurto !== filtroAtendente) return false;
+    if (filtroCausa     && r.causaRaiz      !== filtroCausa)     return false;
+    return true;
+  };
+  const a = baseDados.filter(r=>r.mesRef===mesAnt && f(r)).length;
+  const b = baseDados.filter(r=>r.mesRef===mesAtu && f(r)).length;
+  const varAbs = b-a;
+  const varPct = a>0 ? Math.round((b-a)/a*100) : null;
+  const classif = b<a ? 'Melhorou' : b>a ? 'Piorou' : 'Estável';
+  return { mesAnt, mesAtu, a, b, varAbs, varPct, classif };
+}
+// Prioridades — postos com maior recorrência/volume, oportunidade de treinamento
+function _trocaCalcPrioridades(dados, recPorPosto) {
+  const cntP = {}; dados.forEach(r=>{if(r.loja)cntP[r.loja]=(cntP[r.loja]||0)+1;});
+  const nPostos = Object.keys(cntP).length;
+  const media = nPostos ? dados.length/nPostos : 0;
+  return Object.entries(cntP).map(([posto,total])=>{
+    const rec = recPorPosto[posto] || {competencias:new Set(), total:0};
+    const nComp = rec.competencias.size;
+    const classif = _indClassifRecorrencia(nComp);
+    const causasPosto = _trocaCalcRankingCausas(dados.filter(r=>r.loja===posto));
+    const principalCausa = causasPosto[0] ? causasPosto[0][0] : '—';
+    const critico = nComp>=2 || total>=media;
+    return { posto, total, nComp, classif, principalCausa, critico, score: nComp*100+total };
+  }).filter(p=>p.critico).sort((a,b)=>b.score-a.score);
+}
+
+// ── Funções puras de cálculo — BASE ESFORÇO ─────────────────────────────────
+function _esforcoCalcRankingCausas(dados) {
+  const cnt={}; dados.forEach(r=>{if(r.causaRaiz)cnt[r.causaRaiz]=(cnt[r.causaRaiz]||0)+1;});
+  return Object.entries(cnt).sort((a,b)=>b[1]-a[1]);
+}
+function _esforcoCalcRankingPostos(dados) {
+  const cnt={}; dados.forEach(r=>{if(r.posto)cnt[r.posto]=(cnt[r.posto]||0)+1;});
+  return Object.entries(cnt).sort((a,b)=>b[1]-a[1]);
+}
+function _esforcoCalcRankingAtendentes(dados) {
+  const cnt={}; dados.forEach(r=>{if(r.atendente)cnt[r.atendente]=(cnt[r.atendente]||0)+1;});
+  return Object.entries(cnt).sort((a,b)=>b[1]-a[1]);
+}
+function _esforcoCalcRecorrencia(baseDados, filtroPosto, filtroAtendente) {
+  const f = baseDados.filter(r => {
+    if (filtroPosto     && r.posto     !== filtroPosto)     return false;
+    if (filtroAtendente && r.atendente !== filtroAtendente) return false;
+    return true;
+  });
+  const agg = {};
+  f.forEach(r => {
+    if (!r.posto) return;
+    if (!agg[r.posto]) agg[r.posto] = { competencias:new Set(), total:0 };
+    agg[r.posto].total++;
+    if (r.mesRef) agg[r.posto].competencias.add(r.mesRef);
+  });
+  return agg;
+}
+
+// ── Router / abas ────────────────────────────────────────────────────────
+function renderTrocas() {
+  if (!podeVerIndevidos()) return;
+  if (_trocaTab === 'painel')             renderTrocaPainel();
+  else if (_trocaTab === 'esforco')       renderEsforcoPainel();
+  else if (_trocaTab === 'detalhamento')  renderTrocaDetalhamento();
+  else                                    renderTrocaFerramentas();
+}
+function switchTrocasTab(tab) {
+  _trocaTab = tab; _trocaPagina = 1;
+  ['painel','esforco','detalhamento','ferramentas'].forEach(t => {
+    const w = document.getElementById('troca-'+t+'-wrap');
+    const b = document.getElementById('troca-tab-'+t);
+    if (w) w.style.display = t===tab ? '' : 'none';
+    if (b) b.classList.toggle('active', t===tab);
+  });
+  renderTrocas();
+}
+
+function _filtrarTrocaOficial() {
+  return allTrocasOficial.filter(r => {
+    if (_trocaMesesSel.length && !_trocaMesesSel.includes(r.mesRef)) return false;
+    if (_trocaFiltroPosto     && r.loja           !== _trocaFiltroPosto)     return false;
+    if (_trocaFiltroAtendente && r.atendenteCurto !== _trocaFiltroAtendente) return false;
+    if (_trocaFiltroCausa     && r.causaRaiz      !== _trocaFiltroCausa)     return false;
+    return true;
+  });
+}
+function _trocaToggleMes(m, evt) {
+  if (!_trocaOficialMesesComDados.includes(m)) return;
+  if (evt?.shiftKey) {
+    const i = _trocaMesesSel.indexOf(m);
+    if (i>=0) _trocaMesesSel.splice(i,1); else _trocaMesesSel.push(m);
+  } else {
+    _trocaMesesSel = (_trocaMesesSel.length===1 && _trocaMesesSel[0]===m) ? [] : [m];
+  }
+  renderTrocaPainel();
+}
+function _trocaTodos()  { _trocaMesesSel = [..._trocaOficialMesesComDados]; renderTrocaPainel(); }
+function _trocaLimpar() { _trocaMesesSel = []; renderTrocaPainel(); }
+function _trocaAplicarFiltro() {
+  _trocaFiltroPosto     = document.getElementById('troca-fil-posto')?.value     || '';
+  _trocaFiltroAtendente = document.getElementById('troca-fil-atendente')?.value || '';
+  _trocaFiltroCausa     = document.getElementById('troca-fil-causa')?.value     || '';
+  renderTrocaPainel();
+}
+
+// ── PAINEL — Base Oficial (exclusivamente trocasImprocedentes) ─────────────
+function renderTrocaPainel() {
+  const wrap = document.getElementById('troca-painel-wrap'); if (!wrap) return;
+
+  const dados = _filtrarTrocaOficial();
+  const dadosMes = allTrocasOficial.filter(r => _trocaMesesSel.includes(r.mesRef));
+  const postosDisp     = [...new Set(dadosMes.map(r=>r.loja).filter(Boolean))].sort();
+  const atendentesDisp = [...new Set(dadosMes.map(r=>r.atendenteCurto).filter(Boolean))].sort();
+  const causasDisp     = [...new Set(dadosMes.map(r=>r.causaRaiz).filter(Boolean))].sort();
+  const selLabel = _trocaMesesSel.length ? _trocaMesesSel.map(_indMesLabel).join(', ') : 'Nenhum';
+
+  const totalTrocas = dados.length;
+  const postosComOcorrencia = new Set(dados.map(r=>r.loja).filter(Boolean)).size;
+  const atendentesEnvolvidos = new Set(dados.map(r=>r.atendenteCurto).filter(Boolean)).size;
+  const causasDiferentes = new Set(dados.map(r=>r.causaRaiz).filter(Boolean)).size;
+  const mesesConsiderados = _trocaMesesSel.length || _trocaOficialMesesComDados.length;
+  const mediaMensal = mesesConsiderados ? (totalTrocas/mesesConsiderados) : 0;
+
+  wrap.innerHTML = `
+    ${_trocaOficialUltimoImport?`<div style="padding:6px 0 10px;display:flex;gap:8px;flex-wrap:wrap">
+      <span style="font-size:11px;background:rgba(27,175,122,.12);color:#0f6e56;padding:3px 10px;border-radius:12px;border:1px solid rgba(27,175,122,.25)">📅 Dados até: ${_trocaOficialUltimoImport}</span>
+    </div>`:''}
+
+    <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">Mês</div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:7px">
+      ${_trocaOficialMesesComDados.length ? _trocaOficialMesesComDados.map(m=>{
+        const ativo = _trocaMesesSel.includes(m);
+        return `<button onclick="_trocaToggleMes('${m}',event)" title="Clique: selecionar. Shift+clique: acumular."
+          style="font-size:11px;padding:3px 10px;border-radius:14px;cursor:pointer;
+            border:1px solid ${ativo?'transparent':'rgba(255,255,255,.22)'};
+            background:${ativo?'#2a78d6':'transparent'};color:${ativo?'#fff':'var(--text2)'};transition:all .12s">${_indMesLabel(m)}</button>`;
+      }).join('') : '<span style="font-size:12px;color:var(--text3)">Nenhum dado importado ainda (veja Ferramentas Administrativas)</span>'}
+    </div>
+    ${_trocaOficialMesesComDados.length?`<div style="display:flex;gap:6px;margin-bottom:12px">
+      <button onclick="_trocaTodos()" style="font-size:11px;padding:2px 10px;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:transparent;color:var(--text3);cursor:pointer">Todos</button>
+      <button onclick="_trocaLimpar()" style="font-size:11px;padding:2px 10px;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:transparent;color:var(--text3);cursor:pointer">Limpar</button>
+    </div>`:''}
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:8px 0 14px;border-bottom:1px solid rgba(255,255,255,.07)">
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Posto</label>
+        <select class="form-select" id="troca-fil-posto" style="min-width:180px" onchange="_trocaAplicarFiltro()">
+          <option value="">Todos os postos</option>
+          ${postosDisp.map(p=>`<option value="${p}" ${_trocaFiltroPosto===p?'selected':''}>${p}</option>`).join('')}
+        </select></div>
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Atendente</label>
+        <select class="form-select" id="troca-fil-atendente" style="min-width:180px" onchange="_trocaAplicarFiltro()">
+          <option value="">Todos os atendentes</option>
+          ${atendentesDisp.map(a=>`<option value="${a}" ${_trocaFiltroAtendente===a?'selected':''}>${a}</option>`).join('')}
+        </select></div>
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Causa</label>
+        <select class="form-select" id="troca-fil-causa" style="min-width:200px" onchange="_trocaAplicarFiltro()">
+          <option value="">Todas as causas</option>
+          ${causasDisp.map(c=>`<option value="${c}" ${_trocaFiltroCausa===c?'selected':''}>${c}</option>`).join('')}
+        </select></div>
+      ${_trocaMesesSel.length?`<span style="font-size:11px;background:rgba(42,120,214,.12);color:#185fa5;padding:3px 10px;border-radius:12px;border:1px solid rgba(42,120,214,.25);align-self:flex-end">📅 ${selLabel}</span>`:''}
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:16px 0 10px">Cards</div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px">
+      <div class="stat-card"><div class="label">Total de Trocas Improcedentes</div><div class="value" style="color:#e24b4a">${totalTrocas.toLocaleString('pt-BR')}</div></div>
+      <div class="stat-card"><div class="label">Postos com Ocorrência</div><div class="value">${postosComOcorrencia}</div></div>
+      <div class="stat-card"><div class="label">Atendentes Envolvidos</div><div class="value">${atendentesEnvolvidos}</div></div>
+      <div class="stat-card"><div class="label">Causas Diferentes</div><div class="value">${causasDiferentes}</div></div>
+      <div class="stat-card"><div class="label">Média Mensal</div><div class="value">${mediaMensal.toFixed(1)}</div></div>
+    </div>
+
+    ${!_trocaMesesSel.length?`<div style="text-align:center;padding:28px;color:var(--text3);font-size:13px">Selecione um mês acima para visualizar os dados.</div>`:''}
+    ${_trocaMesesSel.length&&!dados.length?`<div style="text-align:center;padding:28px;color:var(--text3);font-size:13px">Nenhum registro para os filtros selecionados.</div>`:''}
+
+    ${dados.length?`
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Gráficos</div>
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:12px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:10px">Evolução Mensal</div>
+      <div style="position:relative;width:100%;height:190px"><canvas id="troca-c-evolucao"></canvas></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">Ranking de Postos</div>
+        <div id="troca-rank-postos"></div>
+      </div>
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">Ranking de Atendentes</div>
+        <div id="troca-rank-atendentes"></div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">Ranking de Causas</div>
+        <div id="troca-rank-causas"></div>
+      </div>
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">Ranking por Tipo de Troca</div>
+        <div id="troca-rank-tipo"></div>
+      </div>
+    </div>
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:12px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:10px">Pareto de Causas</div>
+      <div id="troca-pareto"></div>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:20px 0 4px">🧠 Análises Inteligentes</div>
+    <div id="troca-analises-base" style="font-size:11px;color:var(--text3);margin-bottom:10px"></div>
+
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:12px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:10px">🏪 Postos Recorrentes</div>
+      <div id="troca-postos-recorrentes"></div>
+    </div>
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:12px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:10px">🎯 Causas Recorrentes</div>
+      <div id="troca-causas-recorrentes"></div>
+    </div>
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:12px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:10px">📈 Tendência</div>
+      <div id="troca-tendencia"></div>
+    </div>
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:12px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:10px">🎓 Oportunidades de Treinamento</div>
+      <div id="troca-treinamento"></div>
+    </div>
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:12px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:10px">📝 Resumo Executivo</div>
+      <div id="troca-resumo" style="font-size:13px;line-height:1.8"></div>
+    </div>
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Alertas</div>
+    <div id="troca-alertas" style="margin-bottom:16px"></div>
+    `:''}
+  `;
+
+  if (dados.length) setTimeout(() => _renderTrocaCharts(dados), 40);
+}
+
+let _chartTrocaEvolucao = null;
+function _renderTrocaCharts(dados) {
+  _chartTrocaEvolucao = _dstroyIndChart(_chartTrocaEvolucao);
+  const tickC='#a0aec0', gridC='rgba(255,255,255,.06)';
+
+  // Evolução Mensal — todos os meses da base, respeitando filtros de Posto/Atendente/Causa
+  const mesesEvol = [..._trocaOficialMesesComDados].sort();
+  const evolBase = allTrocasOficial.filter(r => {
+    if (_trocaFiltroPosto     && r.loja           !== _trocaFiltroPosto)     return false;
+    if (_trocaFiltroAtendente && r.atendenteCurto !== _trocaFiltroAtendente) return false;
+    if (_trocaFiltroCausa     && r.causaRaiz      !== _trocaFiltroCausa)     return false;
+    return true;
+  });
+  const cntMes = {}; mesesEvol.forEach(m=>cntMes[m]=0);
+  evolBase.forEach(r=>{ if(r.mesRef&&cntMes[r.mesRef]!==undefined) cntMes[r.mesRef]++; });
+  const ctxEv = document.getElementById('troca-c-evolucao');
+  if (ctxEv && mesesEvol.length) {
+    _chartTrocaEvolucao = new Chart(ctxEv, {type:'line',
+      data:{labels:mesesEvol.map(_indMesLabel),
+        datasets:[{data:mesesEvol.map(m=>cntMes[m]),borderColor:'#e24b4a',backgroundColor:'rgba(226,75,74,.12)',
+          borderWidth:2,fill:true,tension:.35,pointRadius:4,pointBackgroundColor:'#e24b4a'}]},
+      options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},
+        plugins:{legend:{display:false}},
+        scales:{x:{ticks:{color:tickC,font:{size:10}},grid:{display:false}},
+                y:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true}}},
+      plugins:[{id:'tEvL',afterDatasetsDraw(c){const{ctx}=c;c.data.datasets[0].data.forEach((v,i)=>{
+        if(!v)return;const el=c.getDatasetMeta(0).data[i];ctx.save();ctx.fillStyle='#e24b4a';
+        ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.fillText(v,el.x,el.y-9);ctx.restore();});}}]});
+  }
+
+  const _trocaLinhaRank = (label, v, max, cor) => `
+    <div style="display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+      <span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${label}">${label}</span>
+      <div style="width:50px;height:5px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden">
+        <div style="height:100%;background:${cor};width:${Math.round(v/max*100)}%;border-radius:3px"></div></div>
+      <span style="font-size:12px;font-weight:600;color:${cor};min-width:22px;text-align:right">${v}</span>
+    </div>`;
+
+  const rankPostos = _trocaCalcRankingPostos(dados);
+  const maxP = rankPostos[0]?.[1]||1;
+  const elRP = document.getElementById('troca-rank-postos');
+  if (elRP) elRP.innerHTML = rankPostos.length ? rankPostos.slice(0,10).map(([p,v])=>_trocaLinhaRank(p,v,maxP,'#e24b4a')).join('') : '<div style="color:var(--text3);font-size:13px">Sem dados</div>';
+
+  const rankAtend = _trocaCalcRankingAtendentes(dados);
+  const maxA = rankAtend[0]?.[1]||1;
+  const elRA = document.getElementById('troca-rank-atendentes');
+  if (elRA) elRA.innerHTML = rankAtend.length ? rankAtend.slice(0,10).map(([a,v])=>_trocaLinhaRank(a,v,maxA,'#eda100')).join('') : '<div style="color:var(--text3);font-size:13px">Sem dados</div>';
+
+  const rankCausas = _trocaCalcRankingCausas(dados);
+  const maxC = rankCausas[0]?.[1]||1;
+  const elRC = document.getElementById('troca-rank-causas');
+  if (elRC) elRC.innerHTML = rankCausas.length ? rankCausas.slice(0,10).map(([c,v])=>_trocaLinhaRank(c,v,maxC,'#3b82f6')).join('') : '<div style="color:var(--text3);font-size:13px">Sem dados</div>';
+
+  const rankTipo = _trocaCalcRankingTipoTroca(dados);
+  const maxT = rankTipo[0]?.[1]||1;
+  const elRT = document.getElementById('troca-rank-tipo');
+  if (elRT) elRT.innerHTML = rankTipo.length ? rankTipo.map(([t,v])=>_trocaLinhaRank(t,v,maxT,'#94a3b8')).join('') : '<div style="color:var(--text3);font-size:13px">Sem dados</div>';
+
+  // Pareto de Causas
+  const pareto = _trocaCalcPareto(dados);
+  const elPareto = document.getElementById('troca-pareto');
+  if (elPareto) elPareto.innerHTML = pareto.length ? `
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15)">
+        ${['Causa','Qtd','%','% Acumulado'].map(h=>`<th style="padding:5px 10px;text-align:left;color:var(--text3);font-weight:600">${h}</th>`).join('')}
+      </tr></thead>
+      <tbody>${pareto.map(p=>`<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+        <td style="padding:5px 10px;font-weight:600">${p.causa}</td>
+        <td style="padding:5px 10px">${p.qtd}</td>
+        <td style="padding:5px 10px">${p.pct}%</td>
+        <td style="padding:5px 10px;font-weight:600;color:${p.pctAcumulado<=80?'#e24b4a':'var(--text3)'}">${p.pctAcumulado}%</td>
+      </tr>`).join('')}</tbody>
+    </table></div>` : '<div style="color:var(--text3);font-size:13px">Sem dados</div>';
+
+  // Análises Inteligentes: recorte = meses selecionados (ou todo o período disponível)
+  const mesesParaAnalise = _trocaMesesSel.length ? _trocaMesesSel : _trocaOficialMesesComDados;
+  const dadosBaseSelecionados = allTrocasOficial.filter(r => mesesParaAnalise.includes(r.mesRef));
+  const elBase = document.getElementById('troca-analises-base');
+  if (elBase) elBase.textContent = `Baseado em: ${mesesParaAnalise.length ? mesesParaAnalise.map(_indMesLabel).join(', ') : 'nenhum mês selecionado'}`;
+
+  // Postos recorrentes
+  const recPorPosto = _trocaCalcRecorrencia(dadosBaseSelecionados, _trocaFiltroPosto, _trocaFiltroAtendente, _trocaFiltroCausa);
+  const rankRecPostos = _trocaRankRecorrencia(recPorPosto);
+  const elRecP = document.getElementById('troca-postos-recorrentes');
+  if (elRecP) elRecP.innerHTML = rankRecPostos.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px">${rankRecPostos.map(r=>{
+    const c = _indClassifRecorrencia(r.nComp);
+    return `<div style="display:flex;align-items:center;gap:6px;background:${c.bg};border-radius:8px;padding:4px 10px;border:1px solid ${c.bd}">
+      <span style="font-size:12px;color:var(--text)">${r.posto}</span>
+      <span style="font-size:11px;font-weight:700;color:${c.color}">${c.label}</span>
+      <span style="font-size:11px;color:var(--text3)">${r.nComp} de ${mesesParaAnalise.length} meses selecionados</span>
+    </div>`;
+  }).join('')}</div>` : '<div style="color:var(--text3);font-size:13px">Sem dados</div>';
+
+  // Causas recorrentes
+  const rankRecCausas = _trocaCalcCausasRecorrentes(dadosBaseSelecionados);
+  const elRecC = document.getElementById('troca-causas-recorrentes');
+  if (elRecC) elRecC.innerHTML = rankRecCausas.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px">${rankRecCausas.map(r=>{
+    const c = _indClassifRecorrencia(r.nComp);
+    return `<div style="display:flex;align-items:center;gap:6px;background:${c.bg};border-radius:8px;padding:4px 10px;border:1px solid ${c.bd}">
+      <span style="font-size:12px;color:var(--text)">${r.causa}</span>
+      <span style="font-size:11px;font-weight:700;color:${c.color}">${c.label}</span>
+      <span style="font-size:11px;color:var(--text3)">${r.nComp} de ${mesesParaAnalise.length} meses · ${r.total} ocorrências</span>
+    </div>`;
+  }).join('')}</div>` : '<div style="color:var(--text3);font-size:13px">Sem dados</div>';
+
+  // Tendência
+  const tend = _trocaCalcTendencia(dadosBaseSelecionados, mesesParaAnalise, _trocaFiltroPosto, _trocaFiltroAtendente, _trocaFiltroCausa);
+  const elTend = document.getElementById('troca-tendencia');
+  if (elTend) {
+    if (!tend) {
+      elTend.innerHTML = '<div style="color:var(--text3);font-size:13px">Menos de dois meses no recorte selecionado para comparação.</div>';
+    } else {
+      const cor = tend.classif==='Melhorou'?'#1baf7a':tend.classif==='Piorou'?'#e24b4a':'var(--text3)';
+      elTend.innerHTML = `
+        <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Comparando <strong>${_indMesLabel(tend.mesAnt)}</strong> → <strong>${_indMesLabel(tend.mesAtu)}</strong></div>
+        <table style="border-collapse:collapse;font-size:12px"><tbody>
+          <tr><td style="padding:4px 14px 4px 0;color:var(--text3)">Resultado anterior</td><td style="padding:4px 0">${tend.a}</td></tr>
+          <tr><td style="padding:4px 14px 4px 0;color:var(--text3)">Resultado atual</td><td style="padding:4px 0">${tend.b}</td></tr>
+          <tr><td style="padding:4px 14px 4px 0;color:var(--text3)">Variação absoluta</td><td style="padding:4px 0">${tend.varAbs>0?'+':''}${tend.varAbs}</td></tr>
+          <tr><td style="padding:4px 14px 4px 0;color:var(--text3)">Variação percentual</td><td style="padding:4px 0">${tend.varPct===null?'—':(tend.varPct>0?'+':'')+tend.varPct+'%'}</td></tr>
+          <tr><td style="padding:4px 14px 4px 0;color:var(--text3)">Classificação</td><td style="padding:4px 0;font-weight:700;color:${cor}">${tend.classif}</td></tr>
+        </tbody></table>`;
+    }
+  }
+
+  // Oportunidades de Treinamento (prioridades)
+  const prioridades = _trocaCalcPrioridades(dadosBaseSelecionados, recPorPosto);
+  const elTrein = document.getElementById('troca-treinamento');
+  if (elTrein) elTrein.innerHTML = prioridades.length ? prioridades.slice(0,5).map(p=>`
+    <div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+        <span style="font-size:13px;font-weight:700">${p.posto}</span>
+        <span style="font-size:11px;font-weight:700;color:${p.classif.color};background:${p.classif.bg};border:1px solid ${p.classif.bd};border-radius:10px;padding:1px 8px">${p.classif.label}</span>
+      </div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.5">Treinamento recomendado em <strong>${p.principalCausa}</strong> — ${p.total} ocorrência(s) em ${p.nComp} mês(es) selecionado(s).</div>
+    </div>`).join('') : '<div style="color:var(--text3);font-size:13px">Nenhuma prioridade relevante no recorte analisado.</div>';
+
+  // Resumo Executivo
+  const resumoPartes = [];
+  resumoPartes.push(`Trocas Improcedentes no recorte (${mesesParaAnalise.map(_indMesLabel).join(', ')||'—'}): ${dadosBaseSelecionados.length} ocorrência(s).`);
+  if (rankPostos[0]) resumoPartes.push(`O posto ${rankPostos[0][0]} concentra o maior volume (${rankPostos[0][1]} ocorrências).`);
+  if (rankCausas[0]) resumoPartes.push(`Principal causa: ${rankCausas[0][0]}.`);
+  if (prioridades[0]) resumoPartes.push(`Prioridade de treinamento: ${prioridades[0].posto}.`);
+  const elResumo = document.getElementById('troca-resumo');
+  if (elResumo) elResumo.innerHTML = resumoPartes.map(p=>`<div>${p}</div>`).join('');
+
+  // Alertas
+  const alertas = [];
+  const postoRecorrente = rankRecPostos.find(r=>r.nComp>=3);
+  if (postoRecorrente) alertas.push({titulo:`Posto ${postoRecorrente.posto} recorrente em meses consecutivos`, dados:`${postoRecorrente.nComp} de ${mesesParaAnalise.length} meses · ${postoRecorrente.total} ocorrências`});
+  const causaRecorrente = rankRecCausas.find(r=>r.nComp>=3);
+  if (causaRecorrente) alertas.push({titulo:`Causa recorrente: ${causaRecorrente.causa}`, dados:`${causaRecorrente.nComp} de ${mesesParaAnalise.length} meses · ${causaRecorrente.total} ocorrências`});
+  if (tend && tend.classif==='Piorou') alertas.push({titulo:'Aumento em relação ao mês anterior', dados:`${_indMesLabel(tend.mesAnt)}: ${tend.a} → ${_indMesLabel(tend.mesAtu)}: ${tend.b}`});
+  const elAlertas = document.getElementById('troca-alertas');
+  if (elAlertas) {
+    const alertasFinal = alertas.slice(0,5);
+    elAlertas.innerHTML = alertasFinal.length ? alertasFinal.map(a=>`
+      <details style="background:var(--surface2);border-radius:10px;padding:12px 14px;border:1px solid rgba(255,255,255,.07);margin-bottom:8px">
+        <summary style="cursor:pointer;font-size:13px;font-weight:600">⚠ ${a.titulo}</summary>
+        <div style="margin-top:8px;font-size:12px;color:var(--text2)">${a.dados}</div>
+      </details>`).join('') : '<div style="color:var(--text3);font-size:13px">Nenhum alerta no momento.</div>';
+  }
+}
+
+// ── ESFORÇO DE TROCA — área operacional (exclusivamente esforcoTroca) ──────
+function _filtrarEsforcoTroca() {
+  return allEsforcoTroca.filter(r => {
+    if (_esforcoMesesSel.length && !_esforcoMesesSel.includes(r.mesRef)) return false;
+    if (_esforcoFiltroPosto     && r.posto     !== _esforcoFiltroPosto)     return false;
+    if (_esforcoFiltroAtendente && r.atendente !== _esforcoFiltroAtendente) return false;
+    return true;
+  });
+}
+function _esforcoToggleMes(m, evt) {
+  if (!_esforcoMesesComDados.includes(m)) return;
+  if (evt?.shiftKey) {
+    const i = _esforcoMesesSel.indexOf(m);
+    if (i>=0) _esforcoMesesSel.splice(i,1); else _esforcoMesesSel.push(m);
+  } else {
+    _esforcoMesesSel = (_esforcoMesesSel.length===1 && _esforcoMesesSel[0]===m) ? [] : [m];
+  }
+  renderEsforcoPainel();
+}
+function _esforcoTodos()  { _esforcoMesesSel = [..._esforcoMesesComDados]; renderEsforcoPainel(); }
+function _esforcoLimpar() { _esforcoMesesSel = []; renderEsforcoPainel(); }
+function _esforcoAplicarFiltro() {
+  _esforcoFiltroPosto     = document.getElementById('esforco-fil-posto')?.value     || '';
+  _esforcoFiltroAtendente = document.getElementById('esforco-fil-atendente')?.value || '';
+  renderEsforcoPainel();
+}
+
+let _chartEsforcoEvolucao = null;
+function renderEsforcoPainel() {
+  const wrap = document.getElementById('troca-esforco-wrap'); if (!wrap) return;
+
+  const dados = _filtrarEsforcoTroca();
+  const dadosMes = allEsforcoTroca.filter(r => _esforcoMesesSel.includes(r.mesRef));
+  const postosDisp     = [...new Set(dadosMes.map(r=>r.posto).filter(Boolean))].sort();
+  const atendentesDisp = [...new Set(dadosMes.map(r=>r.atendente).filter(Boolean))].sort();
+  const selLabel = _esforcoMesesSel.length ? _esforcoMesesSel.map(_indMesLabel).join(', ') : 'Nenhum';
+
+  const totalErros = dados.length;
+  const postosComOcorrencia = new Set(dados.map(r=>r.posto).filter(Boolean)).size;
+  const atendentesEnvolvidos = new Set(dados.map(r=>r.atendente).filter(Boolean)).size;
+  const causasDiferentes = new Set(dados.map(r=>r.causaRaiz).filter(Boolean)).size;
+
+  wrap.innerHTML = `
+    <div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:12px;color:var(--text2);line-height:1.6">
+      Área operacional do Backoffice — controle dos erros identificados <strong>antes</strong> da conclusão da ordem.
+      Base totalmente independente da Base Oficial de Trocas Improcedentes; não é somada nem comparada automaticamente com ela.
+    </div>
+
+    ${_esforcoUltimoImport?`<div style="padding:0 0 10px;display:flex;gap:8px;flex-wrap:wrap">
+      <span style="font-size:11px;background:rgba(27,175,122,.12);color:#0f6e56;padding:3px 10px;border-radius:12px;border:1px solid rgba(27,175,122,.25)">📅 Dados até: ${_esforcoUltimoImport}</span>
+    </div>`:''}
+
+    <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">Mês</div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:7px">
+      ${_esforcoMesesComDados.length ? _esforcoMesesComDados.map(m=>{
+        const ativo = _esforcoMesesSel.includes(m);
+        return `<button onclick="_esforcoToggleMes('${m}',event)" title="Clique: selecionar. Shift+clique: acumular."
+          style="font-size:11px;padding:3px 10px;border-radius:14px;cursor:pointer;
+            border:1px solid ${ativo?'transparent':'rgba(255,255,255,.22)'};
+            background:${ativo?'#2a78d6':'transparent'};color:${ativo?'#fff':'var(--text2)'};transition:all .12s">${_indMesLabel(m)}</button>`;
+      }).join('') : '<span style="font-size:12px;color:var(--text3)">Nenhum dado importado ainda (veja Ferramentas Administrativas)</span>'}
+    </div>
+    ${_esforcoMesesComDados.length?`<div style="display:flex;gap:6px;margin-bottom:12px">
+      <button onclick="_esforcoTodos()" style="font-size:11px;padding:2px 10px;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:transparent;color:var(--text3);cursor:pointer">Todos</button>
+      <button onclick="_esforcoLimpar()" style="font-size:11px;padding:2px 10px;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:transparent;color:var(--text3);cursor:pointer">Limpar</button>
+    </div>`:''}
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:8px 0 14px;border-bottom:1px solid rgba(255,255,255,.07)">
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Posto</label>
+        <select class="form-select" id="esforco-fil-posto" style="min-width:180px" onchange="_esforcoAplicarFiltro()">
+          <option value="">Todos os postos</option>
+          ${postosDisp.map(p=>`<option value="${p}" ${_esforcoFiltroPosto===p?'selected':''}>${p}</option>`).join('')}
+        </select></div>
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Atendente</label>
+        <select class="form-select" id="esforco-fil-atendente" style="min-width:180px" onchange="_esforcoAplicarFiltro()">
+          <option value="">Todos os atendentes</option>
+          ${atendentesDisp.map(a=>`<option value="${a}" ${_esforcoFiltroAtendente===a?'selected':''}>${a}</option>`).join('')}
+        </select></div>
+      ${_esforcoMesesSel.length?`<span style="font-size:11px;background:rgba(42,120,214,.12);color:#185fa5;padding:3px 10px;border-radius:12px;border:1px solid rgba(42,120,214,.25);align-self:flex-end">📅 ${selLabel}</span>`:''}
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:16px 0 10px">Cards</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+      <div class="stat-card"><div class="label">Total de Erros Identificados</div><div class="value" style="color:#3b82f6">${totalErros.toLocaleString('pt-BR')}</div></div>
+      <div class="stat-card"><div class="label">Postos com Ocorrência</div><div class="value">${postosComOcorrencia}</div></div>
+      <div class="stat-card"><div class="label">Atendentes Envolvidos</div><div class="value">${atendentesEnvolvidos}</div></div>
+      <div class="stat-card"><div class="label">Causas Diferentes</div><div class="value">${causasDiferentes}</div></div>
+    </div>
+
+    ${!_esforcoMesesSel.length?`<div style="text-align:center;padding:28px;color:var(--text3);font-size:13px">Selecione um mês acima para visualizar os dados.</div>`:''}
+    ${_esforcoMesesSel.length&&!dados.length?`<div style="text-align:center;padding:28px;color:var(--text3);font-size:13px">Nenhum registro para os filtros selecionados.</div>`:''}
+
+    ${dados.length?`
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Gráficos</div>
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:12px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:10px">Evolução Mensal</div>
+      <div style="position:relative;width:100%;height:190px"><canvas id="esforco-c-evolucao"></canvas></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">Ranking de Causas</div>
+        <div id="esforco-rank-causas"></div>
+      </div>
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">Ranking de Postos</div>
+        <div id="esforco-rank-postos"></div>
+      </div>
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">Ranking de Atendentes</div>
+        <div id="esforco-rank-atendentes"></div>
+      </div>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:20px 0 10px">🧠 Análises Inteligentes</div>
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:12px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:10px">🎯 Principais Causas</div>
+      <div id="esforco-principais-causas"></div>
+    </div>
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:12px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:10px">🏪 Postos que Mais Exigiram Atuação</div>
+      <div id="esforco-postos-atuacao"></div>
+    </div>
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:12px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:10px">👤 Atendentes com Maior Necessidade de Apoio</div>
+      <div id="esforco-atendentes-apoio"></div>
+    </div>
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:12px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:10px">🔁 Recorrência</div>
+      <div id="esforco-recorrencia"></div>
+    </div>
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:12px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:10px">🎓 Recomendações de Treinamento</div>
+      <div id="esforco-treinamento"></div>
+    </div>
+    `:''}
+  `;
+
+  if (dados.length) setTimeout(() => _renderEsforcoCharts(dados), 40);
+}
+
+function _renderEsforcoCharts(dados) {
+  _chartEsforcoEvolucao = _dstroyIndChart(_chartEsforcoEvolucao);
+  const tickC='#a0aec0', gridC='rgba(255,255,255,.06)';
+
+  const mesesEvol = [..._esforcoMesesComDados].sort();
+  const evolBase = allEsforcoTroca.filter(r => {
+    if (_esforcoFiltroPosto     && r.posto     !== _esforcoFiltroPosto)     return false;
+    if (_esforcoFiltroAtendente && r.atendente !== _esforcoFiltroAtendente) return false;
+    return true;
+  });
+  const cntMes = {}; mesesEvol.forEach(m=>cntMes[m]=0);
+  evolBase.forEach(r=>{ if(r.mesRef&&cntMes[r.mesRef]!==undefined) cntMes[r.mesRef]++; });
+  const ctxEv = document.getElementById('esforco-c-evolucao');
+  if (ctxEv && mesesEvol.length) {
+    _chartEsforcoEvolucao = new Chart(ctxEv, {type:'line',
+      data:{labels:mesesEvol.map(_indMesLabel),
+        datasets:[{data:mesesEvol.map(m=>cntMes[m]),borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,.12)',
+          borderWidth:2,fill:true,tension:.35,pointRadius:4,pointBackgroundColor:'#3b82f6'}]},
+      options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},
+        plugins:{legend:{display:false}},
+        scales:{x:{ticks:{color:tickC,font:{size:10}},grid:{display:false}},
+                y:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true}}},
+      plugins:[{id:'eEvL',afterDatasetsDraw(c){const{ctx}=c;c.data.datasets[0].data.forEach((v,i)=>{
+        if(!v)return;const el=c.getDatasetMeta(0).data[i];ctx.save();ctx.fillStyle='#3b82f6';
+        ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.fillText(v,el.x,el.y-9);ctx.restore();});}}]});
+  }
+
+  const _esfLinha = (label, v, max, cor) => `
+    <div style="display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+      <span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${label}">${label}</span>
+      <div style="width:44px;height:5px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden">
+        <div style="height:100%;background:${cor};width:${Math.round(v/max*100)}%;border-radius:3px"></div></div>
+      <span style="font-size:12px;font-weight:600;color:${cor};min-width:22px;text-align:right">${v}</span>
+    </div>`;
+
+  const rankCausas = _esforcoCalcRankingCausas(dados);
+  const maxC = rankCausas[0]?.[1]||1;
+  const elC = document.getElementById('esforco-rank-causas');
+  if (elC) elC.innerHTML = rankCausas.length ? rankCausas.slice(0,10).map(([c,v])=>_esfLinha(c,v,maxC,'#3b82f6')).join('') : '<div style="color:var(--text3);font-size:13px">Sem dados</div>';
+
+  const rankPostos = _esforcoCalcRankingPostos(dados);
+  const maxP = rankPostos[0]?.[1]||1;
+  const elP = document.getElementById('esforco-rank-postos');
+  if (elP) elP.innerHTML = rankPostos.length ? rankPostos.slice(0,10).map(([p,v])=>_esfLinha(p,v,maxP,'#e24b4a')).join('') : '<div style="color:var(--text3);font-size:13px">Sem dados</div>';
+
+  const rankAtend = _esforcoCalcRankingAtendentes(dados);
+  const maxA = rankAtend[0]?.[1]||1;
+  const elA = document.getElementById('esforco-rank-atendentes');
+  if (elA) elA.innerHTML = rankAtend.length ? rankAtend.slice(0,10).map(([a,v])=>_esfLinha(a,v,maxA,'#eda100')).join('') : '<div style="color:var(--text3);font-size:13px">Sem dados</div>';
+
+  // Análises Inteligentes — mesmo recorte: meses selecionados (ou todo o período disponível)
+  const mesesParaAnalise = _esforcoMesesSel.length ? _esforcoMesesSel : _esforcoMesesComDados;
+  const dadosBaseSelecionados = allEsforcoTroca.filter(r => mesesParaAnalise.includes(r.mesRef));
+
+  const elPC = document.getElementById('esforco-principais-causas');
+  if (elPC) elPC.innerHTML = rankCausas.length ? `<div style="font-size:12px;line-height:1.8">${rankCausas.slice(0,5).map(([c,v],i)=>`${i+1}º ${c} — ${v} ocorrência(s)<br>`).join('')}</div>` : '<div style="color:var(--text3);font-size:13px">Sem dados</div>';
+
+  const elPA = document.getElementById('esforco-postos-atuacao');
+  if (elPA) elPA.innerHTML = rankPostos.length ? `<div style="font-size:12px;line-height:1.8">${rankPostos.slice(0,5).map(([p,v],i)=>`${i+1}º ${p} — ${v} erro(s) identificado(s)<br>`).join('')}</div>` : '<div style="color:var(--text3);font-size:13px">Sem dados</div>';
+
+  const elAA = document.getElementById('esforco-atendentes-apoio');
+  if (elAA) elAA.innerHTML = rankAtend.length ? `<div style="font-size:12px;line-height:1.8">${rankAtend.slice(0,5).map(([a,v],i)=>`${i+1}º ${a} — ${v} ocorrência(s)<br>`).join('')}</div>` : '<div style="color:var(--text3);font-size:13px">Sem dados</div>';
+
+  const recPorPosto = _esforcoCalcRecorrencia(dadosBaseSelecionados, _esforcoFiltroPosto, _esforcoFiltroAtendente);
+  const rankRec = Object.entries(recPorPosto).map(([posto,d])=>({posto,nComp:d.competencias.size,total:d.total})).sort((a,b)=>b.nComp-a.nComp||b.total-a.total);
+  const elRec = document.getElementById('esforco-recorrencia');
+  if (elRec) elRec.innerHTML = rankRec.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px">${rankRec.map(r=>{
+    const c = _indClassifRecorrencia(r.nComp);
+    return `<div style="display:flex;align-items:center;gap:6px;background:${c.bg};border-radius:8px;padding:4px 10px;border:1px solid ${c.bd}">
+      <span style="font-size:12px;color:var(--text)">${r.posto}</span>
+      <span style="font-size:11px;font-weight:700;color:${c.color}">${c.label}</span>
+      <span style="font-size:11px;color:var(--text3)">${r.nComp} de ${mesesParaAnalise.length} meses selecionados</span>
+    </div>`;
+  }).join('')}</div>` : '<div style="color:var(--text3);font-size:13px">Sem dados</div>';
+
+  const elTrein = document.getElementById('esforco-treinamento');
+  if (elTrein) {
+    const top = rankCausas[0], topAtend = rankAtend[0];
+    const rec = [];
+    if (top) rec.push(`Reforçar orientação sobre "${top[0]}" — causa mais frequente (${top[1]} ocorrência(s)).`);
+    if (topAtend) rec.push(`Acompanhar ${topAtend[0]}, com maior volume de erros identificados (${topAtend[1]}).`);
+    elTrein.innerHTML = rec.length ? `<div style="font-size:13px;line-height:1.8">${rec.map(r=>`<div>${r}</div>`).join('')}</div>` : '<div style="color:var(--text3);font-size:13px">Sem dados suficientes.</div>';
+  }
+}
+
+// ── DETALHAMENTO — único, com seletor de Origem (Oficial / Esforço) ────────
+function _trocaSetOrigem(origem) { _trocaDetOrigem = origem; _trocaPagina = 1; renderTrocaDetalhamento(); }
+
+function renderTrocaDetalhamento() {
+  const wrap = document.getElementById('troca-detalhamento-wrap'); if (!wrap) return;
+  const oficial = _trocaDetOrigem === 'oficial';
+
+  const filtMes    = document.getElementById('trocadet-mes')?.value    || '';
+  const filtPosto  = document.getElementById('trocadet-posto')?.value  || '';
+  const filtOutro   = document.getElementById('trocadet-outro')?.value || ''; // Atendente/Causa (oficial) ou Atendente (esforço)
+
+  const baseAll = oficial ? allTrocasOficial : allEsforcoTroca;
+  const mesesDisp = oficial ? _trocaOficialMesesComDados : _esforcoMesesComDados;
+  const postoField = oficial ? 'loja' : 'posto';
+  const outroField = oficial ? 'atendenteCurto' : 'atendente';
+
+  const postosDisp = [...new Set(baseAll.map(r=>r[postoField]).filter(Boolean))].sort();
+  const outroDisp  = [...new Set(baseAll.map(r=>r[outroField]).filter(Boolean))].sort();
+
+  const filtrados = baseAll.filter(r => {
+    if (filtMes   && r.mesRef        !== filtMes)   return false;
+    if (filtPosto && r[postoField]   !== filtPosto) return false;
+    if (filtOutro && r[outroField]   !== filtOutro) return false;
+    return true;
+  });
+
+  const totalPags = Math.ceil(filtrados.length/TROCA_POR_PAG)||1;
+  if (_trocaPagina > totalPags) _trocaPagina = 1;
+  const pag = filtrados.slice((_trocaPagina-1)*TROCA_POR_PAG, _trocaPagina*TROCA_POR_PAG);
+
+  const colsOficial = ['Mês','Posto','Atendente','Nome Salles','Nome Neobpo','Tipo de Troca','Causa Raiz','Detalhe Causa','Retorno de Carta'];
+  const colsEsforco  = ['Mês','Posto','Atendente','Ordem','Causa Raiz','Observação'];
+  const cols = oficial ? colsOficial : colsEsforco;
+
+  wrap.innerHTML = `
+    <div style="display:flex;gap:16px;align-items:center;padding:14px 0 12px;flex-wrap:wrap">
+      <div style="display:flex;gap:6px;background:var(--surface2);border-radius:10px;padding:4px">
+        <button onclick="_trocaSetOrigem('oficial')" style="font-size:12px;padding:6px 14px;border-radius:8px;border:none;cursor:pointer;background:${oficial?'#2a78d6':'transparent'};color:${oficial?'#fff':'var(--text2)'}">Oficial</button>
+        <button onclick="_trocaSetOrigem('esforco')" style="font-size:12px;padding:6px 14px;border-radius:8px;border:none;cursor:pointer;background:${!oficial?'#2a78d6':'transparent'};color:${!oficial?'#fff':'var(--text2)'}">Esforço de Troca</button>
+      </div>
+      <button class="btn btn-secondary" onclick="exportarTroca()" style="height:34px">⬇ Excel</button>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:0 0 12px">
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Mês</label>
+        <select class="form-select" id="trocadet-mes" style="min-width:110px" onchange="_trocaPagina=1;renderTrocaDetalhamento()">
+          <option value="">Todos</option>
+          ${mesesDisp.map(m=>`<option value="${m}" ${filtMes===m?'selected':''}>${_indMesLabel(m)}</option>`).join('')}
+        </select></div>
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Posto</label>
+        <select class="form-select" id="trocadet-posto" style="min-width:160px" onchange="_trocaPagina=1;renderTrocaDetalhamento()">
+          <option value="">Todos</option>
+          ${postosDisp.map(p=>`<option value="${p}" ${filtPosto===p?'selected':''}>${p}</option>`).join('')}
+        </select></div>
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Atendente</label>
+        <select class="form-select" id="trocadet-outro" style="min-width:160px" onchange="_trocaPagina=1;renderTrocaDetalhamento()">
+          <option value="">Todos</option>
+          ${outroDisp.map(o=>`<option value="${o}" ${filtOutro===o?'selected':''}>${o}</option>`).join('')}
+        </select></div>
+    </div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:8px">${filtrados.length.toLocaleString('pt-BR')} registro(s) · Página ${_trocaPagina} de ${totalPags}</div>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:960px">
+        <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15);background:var(--surface3)">
+          ${cols.map(h=>`<th style="padding:7px 10px;text-align:left;color:var(--text3);white-space:nowrap;font-weight:600">${h}</th>`).join('')}
+        </tr></thead>
+        <tbody>${pag.length ? pag.map(r=> oficial ? `
+          <tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+            <td style="padding:6px 10px;white-space:nowrap;color:var(--text3)">${_indMesLabel(r.mesRef)||'—'}</td>
+            <td style="padding:6px 10px;white-space:nowrap">${r.loja||'—'}</td>
+            <td style="padding:6px 10px">${r.atendenteCurto||'—'}</td>
+            <td style="padding:6px 10px">${r.nomeSalles||'—'}</td>
+            <td style="padding:6px 10px">${r.nomeNeobpo||'—'}</td>
+            <td style="padding:6px 10px;white-space:nowrap">${r.tipoTroca||'—'}</td>
+            <td style="padding:6px 10px">${r.causaRaiz||'—'}</td>
+            <td style="padding:6px 10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.detalheCausa||''}">${r.detalheCausa||'—'}</td>
+            <td style="padding:6px 10px;white-space:nowrap">${r.retornoDeCarta||'—'}</td>
+          </tr>` : `
+          <tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+            <td style="padding:6px 10px;white-space:nowrap;color:var(--text3)">${_indMesLabel(r.mesRef)||'—'}</td>
+            <td style="padding:6px 10px;white-space:nowrap">${r.posto||'—'}</td>
+            <td style="padding:6px 10px">${r.atendente||'—'}</td>
+            <td style="padding:6px 10px;white-space:nowrap">${r.ordem||'—'}</td>
+            <td style="padding:6px 10px">${r.causaRaiz||'—'}</td>
+            <td style="padding:6px 10px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.observacao||''}">${r.observacao||'—'}</td>
+          </tr>`).join('') : `<tr><td colspan="${cols.length}" style="padding:20px;text-align:center;color:var(--text3)">Nenhum registro encontrado</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+    ${totalPags>1?`<div style="display:flex;gap:6px;align-items:center;margin-top:12px;flex-wrap:wrap">
+      <button class="btn btn-sm btn-secondary" onclick="_trocaPagina=Math.max(1,_trocaPagina-1);renderTrocaDetalhamento()" ${_trocaPagina===1?'disabled':''}>‹ Ant</button>
+      ${Array.from({length:Math.min(totalPags,7)},(_,i)=>{
+        const p=totalPags<=7?i+1:(_trocaPagina<=4?i+1:i+_trocaPagina-3);
+        return p>0&&p<=totalPags?`<button class="btn btn-sm ${p===_trocaPagina?'btn-primary':'btn-secondary'}" onclick="_trocaPagina=${p};renderTrocaDetalhamento()">${p}</button>`:'';
+      }).join('')}
+      <button class="btn btn-sm btn-secondary" onclick="_trocaPagina=Math.min(${totalPags},_trocaPagina+1);renderTrocaDetalhamento()" ${_trocaPagina===totalPags?'disabled':''}>Próx ›</button>
+      <span style="color:var(--text3);font-size:12px;margin-left:6px">${filtrados.length.toLocaleString('pt-BR')} total</span>
+    </div>`:``}`;
+}
+
+function exportarTroca() {
+  const oficial = _trocaDetOrigem === 'oficial';
+  const filtMes   = document.getElementById('trocadet-mes')?.value   || '';
+  const filtPosto = document.getElementById('trocadet-posto')?.value || '';
+  const filtOutro = document.getElementById('trocadet-outro')?.value || '';
+  const baseAll = oficial ? allTrocasOficial : allEsforcoTroca;
+  const postoField = oficial ? 'loja' : 'posto';
+  const outroField = oficial ? 'atendenteCurto' : 'atendente';
+  const filtrados = baseAll.filter(r => {
+    if (filtMes   && r.mesRef      !== filtMes)   return false;
+    if (filtPosto && r[postoField] !== filtPosto) return false;
+    if (filtOutro && r[outroField] !== filtOutro) return false;
+    return true;
+  });
+  if (!filtrados.length) { toast('Nenhum dado para exportar','err'); return; }
+  const cols = oficial
+    ? ['mesRef','ano','loja','atendenteCurto','nomeSalles','nomeNeobpo','brColaborador','os','data','tipoTroca','causaRaiz','detalheCausa','observacao','usuarioSF','canalOrigem','retornoDeCarta','gerente','importadoPor','importadoEm']
+    : ['mesRef','posto','atendente','ordem','causaRaiz','observacao','importadoPor','importadoEm'];
+  const rows = filtrados.map(r => { const o={}; cols.forEach(c=>o[c]=r[c]||''); return o; });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), oficial?'TrocasOficial':'EsforcoTroca');
+  XLSX.writeFile(wb, `Trocas_${oficial?'Oficial':'Esforco'}_${filtMes||'historico'}_${new Date().toISOString().slice(0,10)}.xlsx`);
+  toast(`✅ ${filtrados.length.toLocaleString('pt-BR')} registros exportados`,'ok');
+}
+
+// ── FERRAMENTAS ADMINISTRATIVAS — as duas importações independentes ────────
+function renderTrocaFerramentas() {
+  const wrap = document.getElementById('troca-ferramentas-wrap'); if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+      <div>${_trocaOficialImportPrevia ? _trocaOficialRenderPrevia() : _trocaOficialRenderForm()}</div>
+      <div>${_esforcoImportPrevia ? _esforcoRenderPrevia() : _esforcoRenderForm()}</div>
+    </div>
+  `;
+}
+
+function _trocaOficialRenderForm() {
+  return `
+    <div style="background:var(--surface2);border-radius:14px;padding:22px">
+      <h3 style="margin:0 0 14px;font-size:14px;font-weight:600">📥 Importação Base Oficial</h3>
+      <div class="form-group">
+        <label class="form-label">Arquivo Excel</label>
+        <input type="file" class="form-input" id="trocaof-import-file" accept=".xlsx,.xls,.xlsb" style="padding:6px">
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="form-label">Data da base <span style="color:var(--text3);font-weight:400">(opcional)</span></label>
+        <input type="date" class="form-input" id="trocaof-data-base" style="max-width:200px" value="${_trocaOficialDataBase||''}">
+      </div>
+      <button class="btn btn-primary" style="margin-top:14px;width:100%" onclick="analisarArquivoTrocaOficial()">🔍 Analisar arquivo</button>
+      <div id="trocaof-diag">${_trocaOficialDiagPrevia ? _trocaRenderDiag(_trocaOficialDiagPrevia) : ''}</div>
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08);font-size:12px;color:var(--text3)">
+        Último import: ${_trocaOficialUltimoImport||'—'}
+      </div>
+    </div>`;
+}
+
+function _trocaOficialRenderPrevia() {
+  const p = _trocaOficialImportPrevia;
+  const meses = Object.keys(p.byMes).sort();
+  const sel = meses.filter(m=>_trocaOficialImportSelecionados.has(m));
+  return `
+    <div style="background:var(--surface2);border-radius:14px;padding:22px">
+      <h3 style="margin:0 0 6px;font-size:14px;font-weight:600">🔍 Prévia — Base Oficial</h3>
+      <p style="font-size:11px;color:var(--text3);margin:0 0 12px">Nenhum dado gravado ainda. Total lido: ${p.totalLidos} · Válidos: ${p.totalValidos} · Mês inválido: ${p.totalMesInvalido}</p>
+      <div style="overflow-x:auto;margin-bottom:12px">
+        <table style="width:100%;border-collapse:collapse;font-size:11.5px">
+          <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15)">
+            ${['','Mês','Lidos','Postos','Atend.','Causas'].map(h=>`<th style="padding:5px 6px;text-align:left;color:var(--text3);font-weight:600">${h}</th>`).join('')}
+          </tr></thead>
+          <tbody>${meses.map(m=>{ const g=p.byMes[m]; const marcado=_trocaOficialImportSelecionados.has(m);
+            return `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+              <td style="padding:4px 6px"><input type="checkbox" ${marcado?'checked':''} onchange="_trocaOficialToggleMes('${m}')"></td>
+              <td style="padding:4px 6px;font-weight:600">${_indMesLabel(m)}</td>
+              <td style="padding:4px 6px">${g.lidos}</td>
+              <td style="padding:4px 6px">${g.postos.size}</td>
+              <td style="padding:4px 6px">${g.atendentes.size}</td>
+              <td style="padding:4px 6px">${g.causas.size}</td>
+            </tr>`; }).join('')}</tbody>
+        </table>
+      </div>
+      <div style="background:var(--surface3);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:11px">
+        ${sel.length?`Serão substituídos: ${sel.map(_indMesLabel).join(', ')}`:'Nenhum mês selecionado — nada será gravado.'}
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary" onclick="_trocaOficialCancelarPrevia()">← Cancelar</button>
+        <button class="btn btn-primary" style="flex:1" onclick="confirmarImportacaoTrocaOficial()" ${!sel.length?'disabled':''}>✅ Confirmar (${sel.length})</button>
+      </div>
+    </div>`;
+}
+function _trocaOficialToggleMes(m) {
+  if (_trocaOficialImportSelecionados.has(m)) _trocaOficialImportSelecionados.delete(m); else _trocaOficialImportSelecionados.add(m);
+  renderTrocaFerramentas();
+}
+function _trocaOficialCancelarPrevia() { _trocaOficialImportPrevia=null; _trocaOficialImportSelecionados=new Set(); renderTrocaFerramentas(); }
+
+function _esforcoRenderForm() {
+  const anoSugerido = _esforcoSugerirAno();
+  return `
+    <div style="background:var(--surface2);border-radius:14px;padding:22px">
+      <h3 style="margin:0 0 14px;font-size:14px;font-weight:600">📥 Importação Esforço de Troca</h3>
+      <div class="form-group">
+        <label class="form-label">Arquivo Excel</label>
+        <input type="file" class="form-input" id="esforco-import-file" accept=".xlsx,.xls,.xlsb" style="padding:6px">
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="form-label">Ano de Referência <span style="color:var(--text3);font-weight:400">(a planilha não tem coluna ANO)</span></label>
+        <input type="number" class="form-input" id="esforco-ano-ref" style="max-width:120px" value="${anoSugerido}" min="2000" max="2100">
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="form-label">Data da base <span style="color:var(--text3);font-weight:400">(opcional)</span></label>
+        <input type="date" class="form-input" id="esforco-data-base" style="max-width:200px" value="${_esforcoDataBase||''}">
+      </div>
+      <button class="btn btn-primary" style="margin-top:14px;width:100%" onclick="analisarArquivoEsforcoTroca()">🔍 Analisar arquivo</button>
+      <div id="esforco-diag">${_esforcoDiagPrevia ? _trocaRenderDiag(_esforcoDiagPrevia) : ''}</div>
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08);font-size:12px;color:var(--text3)">
+        Último import: ${_esforcoUltimoImport||'—'}
+      </div>
+    </div>`;
+}
+
+function _esforcoRenderPrevia() {
+  const p = _esforcoImportPrevia;
+  const meses = Object.keys(p.byMes).sort();
+  const sel = meses.filter(m=>_esforcoImportSelecionados.has(m));
+  return `
+    <div style="background:var(--surface2);border-radius:14px;padding:22px">
+      <h3 style="margin:0 0 6px;font-size:14px;font-weight:600">🔍 Prévia — Esforço de Troca</h3>
+      <p style="font-size:11px;color:var(--text3);margin:0 0 12px">Ano de referência: <strong>${p.anoReferencia}</strong> · Total lido: ${p.totalLidos} · Válidos: ${p.totalValidos} · Mês inválido: ${p.totalMesInvalido}</p>
+      <div style="overflow-x:auto;margin-bottom:12px">
+        <table style="width:100%;border-collapse:collapse;font-size:11.5px">
+          <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15)">
+            ${['','Mês','Lidos','Postos','Atend.','Causas'].map(h=>`<th style="padding:5px 6px;text-align:left;color:var(--text3);font-weight:600">${h}</th>`).join('')}
+          </tr></thead>
+          <tbody>${meses.map(m=>{ const g=p.byMes[m]; const marcado=_esforcoImportSelecionados.has(m);
+            return `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+              <td style="padding:4px 6px"><input type="checkbox" ${marcado?'checked':''} onchange="_esforcoToggleCompMes('${m}')"></td>
+              <td style="padding:4px 6px;font-weight:600">${_indMesLabel(m)}</td>
+              <td style="padding:4px 6px">${g.lidos}</td>
+              <td style="padding:4px 6px">${g.postos.size}</td>
+              <td style="padding:4px 6px">${g.atendentes.size}</td>
+              <td style="padding:4px 6px">${g.causas.size}</td>
+            </tr>`; }).join('')}</tbody>
+        </table>
+      </div>
+      <div style="background:var(--surface3);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:11px">
+        ${sel.length?`Serão substituídos: ${sel.map(_indMesLabel).join(', ')}`:'Nenhum mês selecionado — nada será gravado.'}
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary" onclick="_esforcoCancelarPrevia()">← Cancelar</button>
+        <button class="btn btn-primary" style="flex:1" onclick="confirmarImportacaoEsforcoTroca()" ${!sel.length?'disabled':''}>✅ Confirmar (${sel.length})</button>
+      </div>
+    </div>`;
+}
+function _esforcoToggleCompMes(m) {
+  if (_esforcoImportSelecionados.has(m)) _esforcoImportSelecionados.delete(m); else _esforcoImportSelecionados.add(m);
+  renderTrocaFerramentas();
+}
+function _esforcoCancelarPrevia() { _esforcoImportPrevia=null; _esforcoImportSelecionados=new Set(); renderTrocaFerramentas(); }
+
+// Diagnóstico da Planilha — reconhecimento de cabeçalhos (comum às duas bases)
+function _trocaRenderDiag(diag) {
+  return `
+    <div style="background:var(--surface3);border-radius:10px;padding:12px;margin-top:12px;font-size:11px;line-height:1.6">
+      <div style="font-weight:700;margin-bottom:6px">🔬 Diagnóstico da Planilha</div>
+      <div style="color:#1baf7a">Reconhecidas: ${diag.reconhecidas.join(', ')||'—'}</div>
+      ${diag.naoEncontradas.length?`<div style="color:#f59e0b;margin-top:4px">Não encontradas: ${diag.naoEncontradas.join(', ')}</div>`:''}
+      <div style="color:var(--text3);margin-top:4px">Colunas no arquivo: ${diag.colunasArquivo.join(', ')}</div>
+    </div>`;
+}
 
 // ══════════════════════════════════════════════════════════════════════════
 // FERRAMENTAS ADMINISTRATIVAS DE MANUTENÇÃO — window.* (console do navegador)
