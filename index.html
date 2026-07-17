@@ -15444,15 +15444,21 @@ function _qualCalcCardIndevidos() {
            mesesDentroMeta, totalMeses:mesesValidos.length, pctMesesOk, status };
 }
 
-// ── Card 4: Qualidade Geral — só conta metas DISPONÍVEIS, sem peso, sem soma incompatível ──
-function _qualCalcCardGeral(cardInd) {
-  if (cardInd.modo === 'vazio') return null;
-  if (cardInd.modo === 'unico') {
-    const atingida = cardInd.metaAtingida;
-    return { texto: `${atingida?1:0} de 1 meta atingida`, status: atingida?'verde':'vermelho', indicadoresDisponiveis:1 };
-  }
-  const status = cardInd.mesesDentroMeta===cardInd.totalMeses ? 'verde' : cardInd.pctMesesOk>50 ? 'amarelo' : 'vermelho';
-  return { texto:`Ordens Indevidas dentro da meta em ${cardInd.mesesDentroMeta} de ${cardInd.totalMeses} meses (${cardInd.pctMesesOk}%)`, status, indicadoresDisponiveis:1 };
+// ── Card 4: Qualidade Geral — só conta indicadores DISPONÍVEIS no recorte atual.
+// Cada indicador entra como atingida/não-atingida (nunca soma quantidade entre
+// unidades diferentes); indicador sem dado no recorte simplesmente não entra.
+function _qualCalcCardGeral(cardInd, cardRecl, cardTroca) {
+  const indicadores = [];
+  if (cardInd.modo   !== 'vazio')     indicadores.push({ nome:'Ordens Indevidas',          atingida: cardInd.status==='verde'   });
+  if (cardRecl.modo  !== 'semdados')  indicadores.push({ nome:'Reclamações Improcedentes', atingida: cardRecl.status==='verde'  });
+  if (cardTroca.modo !== 'semdados')  indicadores.push({ nome:'Trocas Improcedentes',       atingida: cardTroca.status==='verde' });
+  if (!indicadores.length) return null;
+
+  const atingidas = indicadores.filter(i=>i.atingida).length;
+  const total = indicadores.length;
+  const pct = atingidas/total;
+  const status = pct===1 ? 'verde' : pct>0.5 ? 'amarelo' : 'vermelho';
+  return { texto: `${atingidas} de ${total} meta(s) atingida(s)`, status, indicadoresDisponiveis: total, indicadores };
 }
 
 const _qualCorStatus = s => s==='verde' ? '#1baf7a' : s==='amarelo' ? '#eda100' : '#e24b4a';
@@ -15470,9 +15476,108 @@ function _qualClassifPrioridade(p, maxScore) {
   return {label:'Acompanhamento', color:'#94a3b8', bg:'rgba(255,255,255,.05)', bd:'rgba(255,255,255,.1)'};
 }
 
-// ── Controles dos filtros do Dashboard ──────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// INTEGRAÇÃO — Reclamações Improcedentes e Trocas Improcedentes (só Base Oficial)
+// Todas as funções abaixo são de LEITURA/CÁLCULO puro: recebem dados já filtrados
+// por parâmetro, nunca mutam allReclamacoes/allTrocasOficial/allIndevidos nem
+// nenhuma variável de filtro interna dos módulos, e não exigem que a tela do
+// respectivo módulo esteja aberta. Esforço de Troca (allEsforcoTroca) nunca é
+// referenciado aqui — só a Base Oficial de Trocas participa do Dashboard.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const QUAL_META_TROCAS = 5; // menor que 5/mês — meta geral da gerência (Base Oficial), não individual por posto
+
+function _qualMesesTodos() {
+  return [...new Set([..._indevidosMesesComDados, ..._reclMesesComDados, ..._trocaOficialMesesComDados])].sort();
+}
+function _qualPostosDisponiveisTodos() {
+  return [...new Set([
+    ...allIndevidos.map(r=>r.loja), ...allReclamacoes.map(r=>r.loja), ...allTrocasOficial.map(r=>r.loja)
+  ].filter(Boolean))].sort();
+}
+
+// Generaliza a regra mensal/período já homologada em _qualCalcCardIndevidos, para
+// indicadores de CONTAGEM (Trocas). _qualCalcCardIndevidos não é tocada.
+function _qualCalcCardContagemGenerica(fonteDados, mesesComDadosFonte, meta, mesesConsiderados, filtroPosto, campoPosto) {
+  const porMes = {};
+  (filtroPosto ? fonteDados.filter(r=>r[campoPosto]===filtroPosto) : fonteDados)
+    .forEach(r => { if (r.mesRef) porMes[r.mesRef] = (porMes[r.mesRef]||0)+1; });
+
+  if (mesesConsiderados.length === 1) {
+    const mes = mesesConsiderados[0];
+    const resultado = porMes[mes] || 0;
+    const status = resultado < meta ? 'verde' : resultado === meta ? 'amarelo' : 'vermelho';
+    const todosOrdenados = [...mesesComDadosFonte].sort();
+    const idx = todosOrdenados.indexOf(mes);
+    const mesAnteriorRef = idx > 0 ? todosOrdenados[idx-1] : null;
+    const resultadoAnterior = mesAnteriorRef ? (porMes[mesAnteriorRef]||0) : null;
+    return { modo:'unico', mes, resultado, meta, status, mesAnteriorRef, resultadoAnterior };
+  }
+  const mesesValidos = mesesConsiderados.filter(m => mesesComDadosFonte.includes(m));
+  const total = mesesValidos.reduce((s,m)=>s+(porMes[m]||0),0);
+  const media = mesesValidos.length ? total/mesesValidos.length : 0;
+  const mesesDentroMeta = mesesValidos.filter(m => (porMes[m]||0) < meta).length;
+  const pctMesesOk = mesesValidos.length ? Math.round(mesesDentroMeta/mesesValidos.length*100) : 0;
+  const status = mesesValidos.length && mesesDentroMeta===mesesValidos.length ? 'verde' : pctMesesOk>50 ? 'amarelo' : 'vermelho';
+  return { modo:'periodo', meses:mesesValidos, total, media, meta, mesesDentroMeta, totalMeses:mesesValidos.length, pctMesesOk, status };
+}
+
+// Meses que o Dashboard deve considerar para UM indicador específico: interseção
+// da seleção do Dashboard com os meses que aquele indicador realmente possui.
+// "Todos" (nada selecionado) usa o próprio histórico do indicador — mesmo padrão do Card 1.
+function _qualMesesConsideradosParaIndicador(mesesComDadosFonte) {
+  return _qualMesesSel.length ? _qualMesesSel.filter(m=>mesesComDadosFonte.includes(m)) : [...mesesComDadosFonte];
+}
+
+function _qualCalcCardReclamacoes() {
+  if (!_reclMesesComDados.length) return { modo:'semdados' };
+  const mesesConsiderados = _qualMesesConsideradosParaIndicador(_reclMesesComDados);
+  if (!mesesConsiderados.length) return { modo:'semdados' };
+  const temRegistro = allReclamacoes.some(r => mesesConsiderados.includes(r.mesRef) && (!_qualFiltroPosto || r.loja===_qualFiltroPosto));
+  if (!temRegistro) return { modo:'semdados' };
+  return _reclCalcCardPrincipal(mesesConsiderados, _qualFiltroPosto, '', '');
+}
+
+function _qualCalcCardTrocas() {
+  if (!_trocaOficialMesesComDados.length) return { modo:'semdados' };
+  const mesesConsiderados = _qualMesesConsideradosParaIndicador(_trocaOficialMesesComDados);
+  if (!mesesConsiderados.length) return { modo:'semdados' };
+  const temRegistro = allTrocasOficial.some(r => mesesConsiderados.includes(r.mesRef) && (!_qualFiltroPosto || r.loja===_qualFiltroPosto));
+  if (!temRegistro) return { modo:'semdados' };
+  return _qualCalcCardContagemGenerica(allTrocasOficial, _trocaOficialMesesComDados, QUAL_META_TROCAS, mesesConsiderados, _qualFiltroPosto, 'loja');
+}
+
+// Ranking Geral Consolidado: para cada indicador disponível, usa a PRÓPRIA regra de
+// criticidade daquele módulo (as mesmas listas de Prioridades já usadas na seção
+// "Prioridades Gerenciais"/"Prioridades da Qualidade"/"Prioridades" de cada um) — nunca
+// soma quantidade entre indicadores de unidades diferentes.
+function _qualCalcRankingConsolidado(prioridadesInd, prioridadesRecl, prioridadesTroca) {
+  const porPosto = {}; // posto -> { indicadores: {nome: {situacao, scoreNorm}} }
+  const registrar = (lista, nome) => {
+    const maxScore = lista.reduce((m,p)=>Math.max(m,p.score),1);
+    lista.forEach(p => {
+      if (!porPosto[p.posto]) porPosto[p.posto] = { indicadores:{} };
+      porPosto[p.posto].indicadores[nome] = { situacao: p.classif.label, scoreNorm: p.score/maxScore };
+    });
+  };
+  if (prioridadesInd)   registrar(prioridadesInd,   'Ordens Indevidas');
+  if (prioridadesRecl)  registrar(prioridadesRecl,  'Reclamações Improcedentes');
+  if (prioridadesTroca) registrar(prioridadesTroca, 'Trocas Improcedentes');
+
+  return Object.entries(porPosto).map(([posto,d]) => {
+    const nomes = Object.keys(d.indicadores);
+    const maiorDistancia = Math.max(...nomes.map(n=>d.indicadores[n].scoreNorm));
+    return { posto, qtdIndicadoresCriticos: nomes.length, indicadores: d.indicadores, maiorDistancia };
+  }).sort((a,b) =>
+    b.qtdIndicadoresCriticos - a.qtdIndicadoresCriticos ||
+    b.maiorDistancia - a.maiorDistancia ||
+    a.posto.localeCompare(b.posto,'pt')
+  );
+}
+
+
 function _qualToggleMes(m, evt) {
-  if (!_indevidosMesesComDados.includes(m)) return;
+  if (!_qualMesesTodos().includes(m)) return;
   if (evt?.shiftKey) {
     const i = _qualMesesSel.indexOf(m);
     if (i>=0) _qualMesesSel.splice(i,1); else _qualMesesSel.push(m);
@@ -15481,7 +15586,7 @@ function _qualToggleMes(m, evt) {
   }
   renderQualidadeDashboard();
 }
-function _qualTodosMeses()  { _qualMesesSel = [..._indevidosMesesComDados]; renderQualidadeDashboard(); }
+function _qualTodosMeses()  { _qualMesesSel = _qualMesesTodos(); renderQualidadeDashboard(); }
 function _qualLimparMeses() { _qualMesesSel = []; renderQualidadeDashboard(); }
 function _qualAplicarFiltroPosto() {
   _qualFiltroPosto = document.getElementById('qual-fil-posto')?.value || '';
@@ -15493,31 +15598,66 @@ function renderQualidadeDashboard() {
   if (!podeVerIndevidos()) return;
   const wrap = document.getElementById('qual-dash-wrap'); if (!wrap) return;
 
-  if (!_indevidosMesesComDados.length) {
-    wrap.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text3)">Nenhuma Ocorrência importada ainda em Ordens Indevidas.</div>';
+  const mesesTodos = _qualMesesTodos();
+  if (!mesesTodos.length) {
+    wrap.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text3)">Nenhuma Ocorrência importada ainda em nenhum módulo de Qualidade.</div>';
     return;
   }
 
-  const mesesSel = _qualMesesSel.length ? _qualMesesSel : _indevidosMesesComDados;
+  const postosDisp  = _qualPostosDisponiveisTodos();
+  const selLabel    = _qualMesesSel.length ? _qualMesesSel.map(_indMesLabel).join(', ') : `Todos (${mesesTodos.length})`;
+
+  // ── Cards ── (Card 1 = Indevidos, não tocado; Cards 2/3 novos; Card 4 dinâmico)
+  const cardInd   = _qualCalcCardIndevidos();
+  const cardRecl  = _qualCalcCardReclamacoes();
+  const cardTroca = _qualCalcCardTrocas();
+  const cardGeral = _qualCalcCardGeral(cardInd, cardRecl, cardTroca);
+
+  // ── Dados-base por indicador (Indevidos intocado; Reclamações/Trocas só quando têm dado no recorte) ──
   const dadosPeriodo = _qualDadosPeriodo();
   const dadosBase    = _qualDadosBase();
-  const postosDisp   = _qualPostosDisponiveis();
-  const selLabel     = _qualMesesSel.length ? _qualMesesSel.map(_indMesLabel).join(', ') : `Todos (${_indevidosMesesComDados.length})`;
 
-  const cardInd   = _qualCalcCardIndevidos();
-  const cardGeral = _qualCalcCardGeral(cardInd);
+  const mesesReclConsiderados = _qualMesesConsideradosParaIndicador(_reclMesesComDados);
+  const dadosPeriodoRecl = allReclamacoes.filter(r => mesesReclConsiderados.includes(r.mesRef) && (!_qualFiltroPosto || r.loja===_qualFiltroPosto));
+  const dadosBaseRecl    = _qualFiltroPosto ? allReclamacoes.filter(r=>r.loja===_qualFiltroPosto) : allReclamacoes;
 
+  const mesesTrocaConsiderados = _qualMesesConsideradosParaIndicador(_trocaOficialMesesComDados);
+  const dadosPeriodoTroca = allTrocasOficial.filter(r => mesesTrocaConsiderados.includes(r.mesRef) && (!_qualFiltroPosto || r.loja===_qualFiltroPosto));
+  const dadosBaseTroca    = _qualFiltroPosto ? allTrocasOficial.filter(r=>r.loja===_qualFiltroPosto) : allTrocasOficial;
+
+  // ── Indevidos: cálculos já existentes, reaproveitados sem nenhuma alteração ──
   const rankP = _indCalcRankingPostos(dadosPeriodo);
   const rankS = _indCalcRankingServicos(dadosPeriodo);
   const causaRaizArr = _indCalcCausaRaiz(dadosPeriodo);
   const conc  = _indCalcConcentracao(dadosPeriodo, rankP, rankS);
   const byPosto = _indCalcCruzadoPostoServico(dadosPeriodo);
-  const recPorPosto = _indCalcRecorrenciaPorPosto(dadosBase, '', ''); // já filtrado por posto em dadosBase
-  const prioridades = _indCalcPrioridadesTreinamento(dadosPeriodo, recPorPosto, byPosto);
-  const maxScorePrio = prioridades.reduce((m,p)=>Math.max(m,p.score),1);
-  const tend = _indCalcTendenciaPorPosto(dadosBase, _indevidosMesesComDados, '', '');
+  const recPorPosto = _indCalcRecorrenciaPorPosto(dadosBase, '', '');
+  const prioridadesInd = _indCalcPrioridadesTreinamento(dadosPeriodo, recPorPosto, byPosto);
+  const maxScorePrio = prioridadesInd.reduce((m,p)=>Math.max(m,p.score),1);
+  const tendInd = _indCalcTendenciaPorPosto(dadosBase, _indevidosMesesComDados, '', '');
 
-  // ── Resumo Executivo (texto 100% dinâmico) ──
+  // ── Reclamações: reaproveitando funções puras do módulo (só quando há dado no recorte) ──
+  let prioridadesRecl = [], causasRecl = null, tendRecl = null;
+  if (cardRecl.modo !== 'semdados') {
+    const recPorPostoRecl = _reclCalcRecorrencia(dadosBaseRecl, '', '', '');
+    prioridadesRecl = _reclCalcPrioridades(dadosPeriodoRecl, recPorPostoRecl);
+    causasRecl = _reclCalcCausas(dadosPeriodoRecl);
+    tendRecl = _reclCalcTendencia(dadosBaseRecl, _reclMesesComDados, '', '', '');
+  }
+
+  // ── Trocas (Base Oficial): reaproveitando funções puras do módulo (Esforço nunca entra aqui) ──
+  let prioridadesTroca = [], causasTroca = [], tendTroca = null;
+  if (cardTroca.modo !== 'semdados') {
+    const recPorPostoTroca = _trocaCalcRecorrencia(dadosBaseTroca, '', '', '');
+    prioridadesTroca = _trocaCalcPrioridades(dadosPeriodoTroca, recPorPostoTroca);
+    causasTroca = _trocaCalcRankingCausas(dadosPeriodoTroca);
+    tendTroca = _trocaCalcTendencia(dadosBaseTroca, _trocaOficialMesesComDados, '', '', '');
+  }
+
+  // ── Ranking Geral Consolidado ──
+  const rankConsolidado = _qualCalcRankingConsolidado(prioridadesInd, prioridadesRecl.length?prioridadesRecl:null, prioridadesTroca.length?prioridadesTroca:null);
+
+  // ── Resumo Executivo (uma frase por indicador disponível, mesmo estilo de antes) ──
   const resumoPartes = [];
   if (cardInd.modo==='unico') {
     resumoPartes.push(`Ordens Indevidas em ${_indMesLabel(cardInd.mes)}: ${cardInd.resultado} ocorrência(s) (meta: menor que ${cardInd.meta}) — ${_qualLabelStatus(cardInd.status).toLowerCase()}.`);
@@ -15528,47 +15668,77 @@ function renderQualidadeDashboard() {
   } else {
     resumoPartes.push(`Ordens Indevidas no período (${selLabel}): total de ${cardInd.total}, média de ${cardInd.media.toFixed(1)}/mês — meta atingida em ${cardInd.mesesDentroMeta} de ${cardInd.totalMeses} meses (${cardInd.pctMesesOk}%).`);
   }
-  if (conc) resumoPartes.push(`O posto ${conc.postoMax[0]} concentra ${conc.pctPostoMax}% das ocorrências do período.`);
-  if (causaRaizArr[0]) resumoPartes.push(`Principal causa raiz: ${causaRaizArr[0].causaRaiz} (${causaRaizArr[0].pct}% das ocorrências).`);
-  if (prioridades[0]) resumoPartes.push(`Prioridade de atuação: ${prioridades[0].posto}.`);
+  if (conc) resumoPartes.push(`O posto ${conc.postoMax[0]} concentra ${conc.pctPostoMax}% das ocorrências de Ordens Indevidas do período.`);
+  if (causaRaizArr[0]) resumoPartes.push(`Principal causa raiz de Ordens Indevidas: ${causaRaizArr[0].causaRaiz} (${causaRaizArr[0].pct}%).`);
 
-  // ── Alertas Estratégicos (máx. 5, fundamentados) ──
+  if (cardRecl.modo==='semdados') resumoPartes.push('Reclamações Improcedentes: sem dados para o período/posto selecionado.');
+  else if (cardRecl.modo==='unico') resumoPartes.push(`Reclamações Improcedentes em ${_indMesLabel(cardRecl.mes)}: ${cardRecl.pct.toFixed(1)}% de improcedência (meta: menor que ${cardRecl.meta}%) — ${_qualLabelStatus(cardRecl.status).toLowerCase()}.`);
+  else resumoPartes.push(`Reclamações Improcedentes no período: ${cardRecl.pctConsolidado.toFixed(1)}% consolidado — meta atingida em ${cardRecl.mesesDentroMeta} de ${cardRecl.totalMesesAvaliados} meses (${cardRecl.pctMesesOk}%).`);
+  if (causasRecl && causasRecl[0]) resumoPartes.push(`Principal causa de Reclamações Improcedentes: ${causasRecl[0].causa} (${causasRecl[0].pct}%).`);
+
+  if (cardTroca.modo==='semdados') resumoPartes.push('Trocas Improcedentes: sem dados para o período/posto selecionado.');
+  else if (cardTroca.modo==='unico') resumoPartes.push(`Trocas Improcedentes em ${_indMesLabel(cardTroca.mes)}: ${cardTroca.resultado} ocorrência(s) (meta: menor que ${cardTroca.meta}) — ${_qualLabelStatus(cardTroca.status).toLowerCase()}.`);
+  else resumoPartes.push(`Trocas Improcedentes no período: total de ${cardTroca.total}, média de ${cardTroca.media.toFixed(1)}/mês — meta atingida em ${cardTroca.mesesDentroMeta} de ${cardTroca.totalMeses} meses (${cardTroca.pctMesesOk}%).`);
+  if (causasTroca && causasTroca[0]) resumoPartes.push(`Principal causa de Trocas Improcedentes: ${causasTroca[0][0]}.`);
+
+  if (rankConsolidado[0] && rankConsolidado[0].qtdIndicadoresCriticos>1) resumoPartes.push(`O posto ${rankConsolidado[0].posto} aparece crítico em ${rankConsolidado[0].qtdIndicadoresCriticos} indicadores: ${Object.keys(rankConsolidado[0].indicadores).join(', ')}.`);
+
+  // ── Candidatos cross-módulo para Alertas / Prioridades / Priorizar agora ──
+  // Cada candidato traz origem visível, criticidade, recorrência e piora recente, para priorizar
+  // conforme: 1º criticidade, 2º recorrência, 3º piora recente, 4º posto em mais de 1 indicador.
+  const postosMultiIndicador = new Set(rankConsolidado.filter(r=>r.qtdIndicadoresCriticos>1).map(r=>r.posto));
+  const candidatos = [];
+  prioridadesInd.forEach(p => candidatos.push({
+    origem:'Ordens Indevidas', posto:p.posto, classifLabel:p.classif.label, score:p.score,
+    multiIndicador: postosMultiIndicador.has(p.posto),
+    texto: _indMontarRecomendacao(p)
+  }));
+  prioridadesRecl.forEach(p => candidatos.push({
+    origem:'Reclamações Improcedentes', posto:p.posto, classifLabel:p.classif.label, score:p.score,
+    multiIndicador: postosMultiIndicador.has(p.posto),
+    texto: _reclMontarRecomendacao(p, byPosto[p.posto]?.servicos ? Object.entries(byPosto[p.posto].servicos).sort((a,b)=>b[1]-a[1])[0]?.[0] : null)
+  }));
+  prioridadesTroca.forEach(p => candidatos.push({
+    origem:'Trocas Improcedentes', posto:p.posto, classifLabel:p.classif.label, score:p.score,
+    multiIndicador: postosMultiIndicador.has(p.posto),
+    texto: `Acompanhar ${p.posto}: ${p.classif.label==='Recorrente'?`recorrente há ${p.nComp} meses`:`ocorrência em ${p.nComp} meses`} — ${p.total} trocas improcedentes, principal causa "${p.principalCausa}".`
+  }));
+  const pesoClassif = l => l==='Recorrente' ? 3 : l==='Atenção' ? 2 : 1;
+  candidatos.sort((a,b) =>
+    pesoClassif(b.classifLabel) - pesoClassif(a.classifLabel) ||
+    (b.multiIndicador?1:0) - (a.multiIndicador?1:0) ||
+    b.score - a.score
+  );
+
+  // ── Alertas Estratégicos (máx. 5, com origem, sem duplicar posto+indicador) ──
   const alertas = [];
-  if (cardInd.status!=='verde') alertas.push({
-    titulo: cardInd.modo==='unico' ? `Meta geral de Ordens Indevidas não atingida em ${_indMesLabel(cardInd.mes)}` : `Meta geral de Ordens Indevidas não atingida em ${cardInd.totalMeses-cardInd.mesesDentroMeta} mês(es) do período`,
-    dados: cardInd.modo==='unico' ? `Resultado: ${cardInd.resultado} · Meta: menor que ${cardInd.meta}` : `Meta atingida em ${cardInd.mesesDentroMeta} de ${cardInd.totalMeses} meses (${cardInd.pctMesesOk}%)`
-  });
-  if (cardInd.modo==='unico' && cardInd.resultadoAnterior!==null && cardInd.resultado > cardInd.resultadoAnterior) alertas.push({
-    titulo: 'Crescimento em relação ao mês anterior',
-    dados: `${_indMesLabel(cardInd.mesAnteriorRef)}: ${cardInd.resultadoAnterior} → ${_indMesLabel(cardInd.mes)}: ${cardInd.resultado}`
-  });
-  const postoRecorrente = prioridades.find(p=>p.classif.label==='Recorrente');
-  if (postoRecorrente) alertas.push({
-    titulo: `Posto ${postoRecorrente.posto} crítico em competências consecutivas`,
-    dados: `${postoRecorrente.nComp} competências com ocorrência · ${postoRecorrente.total} indevidos · serviço principal: ${postoRecorrente.principalServico}`
-  });
-  if (conc && conc.pctTop5P>=50) alertas.push({
-    titulo: `Concentração elevada nos ${conc.top5P.length} postos mais críticos`,
-    dados: `${conc.pctTop5P}% das ocorrências do período concentradas nesses postos`
-  });
-  if (causaRaizArr[0] && causaRaizArr[0].pct>=30) alertas.push({
-    titulo: `Causa raiz recorrente: ${causaRaizArr[0].causaRaiz}`,
-    dados: `${causaRaizArr[0].qtd} ocorrência(s) — ${causaRaizArr[0].pct}% do período · postos mais associados: ${causaRaizArr[0].topPostos.map(([p,n])=>`${p} (${n})`).join(', ')||'—'}`
+  if (cardInd.status!=='verde') alertas.push({ origem:'Ordens Indevidas',
+    titulo: cardInd.modo==='unico' ? `Meta geral não atingida em ${_indMesLabel(cardInd.mes)}` : `Meta geral não atingida em ${cardInd.totalMeses-cardInd.mesesDentroMeta} mês(es) do período`,
+    dados: cardInd.modo==='unico' ? `Resultado: ${cardInd.resultado} · Meta: menor que ${cardInd.meta}` : `Meta atingida em ${cardInd.mesesDentroMeta} de ${cardInd.totalMeses} meses (${cardInd.pctMesesOk}%)` });
+  if (cardRecl.modo!=='semdados' && cardRecl.status!=='verde') alertas.push({ origem:'Reclamações Improcedentes',
+    titulo: cardRecl.modo==='unico' ? `Meta geral acima de ${cardRecl.meta}% em ${_indMesLabel(cardRecl.mes)}` : `Meta geral não atingida em ${cardRecl.totalMesesAvaliados-cardRecl.mesesDentroMeta} mês(es) do período`,
+    dados: cardRecl.modo==='unico' ? `Resultado: ${cardRecl.pct.toFixed(1)}% · Meta: menor que ${cardRecl.meta}%` : `Meta atingida em ${cardRecl.mesesDentroMeta} de ${cardRecl.totalMesesAvaliados} meses (${cardRecl.pctMesesOk}%)` });
+  if (cardTroca.modo!=='semdados' && cardTroca.status!=='verde') alertas.push({ origem:'Trocas Improcedentes',
+    titulo: cardTroca.modo==='unico' ? `Meta geral não atingida em ${_indMesLabel(cardTroca.mes)}` : `Meta geral não atingida em ${cardTroca.totalMeses-cardTroca.mesesDentroMeta} mês(es) do período`,
+    dados: cardTroca.modo==='unico' ? `Resultado: ${cardTroca.resultado} · Meta: menor que ${cardTroca.meta}` : `Meta atingida em ${cardTroca.mesesDentroMeta} de ${cardTroca.totalMeses} meses (${cardTroca.pctMesesOk}%)` });
+  const postosAlertados = new Set();
+  candidatos.forEach(c => {
+    if (alertas.length>=5) return;
+    const chave = c.posto+'|'+c.origem;
+    if (postosAlertados.has(chave)) return;
+    if (c.classifLabel!=='Recorrente' && !c.multiIndicador) return;
+    postosAlertados.add(chave);
+    alertas.push({ origem:c.origem, titulo:`Posto ${c.posto} crítico em ${c.origem}${c.multiIndicador?' (crítico em mais de um indicador)':''}`, dados:c.texto });
   });
   const alertasFinal = alertas.slice(0,5);
 
-  // ── O que priorizar agora (máx. 5 ações, fundamentadas) ──
-  const acoes = [];
-  prioridades.slice(0,2).forEach(p => acoes.push(`Treinar ${p.posto} no serviço "${p.principalServico}" — ${p.total} indevidos em ${p.nComp} competência(s).`));
-  if (postoRecorrente) acoes.push(`Acompanhar o posto ${postoRecorrente.posto}, recorrente há ${postoRecorrente.nComp} competências.`);
-  if (causaRaizArr[0]) acoes.push(`Revisar a causa raiz predominante "${causaRaizArr[0].causaRaiz}" (${causaRaizArr[0].pct}% das ocorrências).`);
-  if (tend?.maiorPiora) acoes.push(`Verificar o aumento de ${tend.maiorPiora.varPct}% no posto ${tend.maiorPiora.posto} entre ${_indMesLabel(tend.mesAnt)} e ${_indMesLabel(tend.mesAtu)}.`);
-  const acoesFinal = acoes.slice(0,5);
+  // ── O que priorizar agora (máx. 5, com origem) ──
+  const acoesFinal = candidatos.slice(0,5).map(c => `[${c.origem}] ${c.texto}`);
 
   wrap.innerHTML = `
     <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">Mês</div>
     <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:7px">
-      ${_indevidosMesesComDados.map(m=>{
+      ${mesesTodos.map(m=>{
         const ativo = _qualMesesSel.includes(m);
         return `<button onclick="_qualToggleMes('${m}',event)" title="Clique: selecionar. Shift+clique: acumular."
           style="font-size:11px;padding:3px 10px;border-radius:14px;cursor:pointer;
@@ -15602,20 +15772,38 @@ function renderQualidadeDashboard() {
         `}
         <div style="font-size:11px;font-weight:700;color:${_qualCorStatus(cardInd.status)};margin-top:6px">${_qualLabelStatus(cardInd.status)}</div>
       </div>
-      <div style="background:var(--surface2);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:14px">
+      <div style="background:${cardRecl.modo!=='semdados'?_qualBgStatus(cardRecl.status):'var(--surface2)'};border:1px solid ${cardRecl.modo!=='semdados'?_qualBdStatus(cardRecl.status):'rgba(255,255,255,.07)'};border-radius:12px;padding:14px">
         <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:6px">RECLAMAÇÕES IMPROCEDENTES</div>
-        <div style="font-size:13px;color:var(--text3);margin-top:8px">Módulo ainda não disponível</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:6px">Meta: menor que 40%</div>
+        ${cardRecl.modo==='semdados' ? `<div style="font-size:13px;color:var(--text3);margin-top:8px">Sem dados para o período/posto</div>` :
+          cardRecl.modo==='unico' ? `
+          <div style="font-size:26px;font-weight:800;color:${_qualCorStatus(cardRecl.status)}">${cardRecl.pct.toFixed(1)}%</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Meta: menor que ${cardRecl.meta}%</div>
+          ${cardRecl.pctAnterior!==null?`<div style="font-size:11px;color:var(--text3)">Mês anterior: ${cardRecl.pctAnterior.toFixed(1)}%</div>`:''}
+        ` : `
+          <div style="font-size:22px;font-weight:800;color:${_qualCorStatus(cardRecl.status)}">${cardRecl.pctConsolidado.toFixed(1)}%</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Meta: menor que ${cardRecl.meta}%/mês</div>
+          <div style="font-size:11px;color:var(--text3)">Meta atingida em: ${cardRecl.mesesDentroMeta} de ${cardRecl.totalMesesAvaliados} meses (${cardRecl.pctMesesOk}%)</div>
+        `}
+        ${cardRecl.modo!=='semdados'?`<div style="font-size:11px;font-weight:700;color:${_qualCorStatus(cardRecl.status)};margin-top:6px">${_qualLabelStatus(cardRecl.status)}</div>`:''}
       </div>
-      <div style="background:var(--surface2);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:14px">
+      <div style="background:${cardTroca.modo!=='semdados'?_qualBgStatus(cardTroca.status):'var(--surface2)'};border:1px solid ${cardTroca.modo!=='semdados'?_qualBdStatus(cardTroca.status):'rgba(255,255,255,.07)'};border-radius:12px;padding:14px">
         <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:6px">TROCAS IMPROCEDENTES</div>
-        <div style="font-size:13px;color:var(--text3);margin-top:8px">Módulo ainda não disponível</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:6px">Meta: menor que 5</div>
+        ${cardTroca.modo==='semdados' ? `<div style="font-size:13px;color:var(--text3);margin-top:8px">Sem dados para o período/posto</div>` :
+          cardTroca.modo==='unico' ? `
+          <div style="font-size:26px;font-weight:800;color:${_qualCorStatus(cardTroca.status)}">${cardTroca.resultado}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Meta: menor que ${cardTroca.meta}</div>
+          ${cardTroca.resultadoAnterior!==null?`<div style="font-size:11px;color:var(--text3)">Mês anterior: ${cardTroca.resultadoAnterior}</div>`:''}
+        ` : `
+          <div style="font-size:22px;font-weight:800;color:${_qualCorStatus(cardTroca.status)}">${cardTroca.total}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Média mensal: ${cardTroca.media.toFixed(1)} · Meta: menor que ${cardTroca.meta}/mês</div>
+          <div style="font-size:11px;color:var(--text3)">Meta atingida em: ${cardTroca.mesesDentroMeta} de ${cardTroca.totalMeses} meses (${cardTroca.pctMesesOk}%)</div>
+        `}
+        ${cardTroca.modo!=='semdados'?`<div style="font-size:11px;font-weight:700;color:${_qualCorStatus(cardTroca.status)};margin-top:6px">${_qualLabelStatus(cardTroca.status)}</div>`:''}
       </div>
       <div style="background:${cardGeral?_qualBgStatus(cardGeral.status):'var(--surface2)'};border:1px solid ${cardGeral?_qualBdStatus(cardGeral.status):'rgba(255,255,255,.07)'};border-radius:12px;padding:14px">
         <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:6px">QUALIDADE GERAL</div>
         <div style="font-size:13px;font-weight:700;color:${cardGeral?_qualCorStatus(cardGeral.status):'var(--text)'};margin-top:8px">${cardGeral?cardGeral.texto:'—'}</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:6px">1 indicador disponível</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:6px">${cardGeral?cardGeral.indicadoresDisponiveis:0} indicador(es) disponível(is) no recorte</div>
       </div>
     </div>
 
@@ -15629,23 +15817,38 @@ function renderQualidadeDashboard() {
       <div style="font-size:12px;font-weight:600;margin-bottom:10px">Ordens Indevidas — ocorrências por mês</div>
       <div style="position:relative;width:100%;height:170px"><canvas id="qual-c-evolucao"></canvas></div>
     </div>
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:16px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:10px">Reclamações Improcedentes — % de improcedência por mês</div>
+      ${_reclMesesComDados.length ? `<div style="position:relative;width:100%;height:170px"><canvas id="qual-c-evolucao-recl"></canvas></div>` : `<div style="color:var(--text3);font-size:13px;padding:12px 0">Sem base importada ainda.</div>`}
+    </div>
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:16px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:10px">Trocas Improcedentes (Base Oficial) — ocorrências por mês</div>
+      ${_trocaOficialMesesComDados.length ? `<div style="position:relative;width:100%;height:170px"><canvas id="qual-c-evolucao-troca"></canvas></div>` : `<div style="color:var(--text3);font-size:13px;padding:12px 0">Sem base importada ainda.</div>`}
+    </div>
 
     <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Painel de Metas</div>
     <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:16px">
       ${_qualFaixaMeta('Ordens Indevidas', cardInd.modo==='unico'?String(cardInd.resultado):`${cardInd.total} (média ${cardInd.media.toFixed(1)}/mês)`, `menor que ${QUAL_META_INDEVIDOS}${cardInd.modo==='unico'?'':'/mês'}`, cardInd.status)}
-      ${_qualFaixaMeta('Reclamações Improcedentes', null, 'menor que 40%', null)}
-      ${_qualFaixaMeta('Trocas Improcedentes', null, 'menor que 5', null)}
+      ${_qualFaixaMeta('Reclamações Improcedentes',
+        cardRecl.modo==='semdados' ? 'Sem dados para o período/posto' : cardRecl.modo==='unico' ? `${cardRecl.pct.toFixed(1)}%` : `${cardRecl.pctConsolidado.toFixed(1)}% (média do período)`,
+        `menor que ${RECL_META_PCT}%`, cardRecl.modo!=='semdados'?cardRecl.status:null)}
+      ${_qualFaixaMeta('Trocas Improcedentes',
+        cardTroca.modo==='semdados' ? 'Sem dados para o período/posto' : cardTroca.modo==='unico' ? String(cardTroca.resultado) : `${cardTroca.total} (média ${cardTroca.media.toFixed(1)}/mês)`,
+        `menor que ${QUAL_META_TROCAS}`, cardTroca.modo!=='semdados'?cardTroca.status:null)}
     </div>
 
-    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Ranking Geral dos Postos</div>
-    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:16px;max-height:340px;overflow-y:auto">
-      ${rankP.length ? rankP.map(([p,v],i)=>{
-        const nivel = i<3?{l:'Crítico',c:'#e24b4a'}:i<8?{l:'Atenção',c:'#f59e0b'}:{l:'Normal',c:'var(--text3)'};
-        return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">
-          <span style="font-size:11px;color:var(--text3);min-width:22px">${i+1}º</span>
-          <span style="font-size:12px;flex:1">${p}</span>
-          <span style="font-size:10px;font-weight:700;color:${nivel.c};background:${nivel.c}1a;border-radius:8px;padding:1px 8px">${nivel.l}</span>
-          <span style="font-size:12px;font-weight:600;min-width:22px;text-align:right">${v}</span>
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Ranking Geral dos Postos <span style="text-transform:none;font-weight:400">(consolidado — indicadores em que o posto é crítico)</span></div>
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:16px;max-height:380px;overflow-y:auto">
+      ${rankConsolidado.length ? rankConsolidado.map((r,i)=>{
+        const nivel = r.qtdIndicadoresCriticos>=2?{l:'Crítico',c:'#e24b4a'}:{l:'Atenção',c:'#f59e0b'};
+        return `<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:11px;color:var(--text3);min-width:22px">${i+1}º</span>
+            <span style="font-size:12px;flex:1;font-weight:600">${r.posto}</span>
+            <span style="font-size:10px;font-weight:700;color:${nivel.c};background:${nivel.c}1a;border-radius:8px;padding:1px 8px">${nivel.l}</span>
+            <span style="font-size:11px;color:var(--text3)">${r.qtdIndicadoresCriticos} indicador(es)</span>
+          </div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px;margin-left:30px">${Object.entries(r.indicadores).map(([nome,d])=>`${nome}: ${d.situacao}`).join(' · ')}</div>
         </div>`;
       }).join('') : '<div style="color:var(--text3);font-size:13px">Sem dados no período</div>'}
     </div>
@@ -15653,57 +15856,64 @@ function renderQualidadeDashboard() {
     <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Radar da Qualidade</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
       <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
-        <div style="font-size:12px;font-weight:600;margin-bottom:8px">🏪 Postos críticos</div>
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px">🏪 Postos críticos <span style="font-weight:400;color:var(--text3)">(Ordens Indevidas)</span></div>
         ${rankP.slice(0,5).map(([p,v],i)=>`<div style="font-size:12px;padding:3px 0;color:var(--text2)">${i+1}º ${p} <span style="color:var(--text3)">(${v})</span></div>`).join('')||'<div style="color:var(--text3);font-size:12px">Sem dados</div>'}
       </div>
       <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
-        <div style="font-size:12px;font-weight:600;margin-bottom:8px">🔧 Serviços críticos</div>
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px">🔧 Serviços críticos <span style="font-weight:400;color:var(--text3)">(Ordens Indevidas)</span></div>
         ${rankS.slice(0,5).map(([s,v],i)=>`<div style="font-size:12px;padding:3px 0;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s}">${i+1}º ${s} <span style="color:var(--text3)">(${v})</span></div>`).join('')||'<div style="color:var(--text3);font-size:12px">Sem dados</div>'}
       </div>
       <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
-        <div style="font-size:12px;font-weight:600;margin-bottom:8px">🎯 Principais causas</div>
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px">🎯 Principais causas <span style="font-weight:400;color:var(--text3)">(Ordens Indevidas)</span></div>
         ${causaRaizArr.slice(0,5).map((cr,i)=>`<div style="font-size:12px;padding:3px 0;color:var(--text2)">${i+1}º ${cr.causaRaiz} <span style="color:var(--text3)">(${cr.pct}%)</span></div>`).join('')||'<div style="color:var(--text3);font-size:12px">Sem dados</div>'}
       </div>
     </div>
 
     <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Prioridades Gerenciais</div>
     <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:16px">
-      ${prioridades.length ? prioridades.slice(0,5).map(p=>{
-        const cl = _qualClassifPrioridade(p, maxScorePrio);
-        const causaPosto = _indCalcCausaRaiz(dadosPeriodo.filter(r=>r.loja===p.posto))[0];
-        return `<div style="padding:9px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+      ${candidatos.length ? candidatos.slice(0,5).map(c=>`
+        <div style="padding:9px 0;border-bottom:1px solid rgba(255,255,255,.05)">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
-            <span style="font-size:13px;font-weight:700">${p.posto}</span>
-            <span style="font-size:11px;font-weight:700;color:${cl.color};background:${cl.bg};border:1px solid ${cl.bd};border-radius:10px;padding:1px 8px">${cl.label}</span>
+            <span style="font-size:13px;font-weight:700">${c.posto}</span>
+            <span style="font-size:10px;font-weight:700;color:#185fa5;background:rgba(42,120,214,.12);border:1px solid rgba(42,120,214,.25);border-radius:10px;padding:1px 8px">${c.origem}</span>
           </div>
-          <div style="font-size:11px;color:var(--text3);margin-bottom:3px">Indicador crítico: Ordens Indevidas · Serviço crítico: ${p.principalServico} · Causa: ${causaPosto?causaPosto.causaRaiz:'—'} · Recorrência: ${p.classif.label} (${p.nComp} comp.)</div>
-          <div style="font-size:12px;color:var(--text2);line-height:1.5">${_indMontarRecomendacao(p)}</div>
-        </div>`;
-      }).join('') : '<div style="color:var(--text3);font-size:13px">Nenhuma prioridade relevante no período analisado.</div>'}
+          <div style="font-size:12px;color:var(--text2);line-height:1.5">${c.texto}</div>
+        </div>`).join('') : '<div style="color:var(--text3);font-size:13px">Nenhuma prioridade relevante no período analisado.</div>'}
     </div>
 
     <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Tendência Geral</div>
-    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:16px">
-      ${tend ? `
-        <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Comparando <strong>${_indMesLabel(tend.mesAnt)}</strong> → <strong>${_indMesLabel(tend.mesAtu)}</strong></div>
-        <table style="border-collapse:collapse;font-size:12px">
-          <tbody>
-            <tr><td style="padding:4px 14px 4px 0;color:var(--text3)">Indicador</td><td style="padding:4px 0;font-weight:600">Ordens Indevidas</td></tr>
-            <tr><td style="padding:4px 14px 4px 0;color:var(--text3)">Resultado anterior</td><td style="padding:4px 0">${tend.linhas.reduce((s,l)=>s+l.a,0)}</td></tr>
-            <tr><td style="padding:4px 14px 4px 0;color:var(--text3)">Resultado atual</td><td style="padding:4px 0">${tend.linhas.reduce((s,l)=>s+l.b,0)}</td></tr>
-            <tr><td style="padding:4px 14px 4px 0;color:var(--text3)">Variação absoluta</td><td style="padding:4px 0">${(()=>{const v=tend.linhas.reduce((s,l)=>s+l.varAbs,0);return (v>0?'+':'')+v;})()}</td></tr>
-            <tr><td style="padding:4px 14px 4px 0;color:var(--text3)">Classificação</td><td style="padding:4px 0;font-weight:700;color:${tend.melhoraram>tend.pioraram?'#1baf7a':tend.pioraram>tend.melhoraram?'#e24b4a':'var(--text3)'}">${tend.melhoraram>tend.pioraram?'Melhorou':tend.pioraram>tend.melhoraram?'Piorou':'Estável'}</td></tr>
-          </tbody>
-        </table>
-        <div style="font-size:12px;color:var(--text2);margin-top:8px">${tend.melhoraram} posto(s) melhoraram e ${tend.pioraram} posto(s) pioraram entre as duas competências mais recentes.</div>
-      ` : '<div style="color:var(--text3);font-size:13px">Menos de duas competências disponíveis para comparação.</div>'}
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:11px;font-weight:700;color:#185fa5;margin-bottom:8px">ORDENS INDEVIDAS</div>
+        ${tendInd ? `
+          <div style="font-size:11px;color:var(--text3);margin-bottom:6px">${_indMesLabel(tendInd.mesAnt)} → ${_indMesLabel(tendInd.mesAtu)}</div>
+          <div style="font-size:12px">Anterior: ${tendInd.linhas.reduce((s,l)=>s+l.a,0)} · Atual: ${tendInd.linhas.reduce((s,l)=>s+l.b,0)}</div>
+          <div style="font-size:12px;font-weight:700;color:${tendInd.melhoraram>tendInd.pioraram?'#1baf7a':tendInd.pioraram>tendInd.melhoraram?'#e24b4a':'var(--text3)'};margin-top:4px">${tendInd.melhoraram>tendInd.pioraram?'Melhorou':tendInd.pioraram>tendInd.melhoraram?'Piorou':'Estável'}</div>
+        ` : '<div style="color:var(--text3);font-size:12px">Menos de dois meses para comparar.</div>'}
+      </div>
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:11px;font-weight:700;color:#185fa5;margin-bottom:8px">RECLAMAÇÕES IMPROCEDENTES</div>
+        ${!_reclMesesComDados.length ? '<div style="color:var(--text3);font-size:12px">Sem base importada ainda.</div>' : !tendRecl ? '<div style="color:var(--text3);font-size:12px">Menos de dois meses para comparar.</div>' : `
+          <div style="font-size:11px;color:var(--text3);margin-bottom:6px">${_indMesLabel(tendRecl.mesAnt)} → ${_indMesLabel(tendRecl.mesAtu)}</div>
+          <div style="font-size:12px">Anterior: ${tendRecl.ant.pct!==null?tendRecl.ant.pct.toFixed(1)+'%':'—'} · Atual: ${tendRecl.atu.pct!==null?tendRecl.atu.pct.toFixed(1)+'%':'—'}</div>
+          <div style="font-size:12px;font-weight:700;color:${tendRecl.classif==='Melhorou'?'#1baf7a':tendRecl.classif==='Piorou'?'#e24b4a':'var(--text3)'};margin-top:4px">${tendRecl.classif}</div>
+        `}
+      </div>
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:11px;font-weight:700;color:#185fa5;margin-bottom:8px">TROCAS IMPROCEDENTES</div>
+        ${!_trocaOficialMesesComDados.length ? '<div style="color:var(--text3);font-size:12px">Sem base importada ainda.</div>' : !tendTroca ? '<div style="color:var(--text3);font-size:12px">Menos de dois meses para comparar.</div>' : `
+          <div style="font-size:11px;color:var(--text3);margin-bottom:6px">${_indMesLabel(tendTroca.mesAnt)} → ${_indMesLabel(tendTroca.mesAtu)}</div>
+          <div style="font-size:12px">Anterior: ${tendTroca.a} · Atual: ${tendTroca.b}</div>
+          <div style="font-size:12px;font-weight:700;color:${tendTroca.classif==='Melhorou'?'#1baf7a':tendTroca.classif==='Piorou'?'#e24b4a':'var(--text3)'};margin-top:4px">${tendTroca.classif}</div>
+        `}
+      </div>
     </div>
 
     <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Alertas Estratégicos</div>
     <div style="margin-bottom:16px">
       ${alertasFinal.length ? alertasFinal.map(a=>`
         <details style="background:var(--surface2);border-radius:10px;padding:12px 14px;border:1px solid rgba(255,255,255,.07);margin-bottom:8px">
-          <summary style="cursor:pointer;font-size:13px;font-weight:600">⚠ ${a.titulo}</summary>
+          <summary style="cursor:pointer;font-size:13px;font-weight:600">⚠ ${a.titulo} <span style="font-size:10px;font-weight:700;color:#185fa5;background:rgba(42,120,214,.12);border:1px solid rgba(42,120,214,.25);border-radius:10px;padding:1px 8px;margin-left:6px">${a.origem}</span></summary>
           <div style="margin-top:8px;font-size:12px;color:var(--text2)">${a.dados}</div>
         </details>`).join('') : '<div style="color:var(--text3);font-size:13px">Nenhum alerta no momento.</div>'}
     </div>
@@ -15714,7 +15924,11 @@ function renderQualidadeDashboard() {
     </div>
   `;
 
-  setTimeout(() => _qualRenderEvolucaoChart(mesesSel), 40);
+  setTimeout(() => {
+    _qualRenderEvolucaoChart(_qualMesesSel.length ? _qualMesesSel : _indevidosMesesComDados);
+    if (_reclMesesComDados.length) _qualRenderEvolucaoReclChart(_qualMesesSel.length ? _qualMesesSel.filter(m=>_reclMesesComDados.includes(m)).length?_qualMesesSel:_reclMesesComDados : _reclMesesComDados);
+    if (_trocaOficialMesesComDados.length) _qualRenderEvolucaoTrocaChart(_qualMesesSel.length ? (_qualMesesSel.filter(m=>_trocaOficialMesesComDados.includes(m)).length?_qualMesesSel:_trocaOficialMesesComDados) : _trocaOficialMesesComDados);
+  }, 40);
 }
 
 function _qualFaixaMeta(nome, resultado, meta, status) {
@@ -15745,6 +15959,53 @@ function _qualRenderEvolucaoChart(mesesSel) {
               y:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true}}},
     plugins:[{id:'qEvL',afterDatasetsDraw(c){const{ctx}=c;c.data.datasets[0].data.forEach((v,i)=>{
       if(!v)return;const el=c.getDatasetMeta(0).data[i];ctx.save();ctx.fillStyle='#3b82f6';
+      ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.fillText(v,el.x,el.y-9);ctx.restore();});}}]});
+}
+
+let _chartQualEvolucaoRecl = null;
+function _qualRenderEvolucaoReclChart(mesesSel) {
+  _chartQualEvolucaoRecl = _dstroyIndChart(_chartQualEvolucaoRecl);
+  const ctx = document.getElementById('qual-c-evolucao-recl'); if (!ctx) return;
+  const dadosBase = _qualFiltroPosto ? allReclamacoes.filter(r=>r.loja===_qualFiltroPosto) : allReclamacoes;
+  const mesesOrdenados = [...mesesSel].filter(m=>_reclMesesComDados.includes(m)).sort();
+  if (!mesesOrdenados.length) return;
+  const porMes = {}; mesesOrdenados.forEach(m=>porMes[m]={proc:0,improc:0});
+  dadosBase.forEach(r=>{ if (r.mesRef && porMes[r.mesRef]) { if(r.procedencia==='PROCEDENTE') porMes[r.mesRef].proc++; else if(r.procedencia==='IMPROCEDENTE') porMes[r.mesRef].improc++; } });
+  const pctData = mesesOrdenados.map(m=>{ const d=porMes[m]; const v=d.proc+d.improc; return v? +(d.improc/v*100).toFixed(1) : 0; });
+  const tickC='#a0aec0', gridC='rgba(255,255,255,.06)';
+  _chartQualEvolucaoRecl = new Chart(ctx, {type:'line',
+    data:{labels:mesesOrdenados.map(_indMesLabel),
+          datasets:[{data:pctData,borderColor:'#e24b4a',backgroundColor:'rgba(226,75,74,.12)',
+            borderWidth:2,fill:true,tension:.35,pointRadius:4,pointBackgroundColor:'#e24b4a'}]},
+    options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},
+      plugins:{legend:{display:false}},
+      scales:{x:{ticks:{color:tickC,font:{size:10}},grid:{display:false}},
+              y:{ticks:{color:tickC,font:{size:10},callback:v=>v+'%'},grid:{color:gridC},beginAtZero:true}}},
+    plugins:[{id:'qEvLR',afterDatasetsDraw(c){const{ctx}=c;c.data.datasets[0].data.forEach((v,i)=>{
+      const el=c.getDatasetMeta(0).data[i];ctx.save();ctx.fillStyle='#e24b4a';
+      ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.fillText(v+'%',el.x,el.y-9);ctx.restore();});}}]});
+}
+
+let _chartQualEvolucaoTroca = null;
+function _qualRenderEvolucaoTrocaChart(mesesSel) {
+  _chartQualEvolucaoTroca = _dstroyIndChart(_chartQualEvolucaoTroca);
+  const ctx = document.getElementById('qual-c-evolucao-troca'); if (!ctx) return;
+  const dadosBase = _qualFiltroPosto ? allTrocasOficial.filter(r=>r.loja===_qualFiltroPosto) : allTrocasOficial;
+  const mesesOrdenados = [...mesesSel].filter(m=>_trocaOficialMesesComDados.includes(m)).sort();
+  if (!mesesOrdenados.length) return;
+  const cnt = {}; mesesOrdenados.forEach(m=>cnt[m]=0);
+  dadosBase.forEach(r=>{ if (r.mesRef && cnt[r.mesRef]!==undefined) cnt[r.mesRef]++; });
+  const tickC='#a0aec0', gridC='rgba(255,255,255,.06)';
+  _chartQualEvolucaoTroca = new Chart(ctx, {type:'line',
+    data:{labels:mesesOrdenados.map(_indMesLabel),
+          datasets:[{data:mesesOrdenados.map(m=>cnt[m]),borderColor:'#eda100',backgroundColor:'rgba(237,161,0,.12)',
+            borderWidth:2,fill:true,tension:.35,pointRadius:4,pointBackgroundColor:'#eda100'}]},
+    options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},
+      plugins:{legend:{display:false}},
+      scales:{x:{ticks:{color:tickC,font:{size:10}},grid:{display:false}},
+              y:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true}}},
+    plugins:[{id:'qEvLT',afterDatasetsDraw(c){const{ctx}=c;c.data.datasets[0].data.forEach((v,i)=>{
+      if(!v)return;const el=c.getDatasetMeta(0).data[i];ctx.save();ctx.fillStyle='#eda100';
       ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.fillText(v,el.x,el.y-9);ctx.restore();});}}]});
 }
 
