@@ -774,8 +774,9 @@ const PosCanalLabels = {
         <div class="sidebar-item" id="nav-tasks" onclick="showView('adm-tasks',this)"><span class="icon">◈</span> Demandas</div>
         <div class="sidebar-item" id="nav-team" onclick="showView('adm-team',this)"><span class="icon">◉</span> Time</div>
         <div class="sidebar-item" id="nav-ponto-adm" onclick="showView('adm-ponto',this)"><span class="icon">⏱</span> Ponto Eletrônico</div>
-        <div class="sidebar-item sidebar-group-toggle" id="nav-postos-group" onclick="toggleSidebarGroup('postos-group',this)"><span class="icon">🏪</span> Postos de Atendimento <span class="group-arrow" id="arrow-postos-group">▸</span></div>
+        <div class="sidebar-item sidebar-group-toggle" id="nav-postos-group" onclick="toggleSidebarGroup('postos-group',this)"><span class="icon">📈</span> Operação <span class="group-arrow" id="arrow-postos-group">▸</span></div>
         <div class="sidebar-group" id="postos-group" style="display:none">
+          <div class="sidebar-item sidebar-sub" id="nav-op-dash-adm" onclick="showView('adm-operacao-dashboard',this)"><span class="icon">📊</span> Dashboard Operacional</div>
           <div class="sidebar-item sidebar-sub" id="nav-postos-adm" onclick="showView('adm-postos',this)"><span class="icon">📡</span> Horários Postos</div>
           <div class="sidebar-item sidebar-sub" id="nav-indicadores-adm" onclick="showView('adm-indicadores',this)"><span class="icon">📊</span> Indicadores</div>
           <div class="sidebar-item sidebar-sub" id="nav-csat-adm" onclick="showView('adm-csat',this)"><span class="icon">⭐</span> Pesquisa CSAT</div>
@@ -842,8 +843,9 @@ const PosCanalLabels = {
       </div>
       <div class="sidebar-section">
         <div class="sidebar-section-label">Postos de Atendimento</div>
-        <div class="sidebar-item sidebar-group-toggle" id="nav-sup-postos-group" onclick="toggleSidebarGroup('sup-postos-group',this)"><span class="icon">🏪</span> Postos de Atendimento <span class="group-arrow" id="arrow-sup-postos-group">▸</span></div>
+        <div class="sidebar-item sidebar-group-toggle" id="nav-sup-postos-group" onclick="toggleSidebarGroup('sup-postos-group',this)"><span class="icon">📈</span> Operação <span class="group-arrow" id="arrow-sup-postos-group">▸</span></div>
         <div class="sidebar-group" id="sup-postos-group" style="display:none">
+          <div class="sidebar-item sidebar-sub" id="nav-op-dash-sup" onclick="showView('adm-operacao-dashboard',this)"><span class="icon">📊</span> Dashboard Operacional</div>
           <div class="sidebar-item sidebar-sub" id="nav-indicadores-sup" onclick="showView('adm-indicadores',this)"><span class="icon">📊</span> Indicadores</div>
           <div class="sidebar-item sidebar-sub" id="nav-csat-sup" onclick="showView('adm-csat',this)"><span class="icon">⭐</span> Pesquisa CSAT</div>
           <div class="sidebar-item sidebar-sub" id="nav-pos-sup" onclick="showView('adm-pos',this)"><span class="icon">💳</span> Máquina Cartão POS</div>
@@ -1364,6 +1366,16 @@ const PosCanalLabels = {
       </div>
       <div class="view-content">
         <div id="qual-dash-wrap"></div>
+      </div>
+    </div>
+
+    <!-- OPERAÇÃO — Dashboard Operacional (só leitura, consolida Indicadores/CSAT/POS) -->
+    <div id="view-adm-operacao-dashboard" class="view">
+      <div class="topbar">
+        <div class="topbar-title">📊 Dashboard Operacional</div>
+      </div>
+      <div class="view-content">
+        <div id="op-dash-wrap"></div>
       </div>
     </div>
 
@@ -3961,6 +3973,7 @@ function _doRefreshCurrentView() {
   if (id === 'adm-indevidos') renderIndevidos();
   if (id === 'adm-diag-import') renderDiagImport();
   if (id === 'adm-qualidade') renderQualidadeDashboard();
+  if (id === 'adm-operacao-dashboard') renderDashboardOperacional();
   if (id === 'adm-qualidade-reclamacoes') renderReclamacoes();
   if (id === 'adm-qualidade-trocas') renderTrocas();
   if (id === 'supervisor-postos') renderSupervisorPostos();
@@ -4015,6 +4028,7 @@ function showView(name, el) {
   if (name === 'sup-medidas-disciplinares') md_renderTudo();
   if (name === 'adm-diag-import') renderDiagImport();
   if (name === 'adm-qualidade') renderQualidadeDashboard();
+  if (name === 'adm-operacao-dashboard') renderDashboardOperacional();
   if (name === 'adm-qualidade-reclamacoes') renderReclamacoes();
   if (name === 'adm-qualidade-trocas') renderTrocas();
   // Render imediato ao navegar (cancela debounce pendente e renderiza já)
@@ -10819,7 +10833,7 @@ async function confirmarEnvioFolhaAssinada(){
 // ══════════════════════════════════════════════════════
 // MÓDULO: PESQUISA CSAT
 // ══════════════════════════════════════════════════════
-const CSAT_META = 4.50;
+const CSAT_META = 4.55;
 const CSAT_MESES_NOME = ['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 const TODOS_POSTOS_RG = [
   'APERIBE','CONCEICAO DE MACABU','GUARUS','CARDOSO MOREIRA','CAMBUCI',
@@ -12273,7 +12287,7 @@ function renderCsatPainel() {
            _labelColor:'#4F78FF',_labelFmt:v=>v>0?v:''},
           {type:'line',label:'Nota',data:notaEvo,borderColor:'#f59e0b',backgroundColor:'transparent',pointBackgroundColor:'#f59e0b',yAxisID:'y2',tension:.3,pointRadius:5,spanGaps:true,
            _labelColor:'#f59e0b',_labelFmt:v=>v!==null?v.toFixed(2):''},
-          {type:'line',label:'Meta 4,50',data:labEvo.map(()=>CSAT_META),borderColor:'rgba(239,68,68,.5)',borderDash:[6,4],backgroundColor:'transparent',pointRadius:0,yAxisID:'y2',
+          {type:'line',label:'Meta 4,55',data:labEvo.map(()=>CSAT_META),borderColor:'rgba(239,68,68,.5)',borderDash:[6,4],backgroundColor:'transparent',pointRadius:0,yAxisID:'y2',
            _noLabels:true}
         ]},
         options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{size:11},color:'#a0aec0'}}},scales:{
@@ -12496,7 +12510,7 @@ function renderCsatSupervisor() {
         data:{ labels:labSup, datasets:[
           {label:'Nota Média',data:notaSup,borderColor:'#4F78FF',backgroundColor:'rgba(79,120,255,.15)',fill:true,tension:.3,pointRadius:6,pointBackgroundColor:'#4F78FF',spanGaps:true,
            _labelColor:'#4F78FF',_labelFmt:v=>v!==null?v.toFixed(2):''},
-          {label:'Meta 4,50',data:labSup.map(()=>CSAT_META),borderColor:'rgba(239,68,68,.5)',borderDash:[6,4],pointRadius:0,
+          {label:'Meta 4,55',data:labSup.map(()=>CSAT_META),borderColor:'rgba(239,68,68,.5)',borderDash:[6,4],pointRadius:0,
            _noLabels:true}
         ]},
         options:{responsive:true,maintainAspectRatio:false,
@@ -18824,6 +18838,628 @@ function _trocaRenderDiag(diag) {
       <div style="color:var(--text3);margin-top:4px">Colunas no arquivo: ${diag.colunasArquivo.join(', ')}</div>
     </div>`;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DASHBOARD OPERACIONAL (OPERAÇÃO) — leitura/consolidação de Indicadores, CSAT e POS.
+// Sem collection própria, sem alterar nenhuma lógica dos 3 módulos — só lê os
+// arrays globais já mantidos por eles (allIndicadores/csatAllData/posAllResultados)
+// e reaproveita getPOSMeta/CSAT_META/parseTempo/fmtTempo já existentes.
+// Metodologia de consolidação de NS30/TMA/TME/Senhas replica exatamente a do
+// módulo Indicadores (renderPainelIndicadores): média simples para NS30/TMA/TME,
+// soma para volumes. CSAT replica a do próprio módulo CSAT: média ponderada por pesquisas.
+// ═══════════════════════════════════════════════════════════════════════════
+
+let _opMesesSel = [];
+let _opFiltroPosto = '';
+let _opFiltroSupervisor = '';
+let _opUltimaAtualizacaoPos = '', _opUltimaAtualizacaoIndicadores = '';
+
+const OP_META_NS30 = 99.9;
+const OP_META_TMA_SEG = 5*60+11;  // 00:05:11
+const OP_META_TME_SEG = 9*60+29;  // 00:09:29
+
+async function _opGarantirDadosCarregados() {
+  if (!indicadoresCarregados) await carregarTodosIndicadores();
+  if (!csatAllData.length) await initCsatMesFiltro();
+  if (!posAllResultados.length) await initPOS();
+  try { const c = await db.collection('indicadores_config').doc('geral').get(); if (c.exists) _opUltimaAtualizacaoIndicadores = c.data().ultimoImport || ''; } catch(e){}
+  try { const c = await db.collection('pos_config').doc('geral').get(); if (c.exists) _opUltimaAtualizacaoPos = c.data().ultimoImport || ''; } catch(e){}
+}
+
+function _opMesesTodos() {
+  const mi=[...new Set(allIndicadores.map(d=>d.mesRef))];
+  const mc=[...new Set(csatAllData.map(d=>d.mesRef))];
+  const mp=[...new Set(posAllResultados.map(d=>d.mesRef))];
+  return [...new Set([...mi,...mc,...mp])].filter(Boolean).sort();
+}
+function _opPostosDisponiveis() { return allPostos.filter(p=>p.nome!=='Posto Teste').map(p=>p.nome).sort(); }
+function _opSupervisoresDisponiveis() { return [...new Set(allPostos.map(p=>p.supervisor).filter(Boolean))].sort(); }
+
+function _opFiltrarPostoSup(dados, campoPosto) {
+  if (_opFiltroPosto) return dados.filter(d=>d[campoPosto]===_opFiltroPosto);
+  if (_opFiltroSupervisor) {
+    const postosSup = new Set(allPostos.filter(p=>p.supervisor===_opFiltroSupervisor).map(p=>p.nome));
+    return dados.filter(d=>postosSup.has(d[campoPosto]));
+  }
+  return dados;
+}
+function _opMesesConsiderados(fonteMeses) { return _opMesesSel.length ? _opMesesSel.filter(m=>fonteMeses.includes(m)) : [...fonteMeses]; }
+
+// ── Card POS ─────────────────────────────────────────────────────────────
+function _opCalcCardPOS() {
+  const mesesFonte=[...new Set(posAllResultados.map(d=>d.mesRef))];
+  if (!mesesFonte.length) return {modo:'semdados'};
+  const meses=_opMesesConsiderados(mesesFonte);
+  if (!meses.length) return {modo:'semdados'};
+  const dados=_opFiltrarPostoSup(posAllResultados.filter(d=>meses.includes(d.mesRef)),'postoNome');
+  if (!dados.length) return {modo:'semdados'};
+  const resultado=dados.reduce((s,d)=>s+(d.valor||0),0);
+  const meta=dados.reduce((s,d)=>s+getPOSMeta(d.postoNome,d.mesRef),0);
+  const pct=meta>0?resultado/meta*100:0;
+  const status=pct>=100?'verde':pct>=90?'amarelo':'vermelho';
+  let resultadoAnterior=null, mesAnteriorRef=null;
+  if (meses.length===1) {
+    const ord=[...mesesFonte].sort(); const idx=ord.indexOf(meses[0]);
+    mesAnteriorRef=idx>0?ord[idx-1]:null;
+    if (mesAnteriorRef) resultadoAnterior=_opFiltrarPostoSup(posAllResultados.filter(d=>d.mesRef===mesAnteriorRef),'postoNome').reduce((s,d)=>s+(d.valor||0),0);
+  }
+  return {modo:meses.length===1?'unico':'periodo', resultado, meta, diferenca:resultado-meta, pct, status, resultadoAnterior, mesAnteriorRef};
+}
+
+// ── Card CSAT — consolidação idêntica ao módulo CSAT: média ponderada por pesquisas ──
+function _opCalcCardCSAT() {
+  const mesesFonte=[...new Set(csatAllData.map(d=>d.mesRef))];
+  if (!mesesFonte.length) return {modo:'semdados'};
+  const meses=_opMesesConsiderados(mesesFonte);
+  if (!meses.length) return {modo:'semdados'};
+  const dados=_opFiltrarPostoSup(csatAllData.filter(d=>meses.includes(d.mesRef)),'postoNome');
+  if (!dados.length) return {modo:'semdados'};
+  const totalPesq=dados.reduce((s,d)=>s+(d.pesquisas||0),0);
+  const nota=totalPesq>0?dados.reduce((s,d)=>s+(d.notaMedia||0)*(d.pesquisas||0),0)/totalPesq:null;
+  const status=nota===null?null:(nota>=CSAT_META?'verde':'vermelho');
+  let resultadoAnterior=null, mesAnteriorRef=null;
+  if (meses.length===1) {
+    const ord=[...mesesFonte].sort(); const idx=ord.indexOf(meses[0]);
+    mesAnteriorRef=idx>0?ord[idx-1]:null;
+    if (mesAnteriorRef) {
+      const dAnt=_opFiltrarPostoSup(csatAllData.filter(d=>d.mesRef===mesAnteriorRef),'postoNome');
+      const pAnt=dAnt.reduce((s,d)=>s+(d.pesquisas||0),0);
+      resultadoAnterior=pAnt>0?dAnt.reduce((s,d)=>s+(d.notaMedia||0)*(d.pesquisas||0),0)/pAnt:null;
+    }
+  }
+  return {modo:meses.length===1?'unico':'periodo', nota, totalPesq, meta:CSAT_META, status, resultadoAnterior, mesAnteriorRef};
+}
+
+// ── Base comum para NS30/TMA/TME/Senhas Perdidas ──
+function _opDadosIndicadoresConsiderados() {
+  const mesesFonte=[...new Set(allIndicadores.map(d=>d.mesRef))];
+  if (!mesesFonte.length) return {modo:'semdados', dados:[], meses:[], mesesFonte};
+  const meses=_opMesesConsiderados(mesesFonte);
+  if (!meses.length) return {modo:'semdados', dados:[], meses, mesesFonte};
+  const dados=_opFiltrarPostoSup(allIndicadores.filter(d=>meses.includes(d.mesRef)),'postoNome');
+  if (!dados.length) return {modo:'semdados', dados:[], meses, mesesFonte};
+  return {modo:'ok', dados, meses, mesesFonte};
+}
+
+// Cenário A (1 registro = 1 posto + 1 mês): usa direto o valor já existente.
+// Cenário B (vários): reproduz EXATAMENTE a metodologia de renderPainelIndicadores()
+// — média simples de NS30/TMA/TME entre registros; soma para os volumes.
+function _opConsolidarIndicadores(dados) {
+  if (dados.length === 1) {
+    const d=dados[0];
+    const n30 = parseFloat(d.ns30);
+    return {
+      cenario:'A', ns30: isNaN(n30)?null:n30,
+      tmaSeg: parseTempo(d.tma), tmeSeg: parseTempo(d.tme),
+      senhasPerdidas: parseInt(d.senhasPerdidas)||0,
+      totalSenhas: (parseInt(d.senhasAtendidas)||0)+(parseInt(d.senhasCanceladas)||0)+(parseInt(d.senhasPerdidas)||0)
+    };
+  }
+  let somaTMA=0,cTMA=0,somaTME=0,cTME=0,somaNS30=0,cNS=0,somaPerdidas=0,somaAtendidas=0,somaCanceladas=0;
+  dados.forEach(d=>{
+    const tma=parseTempo(d.tma); if(tma!==null){somaTMA+=tma;cTMA++;}
+    const tme=parseTempo(d.tme); if(tme!==null){somaTME+=tme;cTME++;}
+    const n30=parseFloat(d.ns30); if(!isNaN(n30)){somaNS30+=n30;cNS++;}
+    somaPerdidas+=parseInt(d.senhasPerdidas)||0;
+    somaAtendidas+=parseInt(d.senhasAtendidas)||0;
+    somaCanceladas+=parseInt(d.senhasCanceladas)||0;
+  });
+  return {
+    cenario:'B', ns30: cNS>0?somaNS30/cNS:null,
+    tmaSeg: cTMA>0?Math.round(somaTMA/cTMA):null, tmeSeg: cTME>0?Math.round(somaTME/cTME):null,
+    senhasPerdidas: somaPerdidas, totalSenhas: somaAtendidas+somaCanceladas+somaPerdidas
+  };
+}
+
+function _opCalcMesAnteriorIndicadores(base) {
+  if (base.meses.length!==1) return { mesAnteriorRef:null, cons:null };
+  const ord=[...base.mesesFonte].sort(); const idx=ord.indexOf(base.meses[0]);
+  const mesAnteriorRef=idx>0?ord[idx-1]:null;
+  if (!mesAnteriorRef) return { mesAnteriorRef:null, cons:null };
+  const dAnt=_opFiltrarPostoSup(allIndicadores.filter(d=>d.mesRef===mesAnteriorRef),'postoNome');
+  return { mesAnteriorRef, cons: dAnt.length?_opConsolidarIndicadores(dAnt):null };
+}
+
+function _opCalcCardNS30() {
+  const base=_opDadosIndicadoresConsiderados();
+  if (base.modo!=='ok') return {modo:'semdados'};
+  const cons=_opConsolidarIndicadores(base.dados);
+  if (cons.ns30===null) return {modo:'semdados'};
+  const status=cons.ns30>=OP_META_NS30?'verde':(cons.ns30>=95?'amarelo':'vermelho'); // mesmas faixas de nsClass() já usadas em Indicadores
+  const ant=_opCalcMesAnteriorIndicadores(base);
+  return { modo: base.meses.length===1?'unico':'periodo', resultado:cons.ns30, meta:OP_META_NS30,
+           diferenca:cons.ns30-OP_META_NS30, totalSenhas:cons.totalSenhas, senhasPerdidas:cons.senhasPerdidas,
+           status, resultadoAnterior: ant.cons?ant.cons.ns30:null, mesAnteriorRef: ant.mesAnteriorRef };
+}
+
+function _opCalcCardSenhasPerdidas() {
+  const base=_opDadosIndicadoresConsiderados();
+  if (base.modo!=='ok') return {modo:'semdados'};
+  const cons=_opConsolidarIndicadores(base.dados);
+  const pct=cons.totalSenhas>0?cons.senhasPerdidas/cons.totalSenhas*100:0;
+  const ant=_opCalcMesAnteriorIndicadores(base);
+  return { modo: base.meses.length===1?'unico':'periodo', quantidade:cons.senhasPerdidas, pct,
+           resultadoAnterior: ant.cons?ant.cons.senhasPerdidas:null, mesAnteriorRef: ant.mesAnteriorRef };
+  // Sem meta/status — não é indicador de meta formal, conforme definido
+}
+
+function _opCalcBlocoTempos() {
+  const base=_opDadosIndicadoresConsiderados();
+  if (base.modo!=='ok') return {modo:'semdados'};
+  const cons=_opConsolidarIndicadores(base.dados);
+  const statusTMA = cons.tmaSeg===null?null:(cons.tmaSeg<=OP_META_TMA_SEG?'verde':'vermelho');
+  const statusTME = cons.tmeSeg===null?null:(cons.tmeSeg<=OP_META_TME_SEG?'verde':'vermelho');
+  const ant=_opCalcMesAnteriorIndicadores(base);
+  return { modo: base.meses.length===1?'unico':'periodo', tmaSeg:cons.tmaSeg, tmeSeg:cons.tmeSeg,
+           metaTmaSeg:OP_META_TMA_SEG, metaTmeSeg:OP_META_TME_SEG, statusTMA, statusTME,
+           tmaAnteriorSeg: ant.cons?ant.cons.tmaSeg:null, tmeAnteriorSeg: ant.cons?ant.cons.tmeSeg:null,
+           mesAnteriorRef: ant.mesAnteriorRef };
+}
+
+// ── Resultado Operacional (balão geral) — nunca soma unidades diferentes ──
+function _opCalcResultadoOperacional(cardPos,cardCsat,cardNs30,blocoTempos) {
+  const todos = [
+    {nome:'POS',  disponivel: cardPos.modo!=='semdados',  atingida: cardPos.modo!=='semdados' && cardPos.status==='verde'},
+    {nome:'CSAT', disponivel: cardCsat.modo!=='semdados' && cardCsat.status!==null, atingida: cardCsat.modo!=='semdados' && cardCsat.status==='verde'},
+    {nome:'NS30', disponivel: cardNs30.modo!=='semdados', atingida: cardNs30.modo!=='semdados' && cardNs30.status==='verde'},
+    {nome:'TMA',  disponivel: blocoTempos.modo!=='semdados' && blocoTempos.statusTMA!==null, atingida: blocoTempos.modo!=='semdados' && blocoTempos.statusTMA==='verde'},
+    {nome:'TME',  disponivel: blocoTempos.modo!=='semdados' && blocoTempos.statusTME!==null, atingida: blocoTempos.modo!=='semdados' && blocoTempos.statusTME==='verde'}
+  ];
+  return {
+    atingidas: todos.filter(i=>i.disponivel&&i.atingida).length,
+    abaixo:    todos.filter(i=>i.disponivel&&!i.atingida).length,
+    semDados:  todos.filter(i=>!i.disponivel).length,
+    total: todos.length, todos
+  };
+}
+
+// ── Rankings ─────────────────────────────────────────────────────────────
+function _opRankingMenorPOS() {
+  const meses=_opMesesConsiderados([...new Set(posAllResultados.map(d=>d.mesRef))]);
+  const dados=_opFiltrarPostoSup(posAllResultados.filter(d=>meses.includes(d.mesRef)),'postoNome');
+  const porPosto={};
+  dados.forEach(d=>{ if(!porPosto[d.postoNome]) porPosto[d.postoNome]={valor:0,meta:0};
+    porPosto[d.postoNome].valor+=(d.valor||0); porPosto[d.postoNome].meta+=getPOSMeta(d.postoNome,d.mesRef); });
+  return Object.entries(porPosto).map(([posto,v])=>({posto, valor:v.valor, meta:v.meta, pct: v.meta>0?v.valor/v.meta*100:0})).sort((a,b)=>a.pct-b.pct);
+}
+function _opRankingMenorCSAT() {
+  const meses=_opMesesConsiderados([...new Set(csatAllData.map(d=>d.mesRef))]);
+  const dados=_opFiltrarPostoSup(csatAllData.filter(d=>meses.includes(d.mesRef)),'postoNome');
+  const porPosto={};
+  dados.forEach(d=>{ if(!porPosto[d.postoNome]) porPosto[d.postoNome]={soma:0,pesq:0};
+    porPosto[d.postoNome].soma+=(d.notaMedia||0)*(d.pesquisas||0); porPosto[d.postoNome].pesq+=(d.pesquisas||0); });
+  return Object.entries(porPosto).filter(([,v])=>v.pesq>0).map(([posto,v])=>({posto, nota:v.soma/v.pesq, pesquisas:v.pesq})).sort((a,b)=>a.nota-b.nota);
+}
+function _opRankingMenorNS30() {
+  const base=_opDadosIndicadoresConsiderados(); if (base.modo!=='ok') return [];
+  const porPosto={};
+  base.dados.forEach(d=>{ const n=parseFloat(d.ns30); if(isNaN(n))return;
+    if(!porPosto[d.postoNome]) porPosto[d.postoNome]={soma:0,c:0}; porPosto[d.postoNome].soma+=n; porPosto[d.postoNome].c++; });
+  return Object.entries(porPosto).map(([posto,v])=>({posto, ns30:v.soma/v.c})).sort((a,b)=>a.ns30-b.ns30);
+}
+function _opRankingSenhasPerdidas() {
+  const base=_opDadosIndicadoresConsiderados(); if (base.modo!=='ok') return {porQtd:[],porPct:[]};
+  const porPosto={};
+  base.dados.forEach(d=>{
+    if(!porPosto[d.postoNome]) porPosto[d.postoNome]={perdidas:0,total:0};
+    const perd=parseInt(d.senhasPerdidas)||0, at=parseInt(d.senhasAtendidas)||0, canc=parseInt(d.senhasCanceladas)||0;
+    porPosto[d.postoNome].perdidas+=perd; porPosto[d.postoNome].total+=(perd+at+canc);
+  });
+  const arr=Object.entries(porPosto).map(([posto,v])=>({posto, perdidas:v.perdidas, pct: v.total>0?v.perdidas/v.total*100:0}));
+  return { porQtd:[...arr].sort((a,b)=>b.perdidas-a.perdidas), porPct:[...arr].sort((a,b)=>b.pct-a.pct) };
+}
+function _opRankingMenorTempo(campo) {
+  const base=_opDadosIndicadoresConsiderados(); if (base.modo!=='ok') return {ranking:[], media:null};
+  const porPosto={};
+  base.dados.forEach(d=>{
+    const seg=parseTempo(d[campo]); if(seg===null) return;
+    if(!porPosto[d.postoNome]) porPosto[d.postoNome]={soma:0,c:0,volume:0};
+    porPosto[d.postoNome].soma+=seg; porPosto[d.postoNome].c++; porPosto[d.postoNome].volume+=parseInt(d.senhasAtendidas)||0;
+  });
+  const arr=Object.entries(porPosto).map(([posto,v])=>({posto, seg:Math.round(v.soma/v.c), volume:v.volume}));
+  const media = arr.length ? Math.round(arr.reduce((s,a)=>s+a.seg,0)/arr.length) : null;
+  return { ranking:[...arr].sort((a,b)=>a.seg-b.seg), media };
+}
+
+// ── Radar Operacional — 3 blocos, critério por quantidade de problemas simultâneos ──
+function _opCalcRadar(cardPos,cardCsat,cardNs30) {
+  const rankPos=_opRankingMenorPOS(), rankCsat=_opRankingMenorCSAT(), rankNs30=_opRankingMenorNS30(), rankPerd=_opRankingSenhasPerdidas();
+  const mediaPct = rankPerd.porPct.length ? rankPerd.porPct.reduce((s,p)=>s+p.pct,0)/rankPerd.porPct.length : 0;
+  const porPosto={};
+  const marcar=(posto,motivo)=>{ if(!porPosto[posto]) porPosto[posto]=[]; porPosto[posto].push(motivo); };
+  rankPos.forEach(p=>{ if(p.pct<100) marcar(p.posto,'POS abaixo da meta'); });
+  rankCsat.forEach(p=>{ if(p.nota<CSAT_META) marcar(p.posto,'CSAT abaixo da meta'); });
+  rankNs30.forEach(p=>{ if(p.ns30<OP_META_NS30) marcar(p.posto,'NS30 abaixo da meta'); });
+  rankPerd.porPct.forEach(p=>{ if(p.pct>mediaPct && p.pct>0) marcar(p.posto,'Percentual de Senhas Perdidas acima da média da operação'); });
+  return Object.entries(porPosto).map(([posto,motivos])=>({
+    posto, qtdProblemas:motivos.length, motivos,
+    classificacao: motivos.length>=3?'Crítico':motivos.length===2?'Risco':'Atenção'
+  })).sort((a,b)=>b.qtdProblemas-a.qtdProblemas || a.posto.localeCompare(b.posto,'pt'));
+}
+
+// ── Comparativo entre Supervisores (Leonardo x Victor) ──
+function _opCalcComparativoSupervisores() {
+  const mesesInd=_opMesesConsiderados([...new Set(allIndicadores.map(d=>d.mesRef))]);
+  const mesesCsat=_opMesesConsiderados([...new Set(csatAllData.map(d=>d.mesRef))]);
+  const mesesPos=_opMesesConsiderados([...new Set(posAllResultados.map(d=>d.mesRef))]);
+  return ['Leonardo','Victor'].map(sup => {
+    const postosSup = new Set(allPostos.filter(p=>p.supervisor===sup).map(p=>p.nome));
+    const dInd = allIndicadores.filter(d=>mesesInd.includes(d.mesRef) && postosSup.has(d.postoNome));
+    const dCsat = csatAllData.filter(d=>mesesCsat.includes(d.mesRef) && postosSup.has(d.postoNome));
+    const dPos = posAllResultados.filter(d=>mesesPos.includes(d.mesRef) && postosSup.has(d.postoNome));
+    const cons = dInd.length ? _opConsolidarIndicadores(dInd) : null;
+    const totalPesq = dCsat.reduce((s,d)=>s+(d.pesquisas||0),0);
+    const nota = totalPesq>0 ? dCsat.reduce((s,d)=>s+(d.notaMedia||0)*(d.pesquisas||0),0)/totalPesq : null;
+    const valorPos = dPos.reduce((s,d)=>s+(d.valor||0),0);
+    const metaPos = dPos.reduce((s,d)=>s+getPOSMeta(d.postoNome,d.mesRef),0);
+    return {
+      supervisor: sup, qtdPostos: postosSup.size,
+      pos: dPos.length ? { pct: metaPos>0?valorPos/metaPos*100:0 } : null,
+      csat: totalPesq>0 ? { nota, pesquisas: totalPesq } : null,
+      ns30: cons && cons.ns30!==null ? cons.ns30 : null,
+      senhasPerdidas: cons ? cons.senhasPerdidas : null,
+      senhasConsideradas: cons ? cons.totalSenhas : null,
+      tmaSeg: cons ? cons.tmaSeg : null, tmeSeg: cons ? cons.tmeSeg : null
+    };
+  });
+}
+
+// ── Alertas (máx. 5) e Resumo Executivo ──
+function _opCalcAlertasEResumo(cardPos,cardCsat,cardNs30,cardPerd,blocoTempos,radar,comparativo) {
+  const alertas=[];
+  radar.filter(r=>r.qtdProblemas>=2).slice(0,5).forEach(r=>{
+    const posto=allPostos.find(p=>p.nome===r.posto);
+    alertas.push({ posto:r.posto, supervisor:posto?.supervisor||'—', indicador:r.motivos.join(' + '),
+      motivo:`${r.qtdProblemas} indicadores problemáticos simultaneamente`, recomendacao:`Priorizar plano de ação para ${r.posto}: ${r.motivos.join(', ')}.` });
+  });
+  if (alertas.length<5 && cardPerd.modo!=='semdados' && cardPerd.pct>0) {
+    const top=_opRankingSenhasPerdidas().porQtd[0];
+    if (top && top.perdidas>0) alertas.push({ posto:top.posto, supervisor:allPostos.find(p=>p.nome===top.posto)?.supervisor||'—',
+      indicador:'Senhas Perdidas', motivo:`Maior volume de senhas perdidas do período (${top.perdidas})`, recomendacao:`Investigar causa do alto volume de perdas em ${top.posto}.` });
+  }
+  const alertasFinal=alertas.slice(0,5);
+
+  const supMelhorPos = comparativo.filter(s=>s.pos).sort((a,b)=>b.pos.pct-a.pos.pct)[0];
+  const supPiorPos = comparativo.filter(s=>s.pos).sort((a,b)=>a.pos.pct-b.pos.pct)[0];
+  const resumoPartes=[];
+  const acimaMeta=[], abaixoMeta=[];
+  if (cardPos.modo!=='semdados') (cardPos.status==='verde'?acimaMeta:abaixoMeta).push('POS');
+  if (cardCsat.modo!=='semdados'&&cardCsat.status) (cardCsat.status==='verde'?acimaMeta:abaixoMeta).push('CSAT');
+  if (cardNs30.modo!=='semdados') (cardNs30.status==='verde'?acimaMeta:abaixoMeta).push('NS30');
+  if (blocoTempos.modo!=='semdados'&&blocoTempos.statusTMA) (blocoTempos.statusTMA==='verde'?acimaMeta:abaixoMeta).push('TMA');
+  if (blocoTempos.modo!=='semdados'&&blocoTempos.statusTME) (blocoTempos.statusTME==='verde'?acimaMeta:abaixoMeta).push('TME');
+  resumoPartes.push(acimaMeta.length?`Indicadores acima da meta: ${acimaMeta.join(', ')}.`:'Nenhum indicador acima da meta no período.');
+  resumoPartes.push(abaixoMeta.length?`Indicadores abaixo da meta: ${abaixoMeta.join(', ')}.`:'Nenhum indicador abaixo da meta no período.');
+  if (supMelhorPos) resumoPartes.push(`Supervisor com melhor desempenho em POS: ${supMelhorPos.supervisor} (${supMelhorPos.pos.pct.toFixed(1)}% da meta).`);
+  if (supPiorPos && supPiorPos.supervisor!==supMelhorPos?.supervisor) resumoPartes.push(`Supervisor com pior desempenho em POS: ${supPiorPos.supervisor} (${supPiorPos.pos.pct.toFixed(1)}% da meta).`);
+  if (radar[0]) resumoPartes.push(`Posto prioritário: ${radar[0].posto} (${radar[0].qtdProblemas} indicador(es) problemático(s): ${radar[0].motivos.join(', ')}).`);
+  const tempoAtipico=_opRankingMenorTempo('tma').ranking[0];
+  if (tempoAtipico) resumoPartes.push(`Posto com tempo mais atípico (TMA): ${tempoAtipico.posto} (${fmtTempo(tempoAtipico.seg)}).`);
+
+  return { alertasFinal, resumoPartes };
+}
+
+// ── Controles de filtro ──
+function _opToggleMes(m, evt) {
+  if (!_opMesesTodos().includes(m)) return;
+  if (evt?.shiftKey) { const i=_opMesesSel.indexOf(m); if(i>=0) _opMesesSel.splice(i,1); else _opMesesSel.push(m); }
+  else _opMesesSel = (_opMesesSel.length===1 && _opMesesSel[0]===m) ? [] : [m];
+  renderDashboardOperacional();
+}
+function _opLimparFiltros() { _opMesesSel=[]; _opFiltroPosto=''; _opFiltroSupervisor=''; renderDashboardOperacional(); }
+function _opAplicarFiltroSupervisor() {
+  _opFiltroSupervisor = document.getElementById('op-fil-supervisor')?.value || '';
+  _opFiltroPosto = ''; // trocar supervisor reseta o posto (mostra só os postos daquele supervisor)
+  renderDashboardOperacional();
+}
+function _opAplicarFiltroPosto() {
+  _opFiltroPosto = document.getElementById('op-fil-posto')?.value || '';
+  renderDashboardOperacional();
+}
+
+const _opCorStatus = s => s==='verde'?'#1baf7a':s==='amarelo'?'#eda100':'#e24b4a';
+const _opBgStatus  = s => s==='verde'?'rgba(27,175,122,.1)':s==='amarelo'?'rgba(237,161,0,.1)':'rgba(226,75,74,.1)';
+const _opBdStatus  = s => s==='verde'?'rgba(27,175,122,.3)':s==='amarelo'?'rgba(237,161,0,.3)':'rgba(226,75,74,.3)';
+const _opLabelStatus = s => s==='verde'?'Dentro da meta':s==='amarelo'?'No limite da meta':'Fora da meta';
+
+// ── Render principal ─────────────────────────────────────────────────────
+async function renderDashboardOperacional() {
+  if (currentUser?.role!=='admin' && currentUser?.cargo!=='Supervisor Comercial') return;
+  const wrap = document.getElementById('op-dash-wrap'); if (!wrap) return;
+  wrap.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text3)">⏳ Carregando dados operacionais...</div>';
+  await _opGarantirDadosCarregados();
+
+  const mesesTodos = _opMesesTodos();
+  if (!mesesTodos.length) {
+    wrap.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text3)">Nenhum dado importado ainda em Indicadores, CSAT ou POS.</div>';
+    return;
+  }
+
+  const postosDisp = _opFiltroSupervisor ? allPostos.filter(p=>p.supervisor===_opFiltroSupervisor).map(p=>p.nome).sort() : _opPostosDisponiveis();
+  const supervisoresDisp = _opSupervisoresDisponiveis();
+  const selLabel = _opMesesSel.length ? _opMesesSel.map(_indMesLabel).join(', ') : `Todos (${mesesTodos.length})`;
+
+  const cardPos = _opCalcCardPOS();
+  const cardCsat = _opCalcCardCSAT();
+  const cardNs30 = _opCalcCardNS30();
+  const cardPerd = _opCalcCardSenhasPerdidas();
+  const blocoTempos = _opCalcBlocoTempos();
+  const resultadoOp = _opCalcResultadoOperacional(cardPos,cardCsat,cardNs30,blocoTempos);
+  const radar = _opCalcRadar(cardPos,cardCsat,cardNs30);
+  const comparativo = _opCalcComparativoSupervisores();
+  const { alertasFinal, resumoPartes } = _opCalcAlertasEResumo(cardPos,cardCsat,cardNs30,cardPerd,blocoTempos,radar,comparativo);
+
+  const rankPos=_opRankingMenorPOS(), rankCsat=_opRankingMenorCSAT(), rankNs30=_opRankingMenorNS30();
+  const rankPerd=_opRankingSenhasPerdidas(), rankTma=_opRankingMenorTempo('tma'), rankTme=_opRankingMenorTempo('tme');
+
+  const cardHTML = (titulo, card, corpo) => `
+    <div style="background:${card.modo!=='semdados'?_opBgStatus(card.status):'var(--surface2)'};border:1px solid ${card.modo!=='semdados'?_opBdStatus(card.status):'rgba(255,255,255,.07)'};border-radius:12px;padding:14px">
+      <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:6px">${titulo}</div>
+      ${card.modo==='semdados' ? '<div style="font-size:13px;color:var(--text3);margin-top:8px">Sem dados para o período/posto</div>' : corpo}
+    </div>`;
+
+  wrap.innerHTML = `
+    <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">Mês</div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:7px">
+      ${mesesTodos.map(m=>{ const ativo=_opMesesSel.includes(m);
+        return `<button onclick="_opToggleMes('${m}',event)" title="Clique: selecionar. Shift+clique: acumular."
+          style="font-size:11px;padding:3px 10px;border-radius:14px;cursor:pointer;border:1px solid ${ativo?'transparent':'rgba(255,255,255,.22)'};background:${ativo?'#2a78d6':'transparent'};color:${ativo?'#fff':'var(--text2)'};transition:all .12s">${_indMesLabel(m)}</button>`;
+      }).join('')}
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:12px;align-items:flex-end;flex-wrap:wrap">
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Supervisor</label>
+        <select class="form-select" id="op-fil-supervisor" style="min-width:160px" onchange="_opAplicarFiltroSupervisor()">
+          <option value="">Todos</option>
+          ${supervisoresDisp.map(s=>`<option value="${s}" ${_opFiltroSupervisor===s?'selected':''}>${s}</option>`).join('')}
+        </select></div>
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Posto</label>
+        <select class="form-select" id="op-fil-posto" style="min-width:200px" onchange="_opAplicarFiltroPosto()">
+          <option value="">Todos os postos</option>
+          ${postosDisp.map(p=>`<option value="${p}" ${_opFiltroPosto===p?'selected':''}>${p}</option>`).join('')}
+        </select></div>
+      <button onclick="_opLimparFiltros()" style="font-size:11px;padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.18);background:transparent;color:var(--text3);cursor:pointer">Limpar filtros</button>
+      <span style="font-size:11px;background:rgba(42,120,214,.12);color:#185fa5;padding:3px 10px;border-radius:12px;border:1px solid rgba(42,120,214,.25);align-self:center">📅 ${selLabel}</span>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Cards</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px">
+      ${cardHTML('POS', cardPos, cardPos.modo!=='semdados'?`
+        <div style="font-size:22px;font-weight:800;color:${_opCorStatus(cardPos.status)}">${cardPos.pct.toFixed(1)}%</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">Resultado: R$ ${cardPos.resultado.toLocaleString('pt-BR',{minimumFractionDigits:2})} · Meta: R$ ${cardPos.meta.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+        <div style="font-size:11px;color:var(--text3)">Diferença: R$ ${cardPos.diferenca.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+        ${cardPos.resultadoAnterior!==null?`<div style="font-size:11px;color:var(--text3)">Mês anterior: R$ ${cardPos.resultadoAnterior.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`:''}
+        <div style="font-size:11px;font-weight:700;color:${_opCorStatus(cardPos.status)};margin-top:6px">${_opLabelStatus(cardPos.status)}</div>`:'')}
+      ${cardHTML('CSAT', cardCsat, cardCsat.modo!=='semdados'?`
+        <div style="font-size:22px;font-weight:800;color:${cardCsat.status?_opCorStatus(cardCsat.status):'var(--text)'}">${cardCsat.nota!==null?cardCsat.nota.toFixed(2):'—'}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">Meta: ${cardCsat.meta.toFixed(2)} · ${cardCsat.totalPesq} pesquisa(s)</div>
+        ${cardCsat.resultadoAnterior!==null?`<div style="font-size:11px;color:var(--text3)">Mês anterior: ${cardCsat.resultadoAnterior.toFixed(2)}</div>`:''}
+        ${cardCsat.status?`<div style="font-size:11px;font-weight:700;color:${_opCorStatus(cardCsat.status)};margin-top:6px">${_opLabelStatus(cardCsat.status)}</div>`:''}`:'')}
+      ${cardHTML('NS30', cardNs30, cardNs30.modo!=='semdados'?`
+        <div style="font-size:22px;font-weight:800;color:${_opCorStatus(cardNs30.status)}">${cardNs30.resultado.toFixed(1)}%</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">Meta: ${cardNs30.meta}% · Diferença: ${cardNs30.diferenca.toFixed(1)}p.p.</div>
+        <div style="font-size:11px;color:var(--text3)">Total: ${cardNs30.totalSenhas.toLocaleString('pt-BR')} · Perdidas: ${cardNs30.senhasPerdidas.toLocaleString('pt-BR')}</div>
+        ${cardNs30.resultadoAnterior!==null?`<div style="font-size:11px;color:var(--text3)">Mês anterior: ${cardNs30.resultadoAnterior.toFixed(1)}%</div>`:''}
+        <div style="font-size:11px;font-weight:700;color:${_opCorStatus(cardNs30.status)};margin-top:6px">${_opLabelStatus(cardNs30.status)}</div>`:'')}
+      ${cardHTML('Senhas Perdidas', cardPerd, cardPerd.modo!=='semdados'?`
+        <div style="font-size:22px;font-weight:800;color:var(--text)">${cardPerd.quantidade.toLocaleString('pt-BR')}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">${cardPerd.pct.toFixed(1)}% do volume total</div>
+        ${cardPerd.resultadoAnterior!==null?`<div style="font-size:11px;color:var(--text3)">Mês anterior: ${cardPerd.resultadoAnterior.toLocaleString('pt-BR')}</div>`:''}
+        <div style="font-size:11px;color:var(--text3);margin-top:6px">Sem meta formal — não conta no Resultado Operacional</div>`:'')}
+    </div>
+
+    <div style="background:var(--surface2);border-radius:12px;padding:14px;margin-bottom:16px">
+      <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:8px">TEMPOS DE ATENDIMENTO</div>
+      ${blocoTempos.modo==='semdados' ? '<div style="font-size:13px;color:var(--text3)">Sem dados para o período/posto</div>' : `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div>
+          <div style="font-size:11px;color:var(--text3)">TMA</div>
+          <div style="font-size:20px;font-weight:800;color:${blocoTempos.statusTMA?_opCorStatus(blocoTempos.statusTMA):'var(--text)'}">${fmtTempo(blocoTempos.tmaSeg)}</div>
+          <div style="font-size:11px;color:var(--text3)">Meta: ${fmtTempo(blocoTempos.metaTmaSeg)} · Diferença: ${blocoTempos.tmaSeg!==null?fmtTempo(Math.abs(blocoTempos.tmaSeg-blocoTempos.metaTmaSeg)):'—'}</div>
+          ${blocoTempos.tmaAnteriorSeg!==null?`<div style="font-size:11px;color:var(--text3)">Mês anterior: ${fmtTempo(blocoTempos.tmaAnteriorSeg)}</div>`:''}
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text3)">TME</div>
+          <div style="font-size:20px;font-weight:800;color:${blocoTempos.statusTME?_opCorStatus(blocoTempos.statusTME):'var(--text)'}">${fmtTempo(blocoTempos.tmeSeg)}</div>
+          <div style="font-size:11px;color:var(--text3)">Meta: ${fmtTempo(blocoTempos.metaTmeSeg)} · Diferença: ${blocoTempos.tmeSeg!==null?fmtTempo(Math.abs(blocoTempos.tmeSeg-blocoTempos.metaTmeSeg)):'—'}</div>
+          ${blocoTempos.tmeAnteriorSeg!==null?`<div style="font-size:11px;color:var(--text3)">Mês anterior: ${fmtTempo(blocoTempos.tmeAnteriorSeg)}</div>`:''}
+        </div>
+      </div>`}
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Resultado Operacional</div>
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:16px">
+      ${resultadoOp ? `<div style="font-size:15px;font-weight:700">${resultadoOp.atingidas} atingiram a meta · ${resultadoOp.abaixo} abaixo · ${resultadoOp.semDados} sem dados</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">${resultadoOp.todos.map(i=>`${i.nome}: ${!i.disponivel?'sem dados':(i.atingida?'✅':'⚠️')}`).join(' · ')}</div>` : '<div style="color:var(--text3);font-size:13px">Sem dados no período</div>'}
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Resumo Executivo</div>
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:16px;font-size:13px;line-height:1.8">
+      ${resumoPartes.map(p=>`<div>${p}</div>`).join('')}
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Evolução Mensal</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">Evolução POS</div>
+        <div style="position:relative;width:100%;height:160px"><canvas id="op-c-pos"></canvas></div>
+      </div>
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">Evolução CSAT</div>
+        <div style="position:relative;width:100%;height:160px"><canvas id="op-c-csat"></canvas></div>
+      </div>
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">NS30 + Senhas Perdidas</div>
+        <div style="position:relative;width:100%;height:160px"><canvas id="op-c-ns30"></canvas></div>
+      </div>
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">TMA + TME</div>
+        <div style="position:relative;width:100%;height:160px"><canvas id="op-c-tempos"></canvas></div>
+      </div>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Comparativo entre Supervisores</div>
+    <div style="overflow-x:auto;margin-bottom:16px">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:700px">
+        <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15);background:var(--surface3)">
+          ${['Supervisor','Postos','POS','CSAT','NS30','Senhas Perdidas','Senhas Consideradas','TMA','TME'].map(h=>`<th style="padding:7px 10px;text-align:left;color:var(--text3);font-weight:600">${h}</th>`).join('')}
+        </tr></thead>
+        <tbody>${comparativo.map(s=>`
+          <tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+            <td style="padding:6px 10px;font-weight:600">${s.supervisor}</td>
+            <td style="padding:6px 10px">${s.qtdPostos}</td>
+            <td style="padding:6px 10px">${s.pos?s.pos.pct.toFixed(1)+'%':'—'}</td>
+            <td style="padding:6px 10px">${s.csat?`${s.csat.nota.toFixed(2)} (${s.csat.pesquisas})`:'—'}</td>
+            <td style="padding:6px 10px">${s.ns30!==null?s.ns30.toFixed(1)+'%':'—'}</td>
+            <td style="padding:6px 10px">${s.senhasPerdidas!==null?s.senhasPerdidas.toLocaleString('pt-BR'):'—'}</td>
+            <td style="padding:6px 10px">${s.senhasConsideradas!==null?s.senhasConsideradas.toLocaleString('pt-BR'):'—'}</td>
+            <td style="padding:6px 10px">${fmtTempo(s.tmaSeg)}</td>
+            <td style="padding:6px 10px">${fmtTempo(s.tmeSeg)}</td>
+          </tr>`).join('')}</tbody>
+      </table>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Rankings</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px">Menor POS</div>
+        ${rankPos.slice(0,8).map((p,i)=>`<div style="font-size:12px;padding:3px 0;color:var(--text2)">${i+1}º ${p.posto} — ${p.pct.toFixed(1)}%</div>`).join('')||'<div style="color:var(--text3);font-size:12px">Sem dados</div>'}
+      </div>
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px">Menor CSAT</div>
+        ${rankCsat.slice(0,8).map((p,i)=>`<div style="font-size:12px;padding:3px 0;color:var(--text2)">${i+1}º ${p.posto} — ${p.nota.toFixed(2)} (${p.pesquisas})</div>`).join('')||'<div style="color:var(--text3);font-size:12px">Sem dados</div>'}
+      </div>
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px">Menor NS30</div>
+        ${rankNs30.slice(0,8).map((p,i)=>`<div style="font-size:12px;padding:3px 0;color:var(--text2)">${i+1}º ${p.posto} — ${p.ns30.toFixed(1)}%</div>`).join('')||'<div style="color:var(--text3);font-size:12px">Sem dados</div>'}
+      </div>
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px">Senhas Perdidas — Maior Quantidade / Maior %</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Por quantidade:</div>
+        ${rankPerd.porQtd.slice(0,4).map((p,i)=>`<div style="font-size:12px;padding:2px 0;color:var(--text2)">${i+1}º ${p.posto} — ${p.perdidas}</div>`).join('')||'<div style="color:var(--text3);font-size:12px">Sem dados</div>'}
+        <div style="font-size:11px;color:var(--text3);margin:6px 0 4px">Por percentual:</div>
+        ${rankPerd.porPct.slice(0,4).map((p,i)=>`<div style="font-size:12px;padding:2px 0;color:var(--text2)">${i+1}º ${p.posto} — ${p.pct.toFixed(1)}%</div>`).join('')||'<div style="color:var(--text3);font-size:12px">Sem dados</div>'}
+      </div>
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px">Menor TMA</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Média da operação: ${fmtTempo(rankTma.media)}</div>
+        ${rankTma.ranking.slice(0,8).map((p,i)=>`<div style="font-size:12px;padding:3px 0;color:var(--text2)">${i+1}º ${p.posto} — ${fmtTempo(p.seg)} ${p.volume?`(${p.volume} atend.)`:''} ${i===0&&rankTma.media!==null?'<span style="color:#eda100">— Resultado atípico, recomenda-se validação</span>':''}</div>`).join('')||'<div style="color:var(--text3);font-size:12px">Sem dados</div>'}
+      </div>
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px">Menor TME</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Média da operação: ${fmtTempo(rankTme.media)}</div>
+        ${rankTme.ranking.slice(0,8).map((p,i)=>`<div style="font-size:12px;padding:3px 0;color:var(--text2)">${i+1}º ${p.posto} — ${fmtTempo(p.seg)} ${p.volume?`(${p.volume} atend.)`:''} ${i===0&&rankTme.media!==null?'<span style="color:#eda100">— Resultado atípico, recomenda-se validação</span>':''}</div>`).join('')||'<div style="color:var(--text3);font-size:12px">Sem dados</div>'}
+      </div>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Radar Operacional</div>
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07);margin-bottom:16px;max-height:340px;overflow-y:auto">
+      ${radar.length ? radar.map((r,i)=>{
+        const cor = r.classificacao==='Crítico'?'#e24b4a':r.classificacao==='Risco'?'#f59e0b':'#eda100';
+        return `<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:11px;color:var(--text3);min-width:22px">${i+1}º</span>
+            <span style="font-size:12px;flex:1;font-weight:600">${r.posto}</span>
+            <span style="font-size:10px;font-weight:700;color:${cor};background:${cor}1a;border-radius:8px;padding:1px 8px">${r.classificacao}</span>
+          </div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px;margin-left:30px">${r.motivos.join(' · ')}</div>
+        </div>`;
+      }).join('') : '<div style="color:var(--text3);font-size:13px">Nenhum posto com problema no período — Controlado</div>'}
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Alertas</div>
+    <div style="margin-bottom:16px">
+      ${alertasFinal.length ? alertasFinal.map(a=>`
+        <details style="background:var(--surface2);border-radius:10px;padding:12px 14px;border:1px solid rgba(255,255,255,.07);margin-bottom:8px">
+          <summary style="cursor:pointer;font-size:13px;font-weight:600">⚠ ${a.posto} — ${a.indicador} <span style="font-size:10px;font-weight:700;color:#185fa5;background:rgba(42,120,214,.12);border:1px solid rgba(42,120,214,.25);border-radius:10px;padding:1px 8px;margin-left:6px">${a.supervisor}</span></summary>
+          <div style="margin-top:8px;font-size:12px;color:var(--text2)"><strong>Motivo:</strong> ${a.motivo}<br><strong>Recomendação:</strong> ${a.recomendacao}</div>
+        </details>`).join('') : '<div style="color:var(--text3);font-size:13px">Nenhum alerta no momento.</div>'}
+    </div>
+  `;
+
+  setTimeout(() => _opRenderCharts(mesesTodos), 40);
+}
+
+let _chartOpPos=null, _chartOpCsat=null, _chartOpNs30=null, _chartOpTempos=null;
+function _opRenderCharts(mesesTodos) {
+  const tickC='#a0aec0', gridC='rgba(255,255,255,.06)';
+  const mesesPos = mesesTodos.filter(m=>[...new Set(posAllResultados.map(d=>d.mesRef))].includes(m));
+  const mesesCsat = mesesTodos.filter(m=>[...new Set(csatAllData.map(d=>d.mesRef))].includes(m));
+  const mesesInd = mesesTodos.filter(m=>[...new Set(allIndicadores.map(d=>d.mesRef))].includes(m));
+
+  _chartOpPos = _dstroyIndChart(_chartOpPos);
+  const ctxPos = document.getElementById('op-c-pos');
+  if (ctxPos && mesesPos.length) {
+    const dadosBase = _opFiltrarPostoSup(posAllResultados, 'postoNome');
+    const val = mesesPos.map(m=>dadosBase.filter(d=>d.mesRef===m).reduce((s,d)=>s+(d.valor||0),0));
+    _chartOpPos = new Chart(ctxPos, {type:'line', data:{labels:mesesPos.map(_indMesLabel), datasets:[{data:val,borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,.12)',borderWidth:2,fill:true,tension:.35,pointRadius:4,pointBackgroundColor:'#3b82f6'}]},
+      options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},plugins:{legend:{display:false}},scales:{x:{ticks:{color:tickC,font:{size:10}},grid:{display:false}},y:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true}}},
+      plugins:[{id:'opP',afterDatasetsDraw(c){const{ctx}=c;c.data.datasets[0].data.forEach((v,i)=>{if(!v)return;const el=c.getDatasetMeta(0).data[i];ctx.save();ctx.fillStyle='#3b82f6';ctx.font='bold 9px sans-serif';ctx.textAlign='center';ctx.fillText('R$ '+Math.round(v/1000)+'k',el.x,el.y-9);ctx.restore();});}}]});
+  }
+
+  _chartOpCsat = _dstroyIndChart(_chartOpCsat);
+  const ctxCsat = document.getElementById('op-c-csat');
+  if (ctxCsat && mesesCsat.length) {
+    const dadosBase = _opFiltrarPostoSup(csatAllData, 'postoNome');
+    const notas = mesesCsat.map(m=>{ const d=dadosBase.filter(x=>x.mesRef===m); const p=d.reduce((s,x)=>s+(x.pesquisas||0),0); return p>0?+(d.reduce((s,x)=>s+(x.notaMedia||0)*(x.pesquisas||0),0)/p).toFixed(2):null; });
+    const pesqs = mesesCsat.map(m=>dadosBase.filter(x=>x.mesRef===m).reduce((s,x)=>s+(x.pesquisas||0),0));
+    _chartOpCsat = new Chart(ctxCsat, {data:{labels:mesesCsat.map(_indMesLabel), datasets:[
+      {type:'bar',label:'Pesquisas',data:pesqs,backgroundColor:'rgba(148,163,184,.35)',yAxisID:'yQ',order:2},
+      {type:'line',label:'Nota',data:notas,borderColor:'#eda100',backgroundColor:'transparent',borderWidth:2,tension:.3,pointRadius:4,pointBackgroundColor:'#eda100',yAxisID:'yN',order:1}
+    ]}, options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},plugins:{legend:{display:true,position:'bottom',labels:{color:tickC,font:{size:9},boxWidth:10}}},
+      scales:{x:{ticks:{color:tickC,font:{size:10}},grid:{display:false}}, yQ:{position:'left',ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true}, yN:{position:'right',min:0,max:5,ticks:{color:tickC,font:{size:10}},grid:{drawOnChartArea:false}}}}});
+  }
+
+  _chartOpNs30 = _dstroyIndChart(_chartOpNs30);
+  const ctxNs30 = document.getElementById('op-c-ns30');
+  if (ctxNs30 && mesesInd.length) {
+    const dadosBase = _opFiltrarPostoSup(allIndicadores, 'postoNome');
+    const ns30 = mesesInd.map(m=>{ const d=dadosBase.filter(x=>x.mesRef===m); const c=_opConsolidarIndicadores(d.length?d:[{}]); return d.length?c.ns30:null; });
+    const perd = mesesInd.map(m=>dadosBase.filter(x=>x.mesRef===m).reduce((s,x)=>s+(parseInt(x.senhasPerdidas)||0),0));
+    _chartOpNs30 = new Chart(ctxNs30, {data:{labels:mesesInd.map(_indMesLabel), datasets:[
+      {type:'bar',label:'Senhas Perdidas',data:perd,backgroundColor:'rgba(226,75,74,.5)',yAxisID:'yQ',order:2},
+      {type:'line',label:'NS30',data:ns30,borderColor:'#1baf7a',backgroundColor:'transparent',borderWidth:2,tension:.3,pointRadius:4,pointBackgroundColor:'#1baf7a',yAxisID:'yP',order:1},
+      {type:'line',label:`Meta ${OP_META_NS30}%`,data:mesesInd.map(()=>OP_META_NS30),borderColor:'#94a3b8',borderWidth:1.5,borderDash:[6,4],pointRadius:0,yAxisID:'yP',order:0}
+    ]}, options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},plugins:{legend:{display:true,position:'bottom',labels:{color:tickC,font:{size:9},boxWidth:10}}},
+      scales:{x:{ticks:{color:tickC,font:{size:10}},grid:{display:false}}, yQ:{position:'left',ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true}, yP:{position:'right',ticks:{color:tickC,font:{size:10},callback:v=>v+'%'},grid:{drawOnChartArea:false}}}}});
+  }
+
+  _chartOpTempos = _dstroyIndChart(_chartOpTempos);
+  const ctxTempos = document.getElementById('op-c-tempos');
+  if (ctxTempos && mesesInd.length) {
+    const dadosBase = _opFiltrarPostoSup(allIndicadores, 'postoNome');
+    const tma = mesesInd.map(m=>{ const d=dadosBase.filter(x=>x.mesRef===m); if(!d.length) return null; return _opConsolidarIndicadores(d).tmaSeg; });
+    const tme = mesesInd.map(m=>{ const d=dadosBase.filter(x=>x.mesRef===m); if(!d.length) return null; return _opConsolidarIndicadores(d).tmeSeg; });
+    _chartOpTempos = new Chart(ctxTempos, {type:'line', data:{labels:mesesInd.map(_indMesLabel), datasets:[
+      {label:'TMA',data:tma,borderColor:'#3b82f6',backgroundColor:'transparent',borderWidth:2,tension:.3,pointRadius:4,pointBackgroundColor:'#3b82f6'},
+      {label:'TME',data:tme,borderColor:'#eda100',backgroundColor:'transparent',borderWidth:2,tension:.3,pointRadius:4,pointBackgroundColor:'#eda100'},
+      {label:'Meta TMA',data:mesesInd.map(()=>OP_META_TMA_SEG),borderColor:'rgba(59,130,246,.4)',borderDash:[6,4],pointRadius:0},
+      {label:'Meta TME',data:mesesInd.map(()=>OP_META_TME_SEG),borderColor:'rgba(237,161,0,.4)',borderDash:[6,4],pointRadius:0}
+    ]}, options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},plugins:{legend:{display:true,position:'bottom',labels:{color:tickC,font:{size:9},boxWidth:10}}},
+      scales:{x:{ticks:{color:tickC,font:{size:10}},grid:{display:false}}, y:{ticks:{color:tickC,font:{size:10},callback:v=>fmtTempo(v)},grid:{color:gridC},beginAtZero:true}}},
+      plugins:[{id:'opT',afterDatasetsDraw(c){const{ctx}=c;[0,1].forEach(di=>{c.data.datasets[di].data.forEach((v,i)=>{if(v===null)return;const el=c.getDatasetMeta(di).data[i];ctx.save();ctx.fillStyle=di===0?'#3b82f6':'#eda100';ctx.font='bold 9px sans-serif';ctx.textAlign='center';ctx.fillText(fmtTempo(v),el.x,el.y-9);ctx.restore();});});}}]});
+  }
+}
+
 
 // ══════════════════════════════════════════════════════════════════════════
 // FERRAMENTAS ADMINISTRATIVAS DE MANUTENÇÃO — window.* (console do navegador)
