@@ -17580,11 +17580,28 @@ async function confirmarImportacaoEsforcoTroca() {
 
 // ── Funções puras de cálculo — BASE OFICIAL ─────────────────────────────────
 function _trocaCalcRankingPostos(dados) {
-  const cnt={}; dados.forEach(r=>{if(r.loja)cnt[r.loja]=(cnt[r.loja]||0)+1;});
-  return Object.entries(cnt).sort((a,b)=>b[1]-a[1]);
+  const cnt={}; const causasPorPosto={};
+  dados.forEach(r=>{
+    if(!r.loja) return;
+    cnt[r.loja]=(cnt[r.loja]||0)+1;
+    if (r.causaRaiz) {
+      if (!causasPorPosto[r.loja]) causasPorPosto[r.loja] = {};
+      causasPorPosto[r.loja][r.causaRaiz] = (causasPorPosto[r.loja][r.causaRaiz]||0)+1;
+    }
+  });
+  return Object.entries(cnt).sort((a,b)=>b[1]-a[1]).map(([posto,v])=>{
+    const causas = Object.entries(causasPorPosto[posto]||{})
+      .sort((a,b)=> b[1]-a[1] || a[0].localeCompare(b[0],'pt')); // maior recorrência; empate → alfabética
+    return [posto, v, causas.length ? causas[0][0] : null];
+  });
 }
 function _trocaCalcRankingAtendentes(dados) {
-  const cnt={}; dados.forEach(r=>{if(r.atendenteCurto)cnt[r.atendenteCurto]=(cnt[r.atendenteCurto]||0)+1;});
+  // Exibição consolidada por NOME NEOBPO (padrão operacional) — Responsável/Nome Salles
+  // continuam gravados normalmente no Firestore, sem alteração.
+  const cnt={}; dados.forEach(r=>{
+    const nome = r.nomeNeobpo || r.atendenteCurto;
+    if(nome) cnt[nome]=(cnt[nome]||0)+1;
+  });
   return Object.entries(cnt).sort((a,b)=>b[1]-a[1]);
 }
 function _trocaCalcRankingCausas(dados) {
@@ -17916,10 +17933,21 @@ function _renderTrocaCharts(dados) {
       <span style="font-size:12px;font-weight:600;color:${cor};min-width:22px;text-align:right">${v}</span>
     </div>`;
 
+  const _trocaLinhaRankPosto = (label, v, max, cor, causaPrincipal) => `
+    <div style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+      <div style="display:flex;align-items:center;gap:7px">
+        <span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${label}">${label}</span>
+        <div style="width:50px;height:5px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden">
+          <div style="height:100%;background:${cor};width:${Math.round(v/max*100)}%;border-radius:3px"></div></div>
+        <span style="font-size:12px;font-weight:600;color:${cor};min-width:22px;text-align:right">${v}</span>
+      </div>
+      ${causaPrincipal?`<div style="font-size:11px;color:var(--text3);margin-top:2px">Principal Causa: ${causaPrincipal}</div>`:''}
+    </div>`;
+
   const rankPostos = _trocaCalcRankingPostos(dados);
   const maxP = rankPostos[0]?.[1]||1;
   const elRP = document.getElementById('troca-rank-postos');
-  if (elRP) elRP.innerHTML = rankPostos.length ? rankPostos.slice(0,10).map(([p,v])=>_trocaLinhaRank(p,v,maxP,'#e24b4a')).join('') : '<div style="color:var(--text3);font-size:13px">Sem dados</div>';
+  if (elRP) elRP.innerHTML = rankPostos.length ? rankPostos.slice(0,10).map(([p,v,causaPrincipal])=>_trocaLinhaRankPosto(p,v,maxP,'#e24b4a',causaPrincipal)).join('') : '<div style="color:var(--text3);font-size:13px">Sem dados</div>';
 
   const rankAtend = _trocaCalcRankingAtendentes(dados);
   const maxA = rankAtend[0]?.[1]||1;
