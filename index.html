@@ -17224,17 +17224,41 @@ function _esforcoSugerirAno() {
 
 // ── BASE OFICIAL — Analisar / Confirmar ─────────────────────────────────────
 async function analisarArquivoTrocaOficial() {
+  console.log('[TrocaOficial][DIAG] INÍCIO');
+  console.time('[TrocaOficial][DIAG] TOTAL');
+
   const fi = document.getElementById('trocaof-import-file');
   const dataBase = document.getElementById('trocaof-data-base')?.value || '';
-  if (!fi?.files?.length) { toast('Selecione um arquivo Excel','err'); return; }
+  if (!fi?.files?.length) { console.log('[TrocaOficial][DIAG] Sem arquivo selecionado — abortando'); toast('Selecione um arquivo Excel','err'); console.timeEnd('[TrocaOficial][DIAG] TOTAL'); return; }
+  console.log('[TrocaOficial][DIAG] Arquivo selecionado:', fi.files[0].name, fi.files[0].size, 'bytes');
+
   let operacaoId;
-  try { operacaoId = await getOperacaoId(); }
-  catch (e) { toast('Identificador da operação (operacaoId) não configurado. Configure em Diagnóstico de Importações.', 'err'); return; }
+  console.time('[TrocaOficial][DIAG] getOperacaoId');
+  try {
+    operacaoId = await getOperacaoId();
+    console.timeEnd('[TrocaOficial][DIAG] getOperacaoId');
+    console.log('[TrocaOficial][DIAG] operacaoId resolvido:', operacaoId);
+  } catch (e) {
+    console.timeEnd('[TrocaOficial][DIAG] getOperacaoId');
+    console.log('[TrocaOficial][DIAG] getOperacaoId falhou:', e);
+    toast('Identificador da operação (operacaoId) não configurado. Configure em Diagnóstico de Importações.', 'err');
+    console.timeEnd('[TrocaOficial][DIAG] TOTAL');
+    return;
+  }
 
   toast('⏳ Analisando arquivo...','ok');
   try {
+    console.time('[TrocaOficial][DIAG] arrayBuffer()');
     const buf = await fi.files[0].arrayBuffer();
+    console.timeEnd('[TrocaOficial][DIAG] arrayBuffer()');
+    console.log('[TrocaOficial][DIAG] Arquivo carregado —', buf.byteLength, 'bytes em memória');
+
+    console.time('[TrocaOficial][DIAG] XLSX.read (parse do workbook)');
     const wb  = XLSX.read(buf, {type:'array', cellDates:true});
+    console.timeEnd('[TrocaOficial][DIAG] XLSX.read (parse do workbook)');
+    console.log('[TrocaOficial][DIAG] Workbook lido — abas encontradas:', wb.SheetNames);
+
+    console.time('[TrocaOficial][DIAG] Selecionar aba');
     let wsName = wb.SheetNames[0];
     for (const name of wb.SheetNames) {
       const ws = wb.Sheets[name]; if (!ws['!ref']) continue;
@@ -17242,12 +17266,21 @@ async function analisarArquivoTrocaOficial() {
       const cur = XLSX.utils.decode_range(wb.Sheets[wsName]['!ref']||'A1:A1');
       if (rng.e.r > cur.e.r) wsName = name;
     }
-    const ws = wb.Sheets[wsName];
-    const rawArr = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
-    if (rawArr.length < 2) { toast('Planilha sem dados','err'); return; }
+    console.timeEnd('[TrocaOficial][DIAG] Selecionar aba');
+    console.log('[TrocaOficial][DIAG] Aba selecionada:', wsName, '— !ref (intervalo usado):', wb.Sheets[wsName]['!ref']);
 
+    const ws = wb.Sheets[wsName];
+    console.time('[TrocaOficial][DIAG] sheet_to_json (converter linhas)');
+    const rawArr = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+    console.timeEnd('[TrocaOficial][DIAG] sheet_to_json (converter linhas)');
+    console.log('[TrocaOficial][DIAG] Linhas convertidas — total (incl. cabeçalho):', rawArr.length);
+    if (rawArr.length < 2) { console.log('[TrocaOficial][DIAG] Planilha sem dados — abortando'); toast('Planilha sem dados','err'); console.timeEnd('[TrocaOficial][DIAG] TOTAL'); return; }
+
+    console.time('[TrocaOficial][DIAG] Cabeçalhos / colMap');
     const colMap = {};
     rawArr[0].forEach((h,i) => { if (h!=null && h!=='') colMap[_trocaNormCol(String(h))] = i; });
+    console.timeEnd('[TrocaOficial][DIAG] Cabeçalhos / colMap');
+    console.log('[TrocaOficial][DIAG] Cabeçalhos lidos — colunas normalizadas:', Object.keys(colMap));
     console.log('[TrocaOficial] Colunas:', Object.keys(colMap));
 
     const resolveCol = aliasKey => {
@@ -17262,8 +17295,11 @@ async function analisarArquivoTrocaOficial() {
       return String(v ?? '').trim();
     };
 
+    console.time('[TrocaOficial][DIAG] Resolver aliases obrigatórios');
     const idxMes = resolveCol('MES'), idxAno = resolveCol('ANO'), idxLoja = resolveCol('LOJA'), idxCausa = resolveCol('CAUSA RAIZ');
     const idxResp = resolveCol('RESPONSAVEL'), idxSalles = resolveCol('NOME SALLES'), idxNeobpo = resolveCol('NOME NEOBPO');
+    console.timeEnd('[TrocaOficial][DIAG] Resolver aliases obrigatórios');
+    console.log('[TrocaOficial][DIAG] Aliases resolvidos — índices:', {idxMes, idxAno, idxLoja, idxCausa, idxResp, idxSalles, idxNeobpo});
 
     const faltantes = [];
     if (idxMes===undefined) faltantes.push('MÊS');
@@ -17272,19 +17308,25 @@ async function analisarArquivoTrocaOficial() {
     if (idxCausa===undefined) faltantes.push('CAUSA RAIZ');
     if (idxResp===undefined && idxSalles===undefined && idxNeobpo===undefined) faltantes.push('Nome do Atendente (Responsável / NOME SALLES / NOME NEOBPO)');
     if (faltantes.length) {
+      console.log('[TrocaOficial][DIAG] Colunas obrigatórias faltando — abortando:', faltantes);
       toast(`Colunas obrigatórias não encontradas: ${faltantes.join(', ')}. Colunas disponíveis: ${Object.keys(colMap).slice(0,10).join(', ')}...`, 'err');
+      console.timeEnd('[TrocaOficial][DIAG] TOTAL');
       return;
     }
 
+    console.time('[TrocaOficial][DIAG] Montar diagnóstico da planilha');
     _trocaOficialDiagPrevia = {
       reconhecidas: Object.keys(TROCA_OFICIAL_COL_ALIASES).filter(k=>resolveCol(k)!==undefined),
       naoEncontradas: Object.keys(TROCA_OFICIAL_COL_ALIASES).filter(k=>resolveCol(k)===undefined),
       colunasArquivo: Object.keys(colMap)
     };
+    console.timeEnd('[TrocaOficial][DIAG] Montar diagnóstico da planilha');
+    console.log('[TrocaOficial][DIAG] Diagnóstico da planilha criado:', _trocaOficialDiagPrevia);
 
+    console.time('[TrocaOficial][DIAG] Processar linhas (forEach)');
     const byMes = {};
     let totalLidos=0, totalValidos=0, totalMesInvalido=0;
-    rawArr.slice(1).forEach(row => {
+    rawArr.slice(1).forEach((row, rowIdx) => {
       if (!row || row.every(c => !c && c!==0)) return;
       totalLidos++;
       const mesRef = _trocaOficialResolverMesRef(row, idxAno, idxMes);
@@ -17317,19 +17359,30 @@ async function analisarArquivoTrocaOficial() {
       });
       totalValidos++;
     });
+    console.timeEnd('[TrocaOficial][DIAG] Processar linhas (forEach)');
+    console.log('[TrocaOficial][DIAG] Linhas processadas — lidos:', totalLidos, 'válidos:', totalValidos, 'mês inválido:', totalMesInvalido, 'meses detectados:', Object.keys(byMes));
 
     const mesesDetec = Object.keys(byMes).sort();
     if (!mesesDetec.length) {
+      console.log('[TrocaOficial][DIAG] Nenhum mês válido — abortando');
       toast(`Nenhum mês válido reconhecido (${totalMesInvalido} de ${totalLidos} linhas com mês não reconhecido). Importação bloqueada.`, 'err');
       renderTrocaFerramentas();
+      console.timeEnd('[TrocaOficial][DIAG] TOTAL');
       return;
     }
 
+    console.time('[TrocaOficial][DIAG] Montar prévia + render');
     _trocaOficialImportPrevia = { byMes, dataBase, operacaoId, totalLidos, totalValidos, totalMesInvalido };
     _trocaOficialImportSelecionados = new Set(mesesDetec);
+    console.log('[TrocaOficial][DIAG] Prévia criada — meses:', mesesDetec);
     renderTrocaFerramentas();
+    console.timeEnd('[TrocaOficial][DIAG] Montar prévia + render');
+    console.log('[TrocaOficial][DIAG] FIM');
+    console.timeEnd('[TrocaOficial][DIAG] TOTAL');
   } catch (e) {
     console.error('[TrocaOficial] Erro na análise:', e);
+    console.log('[TrocaOficial][DIAG] EXCEÇÃO capturada — ver acima para stack completo');
+    console.timeEnd('[TrocaOficial][DIAG] TOTAL');
     toast('Erro: ' + e.message, 'err');
   }
 }
