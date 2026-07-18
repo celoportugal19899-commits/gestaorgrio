@@ -18903,66 +18903,15 @@ async function _opGarantirDadosCarregados() {
   _opAllPos          = posAllResultados.map(d => ({...d, mesRef:_opNormMesRef(d.mesRef)}));
 }
 
-// ── DIAGNÓSTICO TEMPORÁRIO — meses brutos por base, antes/depois da normalização ──
-// Não corrige nada. Só inspeciona os valores reais que chegam ao Dashboard,
-// exatamente como solicitado, para identificar a causa comprovada da duplicidade
-// antes de qualquer tentativa de correção.
-function _opDiagnosticoMeses() {
-  const fontes = [
-    { nome: 'Indicadores', raw: allIndicadores },
-    { nome: 'CSAT', raw: csatAllData },
-    { nome: 'POS', raw: posAllResultados }
-  ];
-  const uniaoLinhas = {};
-
-  fontes.forEach(f => {
-    const porChave = {};
-    f.raw.forEach(d => {
-      const bruto = d.mesRef;
-      const tipo = bruto instanceof Date ? 'Date'
-        : (bruto && typeof bruto === 'object' && typeof bruto.toDate === 'function') ? 'Firestore Timestamp'
-        : typeof bruto;
-      const norm = _opNormMesRef(bruto);
-      if (!porChave[norm]) porChave[norm] = { count:0, brutosVistos:new Set(), tipo, exemploPosto:d.postoNome, exemploRegistro:d };
-      porChave[norm].count++;
-      porChave[norm].brutosVistos.add(JSON.stringify(bruto));
-
-      if (!uniaoLinhas[norm]) uniaoLinhas[norm] = { origens:new Set(), count:0, brutos:new Set() };
-      uniaoLinhas[norm].origens.add(f.nome);
-      uniaoLinhas[norm].count++;
-      uniaoLinhas[norm].brutos.add(JSON.stringify(bruto));
-    });
-
-    const tabela = Object.entries(porChave).map(([chave,v]) => ({
-      'mesRef bruto (exemplos)': [...v.brutosVistos].join(' | '),
-      'tipo JS': v.tipo,
-      '_opNormMesRef()': chave,
-      'chave de dedup': chave,
-      'ocorrências': v.count,
-      'exemplo postoNome': v.exemploPosto
-    }));
-    console.log(`[Dashboard Operacional] Diagnóstico meses — ${f.nome}`);
-    console.table(tabela);
-    console.log(`[Dashboard Operacional] Diagnóstico meses — ${f.nome} — exemplo de registro de origem por chave:`,
-      Object.fromEntries(Object.entries(porChave).map(([k,v])=>[k, v.exemploRegistro])));
-  });
-
-  const tabelaUniao = Object.entries(uniaoLinhas).sort((a,b)=>a[0].localeCompare(b[0])).map(([chave,v]) => ({
-    'valor bruto (exemplos)': [...v.brutos].join(' | '),
-    'valor normalizado': chave,
-    'chave de dedup': chave,
-    'ocorrências': v.count,
-    'base(s) de origem': [...v.origens].join(', ')
-  }));
-  console.log('[Dashboard Operacional] Diagnóstico meses — União final');
-  console.table(tabelaUniao);
-}
-
+// Lista canônica de competências do Dashboard Operacional: união deduplicada
+// de Indicadores + POS (bases operacionais principais). CSAT NUNCA alimenta esta
+// lista — seu histórico completo (inclusive meses muito anteriores ao período
+// operacional atual) não deve determinar quais meses aparecem no filtro; o CSAT
+// só é consultado DENTRO das competências já definidas por Indicadores/POS.
 function _opMesesTodos() {
   const mi=[...new Set(_opAllIndicadores.map(d=>d.mesRef))];
-  const mc=[...new Set(_opAllCsat.map(d=>d.mesRef))];
   const mp=[...new Set(_opAllPos.map(d=>d.mesRef))];
-  return [...new Set([...mi,...mc,...mp])].filter(Boolean).sort();
+  return [...new Set([...mi,...mp])].filter(Boolean).sort();
 }
 function _opPostosDisponiveis() { return allPostos.filter(p=>p.nome!=='Posto Teste').map(p=>p.nome).sort(); }
 function _opSupervisoresDisponiveis() { return [...new Set(allPostos.map(p=>p.supervisor).filter(Boolean))].sort(); }
@@ -19003,7 +18952,7 @@ function _opCalcCardPOS() {
 
 // ── Card CSAT — consolidação idêntica ao módulo CSAT: média ponderada por pesquisas ──
 function _opCalcCardCSAT() {
-  const mesesFonte=[...new Set(_opAllCsat.map(d=>d.mesRef))];
+  const mesesFonte=_opMesesTodos(); // lista canônica (Indicadores+POS) — nunca o histórico completo do CSAT
   if (!mesesFonte.length) return {modo:'semdados'};
   const meses=_opMesesConsiderados(mesesFonte);
   if (!meses.length) return {modo:'semdados'};
@@ -19138,7 +19087,7 @@ function _opRankingMenorPOS() {
   return Object.entries(porPosto).map(([posto,v])=>({posto, valor:v.valor, meta:v.meta, pct: v.meta>0?v.valor/v.meta*100:0})).sort((a,b)=>a.valor-b.valor);
 }
 function _opRankingMenorCSAT() {
-  const meses=_opMesesConsiderados([...new Set(_opAllCsat.map(d=>d.mesRef))]);
+  const meses=_opMesesConsiderados(_opMesesTodos()); // lista canônica (Indicadores+POS)
   const dados=_opFiltrarPostoSup(_opAllCsat.filter(d=>meses.includes(d.mesRef)),'postoNome');
   const porPosto={};
   dados.forEach(d=>{ if(!porPosto[d.postoNome]) porPosto[d.postoNome]={soma:0,pesq:0};
@@ -19195,7 +19144,7 @@ function _opCalcRadar(cardPos,cardCsat,cardNs30) {
 // ── Comparativo entre Supervisores (Leonardo x Victor) ──
 function _opCalcComparativoSupervisores() {
   const mesesInd=_opMesesConsiderados([...new Set(_opAllIndicadores.map(d=>d.mesRef))]);
-  const mesesCsat=_opMesesConsiderados([...new Set(_opAllCsat.map(d=>d.mesRef))]);
+  const mesesCsat=_opMesesConsiderados(_opMesesTodos()); // lista canônica (Indicadores+POS)
   const mesesPos=_opMesesConsiderados([...new Set(_opAllPos.map(d=>d.mesRef))]);
   return ['Leonardo','Victor'].map(sup => {
     const postosSup = new Set(allPostos.filter(p=>p.supervisor===sup).map(p=>p.nome));
@@ -19283,7 +19232,6 @@ async function renderDashboardOperacional() {
   const wrap = document.getElementById('op-dash-wrap'); if (!wrap) return;
   wrap.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text3)">⏳ Carregando dados operacionais...</div>';
   await _opGarantirDadosCarregados();
-  _opDiagnosticoMeses(); // temporário — remover após causa confirmada
 
   const mesesTodos = _opMesesTodos();
   if (!mesesTodos.length) {
@@ -19501,7 +19449,7 @@ let _chartOpPos=null, _chartOpCsat=null, _chartOpNs30=null, _chartOpTempos=null;
 function _opRenderCharts(mesesTodos) {
   const tickC='#a0aec0', gridC='rgba(255,255,255,.06)';
   const mesesPos = mesesTodos.filter(m=>[...new Set(_opAllPos.map(d=>d.mesRef))].includes(m));
-  const mesesCsat = mesesTodos.filter(m=>[...new Set(_opAllCsat.map(d=>d.mesRef))].includes(m));
+  const mesesCsat = mesesTodos; // lista canônica (Indicadores+POS) — nunca o histórico completo do CSAT
   const mesesInd = mesesTodos.filter(m=>[...new Set(_opAllIndicadores.map(d=>d.mesRef))].includes(m));
 
   _chartOpPos = _dstroyIndChart(_chartOpPos);
