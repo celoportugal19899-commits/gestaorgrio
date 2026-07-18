@@ -18873,8 +18873,12 @@ let _opUltimaAtualizacaoPos = '', _opUltimaAtualizacaoIndicadores = '';
 function _opNormMesRef(m) {
   if (m==null) return null;
   const s = String(m).trim();
-  const mm = s.match(/^(\d{4})-(\d{1,2})$/);
-  return mm ? `${mm[1]}-${mm[2].padStart(2,'0')}` : s;
+  let mm = s.match(/^(\d{4})[-\/_.](\d{1,2})$/);     // "2026-1", "2026-01", "2026/1", "2026_01", "2026.1"...
+  if (mm) return `${mm[1]}-${mm[2].padStart(2,'0')}`;
+  mm = s.match(/^(\d{4})(\d{2})$/);                   // "202601" (6 dígitos, sem separador)
+  if (mm) return `${mm[1]}-${mm[2]}`;
+  console.warn('[Dashboard Operacional] mesRef em formato não reconhecido, mantido como veio:', JSON.stringify(m));
+  return s; // formato não reconhecido — nunca descarta, só não normaliza
 }
 function _opNormNome(s) {
   return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase().replace(/\s+/g,' ');
@@ -19452,9 +19456,18 @@ function _opRenderCharts(mesesTodos) {
   if (ctxPos && mesesPos.length) {
     const dadosBase = _opFiltrarPostoSup(_opAllPos, 'postoNome');
     const val = mesesPos.map(m=>dadosBase.filter(d=>d.mesRef===m).reduce((s,d)=>s+(d.valor||0),0));
-    _chartOpPos = new Chart(ctxPos, {type:'line', data:{labels:mesesPos.map(_indMesLabel), datasets:[{data:val,borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,.12)',borderWidth:2,fill:true,tension:.35,pointRadius:4,pointBackgroundColor:'#3b82f6'}]},
-      options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},plugins:{legend:{display:false}},scales:{x:{ticks:{color:tickC,font:{size:10}},grid:{display:false}},y:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true}}},
-      plugins:[{id:'opP',afterDatasetsDraw(c){const{ctx}=c;c.data.datasets[0].data.forEach((v,i)=>{if(!v)return;const el=c.getDatasetMeta(0).data[i];ctx.save();ctx.fillStyle='#3b82f6';ctx.font='bold 9px sans-serif';ctx.textAlign='center';ctx.fillText('R$ '+Math.round(v/1000)+'k',el.x,el.y-9);ctx.restore();});}}]});
+    const qtd = mesesPos.map(m=>dadosBase.filter(d=>d.mesRef===m).reduce((s,d)=>s+(d.qtd||0),0));
+    _chartOpPos = new Chart(ctxPos, {data:{labels:mesesPos.map(_indMesLabel), datasets:[
+      {type:'bar',label:'Quantidade de Negociações',data:qtd,backgroundColor:'rgba(148,163,184,.4)',yAxisID:'yQ',order:2},
+      {type:'line',label:'Valor Negociado (R$)',data:val,borderColor:'#3b82f6',backgroundColor:'transparent',borderWidth:2,tension:.35,pointRadius:4,pointBackgroundColor:'#3b82f6',yAxisID:'yV',order:1}
+    ]}, options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},plugins:{legend:{display:true,position:'bottom',labels:{color:tickC,font:{size:9},boxWidth:10}}},
+      scales:{x:{ticks:{color:tickC,font:{size:10}},grid:{display:false}},
+              yQ:{position:'left',ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true},
+              yV:{position:'right',ticks:{color:tickC,font:{size:10},callback:v=>'R$ '+Math.round(v/1000)+'k'},grid:{drawOnChartArea:false},beginAtZero:true}}},
+      plugins:[{id:'opP',afterDatasetsDraw(c){const{ctx}=c;
+        c.data.datasets[1].data.forEach((v,i)=>{ if(!v)return; const el=c.getDatasetMeta(1).data[i]; ctx.save();ctx.fillStyle='#3b82f6';ctx.font='bold 9px sans-serif';ctx.textAlign='center';ctx.fillText('R$ '+Math.round(v/1000)+'k',el.x,el.y-9);ctx.restore(); });
+        c.data.datasets[0].data.forEach((v,i)=>{ if(!v)return; const el=c.getDatasetMeta(0).data[i]; ctx.save();ctx.fillStyle='#94a3b8';ctx.font='bold 9px sans-serif';ctx.textAlign='center';ctx.fillText(v,el.x,el.y-6);ctx.restore(); });
+      }}]});
   }
 
   _chartOpCsat = _dstroyIndChart(_chartOpCsat);
