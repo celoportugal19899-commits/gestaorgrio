@@ -18903,6 +18903,61 @@ async function _opGarantirDadosCarregados() {
   _opAllPos          = posAllResultados.map(d => ({...d, mesRef:_opNormMesRef(d.mesRef)}));
 }
 
+// ── DIAGNÓSTICO TEMPORÁRIO — meses brutos por base, antes/depois da normalização ──
+// Não corrige nada. Só inspeciona os valores reais que chegam ao Dashboard,
+// exatamente como solicitado, para identificar a causa comprovada da duplicidade
+// antes de qualquer tentativa de correção.
+function _opDiagnosticoMeses() {
+  const fontes = [
+    { nome: 'Indicadores', raw: allIndicadores },
+    { nome: 'CSAT', raw: csatAllData },
+    { nome: 'POS', raw: posAllResultados }
+  ];
+  const uniaoLinhas = {};
+
+  fontes.forEach(f => {
+    const porChave = {};
+    f.raw.forEach(d => {
+      const bruto = d.mesRef;
+      const tipo = bruto instanceof Date ? 'Date'
+        : (bruto && typeof bruto === 'object' && typeof bruto.toDate === 'function') ? 'Firestore Timestamp'
+        : typeof bruto;
+      const norm = _opNormMesRef(bruto);
+      if (!porChave[norm]) porChave[norm] = { count:0, brutosVistos:new Set(), tipo, exemploPosto:d.postoNome, exemploRegistro:d };
+      porChave[norm].count++;
+      porChave[norm].brutosVistos.add(JSON.stringify(bruto));
+
+      if (!uniaoLinhas[norm]) uniaoLinhas[norm] = { origens:new Set(), count:0, brutos:new Set() };
+      uniaoLinhas[norm].origens.add(f.nome);
+      uniaoLinhas[norm].count++;
+      uniaoLinhas[norm].brutos.add(JSON.stringify(bruto));
+    });
+
+    const tabela = Object.entries(porChave).map(([chave,v]) => ({
+      'mesRef bruto (exemplos)': [...v.brutosVistos].join(' | '),
+      'tipo JS': v.tipo,
+      '_opNormMesRef()': chave,
+      'chave de dedup': chave,
+      'ocorrências': v.count,
+      'exemplo postoNome': v.exemploPosto
+    }));
+    console.log(`[Dashboard Operacional] Diagnóstico meses — ${f.nome}`);
+    console.table(tabela);
+    console.log(`[Dashboard Operacional] Diagnóstico meses — ${f.nome} — exemplo de registro de origem por chave:`,
+      Object.fromEntries(Object.entries(porChave).map(([k,v])=>[k, v.exemploRegistro])));
+  });
+
+  const tabelaUniao = Object.entries(uniaoLinhas).sort((a,b)=>a[0].localeCompare(b[0])).map(([chave,v]) => ({
+    'valor bruto (exemplos)': [...v.brutos].join(' | '),
+    'valor normalizado': chave,
+    'chave de dedup': chave,
+    'ocorrências': v.count,
+    'base(s) de origem': [...v.origens].join(', ')
+  }));
+  console.log('[Dashboard Operacional] Diagnóstico meses — União final');
+  console.table(tabelaUniao);
+}
+
 function _opMesesTodos() {
   const mi=[...new Set(_opAllIndicadores.map(d=>d.mesRef))];
   const mc=[...new Set(_opAllCsat.map(d=>d.mesRef))];
@@ -19228,6 +19283,7 @@ async function renderDashboardOperacional() {
   const wrap = document.getElementById('op-dash-wrap'); if (!wrap) return;
   wrap.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text3)">⏳ Carregando dados operacionais...</div>';
   await _opGarantirDadosCarregados();
+  _opDiagnosticoMeses(); // temporário — remover após causa confirmada
 
   const mesesTodos = _opMesesTodos();
   if (!mesesTodos.length) {
@@ -19398,11 +19454,8 @@ async function renderDashboardOperacional() {
         ${rankNs30.slice(0,8).map((p,i)=>`<div style="font-size:12px;padding:3px 0;color:var(--text2)">${i+1}º ${p.posto} — ${p.ns30.toFixed(1)}%</div>`).join('')||'<div style="color:var(--text3);font-size:12px">Sem dados</div>'}
       </div>
       <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
-        <div style="font-size:12px;font-weight:600;margin-bottom:8px">Senhas Perdidas — Maior Quantidade / Maior %</div>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Por quantidade:</div>
-        ${rankPerd.porQtd.slice(0,4).map((p,i)=>`<div style="font-size:12px;padding:2px 0;color:var(--text2)">${i+1}º ${p.posto} — ${p.perdidas}</div>`).join('')||'<div style="color:var(--text3);font-size:12px">Sem dados</div>'}
-        <div style="font-size:11px;color:var(--text3);margin:6px 0 4px">Por percentual:</div>
-        ${rankPerd.porPct.slice(0,4).map((p,i)=>`<div style="font-size:12px;padding:2px 0;color:var(--text2)">${i+1}º ${p.posto} — ${p.pct.toFixed(1)}%</div>`).join('')||'<div style="color:var(--text3);font-size:12px">Sem dados</div>'}
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px">Senhas Perdidas — Maior Quantidade</div>
+        ${rankPerd.porQtd.slice(0,8).map((p,i)=>`<div style="font-size:12px;padding:3px 0;color:var(--text2)">${i+1}º ${p.posto} — ${p.perdidas}</div>`).join('')||'<div style="color:var(--text3);font-size:12px">Sem dados</div>'}
       </div>
       <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
         <div style="font-size:12px;font-weight:600;margin-bottom:8px">Menor TMA</div>
