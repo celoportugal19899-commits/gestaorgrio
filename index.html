@@ -5544,6 +5544,7 @@ const DADOS_HISTORICOS_INICIAIS = [{"id":"2026-01_Aperibe","mesRef":"2026-01","p
 
 let allIndicadores = [];
 let indicadoresCarregados = false;
+let _indicadoresUltimoImportTxt = '';
 let mesesSelecionados = [];
 let indTabAtual = 'painel';
 
@@ -5627,6 +5628,10 @@ async function carregarTodosIndicadores() {
   const snap=await db.collection('indicadores').get();
   allIndicadores=snap.docs.map(d=>({id:d.id,...d.data()}));
   indicadoresCarregados=true;
+  try {
+    const cfg = await db.collection('indicadores_config').doc('geral').get();
+    if (cfg.exists && cfg.data().ultimoImport) _indicadoresUltimoImportTxt = cfg.data().ultimoImport;
+  } catch(e){}
 }
 
 // ── Init completo ──
@@ -5730,7 +5735,7 @@ async function renderPainelIndicadores() {
     return a+diasUteisMesComDados(m, dadosMes);
   },0);
   const periodoLabel=mesesSelecionados.length===1?mesLabel(mesesSelecionados[0]):`${mesLabel(mesesSelecionados[0])} – ${mesLabel(mesesSelecionados[mesesSelecionados.length-1])}`;
-  document.getElementById('ind-subtitle').textContent=`Postos de Atendimento — ${periodoLabel}`;
+  document.getElementById('ind-subtitle').innerHTML=`Postos de Atendimento — ${periodoLabel}${_indicadoresUltimoImportTxt?` &nbsp;|&nbsp; <span style="color:var(--yellow);font-weight:700">📅 Base atualizada em: ${_indicadoresUltimoImportTxt}</span>`:''}`;
 
   const totalAtendidas=dados.reduce((a,d)=>a+(parseInt(d.senhasAtendidas)||0),0);
   const totalCanceladas=dados.reduce((a,d)=>a+(parseInt(d.senhasCanceladas)||0),0);
@@ -15750,6 +15755,11 @@ function renderQualidadeDashboard() {
   const acoesFinal = candidatos.slice(0,5).map(c => `[${c.origem}] ${c.texto}`);
 
   wrap.innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+      ${_indevidosUltimoImport?`<span style="font-size:11px;background:rgba(245,158,11,.12);color:#eda100;padding:4px 10px;border-radius:8px;border:1px solid rgba(245,158,11,.3);font-weight:600">📅 Ordens Indevidas — Base atualizada em: ${_indevidosUltimoImport}</span>`:''}
+      ${_reclUltimoImport?`<span style="font-size:11px;background:rgba(245,158,11,.12);color:#eda100;padding:4px 10px;border-radius:8px;border:1px solid rgba(245,158,11,.3);font-weight:600">📅 Reclamações — Base atualizada em: ${_reclUltimoImport}</span>`:''}
+      ${_trocaOficialUltimoImport?`<span style="font-size:11px;background:rgba(245,158,11,.12);color:#eda100;padding:4px 10px;border-radius:8px;border:1px solid rgba(245,158,11,.3);font-weight:600">📅 Trocas — Base atualizada em: ${_trocaOficialUltimoImport}</span>`:''}
+    </div>
     <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">Mês</div>
     <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:7px">
       ${mesesTodos.map(m=>{
@@ -18854,9 +18864,27 @@ let _opFiltroPosto = '';
 let _opFiltroSupervisor = '';
 let _opUltimaAtualizacaoPos = '', _opUltimaAtualizacaoIndicadores = '';
 
+// Normalização usada só dentro do Dashboard Operacional — nunca escreve de volta
+// nas collections nem altera os módulos originais. Corrige: (1) meses "duplicados"
+// quando o mesmo mês vem gravado com formatos ligeiramente diferentes entre
+// indicadores/csat/pos_resultados (ex.: "2026-1" vs "2026-01"); (2) nomes de posto
+// com variação de acento/caixa entre allPostos e cada collection, usada para o
+// relacionamento supervisor→posto funcionar igual nas 3 fontes.
+function _opNormMesRef(m) {
+  if (m==null) return null;
+  const s = String(m).trim();
+  const mm = s.match(/^(\d{4})-(\d{1,2})$/);
+  return mm ? `${mm[1]}-${mm[2].padStart(2,'0')}` : s;
+}
+function _opNormNome(s) {
+  return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase().replace(/\s+/g,' ');
+}
+
 const OP_META_NS30 = 99.9;
 const OP_META_TMA_SEG = 5*60+11;  // 00:05:11
 const OP_META_TME_SEG = 9*60+29;  // 00:09:29
+
+let _opAllIndicadores = [], _opAllCsat = [], _opAllPos = [];
 
 async function _opGarantirDadosCarregados() {
   if (!indicadoresCarregados) await carregarTodosIndicadores();
@@ -18864,22 +18892,30 @@ async function _opGarantirDadosCarregados() {
   if (!posAllResultados.length) await initPOS();
   try { const c = await db.collection('indicadores_config').doc('geral').get(); if (c.exists) _opUltimaAtualizacaoIndicadores = c.data().ultimoImport || ''; } catch(e){}
   try { const c = await db.collection('pos_config').doc('geral').get(); if (c.exists) _opUltimaAtualizacaoPos = c.data().ultimoImport || ''; } catch(e){}
+  // Espelhos só de leitura, com mesRef normalizado — nunca gravados de volta,
+  // nunca substituem os arrays originais usados pelos módulos homologados.
+  _opAllIndicadores = allIndicadores.map(d => ({...d, mesRef:_opNormMesRef(d.mesRef)}));
+  _opAllCsat         = csatAllData.map(d => ({...d, mesRef:_opNormMesRef(d.mesRef)}));
+  _opAllPos          = posAllResultados.map(d => ({...d, mesRef:_opNormMesRef(d.mesRef)}));
 }
 
 function _opMesesTodos() {
-  const mi=[...new Set(allIndicadores.map(d=>d.mesRef))];
-  const mc=[...new Set(csatAllData.map(d=>d.mesRef))];
-  const mp=[...new Set(posAllResultados.map(d=>d.mesRef))];
+  const mi=[...new Set(_opAllIndicadores.map(d=>d.mesRef))];
+  const mc=[...new Set(_opAllCsat.map(d=>d.mesRef))];
+  const mp=[...new Set(_opAllPos.map(d=>d.mesRef))];
   return [...new Set([...mi,...mc,...mp])].filter(Boolean).sort();
 }
 function _opPostosDisponiveis() { return allPostos.filter(p=>p.nome!=='Posto Teste').map(p=>p.nome).sort(); }
 function _opSupervisoresDisponiveis() { return [...new Set(allPostos.map(p=>p.supervisor).filter(Boolean))].sort(); }
 
 function _opFiltrarPostoSup(dados, campoPosto) {
-  if (_opFiltroPosto) return dados.filter(d=>d[campoPosto]===_opFiltroPosto);
+  if (_opFiltroPosto) {
+    const alvo = _opNormNome(_opFiltroPosto);
+    return dados.filter(d=>_opNormNome(d[campoPosto])===alvo);
+  }
   if (_opFiltroSupervisor) {
-    const postosSup = new Set(allPostos.filter(p=>p.supervisor===_opFiltroSupervisor).map(p=>p.nome));
-    return dados.filter(d=>postosSup.has(d[campoPosto]));
+    const postosSup = new Set(allPostos.filter(p=>p.supervisor===_opFiltroSupervisor).map(p=>_opNormNome(p.nome)));
+    return dados.filter(d=>postosSup.has(_opNormNome(d[campoPosto])));
   }
   return dados;
 }
@@ -18887,11 +18923,11 @@ function _opMesesConsiderados(fonteMeses) { return _opMesesSel.length ? _opMeses
 
 // ── Card POS ─────────────────────────────────────────────────────────────
 function _opCalcCardPOS() {
-  const mesesFonte=[...new Set(posAllResultados.map(d=>d.mesRef))];
+  const mesesFonte=[...new Set(_opAllPos.map(d=>d.mesRef))];
   if (!mesesFonte.length) return {modo:'semdados'};
   const meses=_opMesesConsiderados(mesesFonte);
   if (!meses.length) return {modo:'semdados'};
-  const dados=_opFiltrarPostoSup(posAllResultados.filter(d=>meses.includes(d.mesRef)),'postoNome');
+  const dados=_opFiltrarPostoSup(_opAllPos.filter(d=>meses.includes(d.mesRef)),'postoNome');
   if (!dados.length) return {modo:'semdados'};
   const resultado=dados.reduce((s,d)=>s+(d.valor||0),0);
   const meta=dados.reduce((s,d)=>s+getPOSMeta(d.postoNome,d.mesRef),0);
@@ -18901,18 +18937,18 @@ function _opCalcCardPOS() {
   if (meses.length===1) {
     const ord=[...mesesFonte].sort(); const idx=ord.indexOf(meses[0]);
     mesAnteriorRef=idx>0?ord[idx-1]:null;
-    if (mesAnteriorRef) resultadoAnterior=_opFiltrarPostoSup(posAllResultados.filter(d=>d.mesRef===mesAnteriorRef),'postoNome').reduce((s,d)=>s+(d.valor||0),0);
+    if (mesAnteriorRef) resultadoAnterior=_opFiltrarPostoSup(_opAllPos.filter(d=>d.mesRef===mesAnteriorRef),'postoNome').reduce((s,d)=>s+(d.valor||0),0);
   }
   return {modo:meses.length===1?'unico':'periodo', resultado, meta, diferenca:resultado-meta, pct, status, resultadoAnterior, mesAnteriorRef};
 }
 
 // ── Card CSAT — consolidação idêntica ao módulo CSAT: média ponderada por pesquisas ──
 function _opCalcCardCSAT() {
-  const mesesFonte=[...new Set(csatAllData.map(d=>d.mesRef))];
+  const mesesFonte=[...new Set(_opAllCsat.map(d=>d.mesRef))];
   if (!mesesFonte.length) return {modo:'semdados'};
   const meses=_opMesesConsiderados(mesesFonte);
   if (!meses.length) return {modo:'semdados'};
-  const dados=_opFiltrarPostoSup(csatAllData.filter(d=>meses.includes(d.mesRef)),'postoNome');
+  const dados=_opFiltrarPostoSup(_opAllCsat.filter(d=>meses.includes(d.mesRef)),'postoNome');
   if (!dados.length) return {modo:'semdados'};
   const totalPesq=dados.reduce((s,d)=>s+(d.pesquisas||0),0);
   const nota=totalPesq>0?dados.reduce((s,d)=>s+(d.notaMedia||0)*(d.pesquisas||0),0)/totalPesq:null;
@@ -18922,7 +18958,7 @@ function _opCalcCardCSAT() {
     const ord=[...mesesFonte].sort(); const idx=ord.indexOf(meses[0]);
     mesAnteriorRef=idx>0?ord[idx-1]:null;
     if (mesAnteriorRef) {
-      const dAnt=_opFiltrarPostoSup(csatAllData.filter(d=>d.mesRef===mesAnteriorRef),'postoNome');
+      const dAnt=_opFiltrarPostoSup(_opAllCsat.filter(d=>d.mesRef===mesAnteriorRef),'postoNome');
       const pAnt=dAnt.reduce((s,d)=>s+(d.pesquisas||0),0);
       resultadoAnterior=pAnt>0?dAnt.reduce((s,d)=>s+(d.notaMedia||0)*(d.pesquisas||0),0)/pAnt:null;
     }
@@ -18932,11 +18968,11 @@ function _opCalcCardCSAT() {
 
 // ── Base comum para NS30/TMA/TME/Senhas Perdidas ──
 function _opDadosIndicadoresConsiderados() {
-  const mesesFonte=[...new Set(allIndicadores.map(d=>d.mesRef))];
+  const mesesFonte=[...new Set(_opAllIndicadores.map(d=>d.mesRef))];
   if (!mesesFonte.length) return {modo:'semdados', dados:[], meses:[], mesesFonte};
   const meses=_opMesesConsiderados(mesesFonte);
   if (!meses.length) return {modo:'semdados', dados:[], meses, mesesFonte};
-  const dados=_opFiltrarPostoSup(allIndicadores.filter(d=>meses.includes(d.mesRef)),'postoNome');
+  const dados=_opFiltrarPostoSup(_opAllIndicadores.filter(d=>meses.includes(d.mesRef)),'postoNome');
   if (!dados.length) return {modo:'semdados', dados:[], meses, mesesFonte};
   return {modo:'ok', dados, meses, mesesFonte};
 }
@@ -18976,7 +19012,7 @@ function _opCalcMesAnteriorIndicadores(base) {
   const ord=[...base.mesesFonte].sort(); const idx=ord.indexOf(base.meses[0]);
   const mesAnteriorRef=idx>0?ord[idx-1]:null;
   if (!mesAnteriorRef) return { mesAnteriorRef:null, cons:null };
-  const dAnt=_opFiltrarPostoSup(allIndicadores.filter(d=>d.mesRef===mesAnteriorRef),'postoNome');
+  const dAnt=_opFiltrarPostoSup(_opAllIndicadores.filter(d=>d.mesRef===mesAnteriorRef),'postoNome');
   return { mesAnteriorRef, cons: dAnt.length?_opConsolidarIndicadores(dAnt):null };
 }
 
@@ -19035,16 +19071,16 @@ function _opCalcResultadoOperacional(cardPos,cardCsat,cardNs30,blocoTempos) {
 
 // ── Rankings ─────────────────────────────────────────────────────────────
 function _opRankingMenorPOS() {
-  const meses=_opMesesConsiderados([...new Set(posAllResultados.map(d=>d.mesRef))]);
-  const dados=_opFiltrarPostoSup(posAllResultados.filter(d=>meses.includes(d.mesRef)),'postoNome');
+  const meses=_opMesesConsiderados([...new Set(_opAllPos.map(d=>d.mesRef))]);
+  const dados=_opFiltrarPostoSup(_opAllPos.filter(d=>meses.includes(d.mesRef)),'postoNome');
   const porPosto={};
   dados.forEach(d=>{ if(!porPosto[d.postoNome]) porPosto[d.postoNome]={valor:0,meta:0};
     porPosto[d.postoNome].valor+=(d.valor||0); porPosto[d.postoNome].meta+=getPOSMeta(d.postoNome,d.mesRef); });
-  return Object.entries(porPosto).map(([posto,v])=>({posto, valor:v.valor, meta:v.meta, pct: v.meta>0?v.valor/v.meta*100:0})).sort((a,b)=>a.pct-b.pct);
+  return Object.entries(porPosto).map(([posto,v])=>({posto, valor:v.valor, meta:v.meta, pct: v.meta>0?v.valor/v.meta*100:0})).sort((a,b)=>a.valor-b.valor);
 }
 function _opRankingMenorCSAT() {
-  const meses=_opMesesConsiderados([...new Set(csatAllData.map(d=>d.mesRef))]);
-  const dados=_opFiltrarPostoSup(csatAllData.filter(d=>meses.includes(d.mesRef)),'postoNome');
+  const meses=_opMesesConsiderados([...new Set(_opAllCsat.map(d=>d.mesRef))]);
+  const dados=_opFiltrarPostoSup(_opAllCsat.filter(d=>meses.includes(d.mesRef)),'postoNome');
   const porPosto={};
   dados.forEach(d=>{ if(!porPosto[d.postoNome]) porPosto[d.postoNome]={soma:0,pesq:0};
     porPosto[d.postoNome].soma+=(d.notaMedia||0)*(d.pesquisas||0); porPosto[d.postoNome].pesq+=(d.pesquisas||0); });
@@ -19099,14 +19135,14 @@ function _opCalcRadar(cardPos,cardCsat,cardNs30) {
 
 // ── Comparativo entre Supervisores (Leonardo x Victor) ──
 function _opCalcComparativoSupervisores() {
-  const mesesInd=_opMesesConsiderados([...new Set(allIndicadores.map(d=>d.mesRef))]);
-  const mesesCsat=_opMesesConsiderados([...new Set(csatAllData.map(d=>d.mesRef))]);
-  const mesesPos=_opMesesConsiderados([...new Set(posAllResultados.map(d=>d.mesRef))]);
+  const mesesInd=_opMesesConsiderados([...new Set(_opAllIndicadores.map(d=>d.mesRef))]);
+  const mesesCsat=_opMesesConsiderados([...new Set(_opAllCsat.map(d=>d.mesRef))]);
+  const mesesPos=_opMesesConsiderados([...new Set(_opAllPos.map(d=>d.mesRef))]);
   return ['Leonardo','Victor'].map(sup => {
     const postosSup = new Set(allPostos.filter(p=>p.supervisor===sup).map(p=>p.nome));
-    const dInd = allIndicadores.filter(d=>mesesInd.includes(d.mesRef) && postosSup.has(d.postoNome));
-    const dCsat = csatAllData.filter(d=>mesesCsat.includes(d.mesRef) && postosSup.has(d.postoNome));
-    const dPos = posAllResultados.filter(d=>mesesPos.includes(d.mesRef) && postosSup.has(d.postoNome));
+    const dInd = _opAllIndicadores.filter(d=>mesesInd.includes(d.mesRef) && postosSup.has(d.postoNome));
+    const dCsat = _opAllCsat.filter(d=>mesesCsat.includes(d.mesRef) && postosSup.has(d.postoNome));
+    const dPos = _opAllPos.filter(d=>mesesPos.includes(d.mesRef) && postosSup.has(d.postoNome));
     const cons = dInd.length ? _opConsolidarIndicadores(dInd) : null;
     const totalPesq = dCsat.reduce((s,d)=>s+(d.pesquisas||0),0);
     const nota = totalPesq>0 ? dCsat.reduce((s,d)=>s+(d.notaMedia||0)*(d.pesquisas||0),0)/totalPesq : null;
@@ -19219,6 +19255,11 @@ async function renderDashboardOperacional() {
     </div>`;
 
   wrap.innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+      ${_opUltimaAtualizacaoIndicadores?`<span style="font-size:11px;background:rgba(245,158,11,.12);color:#eda100;padding:4px 10px;border-radius:8px;border:1px solid rgba(245,158,11,.3);font-weight:600">📅 Indicadores — Base atualizada em: ${_opUltimaAtualizacaoIndicadores}</span>`:''}
+      ${csatUltimaAtualizacao?`<span style="font-size:11px;background:rgba(245,158,11,.12);color:#eda100;padding:4px 10px;border-radius:8px;border:1px solid rgba(245,158,11,.3);font-weight:600">📅 CSAT — Base atualizada em: ${csatUltimaAtualizacao}</span>`:''}
+      ${_opUltimaAtualizacaoPos?`<span style="font-size:11px;background:rgba(245,158,11,.12);color:#eda100;padding:4px 10px;border-radius:8px;border:1px solid rgba(245,158,11,.3);font-weight:600">📅 POS — Base atualizada em: ${_opUltimaAtualizacaoPos}</span>`:''}
+    </div>
     <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">Mês</div>
     <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:7px">
       ${mesesTodos.map(m=>{ const ativo=_opMesesSel.includes(m);
@@ -19244,8 +19285,8 @@ async function renderDashboardOperacional() {
     <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Cards</div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px">
       ${cardHTML('POS', cardPos, cardPos.modo!=='semdados'?`
-        <div style="font-size:22px;font-weight:800;color:${_opCorStatus(cardPos.status)}">${cardPos.pct.toFixed(1)}%</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px">Resultado: R$ ${cardPos.resultado.toLocaleString('pt-BR',{minimumFractionDigits:2})} · Meta: R$ ${cardPos.meta.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+        <div style="font-size:22px;font-weight:800;color:${_opCorStatus(cardPos.status)}">R$ ${cardPos.resultado.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">Meta: R$ ${cardPos.meta.toLocaleString('pt-BR',{minimumFractionDigits:2})} · ${cardPos.pct.toFixed(1)}% da meta</div>
         <div style="font-size:11px;color:var(--text3)">Diferença: R$ ${cardPos.diferenca.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
         ${cardPos.resultadoAnterior!==null?`<div style="font-size:11px;color:var(--text3)">Mês anterior: R$ ${cardPos.resultadoAnterior.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`:''}
         <div style="font-size:11px;font-weight:700;color:${_opCorStatus(cardPos.status)};margin-top:6px">${_opLabelStatus(cardPos.status)}</div>`:'')}
@@ -19341,8 +19382,8 @@ async function renderDashboardOperacional() {
     <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Rankings</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
       <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
-        <div style="font-size:12px;font-weight:600;margin-bottom:8px">Menor POS</div>
-        ${rankPos.slice(0,8).map((p,i)=>`<div style="font-size:12px;padding:3px 0;color:var(--text2)">${i+1}º ${p.posto} — ${p.pct.toFixed(1)}%</div>`).join('')||'<div style="color:var(--text3);font-size:12px">Sem dados</div>'}
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px">Menor Valor Negociado (POS)</div>
+        ${rankPos.slice(0,8).map((p,i)=>`<div style="font-size:12px;padding:3px 0;color:var(--text2)">${i+1}º ${p.posto} — R$ ${p.valor.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`).join('')||'<div style="color:var(--text3);font-size:12px">Sem dados</div>'}
       </div>
       <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
         <div style="font-size:12px;font-weight:600;margin-bottom:8px">Menor CSAT</div>
@@ -19402,14 +19443,14 @@ async function renderDashboardOperacional() {
 let _chartOpPos=null, _chartOpCsat=null, _chartOpNs30=null, _chartOpTempos=null;
 function _opRenderCharts(mesesTodos) {
   const tickC='#a0aec0', gridC='rgba(255,255,255,.06)';
-  const mesesPos = mesesTodos.filter(m=>[...new Set(posAllResultados.map(d=>d.mesRef))].includes(m));
-  const mesesCsat = mesesTodos.filter(m=>[...new Set(csatAllData.map(d=>d.mesRef))].includes(m));
-  const mesesInd = mesesTodos.filter(m=>[...new Set(allIndicadores.map(d=>d.mesRef))].includes(m));
+  const mesesPos = mesesTodos.filter(m=>[...new Set(_opAllPos.map(d=>d.mesRef))].includes(m));
+  const mesesCsat = mesesTodos.filter(m=>[...new Set(_opAllCsat.map(d=>d.mesRef))].includes(m));
+  const mesesInd = mesesTodos.filter(m=>[...new Set(_opAllIndicadores.map(d=>d.mesRef))].includes(m));
 
   _chartOpPos = _dstroyIndChart(_chartOpPos);
   const ctxPos = document.getElementById('op-c-pos');
   if (ctxPos && mesesPos.length) {
-    const dadosBase = _opFiltrarPostoSup(posAllResultados, 'postoNome');
+    const dadosBase = _opFiltrarPostoSup(_opAllPos, 'postoNome');
     const val = mesesPos.map(m=>dadosBase.filter(d=>d.mesRef===m).reduce((s,d)=>s+(d.valor||0),0));
     _chartOpPos = new Chart(ctxPos, {type:'line', data:{labels:mesesPos.map(_indMesLabel), datasets:[{data:val,borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,.12)',borderWidth:2,fill:true,tension:.35,pointRadius:4,pointBackgroundColor:'#3b82f6'}]},
       options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},plugins:{legend:{display:false}},scales:{x:{ticks:{color:tickC,font:{size:10}},grid:{display:false}},y:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true}}},
@@ -19419,20 +19460,24 @@ function _opRenderCharts(mesesTodos) {
   _chartOpCsat = _dstroyIndChart(_chartOpCsat);
   const ctxCsat = document.getElementById('op-c-csat');
   if (ctxCsat && mesesCsat.length) {
-    const dadosBase = _opFiltrarPostoSup(csatAllData, 'postoNome');
+    const dadosBase = _opFiltrarPostoSup(_opAllCsat, 'postoNome');
     const notas = mesesCsat.map(m=>{ const d=dadosBase.filter(x=>x.mesRef===m); const p=d.reduce((s,x)=>s+(x.pesquisas||0),0); return p>0?+(d.reduce((s,x)=>s+(x.notaMedia||0)*(x.pesquisas||0),0)/p).toFixed(2):null; });
     const pesqs = mesesCsat.map(m=>dadosBase.filter(x=>x.mesRef===m).reduce((s,x)=>s+(x.pesquisas||0),0));
     _chartOpCsat = new Chart(ctxCsat, {data:{labels:mesesCsat.map(_indMesLabel), datasets:[
       {type:'bar',label:'Pesquisas',data:pesqs,backgroundColor:'rgba(148,163,184,.35)',yAxisID:'yQ',order:2},
       {type:'line',label:'Nota',data:notas,borderColor:'#eda100',backgroundColor:'transparent',borderWidth:2,tension:.3,pointRadius:4,pointBackgroundColor:'#eda100',yAxisID:'yN',order:1}
     ]}, options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},plugins:{legend:{display:true,position:'bottom',labels:{color:tickC,font:{size:9},boxWidth:10}}},
-      scales:{x:{ticks:{color:tickC,font:{size:10}},grid:{display:false}}, yQ:{position:'left',ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true}, yN:{position:'right',min:0,max:5,ticks:{color:tickC,font:{size:10}},grid:{drawOnChartArea:false}}}}});
+      scales:{x:{ticks:{color:tickC,font:{size:10}},grid:{display:false}}, yQ:{position:'left',ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true}, yN:{position:'right',min:0,max:5,ticks:{color:tickC,font:{size:10}},grid:{drawOnChartArea:false}}}},
+      plugins:[{id:'opC',afterDatasetsDraw(c){const{ctx}=c;
+        c.data.datasets[1].data.forEach((v,i)=>{ if(v===null)return; const el=c.getDatasetMeta(1).data[i]; ctx.save();ctx.fillStyle='#eda100';ctx.font='bold 9px sans-serif';ctx.textAlign='center';ctx.fillText(v.toFixed(2),el.x,el.y-9);ctx.restore(); });
+        c.data.datasets[0].data.forEach((v,i)=>{ if(!v)return; const el=c.getDatasetMeta(0).data[i]; ctx.save();ctx.fillStyle='#94a3b8';ctx.font='bold 9px sans-serif';ctx.textAlign='center';ctx.fillText(v,el.x,el.y-6);ctx.restore(); });
+      }}]});
   }
 
   _chartOpNs30 = _dstroyIndChart(_chartOpNs30);
   const ctxNs30 = document.getElementById('op-c-ns30');
   if (ctxNs30 && mesesInd.length) {
-    const dadosBase = _opFiltrarPostoSup(allIndicadores, 'postoNome');
+    const dadosBase = _opFiltrarPostoSup(_opAllIndicadores, 'postoNome');
     const ns30 = mesesInd.map(m=>{ const d=dadosBase.filter(x=>x.mesRef===m); const c=_opConsolidarIndicadores(d.length?d:[{}]); return d.length?c.ns30:null; });
     const perd = mesesInd.map(m=>dadosBase.filter(x=>x.mesRef===m).reduce((s,x)=>s+(parseInt(x.senhasPerdidas)||0),0));
     _chartOpNs30 = new Chart(ctxNs30, {data:{labels:mesesInd.map(_indMesLabel), datasets:[
@@ -19440,13 +19485,17 @@ function _opRenderCharts(mesesTodos) {
       {type:'line',label:'NS30',data:ns30,borderColor:'#1baf7a',backgroundColor:'transparent',borderWidth:2,tension:.3,pointRadius:4,pointBackgroundColor:'#1baf7a',yAxisID:'yP',order:1},
       {type:'line',label:`Meta ${OP_META_NS30}%`,data:mesesInd.map(()=>OP_META_NS30),borderColor:'#94a3b8',borderWidth:1.5,borderDash:[6,4],pointRadius:0,yAxisID:'yP',order:0}
     ]}, options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},plugins:{legend:{display:true,position:'bottom',labels:{color:tickC,font:{size:9},boxWidth:10}}},
-      scales:{x:{ticks:{color:tickC,font:{size:10}},grid:{display:false}}, yQ:{position:'left',ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true}, yP:{position:'right',ticks:{color:tickC,font:{size:10},callback:v=>v+'%'},grid:{drawOnChartArea:false}}}}});
+      scales:{x:{ticks:{color:tickC,font:{size:10}},grid:{display:false}}, yQ:{position:'left',ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true}, yP:{position:'right',ticks:{color:tickC,font:{size:10},callback:v=>v+'%'},grid:{drawOnChartArea:false}}}},
+      plugins:[{id:'opN',afterDatasetsDraw(c){const{ctx}=c;
+        c.data.datasets[1].data.forEach((v,i)=>{ if(v===null)return; const el=c.getDatasetMeta(1).data[i]; ctx.save();ctx.fillStyle='#1baf7a';ctx.font='bold 9px sans-serif';ctx.textAlign='center';ctx.fillText(v.toFixed(1)+'%',el.x,el.y-9);ctx.restore(); });
+        c.data.datasets[0].data.forEach((v,i)=>{ if(!v)return; const el=c.getDatasetMeta(0).data[i]; ctx.save();ctx.fillStyle='#e24b4a';ctx.font='bold 9px sans-serif';ctx.textAlign='center';ctx.fillText(v,el.x,el.y-6);ctx.restore(); });
+      }}]});
   }
 
   _chartOpTempos = _dstroyIndChart(_chartOpTempos);
   const ctxTempos = document.getElementById('op-c-tempos');
   if (ctxTempos && mesesInd.length) {
-    const dadosBase = _opFiltrarPostoSup(allIndicadores, 'postoNome');
+    const dadosBase = _opFiltrarPostoSup(_opAllIndicadores, 'postoNome');
     const tma = mesesInd.map(m=>{ const d=dadosBase.filter(x=>x.mesRef===m); if(!d.length) return null; return _opConsolidarIndicadores(d).tmaSeg; });
     const tme = mesesInd.map(m=>{ const d=dadosBase.filter(x=>x.mesRef===m); if(!d.length) return null; return _opConsolidarIndicadores(d).tmeSeg; });
     _chartOpTempos = new Chart(ctxTempos, {type:'line', data:{labels:mesesInd.map(_indMesLabel), datasets:[
