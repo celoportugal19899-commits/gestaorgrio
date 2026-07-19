@@ -18883,6 +18883,13 @@ function _opNormMesRef(m) {
 function _opNormNome(s) {
   return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase().replace(/\s+/g,' ');
 }
+function _opFmtRSCompacto(v) {
+  if (v==null || isNaN(v)) return '—';
+  const abs = Math.abs(v);
+  if (abs>=1e6) return 'R$ '+(v/1e6).toFixed(1).replace('.',',')+' mi';
+  if (abs>=1e3) return 'R$ '+Math.round(v/1e3)+' mil';
+  return 'R$ '+Math.round(v);
+}
 
 const OP_META_NS30 = 99.9;
 const OP_META_TMA_SEG = 5*60+11;  // 00:05:11
@@ -19084,7 +19091,7 @@ function _opRankingMenorPOS() {
   const porPosto={};
   dados.forEach(d=>{ if(!porPosto[d.postoNome]) porPosto[d.postoNome]={valor:0,meta:0};
     porPosto[d.postoNome].valor+=(d.valor||0); porPosto[d.postoNome].meta+=getPOSMeta(d.postoNome,d.mesRef); });
-  return Object.entries(porPosto).map(([posto,v])=>({posto, valor:v.valor, meta:v.meta, pct: v.meta>0?v.valor/v.meta*100:0})).sort((a,b)=>a.valor-b.valor);
+  return Object.entries(porPosto).map(([posto,v])=>({posto, valor:v.valor, meta:v.meta, pct: v.meta>0?v.valor/v.meta*100:0})).sort((a,b)=>b.valor-a.valor);
 }
 function _opRankingMenorCSAT() {
   const meses=_opMesesConsiderados(_opMesesTodos()); // lista canônica (Indicadores+POS)
@@ -19092,7 +19099,8 @@ function _opRankingMenorCSAT() {
   const porPosto={};
   dados.forEach(d=>{ if(!porPosto[d.postoNome]) porPosto[d.postoNome]={soma:0,pesq:0};
     porPosto[d.postoNome].soma+=(d.notaMedia||0)*(d.pesquisas||0); porPosto[d.postoNome].pesq+=(d.pesquisas||0); });
-  return Object.entries(porPosto).filter(([,v])=>v.pesq>0).map(([posto,v])=>({posto, nota:v.soma/v.pesq, pesquisas:v.pesq})).sort((a,b)=>a.nota-b.nota);
+  return Object.entries(porPosto).filter(([,v])=>v.pesq>0).map(([posto,v])=>({posto, nota:v.soma/v.pesq, pesquisas:v.pesq}))
+    .sort((a,b)=> b.nota-a.nota || b.pesquisas-a.pesquisas || a.posto.localeCompare(b.posto,'pt'));
 }
 function _opRankingMenorNS30() {
   const base=_opDadosIndicadoresConsiderados(); if (base.modo!=='ok') return [];
@@ -19147,10 +19155,10 @@ function _opCalcComparativoSupervisores() {
   const mesesCsat=_opMesesConsiderados(_opMesesTodos()); // lista canônica (Indicadores+POS)
   const mesesPos=_opMesesConsiderados([...new Set(_opAllPos.map(d=>d.mesRef))]);
   return ['Leonardo','Victor'].map(sup => {
-    const postosSup = new Set(allPostos.filter(p=>p.supervisor===sup).map(p=>p.nome));
-    const dInd = _opAllIndicadores.filter(d=>mesesInd.includes(d.mesRef) && postosSup.has(d.postoNome));
-    const dCsat = _opAllCsat.filter(d=>mesesCsat.includes(d.mesRef) && postosSup.has(d.postoNome));
-    const dPos = _opAllPos.filter(d=>mesesPos.includes(d.mesRef) && postosSup.has(d.postoNome));
+    const postosSup = new Set(allPostos.filter(p=>p.supervisor===sup).map(p=>_opNormNome(p.nome)));
+    const dInd = _opAllIndicadores.filter(d=>mesesInd.includes(d.mesRef) && postosSup.has(_opNormNome(d.postoNome)));
+    const dCsat = _opAllCsat.filter(d=>mesesCsat.includes(d.mesRef) && postosSup.has(_opNormNome(d.postoNome)));
+    const dPos = _opAllPos.filter(d=>mesesPos.includes(d.mesRef) && postosSup.has(_opNormNome(d.postoNome)));
     const cons = dInd.length ? _opConsolidarIndicadores(dInd) : null;
     const totalPesq = dCsat.reduce((s,d)=>s+(d.pesquisas||0),0);
     const nota = totalPesq>0 ? dCsat.reduce((s,d)=>s+(d.notaMedia||0)*(d.pesquisas||0),0)/totalPesq : null;
@@ -19390,11 +19398,11 @@ async function renderDashboardOperacional() {
     <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Rankings</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
       <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
-        <div style="font-size:12px;font-weight:600;margin-bottom:8px">Menor Valor Negociado (POS)</div>
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px">Ranking POS — Maior Valor Negociado</div>
         ${rankPos.slice(0,8).map((p,i)=>`<div style="font-size:12px;padding:3px 0;color:var(--text2)">${i+1}º ${p.posto} — R$ ${p.valor.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`).join('')||'<div style="color:var(--text3);font-size:12px">Sem dados</div>'}
       </div>
       <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
-        <div style="font-size:12px;font-weight:600;margin-bottom:8px">Menor CSAT</div>
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px">Ranking CSAT — Maior Nota</div>
         ${rankCsat.slice(0,8).map((p,i)=>`<div style="font-size:12px;padding:3px 0;color:var(--text2)">${i+1}º ${p.posto} — ${p.nota.toFixed(2)} (${p.pesquisas})</div>`).join('')||'<div style="color:var(--text3);font-size:12px">Sem dados</div>'}
       </div>
       <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
@@ -19459,15 +19467,25 @@ function _opRenderCharts(mesesTodos) {
     const val = mesesPos.map(m=>dadosBase.filter(d=>d.mesRef===m).reduce((s,d)=>s+(d.valor||0),0));
     const qtd = mesesPos.map(m=>dadosBase.filter(d=>d.mesRef===m).reduce((s,d)=>s+(d.qtd||0),0));
     _chartOpPos = new Chart(ctxPos, {data:{labels:mesesPos.map(_indMesLabel), datasets:[
-      {type:'bar',label:'Quantidade de Negociações',data:qtd,backgroundColor:'rgba(148,163,184,.4)',yAxisID:'yQ',order:2},
+      {type:'bar',label:'Quantidade de Negociações',data:qtd,backgroundColor:'rgba(148,163,184,.35)',borderRadius:3,maxBarThickness:34,yAxisID:'yQ',order:2},
       {type:'line',label:'Valor Negociado (R$)',data:val,borderColor:'#3b82f6',backgroundColor:'transparent',borderWidth:2,tension:.35,pointRadius:4,pointBackgroundColor:'#3b82f6',yAxisID:'yV',order:1}
-    ]}, options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},plugins:{legend:{display:true,position:'bottom',labels:{color:tickC,font:{size:9},boxWidth:10}}},
+    ]}, options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:30}},
+      plugins:{legend:{display:true,position:'bottom',labels:{color:tickC,font:{size:9},boxWidth:10}},
+        tooltip:{callbacks:{label:ctx=>ctx.datasetIndex===1?`Valor Negociado: ${_opFmtRSCompacto(ctx.parsed.y)}`:`Quantidade: ${ctx.parsed.y}`}}},
       scales:{x:{ticks:{color:tickC,font:{size:10}},grid:{display:false}},
               yQ:{position:'left',ticks:{color:tickC,font:{size:10}},grid:{color:gridC},beginAtZero:true},
-              yV:{position:'right',ticks:{color:tickC,font:{size:10},callback:v=>'R$ '+Math.round(v/1000)+'k'},grid:{drawOnChartArea:false},beginAtZero:true}}},
-      plugins:[{id:'opP',afterDatasetsDraw(c){const{ctx}=c;
-        c.data.datasets[1].data.forEach((v,i)=>{ if(!v)return; const el=c.getDatasetMeta(1).data[i]; ctx.save();ctx.fillStyle='#3b82f6';ctx.font='bold 9px sans-serif';ctx.textAlign='center';ctx.fillText('R$ '+Math.round(v/1000)+'k',el.x,el.y-9);ctx.restore(); });
-        c.data.datasets[0].data.forEach((v,i)=>{ if(!v)return; const el=c.getDatasetMeta(0).data[i]; ctx.save();ctx.fillStyle='#94a3b8';ctx.font='bold 9px sans-serif';ctx.textAlign='center';ctx.fillText(v,el.x,el.y-6);ctx.restore(); });
+              yV:{position:'right',ticks:{color:tickC,font:{size:10},callback:v=>_opFmtRSCompacto(v)},grid:{drawOnChartArea:false},beginAtZero:true}}},
+      plugins:[{id:'opP',afterDatasetsDraw(c){const{ctx,chartArea}=c;
+        // Valor Negociado: rótulo acima do ponto da linha, formatação compacta
+        c.data.datasets[1].data.forEach((v,i)=>{ if(!v)return; const el=c.getDatasetMeta(1).data[i]; ctx.save();ctx.fillStyle='#3b82f6';ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.fillText(_opFmtRSCompacto(v),el.x,el.y-10);ctx.restore(); });
+        // Quantidade: rótulo dentro da barra (topo) quando há espaço; senão, logo acima
+        c.data.datasets[0].data.forEach((v,i)=>{ if(!v)return; const el=c.getDatasetMeta(0).data[i];
+          const alturaBarra = chartArea.bottom - el.y;
+          const dentro = alturaBarra >= 18;
+          ctx.save(); ctx.fillStyle = dentro ? '#ffffff' : '#94a3b8'; ctx.font='bold 9px sans-serif'; ctx.textAlign='center';
+          ctx.fillText(v, el.x, dentro ? el.y+12 : el.y-6);
+          ctx.restore();
+        });
       }}]});
   }
 
@@ -19515,11 +19533,17 @@ function _opRenderCharts(mesesTodos) {
     _chartOpTempos = new Chart(ctxTempos, {type:'line', data:{labels:mesesInd.map(_indMesLabel), datasets:[
       {label:'TMA',data:tma,borderColor:'#3b82f6',backgroundColor:'transparent',borderWidth:2,tension:.3,pointRadius:4,pointBackgroundColor:'#3b82f6'},
       {label:'TME',data:tme,borderColor:'#eda100',backgroundColor:'transparent',borderWidth:2,tension:.3,pointRadius:4,pointBackgroundColor:'#eda100'},
-      {label:'Meta TMA',data:mesesInd.map(()=>OP_META_TMA_SEG),borderColor:'rgba(59,130,246,.4)',borderDash:[6,4],pointRadius:0},
-      {label:'Meta TME',data:mesesInd.map(()=>OP_META_TME_SEG),borderColor:'rgba(237,161,0,.4)',borderDash:[6,4],pointRadius:0}
-    ]}, options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},plugins:{legend:{display:true,position:'bottom',labels:{color:tickC,font:{size:9},boxWidth:10}}},
+      {label:'Meta TMA',data:mesesInd.map(()=>OP_META_TMA_SEG),borderColor:'rgba(59,130,246,.22)',borderWidth:1,borderDash:[5,5],pointRadius:0},
+      {label:'Meta TME',data:mesesInd.map(()=>OP_META_TME_SEG),borderColor:'rgba(237,161,0,.22)',borderWidth:1,borderDash:[5,5],pointRadius:0}
+    ]}, options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:26,bottom:16}},
+      plugins:{legend:{display:true,position:'bottom',labels:{color:tickC,font:{size:9},boxWidth:10}},
+        tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${fmtTempo(ctx.parsed.y)}`}}},
       scales:{x:{ticks:{color:tickC,font:{size:10}},grid:{display:false}}, y:{ticks:{color:tickC,font:{size:10},callback:v=>fmtTempo(v)},grid:{color:gridC},beginAtZero:true}}},
-      plugins:[{id:'opT',afterDatasetsDraw(c){const{ctx}=c;[0,1].forEach(di=>{c.data.datasets[di].data.forEach((v,i)=>{if(v===null)return;const el=c.getDatasetMeta(di).data[i];ctx.save();ctx.fillStyle=di===0?'#3b82f6':'#eda100';ctx.font='bold 9px sans-serif';ctx.textAlign='center';ctx.fillText(fmtTempo(v),el.x,el.y-9);ctx.restore();});});}}]});
+      plugins:[{id:'opT',afterDatasetsDraw(c){const{ctx}=c;
+        // TMA acima do ponto, TME abaixo — evita colisão quando as duas linhas ficam próximas
+        c.data.datasets[0].data.forEach((v,i)=>{ if(v===null)return; const el=c.getDatasetMeta(0).data[i]; ctx.save();ctx.fillStyle='#3b82f6';ctx.font='bold 9px sans-serif';ctx.textAlign='center';ctx.fillText(fmtTempo(v),el.x,el.y-11);ctx.restore(); });
+        c.data.datasets[1].data.forEach((v,i)=>{ if(v===null)return; const el=c.getDatasetMeta(1).data[i]; ctx.save();ctx.fillStyle='#eda100';ctx.font='bold 9px sans-serif';ctx.textAlign='center';ctx.fillText(fmtTempo(v),el.x,el.y+16);ctx.restore(); });
+      }}]});
   }
 }
 
