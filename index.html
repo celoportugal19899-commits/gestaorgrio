@@ -9338,7 +9338,10 @@ let allHolerites = [];
 let allAtestados = [];
 let unsubHolerites = null;
 let unsubAtestados = null;
-let holeritesPdfData = []; // [{pageIndex, nomeDetectado, userId, userName, pdfBase64}]
+let holeritesPdfData = []; // [{pageIndex, nomeDetectado, userId, userName, inativoNome, pdfBase64}]
+let holeriteSelecionados = new Set(); // pageIndex selecionados para envio
+let holeriteBusca = '';
+let holeriteModoEnvio = 'completo'; // 'completo' | 'seletivo'
 let atestadoFileBase64 = null;
 let assinadoFileBase64 = null;
 
@@ -10230,17 +10233,22 @@ async function handleHoleriteFile(file) {
 
     if (numPages === 0) throw new Error('PDF sem páginas legíveis.');
 
-    // ── 3. Match nome → usuário ──
+    // ── 3. Match nome → usuário (só entre ATIVOS — mesma regra do Time) ──
+    function _nomeBate(norm, normU) {
+      if (norm === normU) return true;
+      const palavs = norm.split(' ').filter(p => p.length >= 3);
+      const palavsU = normU.split(' ').filter(p => p.length >= 3);
+      return palavs.filter(p => palavsU.includes(p)).length >= 2;
+    }
     function matchUser(nome) {
       if (!nome) return null;
       const norm = normalizarNome(nome);
-      const palavs = norm.split(' ').filter(p => p.length >= 3);
-      return allUsers.find(u => {
-        const normU = normalizarNome(u.name);
-        if (norm === normU) return true;
-        const palavsU = normU.split(' ').filter(p => p.length >= 3);
-        return palavs.filter(p => palavsU.includes(p)).length >= 2;
-      }) || null;
+      return allUsers.find(u => u.role!=='admin' && isAtivo(u) && _nomeBate(norm, normalizarNome(u.name))) || null;
+    }
+    function matchUserInativo(nome) {
+      if (!nome) return null;
+      const norm = normalizarNome(nome);
+      return allUsers.find(u => u.role!=='admin' && !isAtivo(u) && _nomeBate(norm, normalizarNome(u.name))) || null;
     }
 
     // ── 4. Montar dados por página — extrai nome do PDF individual ──
@@ -10253,16 +10261,21 @@ async function handleHoleriteFile(file) {
       // Extrair nome do PDF de 1 página (elimina falsos positivos do PDF completo)
       const nomeDetectado = extrairNomesNativo(pdfBytes.buffer)[0] || '';
       const userMatch = matchUser(nomeDetectado);
+      const userInativo = userMatch ? null : matchUserInativo(nomeDetectado);
 
       holeritesPdfData.push({
         pageIndex: i,
         nomeDetectado,
         userId: userMatch ? userMatch.id : '',
         userName: userMatch ? userMatch.name : '',
+        inativoNome: userInativo ? userInativo.name : '', // preenchido só quando o único match é um colaborador inativo
         pdfBase64: arrayBufferToBase64(pdfBytes)
       });
     }
 
+    holeriteBusca = '';
+    holeriteModoEnvio = 'completo';
+    holeriteSelecionados = new Set(holeritesPdfData.map((item,idx)=>item.userId?idx:null).filter(idx=>idx!==null));
     renderMapeamentoHolerites();
   } catch (e) {
     console.error('Erro handleHoleriteFile:', e);
@@ -10289,49 +10302,153 @@ function base64ToArrayBuffer(base64) {
   return bytes.buffer;
 }
 
+function normalizarBusca(s) {
+  return (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+}
+
+function _holeriteListaFiltrada() {
+  const buscaNorm = normalizarBusca(holeriteBusca);
+  return holeritesPdfData
+    .map((item, idx) => ({item, idx}))
+    .filter(({item}) => !item.inativoNome) // ignorados (inativos) nunca aparecem na lista principal
+    .filter(({item}) => !buscaNorm || normalizarBusca(item.userName || item.nomeDetectado || '').includes(buscaNorm));
+}
+
+function _holeriteRowHtml(item, idx) {
+  const marcado = holeriteSelecionados.has(idx);
+  const pendente = !item.userId;
+  return `<div class="rh-match-row" style="${pendente?'border:2px solid rgba(239,68,68,.45);background:rgba(239,68,68,.07)':''}">
+    <input type="checkbox" ${marcado?'checked':''} onchange="holeriteToggleSelecao(${idx},this.checked)" style="width:18px;height:18px;margin-right:6px">
+    <div class="mr-page" style="${pendente?'background:#ef4444;color:#fff':''}">${idx + 1}</div>
+    <div class="mr-info">
+      <div style="font-size:13px;font-weight:600;color:${item.nomeDetectado ? 'var(--text)' : '#ef4444'}">
+        ${item.userName || item.nomeDetectado || '⚠ Nome não detectado no PDF'}
+        ${pendente ? '<span style="font-size:11px;color:#ef4444;margin-left:6px">⚠ Atribua manualmente</span>' : ''}
+      </div>
+      <div style="font-size:11px;color:var(--text3)">Página ${idx + 1} do PDF</div>
+    </div>
+    ${pendente ? `<input class="form-input" list="dl-holerite-colabs" placeholder="Digite o nome..." style="width:220px" onchange="holeriteReatribuir(${idx},this.value)">` : ''}
+  </div>`;
+}
+
 function renderMapeamentoHolerites() {
   document.getElementById('holerite-processando').style.display = 'none';
   document.getElementById('holerite-mapeamento').style.display = 'block';
 
-  const colabs = allUsers.filter(u => u.role !== 'admin' && isAtivo(u)).sort((a,b) => a.name.localeCompare(b.name));
-  const opcoes = `<option value="">-- Não enviar --</option>` + colabs.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
-
-  const detectados = holeritesPdfData.filter(item => item.userId).length;
   const total = holeritesPdfData.length;
-  const pakoOk = typeof pako !== 'undefined';
+  const detectados = holeritesPdfData.filter(item => item.userId).length;
+  const ignorados = holeritesPdfData.filter(item => !item.userId && item.inativoNome).length;
+  const pendentes = total - detectados - ignorados;
 
-  const lista = document.getElementById('holerite-match-lista');
+  const datalistOpts = allUsers.filter(u=>u.role!=='admin'&&isAtivo(u)).sort((a,b)=>a.name.localeCompare(b.name))
+    .map(u=>`<option value="${u.name}" data-id="${u.id}">`).join('');
+
   const d = window._holerDiag || {};
   const diagTxt = `pako=${d.pakoOk?'✅':'❌'} | streams=${d.streamsFound??'?'} | decomp_ok=${d.decomprOk??'?'} | decomp_fail=${d.decomprFail??'?'} | nomes=${d.nomesFnd??'?'} | err=${d.err1||'nenhum'}`;
 
+  const filtrados = _holeriteListaFiltrada();
+  const lista = document.getElementById('holerite-match-lista');
   lista.innerHTML = `
+    <datalist id="dl-holerite-colabs">${datalistOpts}</datalist>
+
     <div style="padding:8px 12px;margin-bottom:8px;border-radius:6px;font-size:11px;font-family:monospace;background:#0d0d0d;color:#00ff88;border:1px solid #1a1a1a;word-break:break-all">
       🔍 ${diagTxt}
     </div>
-    <div style="padding:10px 14px;margin-bottom:12px;border-radius:8px;font-size:13px;${detectados===total&&total>0?'background:var(--green-bg);color:var(--green)':'background:var(--yellow-bg);color:var(--yellow)'}">
-      ${detectados===total&&total>0 ? `✅ ${detectados} colaboradores identificados automaticamente.` : `⚠️ ${detectados} de ${total} detectados — confira o nome do PDF antes de atribuir.`}
-    </div>
-    ${holeritesPdfData.map((item, idx) => `
-    <div class="rh-match-row" style="${item.userId ? '' : 'border:2px solid rgba(239,68,68,.45);background:rgba(239,68,68,.07)'}">
-      <div class="mr-page" style="${item.userId ? '' : 'background:#ef4444;color:#fff'}">${idx + 1}</div>
-      <div class="mr-info">
-        <div style="font-size:13px;font-weight:600;color:${item.nomeDetectado ? 'var(--text)' : '#ef4444'}">
-          ${item.nomeDetectado || '⚠ Nome não detectado no PDF'}
-          ${!item.userId ? '<span style="font-size:11px;color:#ef4444;margin-left:6px">⚠ Selecione manualmente</span>' : ''}
-        </div>
-        <div style="font-size:11px;color:var(--text3)">Página ${idx + 1} do PDF</div>
-      </div>
-      <select class="form-select" id="match-user-${idx}" style="width:240px${!item.userId ? ';border-color:#ef4444' : ''}">
-        ${opcoes}
-      </select>
-    </div>
-  `).join('')}`;
 
-  // Pré-selecionar matches detectados
-  holeritesPdfData.forEach((item, idx) => {
-    const sel = document.getElementById(`match-user-${idx}`);
-    if (sel && item.userId) sel.value = item.userId;
-  });
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <button class="btn btn-sm ${holeriteModoEnvio==='completo'?'btn-primary':'btn-secondary'}" onclick="holeriteDefinirModo('completo')">📋 Envio Completo</button>
+      <button class="btn btn-sm ${holeriteModoEnvio==='seletivo'?'btn-primary':'btn-secondary'}" onclick="holeriteDefinirModo('seletivo')">🎯 Reenvio Seletivo</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px">
+      <div class="stat-card"><div class="label">Páginas</div><div class="value">${total}</div></div>
+      <div class="stat-card"><div class="label">Detectados</div><div class="value" style="color:#1baf7a">${detectados}</div></div>
+      <div class="stat-card"><div class="label">Pendentes</div><div class="value" style="color:#eda100">${pendentes}</div></div>
+      <div class="stat-card"><div class="label">Ignorados</div><div class="value" style="color:#94a3b8">${ignorados}</div></div>
+      <div class="stat-card"><div class="label">Selecionados</div><div class="value" id="holerite-count-sel" style="color:#2a78d6">${holeriteSelecionados.size}</div></div>
+    </div>
+
+    <input class="form-input" id="holerite-busca-input" placeholder="🔎 Pesquisar por nome..." value="${holeriteBusca}" oninput="holeriteBuscar(this.value)" style="margin-bottom:10px">
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <button class="btn btn-sm btn-secondary" id="holerite-btn-sel-filtrados" onclick="holeriteSelecionarFiltrados()">☑ Selecionar resultados filtrados (${filtrados.length})</button>
+      <button class="btn btn-sm btn-secondary" onclick="holeriteLimparSelecaoFiltrados()">☐ Limpar seleção</button>
+      <button class="btn btn-sm btn-secondary" onclick="holeriteSelecionarTodos()">☑☑ Selecionar todos</button>
+      <button class="btn btn-sm btn-secondary" onclick="holeriteLimparTodos()">✕ Limpar todos</button>
+    </div>
+
+    <div id="holerite-lista-rows">${filtrados.map(({item,idx}) => _holeriteRowHtml(item, idx)).join('')}</div>
+
+    ${ignorados>0 ? `
+    <details style="margin-top:16px;background:var(--surface2);border-radius:10px;padding:12px 14px">
+      <summary style="cursor:pointer;font-size:13px;font-weight:600">🚫 ${ignorados} página(s) ignorada(s)</summary>
+      <div style="margin-top:10px">
+        ${holeritesPdfData.filter(item=>!item.userId && item.inativoNome).map(item=>`
+          <div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:12px">
+            <strong>${item.inativoNome}</strong> — página ${item.pageIndex+1} — <span style="color:var(--text3)">Motivo: Colaborador inativo</span>
+          </div>`).join('')}
+      </div>
+    </details>` : ''}
+  `;
+}
+
+function _holeriteAtualizarListaEContadores() {
+  const rowsEl = document.getElementById('holerite-lista-rows');
+  const filtrados = _holeriteListaFiltrada();
+  if (rowsEl) rowsEl.innerHTML = filtrados.map(({item,idx}) => _holeriteRowHtml(item, idx)).join('');
+  const btnF = document.getElementById('holerite-btn-sel-filtrados');
+  if (btnF) btnF.textContent = `☑ Selecionar resultados filtrados (${filtrados.length})`;
+  const c = document.getElementById('holerite-count-sel');
+  if (c) c.textContent = holeriteSelecionados.size;
+}
+
+function holeriteBuscar(v) {
+  holeriteBusca = v;
+  clearTimeout(window._holeriteBuscaDebounce);
+  window._holeriteBuscaDebounce = setTimeout(_holeriteAtualizarListaEContadores, 120);
+}
+
+function holeriteDefinirModo(modo) {
+  holeriteModoEnvio = modo;
+  if (modo === 'completo') {
+    holeriteSelecionados = new Set(holeritesPdfData.map((item,idx)=>item.userId?idx:null).filter(idx=>idx!==null));
+  } else {
+    holeriteSelecionados = new Set();
+  }
+  renderMapeamentoHolerites();
+}
+
+function holeriteToggleSelecao(idx, checked) {
+  if (checked) holeriteSelecionados.add(idx); else holeriteSelecionados.delete(idx);
+  const c = document.getElementById('holerite-count-sel');
+  if (c) c.textContent = holeriteSelecionados.size;
+}
+function holeriteSelecionarFiltrados() {
+  _holeriteListaFiltrada().forEach(({idx}) => holeriteSelecionados.add(idx));
+  _holeriteAtualizarListaEContadores();
+}
+function holeriteLimparSelecaoFiltrados() {
+  _holeriteListaFiltrada().forEach(({idx}) => holeriteSelecionados.delete(idx));
+  _holeriteAtualizarListaEContadores();
+}
+function holeriteSelecionarTodos() {
+  holeritesPdfData.forEach((item, idx) => { if (!item.inativoNome) holeriteSelecionados.add(idx); });
+  _holeriteAtualizarListaEContadores();
+}
+function holeriteLimparTodos() {
+  holeriteSelecionados.clear();
+  _holeriteAtualizarListaEContadores();
+}
+function holeriteReatribuir(idx, nomeDigitado) {
+  const datalist = document.getElementById('dl-holerite-colabs');
+  const opt = [...datalist.options].find(o => o.value === nomeDigitado);
+  if (!opt) { toast('Selecione um nome válido da lista de sugestões', 'err'); return; }
+  const user = allUsers.find(u => u.id === opt.dataset.id);
+  if (!user) return;
+  holeritesPdfData[idx].userId = user.id;
+  holeritesPdfData[idx].userName = user.name;
+  holeriteSelecionados.add(idx);
+  renderMapeamentoHolerites();
 }
 
 async function dispararHolerites() {
@@ -10344,18 +10461,18 @@ async function dispararHolerites() {
   const mesNum = parseInt(mesStr);
   const ano = parseInt(anoStr);
 
-  // ── Montar lote lendo selects AGORA ──
+  // ── Montar lote a partir dos selecionados (checkboxes) ──
+  const idxOrdenados = [...holeriteSelecionados].sort((a,b)=>a-b);
+  const selecionadasSemUser = idxOrdenados.filter(idx => !holeritesPdfData[idx]?.userId).length;
   const batch = [];
-  for (let idx = 0; idx < holeritesPdfData.length; idx++) {
-    const sel = document.getElementById(`match-user-${idx}`);
-    const userId = sel?.value || '';
-    if (!userId) continue;
-    const user = allUsers.find(u => u.id === userId);
-    if (!user) continue;
+  for (const idx of idxOrdenados) {
     const item = holeritesPdfData[idx];
-    if (!item?.pdfBase64) { toast(`Página ${idx+1} sem PDF — recarregue o arquivo`, 'err'); return; }
+    if (!item || !item.userId) continue;
+    const user = allUsers.find(u => u.id === item.userId);
+    if (!user) continue;
+    if (!item.pdfBase64) { toast(`Página ${idx+1} sem PDF — recarregue o arquivo`, 'err'); return; }
     batch.push({
-      colaboradorId: userId,
+      colaboradorId: item.userId,
       colaboradorEmail: user.email,
       colaboradorNome: user.name,
       pagina: idx + 1,
@@ -10373,10 +10490,15 @@ async function dispararHolerites() {
 
   if (!batch.length) { toast('Selecione pelo menos um colaborador', 'err'); return; }
 
-  // ── Avisar se há páginas ignoradas (sem atribuição manual) ──
-  const semAtribuicao = holeritesPdfData.length - batch.length;
-  if (semAtribuicao > 0) {
-    if (!confirm(`⚠️ ${semAtribuicao} página(s) estão sem colaborador atribuído e serão IGNORADAS.\n\nPáginas que serão disparadas: ${batch.length}\nPáginas ignoradas: ${semAtribuicao}\n\nDeseja continuar mesmo assim?`)) return;
+  if (selecionadasSemUser > 0) {
+    if (!confirm(`⚠️ ${selecionadasSemUser} página(s) marcada(s) ainda não têm colaborador atribuído (nome não detectado) e serão IGNORADAS neste disparo.\n\nPáginas que serão disparadas: ${batch.length}\n\nDeseja continuar mesmo assim?`)) return;
+  }
+
+  // ── Avisar se há páginas detectadas mas fora da seleção (modo completo) ──
+  const detectadasTotal = holeritesPdfData.filter(item=>item.userId).length;
+  const semAtribuicao = detectadasTotal - batch.length;
+  if (semAtribuicao > 0 && holeriteModoEnvio === 'completo') {
+    if (!confirm(`⚠️ ${semAtribuicao} página(s) identificadas não estão selecionadas e serão IGNORADAS.\n\nPáginas que serão disparadas: ${batch.length}\nPáginas ignoradas: ${semAtribuicao}\n\nDeseja continuar mesmo assim?`)) return;
   }
 
   // ── Confirmar antes de disparar ──
@@ -10408,6 +10530,9 @@ async function deletarHolerite(id, nome, mes) {
 
 function cancelarHolerite() {
   holeritesPdfData = [];
+  holeriteSelecionados = new Set();
+  holeriteBusca = '';
+  holeriteModoEnvio = 'completo';
   document.getElementById('holerite-drop-zone').style.display = 'block';
   document.getElementById('holerite-processando').style.display = 'none';
   document.getElementById('holerite-mapeamento').style.display = 'none';
@@ -10960,6 +11085,9 @@ function secAcc(titulo, count, conteudo, aberto=true, corTitulo='') {
 let allFolhas = [];
 let unsubFolhas = null;
 let folhasPdfData = [];
+let folhaSelecionados = new Set();
+let folhaBusca = '';
+let folhaModoEnvio = 'completo';
 let folhaAssinadaFileBase64 = null;
 
 function isRHManager() {
@@ -11054,50 +11182,170 @@ async function handleFolhaFile(file) {
       d.addPage(p);
       const pb=await d.save();
       const nome=extrairNomeFolha(pb.buffer);
-      const u=nome?allUsers.find(x=>{const nf=normalizarNome(nome),nu=normalizarNome(x.name);if(nf===nu)return true;const pf=nf.split(' ').filter(w=>w.length>=3),pu=nu.split(' ').filter(w=>w.length>=3);return pf.filter(w=>pu.includes(w)).length>=2;}):null;
-      folhasPdfData.push({pageIndex:i,nomeDetectado:nome,userId:u?.id||'',userName:u?.name||'',pdfBase64:arrayBufferToBase64(pb)});
+      const _bate=(nf,nu)=>{if(nf===nu)return true;const pf=nf.split(' ').filter(w=>w.length>=3),pu=nu.split(' ').filter(w=>w.length>=3);return pf.filter(w=>pu.includes(w)).length>=2;};
+      const nf = nome?normalizarNome(nome):'';
+      const u = nome?allUsers.find(x=>x.role!=='admin'&&isAtivo(x)&&_bate(nf,normalizarNome(x.name))):null;
+      const uInativo = (nome && !u) ? allUsers.find(x=>x.role!=='admin'&&!isAtivo(x)&&_bate(nf,normalizarNome(x.name))) : null;
+      folhasPdfData.push({pageIndex:i,nomeDetectado:nome,userId:u?.id||'',userName:u?.name||'',inativoNome:uInativo?uInativo.name:'',pdfBase64:arrayBufferToBase64(pb)});
     }
+    folhaBusca = '';
+    folhaModoEnvio = 'completo';
+    folhaSelecionados = new Set(folhasPdfData.map((item,idx)=>item.userId?idx:null).filter(idx=>idx!==null));
     renderMapeamentoFolhas();
   } catch(e){toast('Erro: '+e.message,'err');cancelarFolha();}
+}
+
+function _folhaListaFiltrada() {
+  const buscaNorm = normalizarBusca(folhaBusca);
+  return folhasPdfData
+    .map((item, idx) => ({item, idx}))
+    .filter(({item}) => !item.inativoNome)
+    .filter(({item}) => !buscaNorm || normalizarBusca(item.userName || item.nomeDetectado || '').includes(buscaNorm));
+}
+
+function _folhaRowHtml(item, idx) {
+  const marcado = folhaSelecionados.has(idx);
+  const pendente = !item.userId;
+  return `<div class="rh-match-row" style="${pendente?'border:2px solid rgba(239,68,68,.45);background:rgba(239,68,68,.07)':''}">
+    <input type="checkbox" ${marcado?'checked':''} onchange="folhaToggleSelecao(${idx},this.checked)" style="width:18px;height:18px;margin-right:6px">
+    <div class="mr-page" style="${pendente?'background:#ef4444;color:#fff':''}">${idx+1}</div>
+    <div class="mr-info"><div style="font-size:13px;font-weight:600;color:${item.nomeDetectado?'var(--text)':'#ef4444'}">${item.userName || item.nomeDetectado || '⚠ Não detectado'}${pendente?'<span style="font-size:11px;color:#ef4444;margin-left:6px">⚠ Atribua manualmente</span>':''}</div><div style="font-size:11px;color:var(--text3)">Página ${idx+1}</div></div>
+    ${pendente ? `<input class="form-input" list="dl-folha-colabs" placeholder="Digite o nome..." style="width:220px" onchange="folhaReatribuir(${idx},this.value)">` : ''}
+  </div>`;
 }
 
 function renderMapeamentoFolhas() {
   document.getElementById('folha-processando').style.display='none';
   document.getElementById('folha-mapeamento').style.display='block';
-  const colabs=allUsers.filter(u=>u.role!=='admin'&&isAtivo(u)).sort((a,b)=>a.name.localeCompare(b.name));
-  const opcoes=`<option value="">-- Não enviar --</option>`+colabs.map(u=>`<option value="${u.id}">${u.name}</option>`).join('');
-  const det=folhasPdfData.filter(f=>f.userId).length;
+
+  const total = folhasPdfData.length;
+  const detectados = folhasPdfData.filter(f=>f.userId).length;
+  const ignorados = folhasPdfData.filter(f=>!f.userId && f.inativoNome).length;
+  const pendentes = total - detectados - ignorados;
+
+  const datalistOpts = allUsers.filter(u=>u.role!=='admin'&&isAtivo(u)).sort((a,b)=>a.name.localeCompare(b.name))
+    .map(u=>`<option value="${u.name}" data-id="${u.id}">`).join('');
+
+  const filtrados = _folhaListaFiltrada();
   document.getElementById('folha-match-lista').innerHTML=`
-    <div style="padding:10px 14px;margin-bottom:12px;border-radius:8px;font-size:13px;${det===folhasPdfData.length&&folhasPdfData.length>0?'background:var(--green-bg);color:var(--green)':'background:var(--yellow-bg);color:var(--yellow)'}">
-      ${det===folhasPdfData.length&&folhasPdfData.length>0?`✅ ${det} colaboradores identificados.`:`⚠️ ${det} de ${folhasPdfData.length} detectados.`}
+    <datalist id="dl-folha-colabs">${datalistOpts}</datalist>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <button class="btn btn-sm ${folhaModoEnvio==='completo'?'btn-primary':'btn-secondary'}" onclick="folhaDefinirModo('completo')">📋 Envio Completo</button>
+      <button class="btn btn-sm ${folhaModoEnvio==='seletivo'?'btn-primary':'btn-secondary'}" onclick="folhaDefinirModo('seletivo')">🎯 Reenvio Seletivo</button>
     </div>
-    ${folhasPdfData.map((item,idx)=>`
-    <div class="rh-match-row" style="${item.userId?'':'border:2px solid rgba(239,68,68,.45);background:rgba(239,68,68,.07)'}">
-      <div class="mr-page" style="${item.userId?'':'background:#ef4444;color:#fff'}">${idx+1}</div>
-      <div class="mr-info"><div style="font-size:13px;font-weight:600;color:${item.nomeDetectado?'var(--text)':'#ef4444'}">${item.nomeDetectado||'⚠ Não detectado'}${!item.userId?'<span style="font-size:11px;color:#ef4444;margin-left:6px">⚠ Selecione manualmente</span>':''}</div><div style="font-size:11px;color:var(--text3)">Página ${idx+1}</div></div>
-      <select class="form-select" id="folha-match-${idx}" style="width:240px${!item.userId?';border-color:#ef4444':''}">${opcoes}</select>
-    </div>`).join('')}`;
-  folhasPdfData.forEach((item,idx)=>{const s=document.getElementById(`folha-match-${idx}`);if(s&&item.userId)s.value=item.userId;});
+
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px">
+      <div class="stat-card"><div class="label">Páginas</div><div class="value">${total}</div></div>
+      <div class="stat-card"><div class="label">Detectados</div><div class="value" style="color:#1baf7a">${detectados}</div></div>
+      <div class="stat-card"><div class="label">Pendentes</div><div class="value" style="color:#eda100">${pendentes}</div></div>
+      <div class="stat-card"><div class="label">Ignorados</div><div class="value" style="color:#94a3b8">${ignorados}</div></div>
+      <div class="stat-card"><div class="label">Selecionados</div><div class="value" id="folha-count-sel" style="color:#2a78d6">${folhaSelecionados.size}</div></div>
+    </div>
+
+    <input class="form-input" id="folha-busca-input" placeholder="🔎 Pesquisar por nome..." value="${folhaBusca}" oninput="folhaBuscar(this.value)" style="margin-bottom:10px">
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <button class="btn btn-sm btn-secondary" id="folha-btn-sel-filtrados" onclick="folhaSelecionarFiltrados()">☑ Selecionar resultados filtrados (${filtrados.length})</button>
+      <button class="btn btn-sm btn-secondary" onclick="folhaLimparSelecaoFiltrados()">☐ Limpar seleção</button>
+      <button class="btn btn-sm btn-secondary" onclick="folhaSelecionarTodos()">☑☑ Selecionar todos</button>
+      <button class="btn btn-sm btn-secondary" onclick="folhaLimparTodos()">✕ Limpar todos</button>
+    </div>
+
+    <div id="folha-lista-rows">${filtrados.map(({item,idx})=>_folhaRowHtml(item,idx)).join('')}</div>
+
+    ${ignorados>0 ? `
+    <details style="margin-top:16px;background:var(--surface2);border-radius:10px;padding:12px 14px">
+      <summary style="cursor:pointer;font-size:13px;font-weight:600">🚫 ${ignorados} página(s) ignorada(s)</summary>
+      <div style="margin-top:10px">
+        ${folhasPdfData.filter(f=>!f.userId && f.inativoNome).map(f=>`
+          <div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:12px">
+            <strong>${f.inativoNome}</strong> — página ${f.pageIndex+1} — <span style="color:var(--text3)">Motivo: Colaborador inativo</span>
+          </div>`).join('')}
+      </div>
+    </details>` : ''}
+  `;
+}
+
+function _folhaAtualizarListaEContadores() {
+  const rowsEl = document.getElementById('folha-lista-rows');
+  const filtrados = _folhaListaFiltrada();
+  if (rowsEl) rowsEl.innerHTML = filtrados.map(({item,idx})=>_folhaRowHtml(item,idx)).join('');
+  const btnF = document.getElementById('folha-btn-sel-filtrados');
+  if (btnF) btnF.textContent = `☑ Selecionar resultados filtrados (${filtrados.length})`;
+  const c = document.getElementById('folha-count-sel');
+  if (c) c.textContent = folhaSelecionados.size;
+}
+
+function folhaBuscar(v) {
+  folhaBusca = v;
+  clearTimeout(window._folhaBuscaDebounce);
+  window._folhaBuscaDebounce = setTimeout(_folhaAtualizarListaEContadores, 120);
+}
+function folhaDefinirModo(modo) {
+  folhaModoEnvio = modo;
+  if (modo === 'completo') {
+    folhaSelecionados = new Set(folhasPdfData.map((item,idx)=>item.userId?idx:null).filter(idx=>idx!==null));
+  } else {
+    folhaSelecionados = new Set();
+  }
+  renderMapeamentoFolhas();
+}
+function folhaToggleSelecao(idx, checked) {
+  if (checked) folhaSelecionados.add(idx); else folhaSelecionados.delete(idx);
+  const c = document.getElementById('folha-count-sel');
+  if (c) c.textContent = folhaSelecionados.size;
+}
+function folhaSelecionarFiltrados() {
+  _folhaListaFiltrada().forEach(({idx}) => folhaSelecionados.add(idx));
+  _folhaAtualizarListaEContadores();
+}
+function folhaLimparSelecaoFiltrados() {
+  _folhaListaFiltrada().forEach(({idx}) => folhaSelecionados.delete(idx));
+  _folhaAtualizarListaEContadores();
+}
+function folhaSelecionarTodos() {
+  folhasPdfData.forEach((item, idx) => { if (!item.inativoNome) folhaSelecionados.add(idx); });
+  _folhaAtualizarListaEContadores();
+}
+function folhaLimparTodos() {
+  folhaSelecionados.clear();
+  _folhaAtualizarListaEContadores();
+}
+function folhaReatribuir(idx, nomeDigitado) {
+  const datalist = document.getElementById('dl-folha-colabs');
+  const opt = [...datalist.options].find(o => o.value === nomeDigitado);
+  if (!opt) { toast('Selecione um nome válido da lista de sugestões', 'err'); return; }
+  const user = allUsers.find(u => u.id === opt.dataset.id);
+  if (!user) return;
+  folhasPdfData[idx].userId = user.id;
+  folhasPdfData[idx].userName = user.name;
+  folhaSelecionados.add(idx);
+  renderMapeamentoFolhas();
 }
 
 async function dispararFolhas() {
   const comp=(document.getElementById('folha-competencia')?.value||'').trim();
   if(!comp||!/^\d{2}\/\d{4}$/.test(comp)){toast('Informe a competência','err');return;}
   const[ms,as]=comp.split('/');
+  const idxOrdenados = [...folhaSelecionados].sort((a,b)=>a-b);
+  const selecionadasSemUser = idxOrdenados.filter(idx => !folhasPdfData[idx]?.userId).length;
   const batch=[];
-  for(let i=0;i<folhasPdfData.length;i++){
-    const s=document.getElementById(`folha-match-${i}`);
-    const uid=s?.value||''; if(!uid)continue;
-    const u=allUsers.find(x=>x.id===uid); if(!u)continue;
+  for(const i of idxOrdenados){
     const item=folhasPdfData[i];
-    if(!item?.pdfBase64){toast(`Página ${i+1} sem PDF`,'err');return;}
-    batch.push({colaboradorId:uid,colaboradorEmail:u.email,colaboradorNome:u.name,pagina:i+1,mes:comp,mesNum:parseInt(ms),ano:parseInt(as),pdfBase64:item.pdfBase64,status:'pendente',enviadoEm:new Date().toISOString(),enviadoPor:currentUser.name,vistoColaborador:false,vistoManager:false});
+    if(!item || !item.userId) continue;
+    const u=allUsers.find(x=>x.id===item.userId); if(!u)continue;
+    if(!item.pdfBase64){toast(`Página ${i+1} sem PDF`,'err');return;}
+    batch.push({colaboradorId:item.userId,colaboradorEmail:u.email,colaboradorNome:u.name,pagina:i+1,mes:comp,mesNum:parseInt(ms),ano:parseInt(as),pdfBase64:item.pdfBase64,status:'pendente',enviadoEm:new Date().toISOString(),enviadoPor:currentUser.name,vistoColaborador:false,vistoManager:false});
   }
   if(!batch.length){toast('Selecione pelo menos um colaborador','err');return;}
-  // ── Avisar se há páginas ignoradas ──
-  const _semAtrib = folhasPdfData.length - batch.length;
-  if (_semAtrib > 0) {
-    if (!confirm(`⚠️ ${_semAtrib} página(s) estão sem colaborador atribuído e serão IGNORADAS.\n\nPáginas que serão disparadas: ${batch.length}\nPáginas ignoradas: ${_semAtrib}\n\nDeseja continuar mesmo assim?`)) return;
+  if (selecionadasSemUser > 0) {
+    if (!confirm(`⚠️ ${selecionadasSemUser} página(s) marcada(s) ainda não têm colaborador atribuído e serão IGNORADAS neste disparo.\n\nPáginas que serão disparadas: ${batch.length}\n\nDeseja continuar mesmo assim?`)) return;
+  }
+  const detectadasTotal = folhasPdfData.filter(f=>f.userId).length;
+  const _semAtrib = detectadasTotal - batch.length;
+  if (_semAtrib > 0 && folhaModoEnvio === 'completo') {
+    if (!confirm(`⚠️ ${_semAtrib} página(s) identificadas não estão selecionadas e serão IGNORADAS.\n\nPáginas que serão disparadas: ${batch.length}\nPáginas ignoradas: ${_semAtrib}\n\nDeseja continuar mesmo assim?`)) return;
   }
   if(!confirm(`Disparar ${batch.length} folha(s) de ${comp}?\n\n${batch.map(b=>`• Pág. ${b.pagina} → ${b.colaboradorNome}`).join('\n')}`))return;
   try{
@@ -11111,7 +11359,7 @@ async function dispararFolhas() {
   }catch(e){toast('Erro: '+e.message,'err');}
 }
 
-function cancelarFolha(){folhasPdfData=[];document.getElementById('folha-drop-zone').style.display='block';document.getElementById('folha-processando').style.display='none';document.getElementById('folha-mapeamento').style.display='none';document.getElementById('folha-file-input').value='';}
+function cancelarFolha(){folhasPdfData=[];folhaSelecionados=new Set();folhaBusca='';folhaModoEnvio='completo';document.getElementById('folha-drop-zone').style.display='block';document.getElementById('folha-processando').style.display='none';document.getElementById('folha-mapeamento').style.display='none';document.getElementById('folha-file-input').value='';}
 
 let folhasSelecionadas = new Set();
 
