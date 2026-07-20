@@ -1028,6 +1028,7 @@ const PosCanalLabels = {
         <div class="page-header" style="margin:0"><h1>Ponto Eletrônico</h1><p>Jornada do time em tempo real</p></div>
         <div class="topbar-actions">
           <select class="form-select" id="ponto-mes-filtro" style="width:160px" onchange="renderAdmPonto()"></select>
+          <button class="btn btn-sm btn-primary" onclick="abrirModalBaterPontoAdm()">🛡 Bater Ponto pelo Colaborador</button>
         </div>
       </div>
       <div class="ponto-adm-stats" id="ponto-adm-stats"></div>
@@ -1062,6 +1063,9 @@ const PosCanalLabels = {
           <button class="btn btn-primary" onclick="abrirModalNovaIncidencia()">+ Nova Incidência</button>
           <button class="btn btn-sm btn-secondary" onclick="exportarIncidenciasExcel()">📊 Exportar</button>
           <input type="date" id="inc-filtro-data" class="form-control" style="width:145px;font-size:12px" onchange="renderDashboardIncidencias()" title="Filtrar por data">
+          <select class="form-select" id="inc-filtro-mes" onchange="renderDashboardIncidencias()" style="width:150px">
+            <option value="">Todos os meses</option>
+          </select>
           <select class="form-select" id="inc-filtro-posto" onchange="renderDashboardIncidencias()" style="width:180px">
             <option value="">Todos os postos</option>
           </select>
@@ -1209,6 +1213,9 @@ const PosCanalLabels = {
         <div id="csat-meses-btns" style="display:flex;flex-wrap:wrap;gap:6px"></div>
         <button class="btn btn-sm btn-secondary" onclick="csatSelecionarTodos()" style="font-size:11px;padding:3px 10px">Todos</button>
         <button class="btn btn-sm btn-secondary" onclick="csatLimparMeses()" style="font-size:11px;padding:3px 10px">Limpar</button>
+        <select class="form-select" id="csat-fil-posto" style="min-width:180px;font-size:12px;margin-left:8px" onchange="csatAplicarFiltroPosto()">
+          <option value="">Posto: Todos</option>
+        </select>
       </div>
 
       <!-- aba painel -->
@@ -1855,7 +1862,7 @@ const PosCanalLabels = {
     <div class="modal-header"><div class="modal-title">Novo Colaborador</div><button class="close-btn" onclick="closeModal('modal-collab')">✕</button></div>
     <div class="form-group"><label class="form-label">Nome Completo</label><input class="form-input" id="nc-name" placeholder="Ex: João Silva"></div>
     <div class="form-group"><label class="form-label">E-mail</label><input class="form-input" id="nc-email" type="email" placeholder="joao@empresa.com"></div>
-    <div class="form-group"><label class="form-label">Senha de Acesso</label><input class="form-input" id="nc-pass" type="password" placeholder="Mínimo 4 caracteres"></div>
+    <div class="form-group"><label class="form-label">🔑 Redefinir Senha <span style="font-weight:400;color:var(--text3)">(deixe em branco para manter a atual)</span></label><input class="form-input" id="nc-pass" type="password" placeholder="Mínimo 4 caracteres"></div>
     <div class="form-group"><label class="form-label">Cargo / Função</label><input class="form-input" id="nc-role" placeholder="Ex: Designer, Analista..."></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <div class="form-group"><label class="form-label">Horário Início</label><input class="form-input" id="nc-horario-inicio" type="time" value="08:00"></div>
@@ -2179,6 +2186,67 @@ const PosCanalLabels = {
     <div style="display:flex;gap:10px;margin-top:8px">
       <button class="btn btn-danger" style="flex:1" onclick="recusarCaixa()">✕ Recusar</button>
       <button class="btn btn-success" style="flex:1" onclick="aprovarCaixa()">✓ Aprovar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: HISTÓRICO POR COMPETÊNCIA -->
+<div class="modal-overlay" id="modal-hist-comp">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-header"><div class="modal-title" id="modal-hist-comp-titulo">Histórico por Competência</div><button class="close-btn" onclick="closeModal('modal-hist-comp')">✕</button></div>
+    <div id="histcomp-pills" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px"></div>
+    <div id="histcomp-detalhe" style="max-height:420px;overflow-y:auto"></div>
+  </div>
+</div>
+
+<!-- MODAL: BATER PONTO PELO COLABORADOR (ADM) -->
+<div class="modal-overlay" id="modal-bater-ponto-adm">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header"><div class="modal-title">🛡 Bater Ponto pelo Colaborador</div><button class="close-btn" onclick="closeModal('modal-bater-ponto-adm')">✕</button></div>
+    <div class="form-group"><label class="form-label">Colaborador</label>
+      <select class="form-select" id="bpa-colaborador"></select>
+    </div>
+    <div class="form-group"><label class="form-label">Data</label>
+      <input class="form-input" id="bpa-data" type="date">
+    </div>
+    <div class="form-group"><label class="form-label">Horário</label>
+      <input class="form-input" id="bpa-horario" type="time">
+    </div>
+    <div class="form-group"><label class="form-label">Tipo de marcação</label>
+      <select class="form-select" id="bpa-tipo">
+        <option value="entrada">Entrada</option>
+        <option value="saida_almoco">Saída para Intervalo</option>
+        <option value="retorno_almoco">Retorno do Intervalo</option>
+        <option value="saida">Saída Final</option>
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">Justificativa (obrigatória)</label>
+      <textarea class="form-textarea" id="bpa-justificativa" placeholder="Motivo pelo qual o administrador está registrando esta marcação..."></textarea>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin:4px 0 8px">Essa marcação entra normalmente nos cálculos da jornada e fica identificada como "Registro Administrativo".</div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-bater-ponto-adm')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="confirmarBaterPontoAdm()">✓ Registrar Marcação</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: CORRIGIR SALDO (ADM) -->
+<div class="modal-overlay" id="modal-corrigir-saldo">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header"><div class="modal-title">🛠 Corrigir Saldo (Administrativo)</div><button class="close-btn" onclick="closeModal('modal-corrigir-saldo')">✕</button></div>
+    <div id="corrsaldo-info" style="font-size:13px;color:var(--text2);margin-bottom:16px;padding:12px;background:var(--surface2);border-radius:8px;"></div>
+    <div class="form-group"><label class="form-label">Novo saldo (R$)</label>
+      <input class="form-input" id="corrsaldo-novo" type="number" step="0.01" placeholder="0,00">
+    </div>
+    <div class="form-group"><label class="form-label">Justificativa (obrigatória)</label>
+      <textarea class="form-textarea" id="corrsaldo-just" placeholder="Explique o motivo da correção..."></textarea>
+    </div>
+    <input type="hidden" id="corrsaldo-id">
+    <div style="font-size:11px;color:var(--text3);margin:8px 0 4px">Os lançamentos individuais não são alterados — só o saldo final. Esta correção fica registrada para auditoria.</div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-corrigir-saldo')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="confirmarCorrecaoSaldo()">✓ Confirmar Correção</button>
     </div>
   </div>
 </div>
@@ -2999,9 +3067,19 @@ function renderDashboardIncidencias() {
   const content = document.getElementById('inc-dash-content');
   if (!stats || !content) return;
   
-  // Filtros simplificados: Data única + Posto
+  // Filtros simplificados: Data única + Mês + Posto
   const filtroData  = document.getElementById('inc-filtro-data')?.value  || '';
+  const filtroMes   = document.getElementById('inc-filtro-mes')?.value   || '';
   const filtroPosto = document.getElementById('inc-filtro-posto')?.value  || '';
+
+  // Popular select de meses (auto-atualiza com meses reais existentes na base, ordem cronológica)
+  const selMes = document.getElementById('inc-filtro-mes');
+  if(selMes){
+    const mesesUnicos = [...new Set(allIncidencias.map(i=>(i.abertoEm||'').slice(0,7)).filter(Boolean))].sort();
+    const prevMes = selMes.value;
+    selMes.innerHTML = '<option value="">Todos os meses</option>' +
+      mesesUnicos.map(m=>`<option value="${m}"${m===prevMes?' selected':''}>${_indMesLabel(m)}</option>`).join('');
+  }
 
   // Popular select de postos (auto-atualiza com postos reais)
   const selPosto = document.getElementById('inc-filtro-posto');
@@ -3021,6 +3099,9 @@ function renderDashboardIncidencias() {
 
   // Filtrar por data única
   if(filtroData) filtered = filtered.filter(i => (i.abertoEm||'').startsWith(filtroData));
+
+  // Filtrar por mês
+  if(filtroMes) filtered = filtered.filter(i => (i.abertoEm||'').startsWith(filtroMes));
 
   // Filtrar por posto
   if(filtroPosto) filtered = filtered.filter(i => i.posto === filtroPosto);
@@ -3200,8 +3281,10 @@ function renderDashboardIncidencias() {
 
 function limparFiltrosInc(){
   const d = document.getElementById('inc-filtro-data');
+  const m = document.getElementById('inc-filtro-mes');
   const p = document.getElementById('inc-filtro-posto');
   if(d) d.value='';
+  if(m) m.value='';
   if(p) p.value='';
   renderDashboardIncidencias();
 }
@@ -3457,9 +3540,22 @@ function exportarIncidenciasExcel() {
     toast('Nenhuma incidência para exportar', 'err');
     return;
   }
-  
+
+  // Respeita os mesmos filtros ativos na tela (data, mês, posto)
+  const filtroData  = document.getElementById('inc-filtro-data')?.value  || '';
+  const filtroMes   = document.getElementById('inc-filtro-mes')?.value   || '';
+  const filtroPosto = document.getElementById('inc-filtro-posto')?.value || '';
+  let paraExportar = [...allIncidencias];
+  if (filtroData)  paraExportar = paraExportar.filter(i => (i.abertoEm||'').startsWith(filtroData));
+  if (filtroMes)   paraExportar = paraExportar.filter(i => (i.abertoEm||'').startsWith(filtroMes));
+  if (filtroPosto) paraExportar = paraExportar.filter(i => i.posto === filtroPosto);
+  if (paraExportar.length === 0) {
+    toast('Nenhuma incidência para o filtro selecionado', 'err');
+    return;
+  }
+
   try {
-    const dados = allIncidencias.map(inc => ({
+    const dados = paraExportar.map(inc => ({
       'Posto': inc.posto,
       'Tipo': inc.tipo,
       'Prioridade': inc.prioridade.toUpperCase(),
@@ -4109,11 +4205,23 @@ async function saveCollab() {
   if (!name || !email) { toast('Preencha nome e e-mail', 'err'); return; }
   try {
     if (userId) {
+      // Redefinição de senha (ADM redefinindo senha de colaborador existente) — exige confirmação e fica registrada
+      if (pass) {
+        if (!confirm(`Confirma a redefinição da senha de ${name}?`)) return;
+        try {
+          const refLog = db.collection('redefinicoes_senha').doc();
+          await refLog.set({
+            id: refLog.id, userId, userName: name,
+            redefinidoPorEmail: currentUser.email, redefinidoPorNome: currentUser.name,
+            data: new Date().toISOString()
+          });
+        } catch(e) { console.error('Falha ao registrar auditoria de redefinição de senha', e); }
+      }
       const dados = { name, email, cargo, horarioInicio: horarioInicio||'08:00', horarioFim: horarioFim||'17:00' };
       if (pass) dados.password = pass;
       await db.collection('users').doc(userId).update(dados);
       closeModal('modal-collab');
-      toast('Colaborador atualizado!', 'ok');
+      toast(pass ? 'Colaborador atualizado e senha redefinida!' : 'Colaborador atualizado!', 'ok');
     } else {
       if (!pass) { toast('Defina uma senha para o novo colaborador', 'err'); return; }
       if (allUsers.find(u => u.email === email)) { toast('E-mail já cadastrado', 'err'); return; }
@@ -5086,13 +5194,16 @@ async function renderAdmPonto() {
     function celulaPonto(tipo, valor) {
       if (atestadoHoje && tipo === 'entrada') return `<div class="ptt-mono">🏥</div>`;
       const corrigido = reg?.correcoes?.[tipo];
+      const admReg = reg?.administrativo?.[tipo];
       const justif = reg?.justificativaAtraso?.[tipo];
       const justifObrig = justif && reg?.historicoJustificativas?.some(j=>j.tipo===tipo&&j.obrigatorio);
-      const titulo = corrigido ? `title="✏️ Corrigido: ${fmtHHMM(corrigido.horarioOriginal)} → ${fmtHHMM(valor)}\nMotivo: ${corrigido.motivoCorrecao}\nPor: ${corrigido.corrigidoPor}"` : '';
+      const titulo = corrigido ? `title="✏️ Corrigido: ${fmtHHMM(corrigido.horarioOriginal)} → ${fmtHHMM(valor)}\nMotivo: ${corrigido.motivoCorrecao}\nPor: ${corrigido.corrigidoPor}"`
+        : admReg ? `title="🛡 Registro Administrativo\nPor: ${admReg.adminNome}\nJustificativa: ${admReg.justificativa}"` : '';
       const badgeCorr = corrigido ? `<span style="font-size:9px;color:var(--yellow);margin-left:2px" title="Batida corrigida pelo ADM">✏️</span>` : '';
+      const badgeAdm = admReg ? `<span style="font-size:9px;color:var(--accent);margin-left:2px" title="Registro Administrativo — por ${admReg.adminNome}: ${admReg.justificativa}">🛡</span>` : '';
       const badgeJust = justifObrig ? `<span style="font-size:9px;color:var(--red);margin-left:2px" title="Justificativa obrigatória: ${justif}">⚠️</span>` : justif ? `<span style="font-size:9px;color:var(--accent);margin-left:2px" title="Justificativa: ${justif}">📝</span>` : '';
       const btnCorrigir = reg ? `<button onclick="abrirCorrecaoPonto('${reg.id}','${tipo}')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:10px;padding:0 2px;opacity:0" class="ptt-edit-btn" title="Corrigir batida">✏</button>` : '';
-      return `<div class="ptt-mono ${valor?'':'empty'}" ${titulo} style="position:relative" onmouseenter="this.querySelector('.ptt-edit-btn')&&(this.querySelector('.ptt-edit-btn').style.opacity='1')" onmouseleave="this.querySelector('.ptt-edit-btn')&&(this.querySelector('.ptt-edit-btn').style.opacity='0')">${valor?fmtHHMM(valor):'—'}${badgeCorr}${badgeJust}${btnCorrigir}</div>`;
+      return `<div class="ptt-mono ${valor?'':'empty'}" ${titulo} style="position:relative" onmouseenter="this.querySelector('.ptt-edit-btn')&&(this.querySelector('.ptt-edit-btn').style.opacity='1')" onmouseleave="this.querySelector('.ptt-edit-btn')&&(this.querySelector('.ptt-edit-btn').style.opacity='0')">${valor?fmtHHMM(valor):'—'}${badgeCorr}${badgeAdm}${badgeJust}${btnCorrigir}</div>`;
     }
 
     return `<div class="ptt-row">
@@ -5105,6 +5216,73 @@ async function renderAdmPonto() {
     </div>`;
   }).join('');
   document.getElementById('ponto-team-rows').innerHTML = rows || `<div class="empty"><p>Nenhum registro hoje</p></div>`;
+}
+
+// ── Bater ponto pelo colaborador (registro administrativo, só ADM) ─────────
+// Usado quando o colaborador esquece de bater o ponto. Entra normalmente nos
+// cálculos de jornada, mas fica identificado visualmente como "Registro Administrativo".
+function abrirModalBaterPontoAdm() {
+  if (currentUser?.role !== 'admin') return;
+  const sel = document.getElementById('bpa-colaborador');
+  const collabs = allUsers.filter(u => u.role !== 'admin' && isAtivo(u)).sort((a,b)=>a.name.localeCompare(b.name));
+  sel.innerHTML = collabs.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  document.getElementById('bpa-data').value = todayKey();
+  document.getElementById('bpa-horario').value = '';
+  document.getElementById('bpa-tipo').value = 'entrada';
+  document.getElementById('bpa-justificativa').value = '';
+  document.getElementById('modal-bater-ponto-adm').classList.add('open');
+}
+
+async function confirmarBaterPontoAdm() {
+  const userId = document.getElementById('bpa-colaborador').value;
+  const data = document.getElementById('bpa-data').value;
+  const horario = document.getElementById('bpa-horario').value;
+  const tipo = document.getElementById('bpa-tipo').value;
+  const justificativa = document.getElementById('bpa-justificativa').value.trim();
+
+  if (!userId) { toast('Selecione um colaborador','err'); return; }
+  if (!data) { toast('Informe a data','err'); return; }
+  if (!horario) { toast('Informe o horário','err'); return; }
+  if (!justificativa) { toast('A justificativa é obrigatória','err'); return; }
+
+  const user = allUsers.find(u => u.id === userId);
+  if (!user) { toast('Colaborador não encontrado','err'); return; }
+
+  const [h, m] = horario.split(':').map(Number);
+  const iso = new Date(`${data}T${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`).toISOString();
+  const tipoLabels = {entrada:'Entrada',saida_almoco:'Saída p/ Almoço',retorno_almoco:'Retorno do Almoço',saida:'Saída'};
+
+  const registroAdm = {
+    adminEmail: currentUser.email, adminNome: currentUser.name,
+    justificativa, criadoEm: new Date().toISOString()
+  };
+
+  try {
+    const existing = allPontos.find(p => p.userId === userId && p.data === data);
+    if (existing) {
+      if (existing[tipo]) {
+        if (!confirm(`Já existe uma marcação de "${tipoLabels[tipo]}" para ${user.name} em ${data.split('-').reverse().join('/')}. Deseja sobrescrever com este registro administrativo?`)) return;
+      }
+      await db.collection('pontos').doc(existing.id).update({
+        [tipo]: iso,
+        [`administrativo.${tipo}`]: registroAdm,
+        updatedAt: new Date().toISOString()
+      });
+    } else {
+      const ref = db.collection('pontos').doc();
+      await ref.set({
+        id: ref.id, userId, userName: user.name, cargo: user.cargo || '', local: user.local || '',
+        data, [tipo]: iso,
+        administrativo: { [tipo]: registroAdm },
+        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+      });
+    }
+    closeModal('modal-bater-ponto-adm');
+    toast(`✅ Marcação de "${tipoLabels[tipo]}" registrada para ${user.name}`, 'ok');
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao registrar marcação: ' + e.message, 'err');
+  }
 }
 
 async function autorizarDevice(did) {
@@ -6899,6 +7077,12 @@ async function renderAdmCaixas() {
         <span>Gasto: <strong style="color:var(--text)">${fmtBRL(caixa.totalGasto||0)}</strong> (${pct}%) • A repor: <strong style="color:var(--yellow)">${fmtBRL(caixa.totalGasto||0)}</strong></span>
         ${statusHtml}
       </div>
+      ${currentUser?.role==='admin' && caixa.status!=='sem_caixa' ? `
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <button class="btn btn-sm btn-secondary" onclick="abrirModalCorrigirSaldo('${caixa.id}','${sup.name}')">🛠 Corrigir Saldo</button>
+        <button class="btn btn-sm btn-secondary" onclick="verHistoricoCorrecoesSaldo('${caixa.id}')">📜 Histórico de Correções</button>
+        ${caixa.saldoCorrigidoManualmente?'<span style="font-size:11px;color:var(--yellow);align-self:center">⚠ saldo corrigido manualmente</span>':''}
+      </div>`:''}
       ${caixa.status==='aguarda_aprovacao'?`
       <div style="background:var(--yellow-bg);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:14px;margin-bottom:14px">
         <div style="font-size:13px;font-weight:700;color:var(--yellow);margin-bottom:10px">📥 Arquivos da Prestação</div>
@@ -6925,6 +7109,7 @@ async function renderAdmCaixas() {
         <div id="email-caixa-${caixa.id}" style="display:none"></div>
       </div>`:''}
       <div id="hist-${sup.email.replace('@','_').replace(/\./g,'_')}"></div>
+      <button class="btn btn-sm btn-secondary" style="width:100%;margin-top:8px" onclick="abrirHistoricoCompetencias('${sup.email}','${sup.name}')">📅 Histórico por Competência</button>
     </div>`;
   }
 
@@ -7024,11 +7209,135 @@ async function getHistoricoHtml(email, isAdm=false) {
   </div>`).join('');
 }
 
+// ── Histórico por Competência (navegação — a visualização "últimas 3" acima continua existindo normalmente) ──
+function _caixaCompetenciaDe(c) {
+  const iso = c.enviadoEm || c.createdAt || c.aprovadoEm || '';
+  return iso ? iso.slice(0,7) : null; // YYYY-MM
+}
+let _histCompDados = {}, _histCompSelecionada = '';
+
+function abrirHistoricoCompetencias(email, nome) {
+  const hist = allCaixas.filter(c=>c.supervisorEmail===email && c.status==='reabastecido_historico');
+  const porComp = {};
+  hist.forEach(c=>{ const comp=_caixaCompetenciaDe(c); if(!comp) return; if(!porComp[comp]) porComp[comp]=[]; porComp[comp].push(c); });
+  const competencias = Object.keys(porComp).sort().reverse();
+  if (!competencias.length) { toast('Nenhuma competência anterior encontrada.','ok'); return; }
+  _histCompDados = porComp;
+  _histCompSelecionada = competencias[0];
+  document.getElementById('modal-hist-comp-titulo').textContent = `📅 Histórico por Competência — ${nome}`;
+  _renderHistoricoCompetenciasModal();
+  document.getElementById('modal-hist-comp').classList.add('open');
+}
+
+function _competenciaLabel(c) {
+  const [ano,mes] = c.split('-');
+  const nomes = {'01':'Janeiro','02':'Fevereiro','03':'Março','04':'Abril','05':'Maio','06':'Junho','07':'Julho','08':'Agosto','09':'Setembro','10':'Outubro','11':'Novembro','12':'Dezembro'};
+  return `${nomes[mes]||mes}/${ano}`;
+}
+
+function _renderHistoricoCompetenciasModal() {
+  const competencias = Object.keys(_histCompDados).sort().reverse();
+  const pillsEl = document.getElementById('histcomp-pills');
+  pillsEl.innerHTML = competencias.map(c=>
+    `<button class="btn btn-sm ${c===_histCompSelecionada?'btn-primary':'btn-secondary'}" onclick="selecionarCompetenciaHist('${c}')">${_competenciaLabel(c)}</button>`
+  ).join('');
+
+  const caixasDaComp = _histCompDados[_histCompSelecionada] || [];
+  const el = document.getElementById('histcomp-detalhe');
+  if (!caixasDaComp.length) { el.innerHTML = '<div style="color:var(--text3);font-size:13px">Sem dados para esta competência.</div>'; return; }
+  el.innerHTML = caixasDaComp.map(c=>{
+    const lancs = (allCaixaLancamentos||[]).filter(l=>l.caixaId===c.id).sort((a,b)=>(a.data||'').localeCompare(b.data||''));
+    return `
+      <div style="background:var(--surface2);border-radius:10px;padding:14px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+          <strong>Caixa Nº${c.numeroCaixa||'—'}</strong>
+          <span style="color:var(--red)">-${fmtBRL(c.totalGasto||0)}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:8px;font-family:'IBM Plex Mono',monospace">
+          Enviado: ${fmtDT(c.enviadoEm)} • Aprovado: ${fmtDT(c.aprovadoEm)} • Reposto: ${fmtDT(c.reabastecidoEm)}
+          ${c.saldoCorrigidoManualmente?'<br>⚠ Saldo corrigido administrativamente':''}
+        </div>
+        ${c.obsAprovacao?`<div class="hi-obs" style="margin-bottom:8px">💬 ${c.obsAprovacao}</div>`:''}
+        <div style="font-size:12px;font-weight:600;margin-bottom:4px">Lançamentos (${lancs.length})</div>
+        ${lancs.length ? lancs.map(l=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.05)"><span>${l.data||'—'} — ${l.descricao||''}</span><span>${fmtBRL(l.valor)}</span></div>`).join('') : '<div style="font-size:12px;color:var(--text3)">Nenhum lançamento registrado para este caixa.</div>'}
+      </div>`;
+  }).join('');
+}
+
+function selecionarCompetenciaHist(c) {
+  _histCompSelecionada = c;
+  _renderHistoricoCompetenciasModal();
+}
+
 function abrirModalAprovar(caixaId, nome, valor) {
   document.getElementById('apr-id').value = caixaId;
   document.getElementById('apr-obs').value = '';
   document.getElementById('apr-info').innerHTML = `<strong>${nome}</strong><br>Valor gasto: ${fmtBRL(valor)}<br>Valor a repor: ${fmtBRL(valor)}`;
   document.getElementById('modal-aprovar').classList.add('open');
+}
+
+// ── Correção Administrativa do Saldo (só ADM) ───────────────────────────────
+// Nunca altera lançamentos individuais — só o saldo final do caixa, sempre
+// com justificativa obrigatória e histórico completo em subcoleção para auditoria.
+function abrirModalCorrigirSaldo(caixaId, nome) {
+  if (currentUser?.role !== 'admin') return;
+  const caixa = allCaixas.find(c=>c.id===caixaId);
+  if (!caixa) { toast('Caixa não encontrado','err'); return; }
+  document.getElementById('corrsaldo-id').value = caixaId;
+  document.getElementById('corrsaldo-novo').value = (caixa.saldoAtual||0).toFixed(2);
+  document.getElementById('corrsaldo-just').value = '';
+  document.getElementById('corrsaldo-info').innerHTML = `<strong>${nome}</strong><br>Saldo calculado pelo sistema: <strong>${fmtBRL(caixa.saldoAtual||0)}</strong>`;
+  document.getElementById('modal-corrigir-saldo').classList.add('open');
+}
+
+async function confirmarCorrecaoSaldo() {
+  const caixaId = document.getElementById('corrsaldo-id').value;
+  const novoSaldoStr = document.getElementById('corrsaldo-novo').value;
+  const justificativa = document.getElementById('corrsaldo-just').value.trim();
+  const novoSaldo = parseFloat(novoSaldoStr);
+
+  if (isNaN(novoSaldo)) { toast('Informe um saldo válido','err'); return; }
+  if (!justificativa) { toast('A justificativa é obrigatória','err'); return; }
+
+  const caixa = allCaixas.find(c=>c.id===caixaId);
+  if (!caixa) { toast('Caixa não encontrado','err'); return; }
+
+  const saldoCalculado = caixa.saldoAtual || 0;
+  const diferenca = novoSaldo - saldoCalculado;
+
+  if (!confirm(`Confirmar correção de saldo?\n\nCalculado pelo sistema: ${fmtBRL(saldoCalculado)}\nNovo saldo informado: ${fmtBRL(novoSaldo)}\nDiferença: ${fmtBRL(diferenca)}\n\nOs lançamentos individuais não serão alterados.`)) return;
+
+  try {
+    const registro = {
+      saldoCalculado, saldoInformado: novoSaldo, diferenca,
+      usuarioEmail: currentUser.email, usuarioNome: currentUser.name,
+      data: new Date().toISOString(),
+      justificativa
+    };
+    await db.collection('caixas').doc(caixaId).collection('correcoesSaldo').add(registro);
+    await db.collection('caixas').doc(caixaId).update({
+      saldoAtual: novoSaldo,
+      saldoCorrigidoManualmente: true,
+      ultimaCorrecaoSaldo: registro
+    });
+    closeModal('modal-corrigir-saldo');
+    toast('✅ Saldo corrigido — indicadores recalculados automaticamente.','ok');
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao corrigir saldo. Tente novamente.','err');
+  }
+}
+
+async function verHistoricoCorrecoesSaldo(caixaId) {
+  try {
+    const snap = await db.collection('caixas').doc(caixaId).collection('correcoesSaldo').orderBy('data','desc').get();
+    if (snap.empty) { toast('Nenhuma correção registrada para este caixa.','ok'); return; }
+    const linhas = snap.docs.map(d=>{
+      const c = d.data();
+      return `${fmtDT(c.data)} — ${c.usuarioNome}: ${fmtBRL(c.saldoCalculado)} → ${fmtBRL(c.saldoInformado)} (dif. ${fmtBRL(c.diferenca)})\nJustificativa: ${c.justificativa}`;
+    }).join('\n\n');
+    alert(`Histórico de Correções de Saldo:\n\n${linhas}`);
+  } catch(e) { console.error(e); toast('Erro ao carregar histórico','err'); }
 }
 
 async function getProximoNumeroCaixa() {
@@ -10112,6 +10421,8 @@ function renderAdmRhHolerite() {
   if (tabHistorico && tabHistorico.classList.contains('active')) renderHistoricoHolerites();
 }
 
+let holeritesSelecionados = new Set();
+
 function renderHistoricoHolerites() {
   const lista = document.getElementById('holerite-historico-lista');
   if (!lista) return;
@@ -10138,9 +10449,12 @@ function renderHistoricoHolerites() {
 
   const pendentes = filtrados.filter(h => h.status === 'pendente');
   const assinados = filtrados.filter(h => h.status === 'assinado');
+  holeritesSelecionados = new Set([...holeritesSelecionados].filter(id => assinados.some(h=>h.id===id)));
 
   function cardHolerite(h) {
+    const podeSelecionar = h.status === 'assinado';
     return `<div class="holerite-card">
+      ${podeSelecionar ? `<input type="checkbox" class="holerite-select-cb" data-id="${h.id}" ${holeritesSelecionados.has(h.id)?'checked':''} onchange="toggleSelecaoHolerite('${h.id}',this.checked)" style="width:18px;height:18px;margin-right:4px">` : ''}
       <div class="hc-avatar">${(h.colaboradorNome||'?')[0]}</div>
       <div class="hc-info">
         <div class="hc-name">${h.colaboradorNome}</div>
@@ -10159,8 +10473,61 @@ function renderHistoricoHolerites() {
 
   let html = '';
   if (pendentes.length) html += secAcc('⏳ Pendentes de assinatura', pendentes.length, pendentes.map(cardHolerite).join(''), true, 'var(--yellow)');
-  if (assinados.length) html += secAcc('✅ Assinados', assinados.length, assinados.map(cardHolerite).join(''), false, 'var(--green)');
+  if (assinados.length) {
+    const toolbarAssinados = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+      <button class="btn btn-sm btn-secondary" onclick="selecionarTodosHolerites()">☑ Selecionar Todos</button>
+      <button class="btn btn-sm btn-secondary" onclick="limparSelecaoHolerites()">☐ Limpar Seleção</button>
+      <button class="btn btn-sm btn-primary" onclick="baixarHoleritesSelecionados(this)">⬇ Baixar Selecionados em 1 PDF (<span id="holerites-sel-count">${holeritesSelecionados.size}</span>)</button>
+    </div>`;
+    html += secAcc('✅ Assinados', assinados.length, toolbarAssinados + assinados.map(cardHolerite).join(''), false, 'var(--green)');
+  }
   lista.innerHTML = html;
+}
+
+function toggleSelecaoHolerite(id, checked) {
+  if (checked) holeritesSelecionados.add(id); else holeritesSelecionados.delete(id);
+  const c = document.getElementById('holerites-sel-count');
+  if (c) c.textContent = holeritesSelecionados.size;
+}
+function selecionarTodosHolerites() {
+  document.querySelectorAll('.holerite-select-cb').forEach(cb => { cb.checked = true; holeritesSelecionados.add(cb.dataset.id); });
+  const c = document.getElementById('holerites-sel-count');
+  if (c) c.textContent = holeritesSelecionados.size;
+}
+function limparSelecaoHolerites() {
+  document.querySelectorAll('.holerite-select-cb').forEach(cb => cb.checked = false);
+  holeritesSelecionados.clear();
+  const c = document.getElementById('holerites-sel-count');
+  if (c) c.textContent = 0;
+}
+async function baixarHoleritesSelecionados(btnEl) {
+  // Respeita a ordem apresentada na tela (ordem dos checkboxes no DOM)
+  const idsNaOrdem = [...document.querySelectorAll('.holerite-select-cb')].filter(cb=>cb.checked).map(cb=>cb.dataset.id);
+  if (!idsNaOrdem.length) { toast('Selecione ao menos um holerite assinado', 'err'); return; }
+  if (btnEl) { btnEl.disabled = true; btnEl.textContent = '⏳ Gerando PDF...'; }
+  try {
+    const { PDFDocument } = PDFLib;
+    const merged = await PDFDocument.create();
+    for (const id of idsNaOrdem) {
+      const h = allHolerites.find(x => x.id === id);
+      if (!h || !h.assinadoBase64) continue; // baixa somente documentos assinados
+      const src = await PDFDocument.load(base64ToArrayBuffer(h.assinadoBase64));
+      const paginas = await merged.copyPages(src, src.getPageIndices());
+      paginas.forEach(p => merged.addPage(p));
+    }
+    const bytes = await merged.save();
+    const blob = new Blob([bytes], {type:'application/pdf'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `holerites_assinados_${new Date().toISOString().slice(0,10)}.pdf`;
+    a.click(); URL.revokeObjectURL(url);
+    toast(`✅ ${idsNaOrdem.length} holerite(s) exportado(s) em um único PDF`, 'ok');
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao gerar o PDF combinado', 'err');
+  } finally {
+    if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = `⬇ Baixar Selecionados em 1 PDF (<span id="holerites-sel-count">${holeritesSelecionados.size}</span>)`; }
+  }
 }
 
 function downloadHoleritePdf(holeritreId) {
@@ -10746,6 +11113,8 @@ async function dispararFolhas() {
 
 function cancelarFolha(){folhasPdfData=[];document.getElementById('folha-drop-zone').style.display='block';document.getElementById('folha-processando').style.display='none';document.getElementById('folha-mapeamento').style.display='none';document.getElementById('folha-file-input').value='';}
 
+let folhasSelecionadas = new Set();
+
 function renderHistoricoFolhas() {
   const lista=document.getElementById('folha-historico-lista'); if(!lista)return;
   const fm=document.getElementById('folha-filtro-mes')?.value||'';
@@ -10758,7 +11127,9 @@ function renderHistoricoFolhas() {
   if(!fl.length){lista.innerHTML=`<div class="empty"><p>Nenhuma folha encontrada</p></div>`;return;}
   function card(f){
     if(f.status==='assinado'&&!f.vistoManager)db.collection('folhasPonto').doc(f.id).update({vistoManager:true}).catch(()=>{});
+    const podeSelecionar = f.status==='assinado';
     return `<div class="holerite-card">
+      ${podeSelecionar?`<input type="checkbox" class="folha-select-cb" data-id="${f.id}" ${folhasSelecionadas.has(f.id)?'checked':''} onchange="toggleSelecaoFolha('${f.id}',this.checked)" style="width:18px;height:18px;margin-right:4px">`:''}
       <div class="hc-avatar">${(f.colaboradorNome||'?')[0]}</div>
       <div class="hc-info"><div class="hc-name">${f.colaboradorNome}</div><div class="hc-meta">📅 ${f.mes} · ${fmtDT(f.enviadoEm)} por ${f.enviadoPor}</div></div>
       <span class="status-pill ${f.status==='assinado'?'sp-assinado':'sp-pendente'}">${f.status==='assinado'?'✅ Assinada':'⏳ Pendente'}</span>
@@ -10769,10 +11140,63 @@ function renderHistoricoFolhas() {
       </div></div>`;
   }
   const pend=fl.filter(f=>f.status==='pendente'), ass=fl.filter(f=>f.status==='assinado');
+  folhasSelecionadas = new Set([...folhasSelecionadas].filter(id => ass.some(f=>f.id===id)));
   let h='';
   if(pend.length)h+=secAcc('⏳ Pendentes',pend.length,pend.map(card).join(''),true,'var(--yellow)');
-  if(ass.length)h+=secAcc('✅ Assinadas',ass.length,ass.map(card).join(''),false,'var(--green)');
+  if(ass.length) {
+    const toolbar = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+      <button class="btn btn-sm btn-secondary" onclick="selecionarTodasFolhas()">☑ Selecionar Todos</button>
+      <button class="btn btn-sm btn-secondary" onclick="limparSelecaoFolhas()">☐ Limpar Seleção</button>
+      <button class="btn btn-sm btn-primary" onclick="baixarFolhasSelecionadas(this)">⬇ Baixar Selecionados em 1 PDF (<span id="folhas-sel-count">${folhasSelecionadas.size}</span>)</button>
+    </div>`;
+    h+=secAcc('✅ Assinadas',ass.length, toolbar + ass.map(card).join(''),false,'var(--green)');
+  }
   lista.innerHTML=h;
+}
+
+function toggleSelecaoFolha(id, checked) {
+  if (checked) folhasSelecionadas.add(id); else folhasSelecionadas.delete(id);
+  const c = document.getElementById('folhas-sel-count');
+  if (c) c.textContent = folhasSelecionadas.size;
+}
+function selecionarTodasFolhas() {
+  document.querySelectorAll('.folha-select-cb').forEach(cb => { cb.checked = true; folhasSelecionadas.add(cb.dataset.id); });
+  const c = document.getElementById('folhas-sel-count');
+  if (c) c.textContent = folhasSelecionadas.size;
+}
+function limparSelecaoFolhas() {
+  document.querySelectorAll('.folha-select-cb').forEach(cb => cb.checked = false);
+  folhasSelecionadas.clear();
+  const c = document.getElementById('folhas-sel-count');
+  if (c) c.textContent = 0;
+}
+async function baixarFolhasSelecionadas(btnEl) {
+  const idsNaOrdem = [...document.querySelectorAll('.folha-select-cb')].filter(cb=>cb.checked).map(cb=>cb.dataset.id);
+  if (!idsNaOrdem.length) { toast('Selecione ao menos uma folha assinada', 'err'); return; }
+  if (btnEl) { btnEl.disabled = true; btnEl.textContent = '⏳ Gerando PDF...'; }
+  try {
+    const { PDFDocument } = PDFLib;
+    const merged = await PDFDocument.create();
+    for (const id of idsNaOrdem) {
+      const f = allFolhas.find(x => x.id === id);
+      if (!f || !f.assinadoBase64) continue; // baixa somente documentos assinados
+      const src = await PDFDocument.load(base64ToArrayBuffer(f.assinadoBase64));
+      const paginas = await merged.copyPages(src, src.getPageIndices());
+      paginas.forEach(p => merged.addPage(p));
+    }
+    const bytes = await merged.save();
+    const blob = new Blob([bytes], {type:'application/pdf'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `folhas_ponto_assinadas_${new Date().toISOString().slice(0,10)}.pdf`;
+    a.click(); URL.revokeObjectURL(url);
+    toast(`✅ ${idsNaOrdem.length} folha(s) exportada(s) em um único PDF`, 'ok');
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao gerar o PDF combinado', 'err');
+  } finally {
+    if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = `⬇ Baixar Selecionados em 1 PDF (<span id="folhas-sel-count">${folhasSelecionadas.size}</span>)`; }
+  }
 }
 
 function downloadFolhaPdf(id){const f=allFolhas.find(x=>x.id===id);if(!f?.pdfBase64){toast('PDF não encontrado','err');return;}const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([base64ToArrayBuffer(f.pdfBase64)],{type:'application/pdf'}));a.download=`folha_${f.colaboradorNome.replace(/ /g,'_')}_${f.mes.replace('/','_')}.pdf`;a.click();}
@@ -10880,6 +11304,7 @@ let csatMesesDisponiveis = [];
 let csatSupAtivo = 'leonardo';
 let csatTabAtiva = 'painel';
 let csatUltimaAtualizacao = '';
+let _csatFiltroPosto = '';
 let csatChartEvo = null;
 let csatChartAno = null;
 let csatChartSup = null;
@@ -12070,6 +12495,17 @@ function renderCsatMesBtns() {
     const sel = csatMesesSelecionados.includes(m);
     return `<button class="ind-mes-btn${sel?' active':''}" onclick="csatToggleMes('${m}',this)">${lbl}</button>`;
   }).join('');
+  const selPosto = document.getElementById('csat-fil-posto');
+  if (selPosto && !selPosto.dataset.preenchido) {
+    const postosExistentes = [...new Set(csatAllData.map(d=>d.postoNome))].filter(Boolean).sort();
+    selPosto.innerHTML = `<option value="">Posto: Todos</option>` + postosExistentes.map(p=>`<option value="${p}">${p}</option>`).join('');
+    selPosto.value = _csatFiltroPosto;
+    selPosto.dataset.preenchido = '1';
+  }
+}
+function csatAplicarFiltroPosto() {
+  _csatFiltroPosto = document.getElementById('csat-fil-posto')?.value || '';
+  renderCSAT();
 }
 function csatToggleMes(m, el) {
   const idx = csatMesesSelecionados.indexOf(m);
@@ -12111,7 +12547,7 @@ function renderCsatPainel() {
   const el = document.getElementById('csat-painel-content');
   if(!el) return;
 
-  const dados = csatAllData.filter(d => csatMesesSelecionados.includes(d.mesRef));
+  const dados = csatAllData.filter(d => csatMesesSelecionados.includes(d.mesRef) && (!_csatFiltroPosto || d.postoNome===_csatFiltroPosto));
   const dataInfo = csatUltimaAtualizacao
     ? `<div style="display:inline-flex;align-items:center;gap:6px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:5px 12px;font-size:12px;font-weight:600;color:#f59e0b">📅 Dados até: ${csatUltimaAtualizacao}</div>` : '';
 
@@ -12144,9 +12580,9 @@ function renderCsatPainel() {
   const pesqEvo  = mesesEvo.map(m=>porMesSel[m]?.pesquisas||0);
   const notaEvo  = mesesEvo.map(m=>porMesSel[m]?.pesquisas>0?+(porMesSel[m].notaSum/porMesSel[m].pesquisas).toFixed(2):null);
 
-  // Histórico anual (TODOS os dados)
+  // Histórico anual (TODOS os meses, respeitando o filtro de Posto)
   const porAno = {};
-  csatAllData.forEach(d=>{
+  csatAllData.filter(d => !_csatFiltroPosto || d.postoNome===_csatFiltroPosto).forEach(d=>{
     const ano=(d.mesRef||'').slice(0,4); if(!ano) return;
     if(!porAno[ano]) porAno[ano]={pesquisas:0,notaSum:0};
     porAno[ano].pesquisas+=d.pesquisas||0;
@@ -12715,7 +13151,7 @@ async function exportarCsatPainelPptx(btnEl) {
     // Reaplica EXATAMENTE a mesma agregação usada por renderCsatPainel,
     // sobre os mesmos dados já carregados (csatAllData) e o mesmo filtro
     // de meses já aplicado pelo usuário (csatMesesSelecionados).
-    const dados = csatAllData.filter(d => csatMesesSelecionados.includes(d.mesRef));
+    const dados = csatAllData.filter(d => csatMesesSelecionados.includes(d.mesRef) && (!_csatFiltroPosto || d.postoNome===_csatFiltroPosto));
     if (!dados.length) { toast('Nenhum dado no período selecionado para exportar.', 'err'); return; }
 
     const totalPesq  = dados.reduce((s,d)=>s+(d.pesquisas||0),0);
@@ -18069,6 +18505,7 @@ function renderTrocaPainel() {
   wrap.innerHTML = `
     ${_trocaOficialUltimoImport?`<div style="padding:6px 0 10px;display:flex;gap:8px;flex-wrap:wrap">
       <span style="font-size:11px;background:rgba(27,175,122,.12);color:#0f6e56;padding:3px 10px;border-radius:12px;border:1px solid rgba(27,175,122,.25)">📅 Dados até: ${_trocaOficialUltimoImport}</span>
+      ${_trocaOficialDataBase?`<span style="font-size:11px;background:rgba(59,130,246,.12);color:#185fa5;padding:3px 10px;border-radius:12px;border:1px solid rgba(59,130,246,.25)">📂 Base atualizada em: ${_trocaOficialDataBase}</span>`:''}
     </div>`:''}
 
     <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">Mês</div>
@@ -18405,6 +18842,7 @@ function renderEsforcoPainel() {
 
     ${_esforcoUltimoImport?`<div style="padding:0 0 10px;display:flex;gap:8px;flex-wrap:wrap">
       <span style="font-size:11px;background:rgba(27,175,122,.12);color:#0f6e56;padding:3px 10px;border-radius:12px;border:1px solid rgba(27,175,122,.25)">📅 Dados até: ${_esforcoUltimoImport}</span>
+      ${_esforcoDataBase?`<span style="font-size:11px;background:rgba(59,130,246,.12);color:#185fa5;padding:3px 10px;border-radius:12px;border:1px solid rgba(59,130,246,.25)">📂 Base atualizada em: ${_esforcoDataBase}</span>`:''}
     </div>`:''}
 
     <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">Mês</div>
