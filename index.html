@@ -788,6 +788,7 @@ const PosCanalLabels = {
           <div class="sidebar-item sidebar-sub" id="nav-indevidos-adm" onclick="showView('adm-indevidos',this)"><span class="icon">🔍</span> Ordens Indevidas</div>
           <div class="sidebar-item sidebar-sub" id="nav-qual-reclamacoes-adm" onclick="showView('adm-qualidade-reclamacoes',this)"><span class="icon">🗣</span> Reclamações Improcedentes</div>
           <div class="sidebar-item sidebar-sub" id="nav-qual-trocas-adm" onclick="showView('adm-qualidade-trocas',this)"><span class="icon">🔁</span> Trocas Improcedentes</div>
+          <div class="sidebar-item sidebar-sub" id="nav-qual-backoffice-adm" onclick="showView('adm-qualidade-backoffice',this)"><span class="icon">🎧</span> Controle Backoffice</div>
         </div>
         <div class="sidebar-item" id="nav-inc-adm" onclick="showView('adm-incidencias',this)"><span class="icon">📋</span> Incidências <span id="inc-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
         <div class="sidebar-item" id="nav-caixas-adm" onclick="showView('adm-caixas',this)"><span class="icon">💰</span> Caixas Rotativos <span id="caixa-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
@@ -809,6 +810,10 @@ const PosCanalLabels = {
         <div class="sidebar-item active" onclick="showView('col-tasks',this)"><span class="icon">◈</span> Minhas Tarefas</div>
         <div class="sidebar-item" onclick="showView('col-ponto',this)"><span class="icon">⏱</span> Meu Ponto</div>
         <div class="sidebar-item" onclick="showView('col-incidencias',this)"><span class="icon">📋</span> Incidências</div>
+      </div>
+      <div class="sidebar-section" id="nav-collab-qualidade-section" style="display:none">
+        <div class="sidebar-section-label">Qualidade</div>
+        <div class="sidebar-item" id="nav-collab-backoffice" onclick="showView('adm-qualidade-backoffice',this)"><span class="icon">🎧</span> Controle Backoffice</div>
       </div>
       <div class="sidebar-section">
         <div class="sidebar-section-label">Recursos Humanos</div>
@@ -859,6 +864,7 @@ const PosCanalLabels = {
           <div class="sidebar-item sidebar-sub" id="nav-indevidos-sup" onclick="showView('adm-indevidos',this)"><span class="icon">🔍</span> Ordens Indevidas</div>
           <div class="sidebar-item sidebar-sub" id="nav-qual-reclamacoes-sup" onclick="showView('adm-qualidade-reclamacoes',this)"><span class="icon">🗣</span> Reclamações Improcedentes</div>
           <div class="sidebar-item sidebar-sub" id="nav-qual-trocas-sup" onclick="showView('adm-qualidade-trocas',this)"><span class="icon">🔁</span> Trocas Improcedentes</div>
+          <div class="sidebar-item sidebar-sub" id="nav-qual-backoffice-sup" onclick="showView('adm-qualidade-backoffice',this)"><span class="icon">🎧</span> Controle Backoffice</div>
         </div>
       </div>
     </div>
@@ -1419,6 +1425,27 @@ const PosCanalLabels = {
         <div id="troca-esforco-wrap"       style="display:none"></div>
         <div id="troca-detalhamento-wrap"  style="display:none"></div>
         <div id="troca-ferramentas-wrap"   style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- CONTROLE BACKOFFICE -->
+    <div id="view-adm-qualidade-backoffice" class="view">
+      <div class="topbar" style="flex-wrap:wrap;gap:10px;align-items:center">
+        <div class="topbar-title">🎧 Controle Backoffice</div>
+        <div class="csat-tabs" style="margin-left:auto;display:flex;gap:4px;flex-wrap:wrap">
+          <button class="csat-tab active" id="bko-tab-novo"      onclick="switchBkoTab('novo')">➕ Novo Registro</button>
+          <button class="csat-tab"        id="bko-tab-painel"    onclick="switchBkoTab('painel')">📊 Painel</button>
+          <button class="csat-tab"        id="bko-tab-historico" onclick="switchBkoTab('historico')">📋 Histórico</button>
+          <button class="csat-tab"        id="bko-tab-cadastros" onclick="switchBkoTab('cadastros')">🗂 Cadastros</button>
+          <button class="csat-tab"        id="bko-tab-importacao" onclick="switchBkoTab('importacao')">📥 Importação Inicial</button>
+        </div>
+      </div>
+      <div class="view-content">
+        <div id="bko-novo-wrap"></div>
+        <div id="bko-painel-wrap" style="display:none"></div>
+        <div id="bko-historico-wrap" style="display:none"></div>
+        <div id="bko-cadastros-wrap" style="display:none"></div>
+        <div id="bko-importacao-wrap" style="display:none"></div>
       </div>
     </div>
 
@@ -2229,6 +2256,66 @@ const PosCanalLabels = {
     <div style="display:flex;gap:10px;margin-top:8px">
       <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-bater-ponto-adm')">Cancelar</button>
       <button class="btn btn-primary" style="flex:1" onclick="confirmarBaterPontoAdm()">✓ Registrar Marcação</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: CONTROLE BACKOFFICE — EDITAR REGISTRO -->
+<div class="modal-overlay" id="modal-bko-editar">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header"><div class="modal-title">✏️ Editar Registro</div><button class="close-btn" onclick="closeModal('modal-bko-editar')">✕</button></div>
+    <input type="hidden" id="bkoedit-id">
+    <div class="form-group"><label class="form-label">Data</label><input class="form-input" id="bkoedit-data" type="date"></div>
+    <div class="form-group"><label class="form-label">Posto</label>
+      <input class="form-input" id="bkoedit-posto" list="dl-bko-postos-edit" autocomplete="off">
+      <datalist id="dl-bko-postos-edit"></datalist>
+    </div>
+    <div class="form-group"><label class="form-label">Área</label>
+      <input class="form-input" id="bkoedit-area" list="dl-bko-areas-edit" autocomplete="off" oninput="bkoEditAtualizarProcedimentos()">
+      <datalist id="dl-bko-areas-edit"></datalist>
+    </div>
+    <div class="form-group"><label class="form-label">Procedimento</label>
+      <input class="form-input" id="bkoedit-procedimento" list="dl-bko-procedimentos-edit" autocomplete="off">
+      <datalist id="dl-bko-procedimentos-edit"></datalist>
+    </div>
+    <div class="form-group"><label class="form-label">Observação</label><textarea class="form-textarea" id="bkoedit-observacao" maxlength="500"></textarea></div>
+    <div style="font-size:11px;color:var(--text3);margin:4px 0 8px">A alteração fica registrada para auditoria (valores anteriores e novos, usuário, data/hora).</div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-bko-editar')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="bkoSalvarEdicao()">Salvar alterações</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: CONTROLE BACKOFFICE — EXCLUIR REGISTRO -->
+<div class="modal-overlay" id="modal-bko-excluir">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header"><div class="modal-title">🗑 Excluir Registro</div><button class="close-btn" onclick="closeModal('modal-bko-excluir')">✕</button></div>
+    <input type="hidden" id="bkoexcl-id">
+    <div class="form-group"><label class="form-label">Motivo da exclusão (obrigatório)</label>
+      <textarea class="form-textarea" id="bkoexcl-motivo" placeholder="Explique o motivo..."></textarea></div>
+    <div style="font-size:11px;color:var(--text3);margin:4px 0 8px">A exclusão é lógica (o registro sai das telas e do histórico, mas fica preservado para auditoria).</div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-bko-excluir')">Cancelar</button>
+      <button class="btn btn-danger" style="flex:1" onclick="bkoConfirmarExclusao()">Confirmar exclusão</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: CONTROLE BACKOFFICE — PROCEDIMENTO (NOVO/EDITAR) -->
+<div class="modal-overlay" id="modal-bko-procedimento">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header"><div class="modal-title" id="bkoproc-modal-titulo">Novo Procedimento</div><button class="close-btn" onclick="closeModal('modal-bko-procedimento')">✕</button></div>
+    <input type="hidden" id="bkoproc-id">
+    <div class="form-group"><label class="form-label">Nome</label><input class="form-input" id="bkoproc-nome"></div>
+    <div class="form-group"><label class="form-label">Área</label><select class="form-select" id="bkoproc-area"></select></div>
+    <div class="form-group"><label class="form-label">Palavras-chave <span style="font-weight:400;color:var(--text3)">(separadas por vírgula)</span></label>
+      <input class="form-input" id="bkoproc-keywords" placeholder="ex.: religação, corte, religa"></div>
+    <div class="form-group"><label class="form-label">Status</label>
+      <select class="form-select" id="bkoproc-status"><option value="ativo">Ativo</option><option value="inativo">Inativo</option></select></div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-bko-procedimento')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="bkoSalvarProcedimento()">Salvar</button>
     </div>
   </div>
 </div>
@@ -3774,6 +3861,8 @@ function startApp() {
   document.getElementById('nav-collab').style.display = (!isAdmin && !isPosto) ? 'block' : 'none';
   document.getElementById('nav-posto').style.display = isPosto ? 'block' : 'none';
   document.getElementById('nav-supervisor').style.display = (!isAdmin && !isPosto && isSupervisor) ? 'block' : 'none';
+  const _navCollabBko = document.getElementById('nav-collab-qualidade-section');
+  if (_navCollabBko) _navCollabBko.style.display = (!isAdmin && !isPosto && !isSupervisor && podeVerControleBackoffice()) ? 'block' : 'none';
   if (!isPosto) {
     unsubUsers = db.collection('users').onSnapshot(snap => {
       allUsers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -4074,6 +4163,7 @@ function _doRefreshCurrentView() {
   if (id === 'adm-operacao-dashboard') renderDashboardOperacional();
   if (id === 'adm-qualidade-reclamacoes') renderReclamacoes();
   if (id === 'adm-qualidade-trocas') renderTrocas();
+  if (id === 'adm-qualidade-backoffice') renderControleBackoffice();
   if (id === 'supervisor-postos') renderSupervisorPostos();
   if (id === 'sup-caixa') renderSupCaixa();
   if (id === 'adm-caixas') renderAdmCaixas();
@@ -4129,6 +4219,7 @@ function showView(name, el) {
   if (name === 'adm-operacao-dashboard') renderDashboardOperacional();
   if (name === 'adm-qualidade-reclamacoes') renderReclamacoes();
   if (name === 'adm-qualidade-trocas') renderTrocas();
+  if (name === 'adm-qualidade-backoffice') renderControleBackoffice();
   // Render imediato ao navegar (cancela debounce pendente e renderiza já)
   clearTimeout(_refreshTimer);
   _refreshTimer = null;
@@ -14531,6 +14622,18 @@ function podeVerIndevidos() {
           'teste@gruporgbrasil.com'].includes(currentUser.email);
 }
 
+function podeVerControleBackoffice() {
+  if (!currentUser) return false;
+  // 1) Administrador geral
+  if (currentUser.role === 'admin') return true;
+  // 2) Permissão declarativa no documento do usuário (arquitetura padrão)
+  if (currentUser.permissoes && currentUser.permissoes.controleBackoffice === 'gestor') return true;
+  // 3) FALLBACK TEMPORÁRIO — remover assim que os documentos de Plicila e Danielly
+  //    tiverem permissoes.controleBackoffice='gestor' gravado no Firestore.
+  return ['plicila.silva@gruporgbrasil.com','danielly.ribeiro@gruporgbrasil.com',
+          'teste@gruporgbrasil.com'].includes(currentUser.email);
+}
+
 function _indMesLabel(mesRef) {
   if (!mesRef || !mesRef.includes('-')) return mesRef || '';
   const [, mes] = mesRef.split('-');
@@ -20269,6 +20372,802 @@ function _opRenderCharts(mesesTodos) {
         c.data.datasets[1].data.forEach((v,i)=>{ if(v===null)return; const el=c.getDatasetMeta(1).data[i]; ctx.save();ctx.fillStyle='#eda100';ctx.font='bold 9px sans-serif';ctx.textAlign='center';ctx.fillText(fmtTempo(v),el.x,el.y+16);ctx.restore(); });
       }}]});
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// QUALIDADE — CONTROLE BACKOFFICE
+// Collections: controleBackoffice, controleBackofficeAreas,
+// controleBackofficeProcedimentos, controleBackofficeAuditoria — todas com operacaoId.
+// Escalabilidade: Áreas/Procedimentos carregados 1x em memória (volume baixo);
+// Histórico paginado via Firestore (.limit + startAfter), nunca lê a collection
+// inteira; busca textual roda só sobre a página já carregada, sem nova consulta.
+// Permissão: podeVerControleBackoffice() já definida acima, perto de podeVerIndevidos().
+// ═══════════════════════════════════════════════════════════════════════════
+
+const BKO_SEED_AREAS = ['ADESAO','FATURAMENTO','INADIMPLENCIA','LIGACAO NOVA','RESPOSTA AO CLIENTE'];
+const BKO_SEED_PROCEDIMENTOS = [
+  {"area":"ADESAO","nome":"ADESAO"},
+  {"area":"FATURAMENTO","nome":"2ª VIA DE CONTA"},
+  {"area":"FATURAMENTO","nome":"Baixa Renda"},
+  {"area":"FATURAMENTO","nome":"COMPOSICAO VALOR CONSUMO"},
+  {"area":"FATURAMENTO","nome":"CONTA PAGA E NAO BAIXADA"},
+  {"area":"FATURAMENTO","nome":"CORRE DE ENDERECO"},
+  {"area":"FATURAMENTO","nome":"DATA DE VENCIMENTO"},
+  {"area":"FATURAMENTO","nome":"DEBITO AUTOMATICO"},
+  {"area":"FATURAMENTO","nome":"DEVOLUCAO DE VALORES"},
+  {"area":"FATURAMENTO","nome":"DUPLICIDADE"},
+  {"area":"FATURAMENTO","nome":"ENDERECO POSTAL"},
+  {"area":"FATURAMENTO","nome":"ERRO DE LEITURA"},
+  {"area":"FATURAMENTO","nome":"FATURA"},
+  {"area":"FATURAMENTO","nome":"FATURA DIGITAL"},
+  {"area":"FATURAMENTO","nome":"PAGAMENTO DUPLICADO"},
+  {"area":"FATURAMENTO","nome":"PARCELAMENTO"},
+  {"area":"FATURAMENTO","nome":"POSTERGACAO"},
+  {"area":"FATURAMENTO","nome":"REFATURAMENTO"},
+  {"area":"FATURAMENTO","nome":"TAXAS"},
+  {"area":"FATURAMENTO","nome":"TRANSFERENCIA DE CREDITO"},
+  {"area":"FATURAMENTO","nome":"VARIACAO DE CONSUMO"},
+  {"area":"INADIMPLENCIA","nome":"ALTERACAO DE CONTRATO"},
+  {"area":"INADIMPLENCIA","nome":"ALTERACAO DE TARIFA"},
+  {"area":"INADIMPLENCIA","nome":"ANALISE DE FATURA"},
+  {"area":"INADIMPLENCIA","nome":"ANALISE DE IRREGULARIDADE"},
+  {"area":"INADIMPLENCIA","nome":"ANALISE DE PROJETO"},
+  {"area":"INADIMPLENCIA","nome":"ATENDIMENTO EMERGENCIA"},
+  {"area":"INADIMPLENCIA","nome":"BLACK LIST RELIGACAO"},
+  {"area":"INADIMPLENCIA","nome":"CLIENTE VITAL"},
+  {"area":"INADIMPLENCIA","nome":"Declaração de Titularidade"},
+  {"area":"INADIMPLENCIA","nome":"ENCERRAMENTO CONTRATUAL"},
+  {"area":"INADIMPLENCIA","nome":"INFORMATIVO"},
+  {"area":"INADIMPLENCIA","nome":"MUDANCA DE MEDIDOR DE LOCAL"},
+  {"area":"INADIMPLENCIA","nome":"NOVOS NEGOCIOS"},
+  {"area":"INADIMPLENCIA","nome":"OBRA NA REDE"},
+  {"area":"INADIMPLENCIA","nome":"RECURSO DE TOI"},
+  {"area":"INADIMPLENCIA","nome":"RELIGACAO"},
+  {"area":"INADIMPLENCIA","nome":"RESSARCIMENTO DANOS ELETRICOS"},
+  {"area":"INADIMPLENCIA","nome":"TROCA DE TITULARIDADE"},
+  {"area":"INADIMPLENCIA","nome":"VERIFICACAO DE MEDIDOR"},
+  {"area":"INADIMPLENCIA","nome":"VISTORIA DE MEDIDOR"},
+  {"area":"LIGACAO NOVA","nome":"ACRESCIMO DE CARGA"},
+  {"area":"LIGACAO NOVA","nome":"LIG PROVISORIA"},
+  {"area":"LIGACAO NOVA","nome":"LIGACAO NOVA"},
+  {"area":"RESPOSTA AO CLIENTE","nome":"ANALISE DE ORDEM"},
+  {"area":"RESPOSTA AO CLIENTE","nome":"ART 113"},
+  {"area":"RESPOSTA AO CLIENTE","nome":"AUTORELIG"},
+  {"area":"RESPOSTA AO CLIENTE","nome":"BONUS EFICIENTE"},
+  {"area":"RESPOSTA AO CLIENTE","nome":"CARTA ANUENCIA"},
+  {"area":"RESPOSTA AO CLIENTE","nome":"CARTA APP"},
+  {"area":"RESPOSTA AO CLIENTE","nome":"CARTA TOI"},
+  {"area":"RESPOSTA AO CLIENTE","nome":"Declaração de Titularidade"},
+  {"area":"RESPOSTA AO CLIENTE","nome":"DUVIDA"},
+  {"area":"RESPOSTA AO CLIENTE","nome":"ELOGIO"},
+  {"area":"RESPOSTA AO CLIENTE","nome":"GRUPO A"},
+  {"area":"RESPOSTA AO CLIENTE","nome":"Iluminação Pública"},
+  {"area":"RESPOSTA AO CLIENTE","nome":"LIVRO DE MANIFESTAO"},
+  {"area":"RESPOSTA AO CLIENTE","nome":"NADA CONSTA"},
+  {"area":"RESPOSTA AO CLIENTE","nome":"OFICIO"},
+  {"area":"RESPOSTA AO CLIENTE","nome":"PROCESSO JUDICIAL"},
+  {"area":"RESPOSTA AO CLIENTE","nome":"RATEIO GD"}
+];
+const BKO_SEED_DUPLICATAS_COLAPSADAS = [
+  'ACRESCIMO DE CARGA (LIGACAO NOVA) — linha repetida 2x na planilha',
+  'DATA DE VENCIMENTO (FATURAMENTO) — linha repetida 2x na planilha',
+  'RECURSO DE TOI (INADIMPLENCIA) — linha repetida 2x na planilha',
+  'REFATURAMENTO (FATURAMENTO) — linha repetida 2x na planilha'
+];
+// Normalizações aplicadas na carga inicial (grafias corrigidas antes de gravar,
+// não depois): itens ambíguos/errados da planilha original foram convertidos
+// para a grafia correta abaixo. Quando o mesmo nome existe em áreas diferentes,
+// mantém-se 1 cadastro por área (nunca mescla entre áreas).
+const BKO_SEED_NORMALIZACOES_APLICADAS = [
+  '"BAIXA REDA" e "BAIXA RENDA" (FATURAMENTO) → unificados em 1 único item: "Baixa Renda"',
+  '"DECLARACAOO DE TITULARIDADE" (INADIMPLENCIA) → "Declaração de Titularidade" (mantido separado do item de RESPOSTA AO CLIENTE, área diferente)',
+  '"DECLARACAO DE TITULATIDADE" (RESPOSTA AO CLIENTE) → "Declaração de Titularidade" (mantido separado do item de INADIMPLENCIA, área diferente)',
+  '"ILUMINACAOO PUBLICA" (RESPOSTA AO CLIENTE) → "Iluminação Pública"'
+];
+
+// Mapa grafia antiga → grafia correta, usado só pela rotina administrativa de
+// correção abaixo (para cadastros que já tenham sido gravados no Firestore
+// com a grafia errada antes desta correção, ex.: durante testes).
+const BKO_CORRECOES_GRAFIA = [
+  { antigo: 'BAIXA REDA', correto: 'Baixa Renda' },
+  { antigo: 'BAIXA RENDA', correto: 'Baixa Renda' },
+  { antigo: 'DECLARACAOO DE TITULARIDADE', correto: 'Declaração de Titularidade' },
+  { antigo: 'DECLARACAO DE TITULATIDADE', correto: 'Declaração de Titularidade' },
+  { antigo: 'ILUMINACAOO PUBLICA', correto: 'Iluminação Pública' }
+];
+function bkoDetectarProcedimentosDesatualizados() {
+  return _bkoProcedimentos.filter(p =>
+    BKO_CORRECOES_GRAFIA.some(c => c.antigo.toUpperCase() === p.nome.toUpperCase())
+  );
+}
+
+// ── Estado ──
+let _bkoTabAtiva = 'novo';
+let _bkoAreas = [];
+let _bkoProcedimentos = [];
+let _bkoUltimosHoje = [];
+let _bkoHistCursor = null;
+let _bkoHistPagina = [];
+let _bkoHistFimAlcancado = false;
+let _bkoHistBusca = '';
+
+async function renderControleBackoffice() {
+  if (!podeVerControleBackoffice()) return;
+  if (!_bkoAreas.length && !_bkoProcedimentos.length) await bkoCarregarCadastros();
+  switchBkoTab(_bkoTabAtiva);
+}
+
+async function bkoCarregarCadastros() {
+  const operacaoId = await getOperacaoId();
+  const [snapA, snapP] = await Promise.all([
+    db.collection('controleBackofficeAreas').where('operacaoId','==',operacaoId).get(),
+    db.collection('controleBackofficeProcedimentos').where('operacaoId','==',operacaoId).get()
+  ]);
+  _bkoAreas = snapA.docs.map(d => ({id: d.id, ...d.data()}));
+  _bkoProcedimentos = snapP.docs.map(d => ({id: d.id, ...d.data()}));
+}
+
+function switchBkoTab(tab) {
+  if (!podeVerControleBackoffice()) return;
+  _bkoTabAtiva = tab;
+  ['novo','painel','historico','cadastros','importacao'].forEach(t => {
+    const btn = document.getElementById('bko-tab-'+t), w = document.getElementById('bko-'+t+'-wrap');
+    if (btn) btn.classList.toggle('active', t===tab);
+    if (w) w.style.display = (t===tab) ? 'block' : 'none';
+  });
+  if (tab === 'novo') renderBkoNovo();
+  else if (tab === 'painel') renderBkoPainelPlaceholder();
+  else if (tab === 'historico') renderBkoHistorico(true);
+  else if (tab === 'cadastros') renderBkoCadastros();
+  else if (tab === 'importacao') renderBkoImportacaoPlaceholder();
+}
+
+function renderBkoPainelPlaceholder() {
+  document.getElementById('bko-painel-wrap').innerHTML = `<div style="text-align:center;padding:60px 20px;color:var(--text3)">
+    <div style="font-size:40px;margin-bottom:12px">📊</div>
+    <div style="font-size:15px;font-weight:600;color:var(--text)">Em desenvolvimento</div>
+    <p style="font-size:13px;max-width:420px;margin:8px auto 0">Painel Analítico, Rankings, Gráficos e Análises Inteligentes serão implementados em uma etapa futura.</p>
+  </div>`;
+}
+function renderBkoImportacaoPlaceholder() {
+  document.getElementById('bko-importacao-wrap').innerHTML = `<div style="text-align:center;padding:60px 20px;color:var(--text3)">
+    <div style="font-size:40px;margin-bottom:12px">📥</div>
+    <div style="font-size:15px;font-weight:600;color:var(--text)">Em desenvolvimento</div>
+    <p style="font-size:13px;max-width:420px;margin:8px auto 0">A importação do histórico de 2026 será implementada em uma etapa futura.</p>
+  </div>`;
+}
+
+// ── Novo Registro ──
+function renderBkoNovo() {
+  const wrap = document.getElementById('bko-novo-wrap'); if (!wrap) return;
+  const hoje = new Date().toISOString().slice(0,10);
+  wrap.innerHTML = `
+    <div style="max-width:640px">
+      <div class="form-group"><label class="form-label">Data</label>
+        <input class="form-input" id="bko-data" type="date" value="${hoje}" max="${hoje}"></div>
+      <div class="form-group"><label class="form-label">Posto</label>
+        <input class="form-input" id="bko-posto" list="dl-bko-postos" placeholder="Pesquisar posto..." autocomplete="off">
+        <datalist id="dl-bko-postos">${[...TODOS_POSTOS_RG].sort((a,b)=>a.localeCompare(b,'pt')).map(p=>`<option value="${p}">`).join('')}</datalist>
+      </div>
+      <div class="form-group"><label class="form-label">Área</label>
+        <input class="form-input" id="bko-area" list="dl-bko-areas" placeholder="Pesquisar área..." autocomplete="off" oninput="bkoAtualizarProcedimentosDisponiveis()">
+        <datalist id="dl-bko-areas">${_bkoAreas.filter(a=>a.ativo!==false).sort((a,b)=>a.nome.localeCompare(b.nome,'pt')).map(a=>`<option value="${a.nome}">`).join('')}</datalist>
+      </div>
+      <div class="form-group"><label class="form-label">Procedimento</label>
+        <input class="form-input" id="bko-procedimento" list="dl-bko-procedimentos" placeholder="Selecione a área primeiro..." autocomplete="off" disabled>
+        <datalist id="dl-bko-procedimentos"></datalist>
+      </div>
+      <div class="form-group"><label class="form-label">Observação <span style="font-weight:400;color:var(--text3)" id="bko-obs-count">0/500</span></label>
+        <textarea class="form-textarea" id="bko-observacao" maxlength="500" oninput="document.getElementById('bko-obs-count').textContent=this.value.length+'/500'"></textarea>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap">
+        <button class="btn btn-secondary" onclick="bkoLimparForm()">Limpar</button>
+        <button class="btn btn-secondary" onclick="bkoSalvar(true)">💾 Salvar e adicionar outro</button>
+        <button class="btn btn-primary" style="flex:1" onclick="bkoSalvar(false)">✓ Salvar</button>
+      </div>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:24px 0 10px">Últimos registros de hoje</div>
+    <div id="bko-ultimos-wrap"></div>
+  `;
+  bkoCarregarUltimosHoje();
+}
+
+function bkoAtualizarProcedimentosDisponiveis() {
+  const areaNome = document.getElementById('bko-area')?.value || '';
+  const area = _bkoAreas.find(a => a.nome === areaNome);
+  const procInput = document.getElementById('bko-procedimento');
+  const dl = document.getElementById('dl-bko-procedimentos');
+  if (!procInput || !dl) return;
+  if (!area) { procInput.disabled = true; procInput.placeholder = 'Selecione a área primeiro...'; procInput.value=''; dl.innerHTML=''; return; }
+  const procs = _bkoProcedimentos.filter(p => p.areaId === area.id && p.ativo !== false).sort((a,b)=>a.nome.localeCompare(b.nome,'pt'));
+  dl.innerHTML = procs.map(p => `<option value="${p.nome}">`).join('');
+  procInput.disabled = false; procInput.placeholder = 'Pesquisar procedimento...'; procInput.value = '';
+}
+
+function bkoLimparForm() {
+  const p = document.getElementById('bko-posto'); if (p) p.value = '';
+  const a = document.getElementById('bko-area'); if (a) a.value = '';
+  bkoAtualizarProcedimentosDisponiveis();
+  const o = document.getElementById('bko-observacao'); if (o) o.value = '';
+  const c = document.getElementById('bko-obs-count'); if (c) c.textContent = '0/500';
+}
+
+async function bkoSalvar(manterEAdicionarOutro) {
+  const data = document.getElementById('bko-data').value;
+  const postoNome = document.getElementById('bko-posto').value.trim();
+  const areaNome = document.getElementById('bko-area').value.trim();
+  const procNome = document.getElementById('bko-procedimento').value.trim();
+  const observacao = document.getElementById('bko-observacao').value.trim();
+
+  const hoje = new Date().toISOString().slice(0,10);
+  if (!data) { toast('Informe a data', 'err'); return; }
+  if (data > hoje) { toast('Não é permitido registrar datas futuras', 'err'); return; }
+  if (!TODOS_POSTOS_RG.includes(postoNome)) { toast('Selecione um posto válido da lista', 'err'); return; }
+  const area = _bkoAreas.find(a => a.nome === areaNome && a.ativo !== false);
+  if (!area) { toast('Selecione uma área válida da lista', 'err'); return; }
+  const proc = _bkoProcedimentos.find(p => p.nome === procNome && p.areaId === area.id && p.ativo !== false);
+  if (!proc) { toast('Selecione um procedimento válido da lista', 'err'); return; }
+
+  try {
+    const operacaoId = await getOperacaoId();
+    const ref = db.collection('controleBackoffice').doc();
+    await ref.set({
+      id: ref.id, data, mesRef: data.slice(0,7),
+      posto: postoNome, areaId: area.id, areaNome: area.nome,
+      procedimentoId: proc.id, procedimentoNome: proc.nome,
+      observacao, registradoPor: currentUser.name, registradoPorEmail: currentUser.email,
+      criadoEm: new Date().toISOString(), ativo: true, operacaoId
+    });
+    toast('✅ Registro salvo', 'ok');
+    if (manterEAdicionarOutro) {
+      document.getElementById('bko-posto').value = '';
+      document.getElementById('bko-area').value = '';
+      bkoAtualizarProcedimentosDisponiveis();
+      document.getElementById('bko-observacao').value = '';
+      document.getElementById('bko-obs-count').textContent = '0/500';
+      document.getElementById('bko-posto').focus();
+    } else {
+      bkoLimparForm();
+    }
+    bkoCarregarUltimosHoje();
+  } catch(e) { console.error(e); toast('Erro ao salvar: ' + e.message, 'err'); }
+}
+
+async function bkoCarregarUltimosHoje() {
+  try {
+    const operacaoId = await getOperacaoId();
+    const hoje = new Date().toISOString().slice(0,10);
+    const snap = await db.collection('controleBackoffice')
+      .where('operacaoId','==',operacaoId).where('data','==',hoje).where('ativo','==',true)
+      .orderBy('criadoEm','desc').limit(50).get();
+    _bkoUltimosHoje = snap.docs.map(d => ({id: d.id, ...d.data()}));
+  } catch(e) { console.error(e); _bkoUltimosHoje = []; }
+  _bkoRenderUltimos();
+}
+
+function _bkoRenderUltimos() {
+  const wrap = document.getElementById('bko-ultimos-wrap'); if (!wrap) return;
+  if (!_bkoUltimosHoje.length) { wrap.innerHTML = '<div style="color:var(--text3);font-size:13px">Nenhum registro hoje ainda.</div>'; return; }
+  wrap.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:760px">
+    <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15);background:var(--surface3)">
+      ${['Hora','Posto','Área','Procedimento','Observação','Ações'].map(h=>`<th style="padding:7px 10px;text-align:left;color:var(--text3);font-weight:600">${h}</th>`).join('')}
+    </tr></thead>
+    <tbody>${_bkoUltimosHoje.map(r=>`
+      <tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+        <td style="padding:6px 10px;white-space:nowrap">${new Date(r.criadoEm).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</td>
+        <td style="padding:6px 10px;white-space:nowrap">${r.posto}</td>
+        <td style="padding:6px 10px;white-space:nowrap">${r.areaNome}</td>
+        <td style="padding:6px 10px;white-space:nowrap">${r.procedimentoNome}</td>
+        <td style="padding:6px 10px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.observacao||''}">${r.observacao||'—'}</td>
+        <td style="padding:6px 10px;white-space:nowrap">
+          <button class="btn btn-sm btn-secondary" onclick="bkoAbrirEdicao('${r.id}')">✏️</button>
+          <button class="btn btn-sm btn-danger" onclick="bkoAbrirExclusao('${r.id}')">🗑</button>
+        </td>
+      </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+function _bkoBuscarRegistroLocal(id) {
+  return _bkoUltimosHoje.find(x => x.id === id) || _bkoHistPagina.find(x => x.id === id) || null;
+}
+
+// ── Edição (registra auditoria) ──
+function bkoAbrirEdicao(id) {
+  const r = _bkoBuscarRegistroLocal(id);
+  if (!r) { toast('Registro não encontrado', 'err'); return; }
+  const hoje = new Date().toISOString().slice(0,10);
+  document.getElementById('bkoedit-id').value = id;
+  document.getElementById('bkoedit-data').value = r.data;
+  document.getElementById('bkoedit-data').max = hoje;
+  document.getElementById('dl-bko-postos-edit').innerHTML = [...TODOS_POSTOS_RG].sort((a,b)=>a.localeCompare(b,'pt')).map(p=>`<option value="${p}">`).join('');
+  document.getElementById('bkoedit-posto').value = r.posto;
+  document.getElementById('dl-bko-areas-edit').innerHTML = _bkoAreas.filter(a=>a.ativo!==false || a.id===r.areaId).sort((a,b)=>a.nome.localeCompare(b.nome,'pt')).map(a=>`<option value="${a.nome}">`).join('');
+  document.getElementById('bkoedit-area').value = r.areaNome;
+  bkoEditAtualizarProcedimentos();
+  document.getElementById('bkoedit-procedimento').value = r.procedimentoNome;
+  document.getElementById('bkoedit-observacao').value = r.observacao || '';
+  document.getElementById('modal-bko-editar').classList.add('open');
+}
+
+function bkoEditAtualizarProcedimentos() {
+  const areaNome = document.getElementById('bkoedit-area')?.value || '';
+  const area = _bkoAreas.find(a => a.nome === areaNome);
+  const dl = document.getElementById('dl-bko-procedimentos-edit');
+  if (!dl) return;
+  if (!area) { dl.innerHTML = ''; return; }
+  const procs = _bkoProcedimentos.filter(p => p.areaId === area.id).sort((a,b)=>a.nome.localeCompare(b.nome,'pt'));
+  dl.innerHTML = procs.map(p => `<option value="${p.nome}">`).join('');
+}
+
+async function bkoSalvarEdicao() {
+  const id = document.getElementById('bkoedit-id').value;
+  const original = _bkoBuscarRegistroLocal(id);
+  if (!original) { toast('Registro não encontrado', 'err'); return; }
+
+  const data = document.getElementById('bkoedit-data').value;
+  const postoNome = document.getElementById('bkoedit-posto').value.trim();
+  const areaNome = document.getElementById('bkoedit-area').value.trim();
+  const procNome = document.getElementById('bkoedit-procedimento').value.trim();
+  const observacao = document.getElementById('bkoedit-observacao').value.trim();
+
+  const hoje = new Date().toISOString().slice(0,10);
+  if (!data || data > hoje) { toast('Data inválida', 'err'); return; }
+  if (!TODOS_POSTOS_RG.includes(postoNome)) { toast('Selecione um posto válido', 'err'); return; }
+  const area = _bkoAreas.find(a => a.nome === areaNome);
+  if (!area) { toast('Selecione uma área válida', 'err'); return; }
+  const proc = _bkoProcedimentos.find(p => p.nome === procNome && p.areaId === area.id);
+  if (!proc) { toast('Selecione um procedimento válido', 'err'); return; }
+
+  const valoresNovos = { data, mesRef: data.slice(0,7), posto: postoNome, areaId: area.id, areaNome: area.nome, procedimentoId: proc.id, procedimentoNome: proc.nome, observacao };
+  const valoresAnteriores = { data: original.data, posto: original.posto, areaNome: original.areaNome, procedimentoNome: original.procedimentoNome, observacao: original.observacao || '' };
+
+  try {
+    await db.collection('controleBackoffice').doc(id).update({ ...valoresNovos, editadoEm: new Date().toISOString(), editadoPor: currentUser.name });
+    const refAud = db.collection('controleBackofficeAuditoria').doc();
+    await refAud.set({ id: refAud.id, registroId: id, usuario: currentUser.name, usuarioEmail: currentUser.email, dataHora: new Date().toISOString(), tipo: 'edicao', valoresAnteriores, valoresNovos, operacaoId: original.operacaoId });
+    closeModal('modal-bko-editar');
+    toast('✅ Registro atualizado', 'ok');
+    bkoCarregarUltimosHoje();
+    if (_bkoTabAtiva === 'historico') bkoRecarregarHistoricoAtual();
+  } catch(e) { console.error(e); toast('Erro ao editar: ' + e.message, 'err'); }
+}
+
+// ── Exclusão lógica (registra auditoria, exige motivo) ──
+function bkoAbrirExclusao(id) {
+  document.getElementById('bkoexcl-id').value = id;
+  document.getElementById('bkoexcl-motivo').value = '';
+  document.getElementById('modal-bko-excluir').classList.add('open');
+}
+async function bkoConfirmarExclusao() {
+  const id = document.getElementById('bkoexcl-id').value;
+  const motivo = document.getElementById('bkoexcl-motivo').value.trim();
+  if (!motivo) { toast('Informe o motivo da exclusão', 'err'); return; }
+  const original = _bkoBuscarRegistroLocal(id);
+  if (!original) { toast('Registro não encontrado', 'err'); return; }
+  if (!confirm('Confirma a exclusão deste registro?')) return;
+  try {
+    await db.collection('controleBackoffice').doc(id).update({ ativo: false, excluidoEm: new Date().toISOString(), excluidoPor: currentUser.name, motivoExclusao: motivo });
+    const refAud = db.collection('controleBackofficeAuditoria').doc();
+    await refAud.set({ id: refAud.id, registroId: id, usuario: currentUser.name, usuarioEmail: currentUser.email, dataHora: new Date().toISOString(), tipo: 'exclusao', valoresAnteriores: {data:original.data,posto:original.posto,areaNome:original.areaNome,procedimentoNome:original.procedimentoNome,observacao:original.observacao||''}, valoresNovos: null, motivo, operacaoId: original.operacaoId });
+    closeModal('modal-bko-excluir');
+    toast('✅ Registro excluído', 'ok');
+    _bkoUltimosHoje = _bkoUltimosHoje.filter(x => x.id !== id);
+    _bkoHistPagina = _bkoHistPagina.filter(x => x.id !== id);
+    _bkoRenderUltimos();
+    if (_bkoTabAtiva === 'historico') _bkoRenderTabelaHistorico();
+  } catch(e) { console.error(e); toast('Erro ao excluir: ' + e.message, 'err'); }
+}
+
+// ── Cadastros: Áreas + Procedimentos ──
+function renderBkoCadastros() {
+  const wrap = document.getElementById('bko-cadastros-wrap'); if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="font-size:13px;font-weight:700">Áreas</div>
+          <button class="btn btn-sm btn-primary" onclick="bkoAbrirNovaArea()">+ Adicionar área</button>
+        </div>
+        <div id="bko-areas-lista"></div>
+      </div>
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px">
+          <div style="font-size:13px;font-weight:700">Procedimentos</div>
+          <button class="btn btn-sm btn-primary" onclick="bkoAbrirNovoProcedimento()">+ Adicionar procedimento</button>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+          <input class="form-input" id="bko-proc-busca" placeholder="🔎 Pesquisar procedimento..." oninput="bkoRenderProcedimentosLista()" style="flex:1;min-width:160px">
+          <select class="form-select" id="bko-proc-filtro-area" onchange="bkoRenderProcedimentosLista()">
+            <option value="">Todas as áreas</option>
+            ${_bkoAreas.slice().sort((a,b)=>a.nome.localeCompare(b.nome,'pt')).map(a=>`<option value="${a.id}">${a.nome}</option>`).join('')}
+          </select>
+        </div>
+        <div id="bko-procedimentos-lista"></div>
+      </div>
+    </div>
+    <div id="bko-carga-inicial-box" style="margin-top:24px"></div>
+    <div id="bko-correcoes-grafia-box" style="margin-top:16px"></div>
+  `;
+  bkoRenderAreasLista();
+  bkoRenderProcedimentosLista();
+  _bkoRenderCargaInicialBox();
+  _bkoRenderCorrecoesGrafiaBox();
+}
+
+function bkoRenderAreasLista() {
+  const el = document.getElementById('bko-areas-lista'); if (!el) return;
+  const areas = _bkoAreas.slice().sort((a,b)=>a.nome.localeCompare(b.nome,'pt'));
+  el.innerHTML = areas.length ? areas.map(a=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface2);border-radius:8px;padding:10px 12px;margin-bottom:6px">
+      <span style="font-size:13px;${a.ativo===false?'color:var(--text3);text-decoration:line-through':''}">${a.nome}</span>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm btn-secondary" onclick="bkoAbrirEditarArea('${a.id}')">✏️</button>
+        <button class="btn btn-sm btn-secondary" onclick="bkoToggleAtivoArea('${a.id}')">${a.ativo===false?'Ativar':'Inativar'}</button>
+      </div>
+    </div>`).join('') : '<div style="color:var(--text3);font-size:13px">Nenhuma área cadastrada</div>';
+}
+
+function bkoAbrirNovaArea() {
+  const nome = prompt('Nome da nova área:');
+  if (!nome || !nome.trim()) return;
+  const nomeT = nome.trim().toUpperCase();
+  if (_bkoAreas.some(a => a.nome.toUpperCase() === nomeT)) { toast('Já existe uma área com esse nome', 'err'); return; }
+  bkoCriarArea(nomeT);
+}
+async function bkoCriarArea(nome) {
+  try {
+    const operacaoId = await getOperacaoId();
+    const ref = db.collection('controleBackofficeAreas').doc();
+    await ref.set({ id: ref.id, nome, ativo: true, operacaoId, criadoEm: new Date().toISOString() });
+    _bkoAreas.push({ id: ref.id, nome, ativo: true, operacaoId });
+    bkoRenderAreasLista();
+    toast('✅ Área criada', 'ok');
+  } catch(e) { console.error(e); toast('Erro: ' + e.message, 'err'); }
+}
+function bkoAbrirEditarArea(id) {
+  const a = _bkoAreas.find(x => x.id === id); if (!a) return;
+  const novoNome = prompt('Editar nome da área:', a.nome);
+  if (!novoNome || !novoNome.trim()) return;
+  const nomeT = novoNome.trim().toUpperCase();
+  if (_bkoAreas.some(x => x.id !== id && x.nome.toUpperCase() === nomeT)) { toast('Já existe uma área com esse nome', 'err'); return; }
+  db.collection('controleBackofficeAreas').doc(id).update({ nome: nomeT }).then(() => {
+    a.nome = nomeT; bkoRenderAreasLista(); bkoRenderProcedimentosLista();
+    toast('✅ Área atualizada', 'ok');
+  }).catch(e => { console.error(e); toast('Erro: ' + e.message, 'err'); });
+}
+async function bkoToggleAtivoArea(id) {
+  const a = _bkoAreas.find(x => x.id === id); if (!a) return;
+  const novoStatus = a.ativo === false;
+  try {
+    await db.collection('controleBackofficeAreas').doc(id).update({ ativo: novoStatus });
+    a.ativo = novoStatus;
+    bkoRenderAreasLista();
+    toast(novoStatus ? '✅ Área ativada' : '✅ Área inativada', 'ok');
+  } catch(e) { console.error(e); toast('Erro: ' + e.message, 'err'); }
+}
+
+function bkoRenderProcedimentosLista() {
+  const el = document.getElementById('bko-procedimentos-lista'); if (!el) return;
+  const busca = normalizarBusca(document.getElementById('bko-proc-busca')?.value || '');
+  const filtroArea = document.getElementById('bko-proc-filtro-area')?.value || '';
+  let lista = _bkoProcedimentos.slice();
+  if (filtroArea) lista = lista.filter(p => p.areaId === filtroArea);
+  if (busca) lista = lista.filter(p => normalizarBusca(p.nome).includes(busca) || (p.palavrasChave||[]).some(k => normalizarBusca(k).includes(busca)));
+  lista.sort((a,b)=>a.nome.localeCompare(b.nome,'pt'));
+  el.innerHTML = lista.length ? lista.map(p => {
+    const area = _bkoAreas.find(a => a.id === p.areaId);
+    return `<div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface2);border-radius:8px;padding:10px 12px;margin-bottom:6px">
+      <div><div style="font-size:13px;${p.ativo===false?'color:var(--text3);text-decoration:line-through':''}">${p.nome}</div><div style="font-size:11px;color:var(--text3)">${area?.nome||'—'}</div></div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm btn-secondary" onclick="bkoAbrirEditarProcedimento('${p.id}')">✏️</button>
+        <button class="btn btn-sm btn-secondary" onclick="bkoToggleAtivoProcedimento('${p.id}')">${p.ativo===false?'Ativar':'Inativar'}</button>
+      </div>
+    </div>`;
+  }).join('') : '<div style="color:var(--text3);font-size:13px">Nenhum procedimento encontrado</div>';
+}
+
+function bkoAbrirNovoProcedimento() {
+  document.getElementById('bkoproc-modal-titulo').textContent = 'Novo Procedimento';
+  document.getElementById('bkoproc-id').value = '';
+  document.getElementById('bkoproc-nome').value = '';
+  document.getElementById('bkoproc-keywords').value = '';
+  document.getElementById('bkoproc-status').value = 'ativo';
+  document.getElementById('bkoproc-area').innerHTML = _bkoAreas.slice().sort((a,b)=>a.nome.localeCompare(b.nome,'pt')).map(a=>`<option value="${a.id}">${a.nome}</option>`).join('');
+  document.getElementById('modal-bko-procedimento').classList.add('open');
+}
+function bkoAbrirEditarProcedimento(id) {
+  const p = _bkoProcedimentos.find(x => x.id === id); if (!p) return;
+  document.getElementById('bkoproc-modal-titulo').textContent = 'Editar Procedimento';
+  document.getElementById('bkoproc-id').value = id;
+  document.getElementById('bkoproc-nome').value = p.nome;
+  document.getElementById('bkoproc-keywords').value = (p.palavrasChave||[]).join(', ');
+  document.getElementById('bkoproc-status').value = p.ativo === false ? 'inativo' : 'ativo';
+  document.getElementById('bkoproc-area').innerHTML = _bkoAreas.slice().sort((a,b)=>a.nome.localeCompare(b.nome,'pt')).map(a=>`<option value="${a.id}" ${a.id===p.areaId?'selected':''}>${a.nome}</option>`).join('');
+  document.getElementById('modal-bko-procedimento').classList.add('open');
+}
+async function bkoSalvarProcedimento() {
+  const id = document.getElementById('bkoproc-id').value;
+  const nome = document.getElementById('bkoproc-nome').value.trim().toUpperCase();
+  const areaId = document.getElementById('bkoproc-area').value;
+  const keywords = document.getElementById('bkoproc-keywords').value.split(',').map(k=>k.trim()).filter(Boolean);
+  const ativo = document.getElementById('bkoproc-status').value === 'ativo';
+  if (!nome) { toast('Informe o nome', 'err'); return; }
+  if (!areaId) { toast('Selecione a área', 'err'); return; }
+  const duplicado = _bkoProcedimentos.some(p => p.id !== id && p.areaId === areaId && p.nome.toUpperCase() === nome);
+  if (duplicado) { toast('Já existe um procedimento com esse nome nessa área', 'err'); return; }
+  const area = _bkoAreas.find(a => a.id === areaId);
+  const dados = { nome, areaId, areaNome: area?.nome || '', palavrasChave: keywords, ativo };
+  try {
+    if (id) {
+      await db.collection('controleBackofficeProcedimentos').doc(id).update(dados);
+      const p = _bkoProcedimentos.find(x => x.id === id);
+      Object.assign(p, dados);
+    } else {
+      const operacaoId = await getOperacaoId();
+      const ref = db.collection('controleBackofficeProcedimentos').doc();
+      const doc = { id: ref.id, ...dados, operacaoId, criadoEm: new Date().toISOString() };
+      await ref.set(doc);
+      _bkoProcedimentos.push(doc);
+    }
+    closeModal('modal-bko-procedimento');
+    bkoRenderProcedimentosLista();
+    toast('✅ Procedimento salvo', 'ok');
+  } catch(e) { console.error(e); toast('Erro: ' + e.message, 'err'); }
+}
+async function bkoToggleAtivoProcedimento(id) {
+  const p = _bkoProcedimentos.find(x => x.id === id); if (!p) return;
+  const novoStatus = p.ativo === false;
+  try {
+    await db.collection('controleBackofficeProcedimentos').doc(id).update({ ativo: novoStatus });
+    p.ativo = novoStatus;
+    bkoRenderProcedimentosLista();
+    toast(novoStatus ? '✅ Procedimento ativado' : '✅ Procedimento inativado', 'ok');
+  } catch(e) { console.error(e); toast('Erro: ' + e.message, 'err'); }
+}
+
+// ── Carga inicial (planilha REGRAS) — idempotente: só adiciona o que ainda não existir ──
+function _bkoRenderCargaInicialBox() {
+  const box = document.getElementById('bko-carga-inicial-box'); if (!box) return;
+  const jaTemAlgo = _bkoAreas.length > 0 || _bkoProcedimentos.length > 0;
+  box.innerHTML = `
+    <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+      <div style="font-size:13px;font-weight:700;margin-bottom:8px">📥 Carga inicial a partir da planilha REGRAS</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:10px">
+        ${jaTemAlgo ? 'Já existem cadastros. Rodar de novo não duplica nada — só adiciona o que ainda não existir.' : 'Nenhum cadastro ainda. Clique para carregar as 5 áreas e os procedimentos identificados na planilha.'}
+      </div>
+      <button class="btn btn-sm btn-primary" onclick="bkoProcessarCargaInicial()">Carregar cadastro inicial (REGRAS)</button>
+      <div id="bko-carga-inicial-relatorio" style="margin-top:12px"></div>
+    </div>`;
+}
+
+async function bkoProcessarCargaInicial() {
+  if (!confirm('Carregar as áreas e procedimentos da planilha REGRAS? Isso não apaga nada existente, só adiciona o que faltar.')) return;
+  try {
+    const operacaoId = await getOperacaoId();
+    const areasCriadas = [], areasExistentes = [];
+    const areaIdPorNome = {};
+
+    for (const nome of BKO_SEED_AREAS) {
+      const existente = _bkoAreas.find(a => a.nome.toUpperCase() === nome.toUpperCase());
+      if (existente) { areaIdPorNome[nome] = existente.id; areasExistentes.push(nome); continue; }
+      const ref = db.collection('controleBackofficeAreas').doc();
+      await ref.set({ id: ref.id, nome, ativo: true, operacaoId, criadoEm: new Date().toISOString() });
+      _bkoAreas.push({ id: ref.id, nome, ativo: true, operacaoId });
+      areaIdPorNome[nome] = ref.id;
+      areasCriadas.push(nome);
+    }
+
+    const procsCriados = [], procsExistentes = [];
+    for (const item of BKO_SEED_PROCEDIMENTOS) {
+      const areaId = areaIdPorNome[item.area];
+      if (!areaId) continue;
+      const existente = _bkoProcedimentos.find(p => p.areaId === areaId && p.nome.toUpperCase() === item.nome.toUpperCase());
+      if (existente) { procsExistentes.push(`${item.nome} (${item.area})`); continue; }
+      const ref = db.collection('controleBackofficeProcedimentos').doc();
+      const doc = { id: ref.id, nome: item.nome, areaId, areaNome: item.area, palavrasChave: [], ativo: true, operacaoId, criadoEm: new Date().toISOString() };
+      await ref.set(doc);
+      _bkoProcedimentos.push(doc);
+      procsCriados.push(`${item.nome} (${item.area})`);
+    }
+
+    const rel = document.getElementById('bko-carga-inicial-relatorio');
+    if (rel) rel.innerHTML = `
+      <div style="font-size:12px;line-height:1.7;background:var(--surface3);border-radius:8px;padding:12px">
+        <div><strong>✅ Áreas criadas:</strong> ${areasCriadas.length}${areasCriadas.length?` (${areasCriadas.join(', ')})`:''}</div>
+        <div><strong>➖ Áreas já existentes (ignoradas):</strong> ${areasExistentes.length}</div>
+        <div><strong>✅ Procedimentos criados:</strong> ${procsCriados.length}</div>
+        <div><strong>➖ Procedimentos já existentes (ignorados):</strong> ${procsExistentes.length}</div>
+        <div style="margin-top:8px"><strong>🔁 Linhas duplicadas na planilha original (colapsadas em 1 cadastro cada):</strong><br>${BKO_SEED_DUPLICATAS_COLAPSADAS.join('<br>')}</div>
+        <div style="margin-top:8px;color:var(--yellow)"><strong>✏️ Grafias corrigidas antes da gravação (normalizadas na carga inicial):</strong><br>${BKO_SEED_NORMALIZACOES_APLICADAS.join('<br>')}</div>
+        ${bkoDetectarProcedimentosDesatualizados().length ? `<div style="margin-top:8px;color:#e24b4a"><strong>⚠ Foram encontrados ${bkoDetectarProcedimentosDesatualizados().length} cadastro(s) já existente(s) com a grafia antiga.</strong> Use a caixa "Corrigir grafias antigas" logo abaixo para ajustá-los individualmente, com confirmação.</div>` : ''}
+      </div>`;
+    bkoRenderAreasLista();
+    bkoRenderProcedimentosLista();
+    toast('✅ Carga inicial processada', 'ok');
+  } catch(e) { console.error(e); toast('Erro na carga inicial: ' + e.message, 'err'); }
+}
+
+function _bkoRenderCorrecoesGrafiaBox() {
+  const box = document.getElementById('bko-correcoes-grafia-box'); if (!box) return;
+  const pendentes = bkoDetectarProcedimentosDesatualizados();
+  if (!pendentes.length) { box.innerHTML = ''; return; }
+  box.innerHTML = `
+    <div style="background:rgba(226,75,74,.08);border:1px solid rgba(226,75,74,.25);border-radius:12px;padding:16px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:8px;color:#e24b4a">🔧 Corrigir grafias antigas (${pendentes.length})</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:10px">Cadastros existentes com a grafia antiga, provavelmente gravados durante testes. Nada é alterado sem sua confirmação, e o histórico já registrado nunca é modificado.</div>
+      ${pendentes.map(p => {
+        const alvo = BKO_CORRECOES_GRAFIA.find(c => c.antigo.toUpperCase() === p.nome.toUpperCase());
+        const area = _bkoAreas.find(a => a.id === p.areaId);
+        const jaExisteCorreto = _bkoProcedimentos.some(x => x.id !== p.id && x.areaId === p.areaId && x.nome.toUpperCase() === alvo.correto.toUpperCase());
+        return `<div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface2);border-radius:8px;padding:10px 12px;margin-bottom:6px">
+          <div><div style="font-size:13px">"${p.nome}" <span style="color:var(--text3)">(${area?.nome||'—'})</span> → <strong>${alvo.correto}</strong></div>
+          <div style="font-size:11px;color:var(--text3)">${jaExisteCorreto ? 'Já existe o item correto nesta área — será inativado como duplicata' : 'Nenhum item correto ainda nesta área — será renomeado'}</div></div>
+          <button class="btn btn-sm btn-primary" onclick="bkoCorrigirProcedimentoGrafia('${p.id}')">Corrigir</button>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+async function bkoCorrigirProcedimentoGrafia(id) {
+  const p = _bkoProcedimentos.find(x => x.id === id); if (!p) return;
+  const alvo = BKO_CORRECOES_GRAFIA.find(c => c.antigo.toUpperCase() === p.nome.toUpperCase());
+  if (!alvo) return;
+  const correto = _bkoProcedimentos.find(x => x.id !== id && x.areaId === p.areaId && x.nome.toUpperCase() === alvo.correto.toUpperCase());
+  try {
+    if (correto) {
+      if (!confirm(`Já existe "${alvo.correto}" cadastrado nesta área.\n\nInativar "${p.nome}" (duplicata) e manter apenas "${alvo.correto}"?\n\nO histórico já registrado com "${p.nome}" não é alterado.`)) return;
+      await db.collection('controleBackofficeProcedimentos').doc(id).update({ ativo: false });
+      p.ativo = false;
+      toast('✅ Cadastro duplicado inativado', 'ok');
+    } else {
+      if (!confirm(`Renomear "${p.nome}" para "${alvo.correto}"?\n\nO histórico já registrado permanece com o nome antigo (é um retrato do momento do registro); só o cadastro passa a usar a grafia correta a partir de agora.`)) return;
+      await db.collection('controleBackofficeProcedimentos').doc(id).update({ nome: alvo.correto });
+      p.nome = alvo.correto;
+      toast('✅ Grafia corrigida', 'ok');
+    }
+    bkoRenderProcedimentosLista();
+    _bkoRenderCorrecoesGrafiaBox();
+  } catch(e) { console.error(e); toast('Erro: ' + e.message, 'err'); }
+}
+
+// ── Histórico (paginado — nunca lê a collection inteira) ──
+function renderBkoHistorico(reset) {
+  const wrap = document.getElementById('bko-historico-wrap'); if (!wrap) return;
+  if (reset) {
+    wrap.innerHTML = `
+      <input class="form-input" id="bko-hist-busca" placeholder="🔎 Pesquisar posto, área, procedimento ou observação..." oninput="bkoHistBuscar(this.value)" style="margin-bottom:4px">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:12px">Esta busca pesquisa apenas nos registros já carregados na tela. Para buscar em toda a base, use os filtros de competência, período, posto, área ou procedimento abaixo.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+        <input class="form-input" id="bko-hist-fil-mes" type="month" style="width:150px" onchange="bkoRecarregarHistoricoAtual()">
+        <input class="form-input" id="bko-hist-fil-de" type="date" style="width:150px" onchange="bkoRecarregarHistoricoAtual()">
+        <input class="form-input" id="bko-hist-fil-ate" type="date" style="width:150px" onchange="bkoRecarregarHistoricoAtual()">
+        <input class="form-input" id="bko-hist-fil-posto" list="dl-bko-postos-hist" placeholder="Posto..." style="width:180px" onchange="bkoRecarregarHistoricoAtual()">
+        <datalist id="dl-bko-postos-hist">${[...TODOS_POSTOS_RG].sort((a,b)=>a.localeCompare(b,'pt')).map(p=>`<option value="${p}">`).join('')}</datalist>
+        <select class="form-select" id="bko-hist-fil-area" style="width:170px" onchange="bkoHistAreaMudou()">
+          <option value="">Todas as áreas</option>
+          ${_bkoAreas.slice().sort((a,b)=>a.nome.localeCompare(b.nome,'pt')).map(a=>`<option value="${a.id}">${a.nome}</option>`).join('')}
+        </select>
+        <select class="form-select" id="bko-hist-fil-procedimento" style="width:190px" onchange="bkoRecarregarHistoricoAtual()">
+          <option value="">Todos os procedimentos</option>
+        </select>
+        <button class="btn btn-sm btn-secondary" onclick="bkoLimparFiltrosHistorico()">✕ Limpar filtros</button>
+      </div>
+      <div id="bko-hist-tabela"></div>
+      <div style="text-align:center;margin-top:12px">
+        <button class="btn btn-sm btn-secondary" id="bko-hist-carregar-mais" onclick="bkoCarregarMaisHistorico()" style="display:none">Carregar mais</button>
+      </div>
+    `;
+    _bkoHistCursor = null; _bkoHistPagina = []; _bkoHistFimAlcancado = false; _bkoHistBusca = '';
+    bkoRecarregarHistoricoAtual();
+  }
+}
+
+function bkoHistAreaMudou() {
+  const areaId = document.getElementById('bko-hist-fil-area').value;
+  const selProc = document.getElementById('bko-hist-fil-procedimento');
+  if (!areaId) { selProc.innerHTML = '<option value="">Todos os procedimentos</option>'; }
+  else {
+    const procs = _bkoProcedimentos.filter(p => p.areaId === areaId).sort((a,b)=>a.nome.localeCompare(b.nome,'pt'));
+    selProc.innerHTML = '<option value="">Todos os procedimentos</option>' + procs.map(p=>`<option value="${p.id}">${p.nome}</option>`).join('');
+  }
+  bkoRecarregarHistoricoAtual();
+}
+
+function bkoLimparFiltrosHistorico() {
+  ['bko-hist-fil-mes','bko-hist-fil-de','bko-hist-fil-ate','bko-hist-fil-posto'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const a = document.getElementById('bko-hist-fil-area'); if (a) a.value = '';
+  bkoHistAreaMudou();
+}
+
+async function bkoRecarregarHistoricoAtual() {
+  _bkoHistCursor = null; _bkoHistPagina = []; _bkoHistFimAlcancado = false;
+  await bkoCarregarMaisHistorico();
+}
+
+async function bkoCarregarMaisHistorico() {
+  try {
+    const operacaoId = await getOperacaoId();
+    let q = db.collection('controleBackoffice').where('operacaoId','==',operacaoId).where('ativo','==',true);
+
+    const mes = document.getElementById('bko-hist-fil-mes')?.value || '';
+    const de = document.getElementById('bko-hist-fil-de')?.value || '';
+    const ate = document.getElementById('bko-hist-fil-ate')?.value || '';
+    const posto = document.getElementById('bko-hist-fil-posto')?.value || '';
+    const areaId = document.getElementById('bko-hist-fil-area')?.value || '';
+    const procId = document.getElementById('bko-hist-fil-procedimento')?.value || '';
+
+    if (mes) q = q.where('mesRef','==',mes);
+    if (posto) q = q.where('posto','==',posto);
+    if (areaId) q = q.where('areaId','==',areaId);
+    if (procId) q = q.where('procedimentoId','==',procId);
+    if (de) q = q.where('data','>=',de);
+    if (ate) q = q.where('data','<=',ate);
+
+    q = q.orderBy('data','desc').orderBy('criadoEm','desc').limit(50);
+    if (_bkoHistCursor) q = q.startAfter(_bkoHistCursor);
+
+    const snap = await q.get();
+    if (snap.empty) { _bkoHistFimAlcancado = true; }
+    else {
+      _bkoHistCursor = snap.docs[snap.docs.length-1];
+      _bkoHistPagina = _bkoHistPagina.concat(snap.docs.map(d => ({id: d.id, ...d.data()})));
+      if (snap.docs.length < 50) _bkoHistFimAlcancado = true;
+    }
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao carregar histórico — pode ser necessário criar um índice composto no Firestore (ver console)', 'err');
+  }
+  _bkoRenderTabelaHistorico();
+}
+
+function bkoHistBuscar(v) {
+  _bkoHistBusca = v;
+  clearTimeout(window._bkoHistBuscaDebounce);
+  window._bkoHistBuscaDebounce = setTimeout(_bkoRenderTabelaHistorico, 120);
+}
+
+function _bkoRenderTabelaHistorico() {
+  const tabEl = document.getElementById('bko-hist-tabela'); if (!tabEl) return;
+  const btnMais = document.getElementById('bko-hist-carregar-mais');
+  const bn = normalizarBusca(_bkoHistBusca);
+  const filtrados = bn ? _bkoHistPagina.filter(r =>
+    normalizarBusca(r.posto||'').includes(bn) ||
+    normalizarBusca(r.areaNome||'').includes(bn) ||
+    normalizarBusca(r.procedimentoNome||'').includes(bn) ||
+    normalizarBusca(r.observacao||'').includes(bn)
+  ) : _bkoHistPagina;
+
+  if (!filtrados.length) {
+    tabEl.innerHTML = bn
+      ? `<div class="empty"><p>Nenhum resultado para "${_bkoHistBusca}" nos ${_bkoHistPagina.length} registro(s) já carregado(s).</p><p style="font-size:12px;color:var(--text3);margin-top:4px">${_bkoHistFimAlcancado ? 'Todos os registros do filtro atual já foram carregados.' : 'Pode haver mais resultados — clique em "Carregar mais" ou refine com os filtros estruturados acima.'}</p></div>`
+      : '<div class="empty"><p>Nenhum registro encontrado</p></div>';
+  } else {
+    tabEl.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:980px">
+      <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15);background:var(--surface3)">
+        ${['Data','Posto','Supervisor','Área','Procedimento','Observação','Registrado por','Data/Hora','Origem','Ações'].map(h=>`<th style="padding:7px 10px;text-align:left;color:var(--text3);font-weight:600;white-space:nowrap">${h}</th>`).join('')}
+      </tr></thead>
+      <tbody>${filtrados.map(r => {
+        const supervisor = allPostos.find(p => p.nome === r.posto)?.supervisor || '—';
+        return `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+          <td style="padding:6px 10px;white-space:nowrap">${(r.data||'').split('-').reverse().join('/')}</td>
+          <td style="padding:6px 10px;white-space:nowrap">${r.posto}</td>
+          <td style="padding:6px 10px;white-space:nowrap">${supervisor}</td>
+          <td style="padding:6px 10px;white-space:nowrap">${r.areaNome}</td>
+          <td style="padding:6px 10px;white-space:nowrap">${r.procedimentoNome}</td>
+          <td style="padding:6px 10px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.observacao||''}">${r.observacao||'—'}</td>
+          <td style="padding:6px 10px;white-space:nowrap">${r.registradoPor}</td>
+          <td style="padding:6px 10px;white-space:nowrap;color:var(--text3)">${fmtDT(r.criadoEm)}</td>
+          <td style="padding:6px 10px;white-space:nowrap">${r.editadoEm?'✏️ Editado':'Original'}</td>
+          <td style="padding:6px 10px;white-space:nowrap">
+            <button class="btn btn-sm btn-secondary" onclick="bkoAbrirEdicao('${r.id}')">✏️</button>
+            <button class="btn btn-sm btn-danger" onclick="bkoAbrirExclusao('${r.id}')">🗑</button>
+          </td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`;
+  }
+  if (btnMais) btnMais.style.display = !_bkoHistFimAlcancado ? 'inline-block' : 'none';
 }
 
 
