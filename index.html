@@ -1627,6 +1627,7 @@ const PosCanalLabels = {
       </div>
       <div id="rh-painel-historico" style="display:none">
         <div class="rh-section-title">Holerites enviados</div>
+        <input class="form-input" id="holerite-hist-busca" placeholder="🔎 Pesquisar colaborador por nome..." oninput="holeriteHistBuscar(this.value)" style="margin-bottom:12px">
         <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
           <select class="form-select" id="holerite-filtro-mes" style="width:160px" onchange="renderHistoricoHolerites()">
             <option value="">Todos os meses</option>
@@ -1729,6 +1730,7 @@ const PosCanalLabels = {
         </div>
       </div>
       <div id="folha-painel-historico" style="display:none">
+        <input class="form-input" id="folha-hist-busca" placeholder="🔎 Pesquisar colaborador por nome..." oninput="folhaHistBuscar(this.value)" style="margin-bottom:12px">
         <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
           <select class="form-select" id="folha-filtro-mes" style="width:160px" onchange="renderHistoricoFolhas()"><option value="">Todos os meses</option></select>
           <select class="form-select" id="folha-filtro-status" style="width:160px" onchange="renderHistoricoFolhas()">
@@ -10548,6 +10550,14 @@ function renderAdmRhHolerite() {
 
 let holeritesSelecionados = new Set();
 
+let holeriteHistBusca = '';
+
+function holeriteHistBuscar(v) {
+  holeriteHistBusca = v;
+  clearTimeout(window._holeriteHistBuscaDebounce);
+  window._holeriteHistBuscaDebounce = setTimeout(renderHistoricoHolerites, 120);
+}
+
 function renderHistoricoHolerites() {
   const lista = document.getElementById('holerite-historico-lista');
   if (!lista) return;
@@ -10569,8 +10579,18 @@ function renderHistoricoHolerites() {
   let filtrados = allHolerites;
   if (filtroMes) filtrados = filtrados.filter(h => h.mes === filtroMes);
   if (filtroStatus) filtrados = filtrados.filter(h => h.status === filtroStatus);
+  const buscaAtiva = !!holeriteHistBusca.trim();
+  if (buscaAtiva) {
+    const bn = normalizarBusca(holeriteHistBusca);
+    filtrados = filtrados.filter(h => normalizarBusca(h.colaboradorNome||'').includes(bn));
+  }
   
-  if (!filtrados.length) { lista.innerHTML = `<div class="empty"><p>Nenhum holerite encontrado</p></div>`; return; }
+  if (!filtrados.length) {
+    lista.innerHTML = buscaAtiva
+      ? `<div class="empty"><p>Nenhum registro encontrado para esta pesquisa.</p></div>`
+      : `<div class="empty"><p>Nenhum holerite encontrado</p></div>`;
+    return;
+  }
 
   const pendentes = filtrados.filter(h => h.status === 'pendente');
   const assinados = filtrados.filter(h => h.status === 'assinado');
@@ -11153,9 +11173,19 @@ function extrairNomeFolha(arrayBuffer) {
     pos=idx+7;
   }
   let m=full.match(/Fun[çc][aã]o:\s+([A-Z][A-Z ]{3,60}?)\s+\d{5}/);
-  if(m)return m[1].trim();
+  if(m){
+    console.log('[DIAG Folha de Ponto] texto completo extraído da página:', full);
+    console.log('[DIAG Folha de Ponto] nome candidato (regex "Função:"):', m[1].trim());
+    return m[1].trim();
+  }
   m=full.match(/([A-Z][A-Z ]{3,60}?)\s+\d{5}\s+RJ/);
-  if(m)return m[1].trim();
+  if(m){
+    console.log('[DIAG Folha de Ponto] texto completo extraído da página:', full);
+    console.log('[DIAG Folha de Ponto] nome candidato (regex "...RJ"):', m[1].trim());
+    return m[1].trim();
+  }
+  console.log('[DIAG Folha de Ponto] texto completo extraído da página:', full);
+  console.log('[DIAG Folha de Ponto] nenhum nome candidato encontrado — nenhuma das duas regex bateu.');
   return '';
 }
 
@@ -11186,7 +11216,12 @@ async function handleFolhaFile(file) {
       const nf = nome?normalizarNome(nome):'';
       const u = nome?allUsers.find(x=>x.role!=='admin'&&isAtivo(x)&&_bate(nf,normalizarNome(x.name))):null;
       const uInativo = (nome && !u) ? allUsers.find(x=>x.role!=='admin'&&!isAtivo(x)&&_bate(nf,normalizarNome(x.name))) : null;
-      folhasPdfData.push({pageIndex:i,nomeDetectado:nome,userId:u?.id||'',userName:u?.name||'',inativoNome:uInativo?uInativo.name:'',pdfBase64:arrayBufferToBase64(pb)});
+      console.log(`[DIAG Folha de Ponto] página ${i+1} — nome candidato:`, JSON.stringify(nome));
+      console.log(`[DIAG Folha de Ponto] página ${i+1} — match entre ATIVOS:`, u ? {id:u.id, name:u.name} : null);
+      console.log(`[DIAG Folha de Ponto] página ${i+1} — match entre INATIVOS:`, uInativo ? {id:uInativo.id, name:uInativo.name} : null);
+      const _pagObj = {pageIndex:i,nomeDetectado:nome,userId:u?.id||'',userName:u?.name||'',inativoNome:uInativo?uInativo.name:'',pdfBase64:arrayBufferToBase64(pb)};
+      console.log(`[DIAG Folha de Ponto] página ${i+1} — objeto final antes da renderização:`, _pagObj);
+      folhasPdfData.push(_pagObj);
     }
     folhaBusca = '';
     folhaModoEnvio = 'completo';
@@ -11363,6 +11398,14 @@ function cancelarFolha(){folhasPdfData=[];folhaSelecionados=new Set();folhaBusca
 
 let folhasSelecionadas = new Set();
 
+let folhaHistBusca = '';
+
+function folhaHistBuscar(v) {
+  folhaHistBusca = v;
+  clearTimeout(window._folhaHistBuscaDebounce);
+  window._folhaHistBuscaDebounce = setTimeout(renderHistoricoFolhas, 120);
+}
+
 function renderHistoricoFolhas() {
   const lista=document.getElementById('folha-historico-lista'); if(!lista)return;
   const fm=document.getElementById('folha-filtro-mes')?.value||'';
@@ -11372,7 +11415,17 @@ function renderHistoricoFolhas() {
   let fl=allFolhas;
   if(fm)fl=fl.filter(f=>f.mes===fm);
   if(fs)fl=fl.filter(f=>f.status===fs);
-  if(!fl.length){lista.innerHTML=`<div class="empty"><p>Nenhuma folha encontrada</p></div>`;return;}
+  const buscaAtiva = !!folhaHistBusca.trim();
+  if (buscaAtiva) {
+    const bn = normalizarBusca(folhaHistBusca);
+    fl = fl.filter(f => normalizarBusca(f.colaboradorNome||'').includes(bn));
+  }
+  if(!fl.length){
+    lista.innerHTML = buscaAtiva
+      ? `<div class="empty"><p>Nenhum registro encontrado para esta pesquisa.</p></div>`
+      : `<div class="empty"><p>Nenhuma folha encontrada</p></div>`;
+    return;
+  }
   function card(f){
     if(f.status==='assinado'&&!f.vistoManager)db.collection('folhasPonto').doc(f.id).update({vistoManager:true}).catch(()=>{});
     const podeSelecionar = f.status==='assinado';
