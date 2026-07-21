@@ -11173,19 +11173,9 @@ function extrairNomeFolha(arrayBuffer) {
     pos=idx+7;
   }
   let m=full.match(/Fun[çc][aã]o:\s+([A-Z][A-Z ]{3,60}?)\s+\d{5}/);
-  if(m){
-    console.log('[DIAG Folha de Ponto] texto completo extraído da página:', full);
-    console.log('[DIAG Folha de Ponto] nome candidato (regex "Função:"):', m[1].trim());
-    return m[1].trim();
-  }
+  if(m)return m[1].trim();
   m=full.match(/([A-Z][A-Z ]{3,60}?)\s+\d{5}\s+RJ/);
-  if(m){
-    console.log('[DIAG Folha de Ponto] texto completo extraído da página:', full);
-    console.log('[DIAG Folha de Ponto] nome candidato (regex "...RJ"):', m[1].trim());
-    return m[1].trim();
-  }
-  console.log('[DIAG Folha de Ponto] texto completo extraído da página:', full);
-  console.log('[DIAG Folha de Ponto] nenhum nome candidato encontrado — nenhuma das duas regex bateu.');
+  if(m)return m[1].trim();
   return '';
 }
 
@@ -11216,12 +11206,7 @@ async function handleFolhaFile(file) {
       const nf = nome?normalizarNome(nome):'';
       const u = nome?allUsers.find(x=>x.role!=='admin'&&isAtivo(x)&&_bate(nf,normalizarNome(x.name))):null;
       const uInativo = (nome && !u) ? allUsers.find(x=>x.role!=='admin'&&!isAtivo(x)&&_bate(nf,normalizarNome(x.name))) : null;
-      console.log(`[DIAG Folha de Ponto] página ${i+1} — nome candidato:`, JSON.stringify(nome));
-      console.log(`[DIAG Folha de Ponto] página ${i+1} — match entre ATIVOS:`, u ? {id:u.id, name:u.name} : null);
-      console.log(`[DIAG Folha de Ponto] página ${i+1} — match entre INATIVOS:`, uInativo ? {id:uInativo.id, name:uInativo.name} : null);
-      const _pagObj = {pageIndex:i,nomeDetectado:nome,userId:u?.id||'',userName:u?.name||'',inativoNome:uInativo?uInativo.name:'',pdfBase64:arrayBufferToBase64(pb)};
-      console.log(`[DIAG Folha de Ponto] página ${i+1} — objeto final antes da renderização:`, _pagObj);
-      folhasPdfData.push(_pagObj);
+      folhasPdfData.push({pageIndex:i,nomeDetectado:nome,userId:u?.id||'',userName:u?.name||'',inativoNome:uInativo?uInativo.name:'',pdfBase64:arrayBufferToBase64(pb)});
     }
     folhaBusca = '';
     folhaModoEnvio = 'completo';
