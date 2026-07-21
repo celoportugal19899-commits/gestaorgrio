@@ -20481,6 +20481,21 @@ function bkoDetectarProcedimentosDesatualizados() {
   );
 }
 
+// Deduplicação apenas de EXIBIÇÃO: se existirem duplicidades históricas no
+// banco (mesmo nome + mesma área, documentos distintos), mostra só 1 na tela
+// — prefere a versão ativa quando há ativa+inativa com o mesmo nome/área.
+// Não apaga, não funde e não grava nada no Firestore; _bkoProcedimentos
+// continua com todos os documentos originais.
+function _bkoDedupProcedimentosParaExibicao(lista) {
+  const porChave = new Map();
+  for (const p of lista) {
+    const chave = p.areaId + '||' + p.nome.toUpperCase();
+    const atual = porChave.get(chave);
+    if (!atual || (atual.ativo === false && p.ativo !== false)) porChave.set(chave, p);
+  }
+  return [...porChave.values()];
+}
+
 // ── Estado ──
 let _bkoTabAtiva = 'novo';
 let _bkoAreas = [];
@@ -20580,7 +20595,7 @@ function bkoAtualizarProcedimentosDisponiveis() {
   const dl = document.getElementById('dl-bko-procedimentos');
   if (!procInput || !dl) return;
   if (!area) { procInput.disabled = true; procInput.placeholder = 'Selecione a área primeiro...'; procInput.value=''; dl.innerHTML=''; return; }
-  const procs = _bkoProcedimentos.filter(p => p.areaId === area.id && p.ativo !== false).sort((a,b)=>a.nome.localeCompare(b.nome,'pt'));
+  const procs = _bkoDedupProcedimentosParaExibicao(_bkoProcedimentos.filter(p => p.areaId === area.id && p.ativo !== false)).sort((a,b)=>a.nome.localeCompare(b.nome,'pt'));
   dl.innerHTML = procs.map(p => `<option value="${p.nome}">`).join('');
   procInput.disabled = false; procInput.placeholder = 'Pesquisar procedimento...'; procInput.value = '';
 }
@@ -20696,7 +20711,7 @@ function bkoEditAtualizarProcedimentos() {
   const dl = document.getElementById('dl-bko-procedimentos-edit');
   if (!dl) return;
   if (!area) { dl.innerHTML = ''; return; }
-  const procs = _bkoProcedimentos.filter(p => p.areaId === area.id).sort((a,b)=>a.nome.localeCompare(b.nome,'pt'));
+  const procs = _bkoDedupProcedimentosParaExibicao(_bkoProcedimentos.filter(p => p.areaId === area.id)).sort((a,b)=>a.nome.localeCompare(b.nome,'pt'));
   dl.innerHTML = procs.map(p => `<option value="${p.nome}">`).join('');
 }
 
@@ -20854,6 +20869,7 @@ function bkoRenderProcedimentosLista() {
   let lista = _bkoProcedimentos.slice();
   if (filtroArea) lista = lista.filter(p => p.areaId === filtroArea);
   if (busca) lista = lista.filter(p => normalizarBusca(p.nome).includes(busca) || (p.palavrasChave||[]).some(k => normalizarBusca(k).includes(busca)));
+  lista = _bkoDedupProcedimentosParaExibicao(lista);
   lista.sort((a,b)=>a.nome.localeCompare(b.nome,'pt'));
   el.innerHTML = lista.length ? lista.map(p => {
     const area = _bkoAreas.find(a => a.id === p.areaId);
