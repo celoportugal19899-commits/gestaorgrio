@@ -20615,14 +20615,17 @@ function switchBkoTab(tab) {
 
 // ══════════════════════════════════════════════════════════════════════════
 // CONTROLE BACKOFFICE — IMPORTAÇÃO INICIAL (histórico da planilha de 2026)
-// Só gestor/administrador. Idempotente via ID determinístico (data+posto+
-// área+procedimento+observação normalizados) — nunca ID aleatório.
-// ══════════════════════════════════════════════════════════════════════════
-// ══════════════════════════════════════════════════════════════════════════
-// CONTROLE BACKOFFICE — IMPORTAÇÃO INICIAL (histórico da planilha de 2026)
 // Só gestor/administrador. Idempotência por arquivo+aba+linha (nunca ID
 // aleatório) — preserva linhas de negócio idênticas, nunca confunde arquivos
-// diferentes. Aliases históricos são declarativos (sem fuzzy matching).
+// diferentes.
+//
+// NORMALIZADOR INTELIGENTE: em vez de exigir um alias declarado para cada
+// abreviação histórica, cada valor (posto/área/procedimento) passa por uma
+// cascata — igualdade → alias declarado → prefixo → contém → similaridade
+// (Levenshtein) — e só é aceito automaticamente quando exatamente 1
+// candidato bate. Se 2+ candidatos ficam empatados (dentro da margem de
+// ambiguidade), a linha NÃO é corrigida sozinha — vai para "não
+// reconhecidos" com os candidatos listados, para revisão humana.
 // ══════════════════════════════════════════════════════════════════════════
 const BKO_IMPORT_COL_ALIASES = {
   DATA: ['DATA','DATA DO REGISTRO','DT','DATA REGISTRO'],
@@ -20632,11 +20635,10 @@ const BKO_IMPORT_COL_ALIASES = {
   OBSERVACAO: ['OBSERVACAO','OBS','DESCRICAO','DETALHE','COMENTARIO']
 };
 
-// ── Aliases históricos declarativos (só usados na importação; nunca alteram
-// o texto original da planilha, nem os Cadastros). Chaves normalizadas via
-// normalizarBusca(); valores são o nome oficial esperado — a existência
-// desse nome nos Cadastros carregados ainda é conferida em tempo real antes
-// de aceitar o alias (nunca cria cadastro novo, nunca inventa nome). ──
+// ── Aliases declarativos (prioridade máxima, testados antes do normalizador
+// inteligente; nunca alteram o texto original da planilha, nem os
+// Cadastros). Chaves normalizadas fortes (_bkoNormForte) — sem acento,
+// maiúsculas, sem pontuação/hífen/barra, sem espaço duplicado. ──
 const BKO_IMPORT_ALIASES_POSTO = {
   'SAO JOSE DO VALE R PRETO': 'SAO JOSE DO VALE DO RIO PRETO',
   'SAO JOSE DO VALE': 'SAO JOSE DO VALE DO RIO PRETO',
@@ -20657,6 +20659,91 @@ const BKO_IMPORT_ALIASES_PROCEDIMENTO = {
 };
 
 let _bkoImportPrevia = null;
+
+// ── Normalizador Inteligente ──
+// Normalização "forte": acentos fora, maiúsculas, hífen/barra/pontuação
+// viram espaço, espaços duplicados colapsam.
+function _bkoNormForte(s) {
+  return normalizarBusca(s).toUpperCase().replace(/[-\/_.,;:'"()]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Distância de Levenshtein (edição) clássica, O(m*n), sem dependência externa.
+function _bkoLevenshtein(a, b) {
+  const m = a.length, n = b.length;
+  if (!m) return n; if (!n) return m;
+  let prev = new Array(n+1); for (let j=0;j<=n;j++) prev[j]=j;
+  for (let i=1;i<=m;i++) {
+    const cur = [i];
+    for (let j=1;j<=n;j++) {
+      const cost = a[i-1]===b[j-1] ? 0 : 1;
+      cur[j] = Math.min(prev[j]+1, cur[j-1]+1, prev[j-1]+cost);
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+// Similaridade 0..1 (1 = idêntico). Testa a forma normalizada com espaços e
+// também "compactada" (sem espaço nenhum) — pega casos onde uma palavra de
+// ligação foi omitida (ex.: "SAO JOSE DO V R PRETO" vs "...DO VALE DO RIO
+// PRETO"), sem depender de bater token a token na mesma posição.
+function _bkoSimilaridade(a, b) {
+  if (!a || !b) return 0;
+  const s1 = 1 - _bkoLevenshtein(a, b) / (Math.max(a.length, b.length) || 1);
+  const ac = a.replace(/\s+/g,''), bc = b.replace(/\s+/g,'');
+  const s2 = 1 - _bkoLevenshtein(ac, bc) / (Math.max(ac.length, bc.length) || 1);
+  return Math.max(s1, s2);
+}
+
+const BKO_SIMILARIDADE_MIN = 0.72;   // abaixo disso, nem entra como candidato
+const BKO_AMBIGUIDADE_MARGEM = 0.05; // candidatos dentro dessa margem do melhor score = empate → ambíguo
+const BKO_PREFIXO_MIN_LEN = 4;       // evita prefixo/contém de 2-3 letras casando por acaso
+
+// Resolve rawOriginal contra uma lista de strings candidatas (nomes oficiais
+// já carregados dos Cadastros/postos oficiais — nunca inventa nome novo).
+// aliasMapNorm: objeto já com chaves em _bkoNormForte -> nome de destino
+// (pode ser null). Retorna:
+//   {status:'vazio'}
+//   {status:'direto'|'alias'|'prefixo'|'contido'|'similaridade', match, score?}
+//   {status:'ambiguo', candidatos:[...]}
+//   {status:'nao_encontrado'}
+function _bkoResolverCandidato(rawOriginal, candidatosOriginais, aliasMapNorm) {
+  const rawNorm = _bkoNormForte(rawOriginal);
+  if (!rawNorm) return { status:'vazio' };
+
+  if (aliasMapNorm && aliasMapNorm[rawNorm]) {
+    const destino = aliasMapNorm[rawNorm];
+    const alvo = candidatosOriginais.find(c => _bkoNormForte(c) === _bkoNormForte(destino));
+    if (alvo) return { status:'alias', match: alvo };
+  }
+
+  const cands = candidatosOriginais.map(c => ({ original:c, norm:_bkoNormForte(c) }));
+
+  const direto = cands.filter(c => c.norm === rawNorm);
+  if (direto.length === 1) return { status:'direto', match: direto[0].original };
+  if (direto.length > 1) return { status:'ambiguo', candidatos: direto.map(c=>c.original) };
+
+  if (rawNorm.length >= BKO_PREFIXO_MIN_LEN) {
+    const prefixo = cands.filter(c => c.norm.length >= BKO_PREFIXO_MIN_LEN && (c.norm.startsWith(rawNorm) || rawNorm.startsWith(c.norm)));
+    if (prefixo.length === 1) return { status:'prefixo', match: prefixo[0].original };
+    if (prefixo.length > 1) return { status:'ambiguo', candidatos: prefixo.map(c=>c.original) };
+
+    const contido = cands.filter(c => c.norm.length >= BKO_PREFIXO_MIN_LEN && (c.norm.includes(rawNorm) || rawNorm.includes(c.norm)));
+    if (contido.length === 1) return { status:'contido', match: contido[0].original };
+    if (contido.length > 1) return { status:'ambiguo', candidatos: contido.map(c=>c.original) };
+  }
+
+  const pontuados = cands
+    .map(c => ({ original:c.original, score: _bkoSimilaridade(rawNorm, c.norm) }))
+    .filter(c => c.score >= BKO_SIMILARIDADE_MIN)
+    .sort((a,b) => b.score - a.score);
+
+  if (!pontuados.length) return { status:'nao_encontrado' };
+  if (pontuados.length === 1 || (pontuados[0].score - pontuados[1].score) >= BKO_AMBIGUIDADE_MARGEM) {
+    return { status:'similaridade', match: pontuados[0].original, score: pontuados[0].score };
+  }
+  const empatados = pontuados.filter(c => c.score >= pontuados[0].score - BKO_AMBIGUIDADE_MARGEM);
+  return { status:'ambiguo', candidatos: empatados.map(c=>c.original) };
+}
 
 // Hash não criptográfico, só para IDs curtos e estáveis (chave de negócio
 // informativa — nunca decide duplicidade sozinha).
@@ -20741,9 +20828,11 @@ async function renderBkoImportacao() {
       <div style="background:var(--surface2);border-radius:14px;padding:24px;margin-bottom:14px">
         <h3 style="margin:0 0 6px;font-size:15px;font-weight:600">📥 Importação Inicial — Histórico 2026</h3>
         <p style="font-size:12px;color:var(--text3);margin:0 0 16px;line-height:1.5">
-          Importa uma única vez o histórico de acionamentos da planilha de 2026. A idempotência é por
-          arquivo + aba + linha original — reprocessar o mesmo arquivo não recria as linhas, e duas linhas
-          de negócio idênticas dentro do arquivo são preservadas. Registros manuais existentes nunca são
+          Importa uma única vez o histórico de acionamentos da planilha de 2026. Um normalizador
+          inteligente reconhece abreviações históricas por prefixo/contém/similaridade além dos aliases
+          declarados — só corrige quando existe exatamente 1 candidato compatível nos Cadastros atuais;
+          casos ambíguos ficam para revisão manual. A idempotência é por arquivo + aba + linha original —
+          reprocessar o mesmo arquivo não recria as linhas. Registros manuais existentes nunca são
           apagados ou sobrescritos.
         </p>
         <div class="form-group">
@@ -20793,12 +20882,19 @@ async function analisarArquivoBackoffice() {
     const snapExistentes = await db.collection('controleBackoffice').where('operacaoId','==',operacaoId).get();
     const idsExistentes = new Set(snapExistentes.docs.map(d=>d.id));
 
+    // Mapas de alias normalizados uma única vez (não a cada linha).
+    const aliasPostoNorm = {};
+    Object.entries(BKO_IMPORT_ALIASES_POSTO).forEach(([k,v]) => { aliasPostoNorm[_bkoNormForte(k)] = v; });
+    Object.entries(CSAT_NOME_MAP).forEach(([k,v]) => { const nk = _bkoNormForte(k); if (!(nk in aliasPostoNorm)) aliasPostoNorm[nk] = v; });
+    const aliasAreaNorm = {};
+    Object.entries(BKO_IMPORT_ALIASES_AREA).forEach(([k,v]) => { aliasAreaNorm[_bkoNormForte(k)] = v; });
+
     const validas = [], invalidas = [], grafiasNaoReconhecidas = [];
     const postosSet = new Set(), areasSet = new Set(), procsSet = new Set(), mesesSet = new Set();
     const jaImportadasAntes = [];
-    const repeticoesConteudo = {}; // chaveNegocio -> {amostra, qtd}
-    // Agrupadores do relatório: "RAW → OFICIAL" -> contagem
+    const repeticoesConteudo = {};
     const aliasesPostoUsados = {}, aliasesAreaUsados = {}, aliasesProcUsados = {};
+    const normalizadorPostoUsado = {}, normalizadorAreaUsado = {}, normalizadorProcUsado = {};
     let reconhecidasDireto = 0;
 
     rawArr.slice(1).forEach((row, i) => {
@@ -20810,7 +20906,6 @@ async function analisarArquivoBackoffice() {
       const areaColSeparada = idxArea!==undefined ? String(row[idxArea]||'').trim() : '';
       const obs = idxObs!==undefined ? String(row[idxObs]||'').trim() : '';
 
-      // 3) "PROCEDIMENTO (ÁREA)" é a fonte de verdade quando presente.
       const separado = _bkoImportSepararProcedimentoArea(procCelula);
       const areaRawOriginal = separado ? separado.area : areaColSeparada;
       const procRawOriginal = separado ? separado.procedimento : procCelula;
@@ -20820,48 +20915,43 @@ async function analisarArquivoBackoffice() {
       if (!areaRawOriginal) { invalidas.push({linha:linhaN, motivo:'Área vazia'}); return; }
       if (!procRawOriginal) { invalidas.push({linha:linhaN, motivo:'Procedimento vazio'}); return; }
 
-      // ── POSTO: direto → alias declarado → CSAT_NOME_MAP (já existente e curado) → não reconhecido
-      let postoOficial = TODOS_POSTOS_RG.find(p => normalizarBusca(p) === normalizarBusca(postoRawOriginal));
-      let postoViaAlias = false;
-      if (!postoOficial) {
-        const aliasDestino = BKO_IMPORT_ALIASES_POSTO[normalizarBusca(postoRawOriginal)] || CSAT_NOME_MAP[postoRawOriginal.toUpperCase()];
-        if (aliasDestino) {
-          const confirmado = TODOS_POSTOS_RG.find(p => normalizarBusca(p) === normalizarBusca(aliasDestino));
-          if (confirmado) { postoOficial = confirmado; postoViaAlias = true; }
-        }
-      }
-      if (!postoOficial) { grafiasNaoReconhecidas.push({linha:linhaN, tipo:'Posto', valor:postoRawOriginal}); invalidas.push({linha:linhaN, motivo:`Posto não reconhecido: "${postoRawOriginal}"`}); return; }
+      // ── POSTO ──
+      const resPosto = _bkoResolverCandidato(postoRawOriginal, TODOS_POSTOS_RG, aliasPostoNorm);
+      if (resPosto.status === 'ambiguo') { grafiasNaoReconhecidas.push({linha:linhaN, tipo:'Posto', valor:postoRawOriginal, ambiguo:true, candidatos:resPosto.candidatos}); invalidas.push({linha:linhaN, motivo:`Posto ambíguo: "${postoRawOriginal}" (candidatos: ${resPosto.candidatos.join(', ')})`}); return; }
+      if (!resPosto.match) { grafiasNaoReconhecidas.push({linha:linhaN, tipo:'Posto', valor:postoRawOriginal}); invalidas.push({linha:linhaN, motivo:`Posto não reconhecido: "${postoRawOriginal}"`}); return; }
+      const postoOficial = resPosto.match;
 
-      // ── ÁREA: direto → alias declarado → não reconhecida
-      let areaOficial = _bkoAreas.find(a => normalizarBusca(a.nome) === normalizarBusca(areaRawOriginal));
-      let areaViaAlias = false;
-      if (!areaOficial) {
-        const aliasDestino = BKO_IMPORT_ALIASES_AREA[normalizarBusca(areaRawOriginal)];
-        if (aliasDestino) {
-          const confirmado = _bkoAreas.find(a => normalizarBusca(a.nome) === normalizarBusca(aliasDestino));
-          if (confirmado) { areaOficial = confirmado; areaViaAlias = true; }
-        }
-      }
-      if (!areaOficial) { grafiasNaoReconhecidas.push({linha:linhaN, tipo:'Área', valor:areaRawOriginal}); invalidas.push({linha:linhaN, motivo:`Área não reconhecida: "${areaRawOriginal}"`}); return; }
+      // ── ÁREA ──
+      const resArea = _bkoResolverCandidato(areaRawOriginal, _bkoAreas.map(a=>a.nome), aliasAreaNorm);
+      if (resArea.status === 'ambiguo') { grafiasNaoReconhecidas.push({linha:linhaN, tipo:'Área', valor:areaRawOriginal, ambiguo:true, candidatos:resArea.candidatos}); invalidas.push({linha:linhaN, motivo:`Área ambígua: "${areaRawOriginal}" (candidatos: ${resArea.candidatos.join(', ')})`}); return; }
+      if (!resArea.match) { grafiasNaoReconhecidas.push({linha:linhaN, tipo:'Área', valor:areaRawOriginal}); invalidas.push({linha:linhaN, motivo:`Área não reconhecida: "${areaRawOriginal}"`}); return; }
+      const areaOficial = _bkoAreas.find(a => a.nome === resArea.match);
 
-      // ── PROCEDIMENTO: sempre validado DENTRO da área já resolvida acima.
-      let procOficial = _bkoProcedimentos.find(p => p.areaId===areaOficial.id && normalizarBusca(p.nome) === normalizarBusca(procRawOriginal));
-      let procViaAlias = false;
-      if (!procOficial) {
-        const chaveAlias = normalizarBusca(areaOficial.nome)+'||'+normalizarBusca(procRawOriginal);
-        const aliasDestino = BKO_IMPORT_ALIASES_PROCEDIMENTO[chaveAlias];
-        if (aliasDestino) {
-          const confirmado = _bkoProcedimentos.find(p => p.areaId===areaOficial.id && normalizarBusca(p.nome) === normalizarBusca(aliasDestino));
-          if (confirmado) { procOficial = confirmado; procViaAlias = true; }
-        }
-      }
-      if (!procOficial) { grafiasNaoReconhecidas.push({linha:linhaN, tipo:'Procedimento', valor:`${procRawOriginal} (${areaRawOriginal})`}); invalidas.push({linha:linhaN, motivo:`Procedimento não reconhecido: "${procRawOriginal}" na área "${areaRawOriginal}"`}); return; }
+      // ── PROCEDIMENTO (sempre validado dentro da área já resolvida) ──
+      const procDaArea = _bkoProcedimentos.filter(p => p.areaId===areaOficial.id).map(p=>p.nome);
+      const aliasProcDestino = BKO_IMPORT_ALIASES_PROCEDIMENTO[normalizarBusca(areaOficial.nome)+'||'+normalizarBusca(procRawOriginal)];
+      const aliasProcNorm = aliasProcDestino ? { [_bkoNormForte(procRawOriginal)]: aliasProcDestino } : null;
+      const resProc = _bkoResolverCandidato(procRawOriginal, procDaArea, aliasProcNorm);
+      if (resProc.status === 'ambiguo') { grafiasNaoReconhecidas.push({linha:linhaN, tipo:'Procedimento', valor:`${procRawOriginal} (${areaOficial.nome})`, ambiguo:true, candidatos:resProc.candidatos}); invalidas.push({linha:linhaN, motivo:`Procedimento ambíguo: "${procRawOriginal}" na área "${areaOficial.nome}" (candidatos: ${resProc.candidatos.join(', ')})`}); return; }
+      if (!resProc.match) { grafiasNaoReconhecidas.push({linha:linhaN, tipo:'Procedimento', valor:`${procRawOriginal} (${areaRawOriginal})`}); invalidas.push({linha:linhaN, motivo:`Procedimento não reconhecido: "${procRawOriginal}" na área "${areaOficial.nome}"`}); return; }
+      const procOficial = _bkoProcedimentos.find(p => p.areaId===areaOficial.id && p.nome === resProc.match);
 
-      // Contabiliza reconhecimento direto vs. via alias (para o relatório agrupado)
-      if (postoViaAlias) { const k = `${postoRawOriginal} → ${postoOficial}`; aliasesPostoUsados[k] = (aliasesPostoUsados[k]||0)+1; }
-      if (areaViaAlias) { const k = `${areaRawOriginal} → ${areaOficial.nome}`; aliasesAreaUsados[k] = (aliasesAreaUsados[k]||0)+1; }
-      if (procViaAlias) { const k = `${procRawOriginal} (${areaOficial.nome}) → ${procOficial.nome}`; aliasesProcUsados[k] = (aliasesProcUsados[k]||0)+1; }
-      if (!postoViaAlias && !areaViaAlias && !procViaAlias) reconhecidasDireto++;
+      // Contabiliza para o relatório agrupado
+      const registrarConversao = (mapaAlias, mapaNorm, status, score, raw, oficial) => {
+        if (status === 'alias') { const k = `${raw} → ${oficial}`; mapaAlias[k] = (mapaAlias[k]||0)+1; }
+        else if (status === 'prefixo' || status === 'contido' || status === 'similaridade') {
+          const via = status==='prefixo'?'prefixo':status==='contido'?'contém':`similaridade ${Math.round(score*100)}%`;
+          const k = `${raw} → ${oficial} (${via})`; mapaNorm[k] = (mapaNorm[k]||0)+1;
+        }
+      };
+      registrarConversao(aliasesPostoUsados, normalizadorPostoUsado, resPosto.status, resPosto.score, postoRawOriginal, postoOficial);
+      registrarConversao(aliasesAreaUsados, normalizadorAreaUsado, resArea.status, resArea.score, areaRawOriginal, areaOficial.nome);
+      registrarConversao(aliasesProcUsados, normalizadorProcUsado, resProc.status, resProc.score, procRawOriginal, procOficial.nome);
+      if (resPosto.status==='direto' && resArea.status==='direto' && resProc.status==='direto') reconhecidasDireto++;
+
+      const postoOriginal = resPosto.status !== 'direto' ? postoRawOriginal : null;
+      const areaOriginal = resArea.status !== 'direto' ? areaRawOriginal : null;
+      const procedimentoOriginal = resProc.status !== 'direto' ? procRawOriginal : null;
 
       // Chave de IMPORTAÇÃO (idempotência real) — nunca bloqueia por conteúdo repetido.
       const idImportacao = _bkoImportChaveImportacao(hashArquivo, wsName, linhaN);
@@ -20876,21 +20966,25 @@ async function analisarArquivoBackoffice() {
       postosSet.add(postoOficial); areasSet.add(areaOficial.nome); procsSet.add(procOficial.nome); mesesSet.add(mesRef);
       validas.push({
         id: idImportacao, data:dataISO, mesRef, linha:linhaN,
-        posto:postoOficial, postoOriginal: postoViaAlias ? postoRawOriginal : null,
-        areaId:areaOficial.id, areaNome:areaOficial.nome, areaOriginal: areaViaAlias ? areaRawOriginal : null,
-        procedimentoId:procOficial.id, procedimentoNome:procOficial.nome, procedimentoOriginal: procViaAlias ? procRawOriginal : null,
+        posto:postoOficial, postoOriginal,
+        areaId:areaOficial.id, areaNome:areaOficial.nome, areaOriginal,
+        procedimentoId:procOficial.id, procedimentoNome:procOficial.nome, procedimentoOriginal,
         observacao:obs
       });
     });
 
     const repeticoes = Object.values(repeticoesConteudo).filter(g => g.linhas.length > 1);
     const totalRepeticoes = repeticoes.reduce((a,g)=>a+g.linhas.length,0);
+    const totalViaAlias = Object.values(aliasesPostoUsados).reduce((a,b)=>a+b,0) + Object.values(aliasesAreaUsados).reduce((a,b)=>a+b,0) + Object.values(aliasesProcUsados).reduce((a,b)=>a+b,0);
+    const totalViaNormalizador = Object.values(normalizadorPostoUsado).reduce((a,b)=>a+b,0) + Object.values(normalizadorAreaUsado).reduce((a,b)=>a+b,0) + Object.values(normalizadorProcUsado).reduce((a,b)=>a+b,0);
 
     _bkoImportPrevia = {
       arquivo: fi.files[0].name, aba: wsName, hashArquivo,
       totalLinhasLidas: rawArr.length - 1,
       validas, invalidas, jaImportadasAntes, grafiasNaoReconhecidas,
-      reconhecidasDireto, aliasesPostoUsados, aliasesAreaUsados, aliasesProcUsados,
+      reconhecidasDireto, totalViaAlias, totalViaNormalizador,
+      aliasesPostoUsados, aliasesAreaUsados, aliasesProcUsados,
+      normalizadorPostoUsado, normalizadorAreaUsado, normalizadorProcUsado,
       repeticoes, totalRepeticoes,
       meses: [...mesesSet].sort(), postos: [...postosSet].sort((a,b)=>a.localeCompare(b,'pt')),
       areas: [...areasSet].sort((a,b)=>a.localeCompare(b,'pt')), procedimentos: [...procsSet].sort((a,b)=>a.localeCompare(b,'pt')),
@@ -20904,7 +20998,7 @@ function _bkoImportRenderGrupoAlias(titulo, mapa) {
   const entradas = Object.entries(mapa).sort((a,b)=>b[1]-a[1]);
   if (!entradas.length) return '';
   return `<div style="margin-bottom:10px">
-    <div style="font-size:12px;font-weight:700;color:#4a90d9;margin-bottom:4px">${titulo} (${entradas.length} alias, ${entradas.reduce((a,e)=>a+e[1],0)} linha(s))</div>
+    <div style="font-size:12px;font-weight:700;color:#4a90d9;margin-bottom:4px">${titulo} (${entradas.length}, ${entradas.reduce((a,e)=>a+e[1],0)} linha(s))</div>
     <div style="font-size:11px">${entradas.map(([k,q])=>`<div>${k} — ${q} ocorrência(s)</div>`).join('')}</div>
   </div>`;
 }
@@ -20937,7 +21031,8 @@ function _bkoRenderPreviaImportacaoBackoffice() {
           ${[
             ['Linhas lidas', p.totalLinhasLidas, null],
             ['Reconhecidas diretamente', p.reconhecidasDireto, '#3fb950'],
-            ['Convertidas por alias', p.validas.length - p.reconhecidasDireto, '#4a90d9'],
+            ['Convertidas por alias', p.totalViaAlias, '#4a90d9'],
+            ['Convertidas pelo normalizador', p.totalViaNormalizador, '#4a90d9'],
             ['Realmente inválidas', p.invalidas.length, '#e24b4a'],
             ['Já importadas antes', p.jaImportadasAntes.length, '#8b8b98'],
             ['Possíveis repetições (alerta)', p.totalRepeticoes, '#d4a72c'],
@@ -20948,7 +21043,7 @@ function _bkoRenderPreviaImportacaoBackoffice() {
 
         ${(Object.keys(p.aliasesPostoUsados).length || Object.keys(p.aliasesAreaUsados).length || Object.keys(p.aliasesProcUsados).length) ? `
           <details style="background:var(--surface3);border-radius:10px;padding:12px 14px;margin-bottom:14px" open>
-            <summary style="font-size:12px;font-weight:700;color:#4a90d9;cursor:pointer">Grafias convertidas por alias — agrupado (clique para recolher)</summary>
+            <summary style="font-size:12px;font-weight:700;color:#4a90d9;cursor:pointer">Grafias convertidas por alias declarado — agrupado</summary>
             <div style="margin-top:10px">
               ${_bkoImportRenderGrupoAlias('Postos', p.aliasesPostoUsados)}
               ${_bkoImportRenderGrupoAlias('Áreas', p.aliasesAreaUsados)}
@@ -20956,10 +21051,20 @@ function _bkoRenderPreviaImportacaoBackoffice() {
             </div>
           </details>` : ''}
 
+        ${(Object.keys(p.normalizadorPostoUsado).length || Object.keys(p.normalizadorAreaUsado).length || Object.keys(p.normalizadorProcUsado).length) ? `
+          <details style="background:var(--surface3);border-radius:10px;padding:12px 14px;margin-bottom:14px" open>
+            <summary style="font-size:12px;font-weight:700;color:#4a90d9;cursor:pointer">Grafias convertidas pelo Normalizador Inteligente (prefixo/contém/similaridade) — agrupado</summary>
+            <div style="margin-top:10px">
+              ${_bkoImportRenderGrupoAlias('Postos', p.normalizadorPostoUsado)}
+              ${_bkoImportRenderGrupoAlias('Áreas', p.normalizadorAreaUsado)}
+              ${_bkoImportRenderGrupoAlias('Procedimentos', p.normalizadorProcUsado)}
+            </div>
+          </details>` : ''}
+
         ${p.grafiasNaoReconhecidas.length ? `
           <details style="background:var(--surface3);border-radius:10px;padding:12px 14px;margin-bottom:14px">
-            <summary style="font-size:12px;font-weight:700;color:#e24b4a;cursor:pointer">⚠ Grafias realmente não reconhecidas (${p.grafiasNaoReconhecidas.length}) — não corrigidas automaticamente, clique para ver linha a linha</summary>
-            <div style="max-height:200px;overflow-y:auto;font-size:11px;margin-top:8px">${p.grafiasNaoReconhecidas.map(g=>`<div>Linha ${g.linha} — ${g.tipo}: "${g.valor}"</div>`).join('')}</div>
+            <summary style="font-size:12px;font-weight:700;color:#e24b4a;cursor:pointer">⚠ Grafias realmente não reconhecidas ou ambíguas (${p.grafiasNaoReconhecidas.length}) — não corrigidas automaticamente, clique para ver linha a linha</summary>
+            <div style="max-height:220px;overflow-y:auto;font-size:11px;margin-top:8px">${p.grafiasNaoReconhecidas.map(g=>`<div>Linha ${g.linha} — ${g.tipo}: "${g.valor}"${g.ambiguo?` (ambíguo — candidatos: ${g.candidatos.join(', ')})`:''}</div>`).join('')}</div>
           </details>` : ''}
 
         ${p.invalidas.length ? `
@@ -21051,6 +21156,7 @@ async function confirmarImportacaoBackoffice() {
   _bkoImportPrevia = { ...p, resumoFinal: { gravados, erros, ignorados: p.jaImportadasAntes.length } };
   renderBkoImportacao();
 }
+
 
 // ── Novo Registro ──
 function renderBkoNovo() {
