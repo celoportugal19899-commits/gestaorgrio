@@ -1592,9 +1592,23 @@ const PosCanalLabels = {
       <div class="topbar">
         <div class="page-header" style="margin:0"><h1>Caixas Rotativos</h1><p>Aprovação e controle financeiro dos supervisores</p></div>
       </div>
-      <div id="adm-caixas-stats" class="grid-4" style="margin-bottom:20px"></div>
-      <div id="adm-caixas-filtros"></div>
-      <div id="adm-caixas-body"></div>
+      <div style="margin-bottom:18px">
+        <div style="display:inline-flex;background:var(--surface2);border-radius:10px;padding:4px;gap:4px">
+          <button id="caixa-visao-btn-operacional" class="btn btn-sm" style="border:none" onclick="_caixaMudarVisao('operacional')">💰 Operacional</button>
+          <button id="caixa-visao-btn-analise" class="btn btn-sm" style="border:none" onclick="_caixaMudarVisao('analise')">📊 Gestão Financeira</button>
+        </div>
+      </div>
+      <div id="caixa-visao-operacional">
+        <div id="adm-caixas-stats" class="grid-4" style="margin-bottom:20px"></div>
+        <div id="adm-caixas-filtros"></div>
+        <div id="adm-caixas-body"></div>
+      </div>
+      <div id="caixa-visao-analise" style="display:none">
+        <div id="caixa-analise-filtros"></div>
+        <div id="caixa-analise-cards"></div>
+        <div id="caixa-analise-graficos"></div>
+        <div id="caixa-analise-tabela"></div>
+      </div>
     </div>
 
     <!-- ADM — COMBUSTÍVEL -->
@@ -2223,7 +2237,7 @@ const PosCanalLabels = {
 <!-- MODAL: HISTÓRICO POR COMPETÊNCIA -->
 <div class="modal-overlay" id="modal-hist-comp">
   <div class="modal" style="max-width:640px">
-    <div class="modal-header"><div class="modal-title" id="modal-hist-comp-titulo">Histórico por Competência</div><button class="close-btn" onclick="closeModal('modal-hist-comp')">✕</button></div>
+    <div class="modal-header"><div class="modal-title" id="modal-hist-comp-titulo">Histórico Completo</div><button class="close-btn" onclick="closeModal('modal-hist-comp')">✕</button></div>
     <div id="histcomp-pills" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px"></div>
     <div id="histcomp-detalhe" style="max-height:420px;overflow-y:auto"></div>
   </div>
@@ -7182,46 +7196,36 @@ async function enviarParaAprovacao(caixaId) {
 }
 
 // ─── ADM VIEW ───
-// ── Filtros do Dashboard (Competência / Supervisor / Busca) ──
-// Competência nunca é lista fixa: vem sempre de _caixaCompetenciaDe() sobre
-// os caixas realmente cadastrados (reaproveita o mesmo helper já usado no
-// Histórico por Competência).
-let _caixaFiltroCompetencia = '';
+// ── Alternância entre as duas visões do módulo (mesmo módulo, dois jeitos
+// de ver o dado — não são abas de módulos diferentes) ──
+let _caixaVisao = 'operacional';
+function _caixaAplicarEstadoToggle() {
+  const opEl = document.getElementById('caixa-visao-operacional');
+  const anEl = document.getElementById('caixa-visao-analise');
+  if (opEl) opEl.style.display = _caixaVisao==='operacional' ? 'block' : 'none';
+  if (anEl) anEl.style.display = _caixaVisao==='analise' ? 'block' : 'none';
+  const btnOp = document.getElementById('caixa-visao-btn-operacional');
+  const btnAn = document.getElementById('caixa-visao-btn-analise');
+  if (btnOp) { btnOp.style.background = _caixaVisao==='operacional'?'var(--accent)':'transparent'; btnOp.style.color = _caixaVisao==='operacional'?'#fff':'var(--text2)'; }
+  if (btnAn) { btnAn.style.background = _caixaVisao==='analise'?'var(--accent)':'transparent'; btnAn.style.color = _caixaVisao==='analise'?'#fff':'var(--text2)'; }
+}
+function _caixaMudarVisao(v) {
+  _caixaVisao = v;
+  _caixaAplicarEstadoToggle();
+  if (v==='analise') renderCaixaAnalise();
+}
+
+// ── Filtros da Visão Operacional (Supervisor / Busca — sem filtro de mês,
+// esta visão é sempre "estado atual", igual ao ciclo financeiro de sempre) ──
 let _caixaFiltroSupervisor = '';
 let _caixaBusca = '';
 
-function _caixaCompetenciasDisponiveis() {
-  return [...new Set(allCaixas.map(_caixaCompetenciaDe).filter(Boolean))].sort().reverse();
-}
-
-// Caixa "relevante" de um supervisor sob os filtros atuais: sem filtro de
-// competência = caixa ativo atual (comportamento de sempre); com filtro =
-// o caixa (ativo ou histórico) daquela competência, desempatando pelo mais
-// recente se houver mais de um.
-function _caixaCaixaRelevante(sup) {
-  if (!_caixaFiltroCompetencia) return _caixaAtivoDoSupervisor(sup.email);
-  const doSupervisor = allCaixas.filter(c=>c.supervisorEmail===sup.email && _caixaCompetenciaDe(c)===_caixaFiltroCompetencia);
-  if (!doSupervisor.length) return null;
-  doSupervisor.sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
-  return doSupervisor[0];
-}
-
-function _caixaUltimaMovimentacao(caixaId) {
-  return (allCaixaLancamentos||[]).filter(l=>l.caixaId===caixaId)
-    .reduce((max,l)=> (!max || (l.createdAt||'') > (max.createdAt||'')) ? l : max, null);
-}
-
 function _renderAdmCaixasFiltrosBar() {
   const wrap = document.getElementById('adm-caixas-filtros');
-  if (!wrap || wrap.dataset.montado === '1') return; // monta só uma vez — não perde o que o usuário está digitando/selecionando a cada onSnapshot
+  if (!wrap || wrap.dataset.montado === '1') return; // monta só uma vez — não perde o que o usuário está digitando a cada onSnapshot
   const supervisoresBase = allUsers.filter(u=>SUPERVISORES_CAIXA.includes(u.email)&&u.email!=='supervisor.teste@gruporgbrasil.com'&&isAtivo(u));
   wrap.innerHTML = `
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px">
-      <div><label class="form-label" style="font-size:11px">Competência</label><br>
-        <select class="form-select" id="caixa-fil-competencia" style="width:170px" onchange="_caixaAplicarFiltros()">
-          <option value="">Todos</option>
-        </select>
-      </div>
       <div><label class="form-label" style="font-size:11px">Supervisor</label><br>
         <select class="form-select" id="caixa-fil-supervisor" style="width:180px" onchange="_caixaAplicarFiltros()">
           <option value="">Todos</option>
@@ -7233,46 +7237,39 @@ function _renderAdmCaixasFiltrosBar() {
       </div>
     </div>`;
   wrap.dataset.montado = '1';
-  _caixaAtualizarOpcoesCompetencia();
-}
-
-// As opções de competência são atualizadas à parte (sem recriar o <select>
-// inteiro) para não perder a seleção atual quando o onSnapshot dispara.
-function _caixaAtualizarOpcoesCompetencia() {
-  const sel = document.getElementById('caixa-fil-competencia'); if (!sel) return;
-  const atual = sel.value;
-  const competencias = _caixaCompetenciasDisponiveis();
-  sel.innerHTML = '<option value="">Todos</option>' + competencias.map(c=>`<option value="${c}">${_competenciaLabel(c)}</option>`).join('');
-  if (competencias.includes(atual)) sel.value = atual;
 }
 
 function _caixaAplicarFiltros() {
-  _caixaFiltroCompetencia = document.getElementById('caixa-fil-competencia')?.value || '';
   _caixaFiltroSupervisor = document.getElementById('caixa-fil-supervisor')?.value || '';
   _caixaBusca = document.getElementById('caixa-fil-busca')?.value || '';
   _renderAdmCaixasConteudo();
 }
 
+function _caixaUltimaMovimentacao(caixaId) {
+  return (allCaixaLancamentos||[]).filter(l=>l.caixaId===caixaId)
+    .reduce((max,l)=> (!max || (l.createdAt||'') > (max.createdAt||'')) ? l : max, null);
+}
+
 async function renderAdmCaixas() {
   _renderAdmCaixasFiltrosBar();
   await _renderAdmCaixasConteudo();
+  _caixaAplicarEstadoToggle();
+  if (_caixaVisao === 'analise') renderCaixaAnalise();
 }
 
 async function _renderAdmCaixasConteudo() {
   const el = document.getElementById('adm-caixas-body');
   const stats = document.getElementById('adm-caixas-stats');
   if (!el) return;
-  _caixaAtualizarOpcoesCompetencia();
 
   let supervisores = allUsers.filter(u=>SUPERVISORES_CAIXA.includes(u.email)&&u.email!=='supervisor.teste@gruporgbrasil.com'&&isAtivo(u));
   if (_caixaFiltroSupervisor) supervisores = supervisores.filter(s=>s.email===_caixaFiltroSupervisor);
   if (_caixaBusca.trim()) { const bn = normalizarBusca(_caixaBusca); supervisores = supervisores.filter(s=>normalizarBusca(s.name).includes(bn)); }
 
-  // Bug corrigido: "Em Uso" agora usa exatamente a mesma base de supervisores
-  // (ativos, sem conta de teste) e o mesmo caixa relevante que é exibido na
-  // lista abaixo — não conta mais documento avulso, duplicado ou de usuário
-  // desativado.
-  const relevantes = supervisores.map(sup => ({sup, caixa: _caixaCaixaRelevante(sup)}));
+  // "Em Uso" usa exatamente a mesma base de supervisores (ativos, sem conta
+  // de teste) e o mesmo caixa ativo exibido na lista abaixo — não conta mais
+  // documento avulso, duplicado ou de usuário desativado.
+  const relevantes = supervisores.map(sup => ({sup, caixa: _caixaAtivoDoSupervisor(sup.email)}));
   const pendentes = relevantes.filter(x=>x.caixa && x.caixa.status==='aguarda_aprovacao').length;
   const emUso = relevantes.filter(x=>x.caixa && ['em_uso','rascunho','validado'].includes(x.caixa.status)).length;
   const totalGastoGeral = relevantes.filter(x=>x.caixa && x.caixa.status!=='sem_caixa').reduce((a,x)=>a+(x.caixa.totalGasto||0),0);
@@ -7287,7 +7284,7 @@ async function _renderAdmCaixasConteudo() {
   let html = '';
 
   for (const sup of supervisores) {
-    const caixa = _caixaCaixaRelevante(sup) || {saldoInicial:VALOR_CAIXA_INICIAL,saldoAtual:VALOR_CAIXA_INICIAL,totalGasto:0,status:'sem_caixa'};
+    const caixa = _caixaAtivoDoSupervisor(sup.email) || {saldoInicial:VALOR_CAIXA_INICIAL,saldoAtual:VALOR_CAIXA_INICIAL,totalGasto:0,status:'sem_caixa'};
     const pct = Math.round(((caixa.saldoInicial-(caixa.saldoAtual??VALOR_CAIXA_INICIAL))/caixa.saldoInicial)*100);
     const pbCls = pct>=75?'cpb-red':pct>=50?'cpb-yellow':'cpb-green';
     const saldoCls = pct>=75?'saldo-low':pct>=50?'saldo-warn':'saldo-ok';
@@ -7297,8 +7294,7 @@ async function _renderAdmCaixasConteudo() {
       'validado':`<span class="caixa-status cs-aguarda">🟡 Validado — aguardando envio</span>`,
       'aguarda_aprovacao':`<span class="caixa-status cs-pendente">🔴 Aguarda Aprovação</span>`,
       'aprovado':`<span class="caixa-status cs-aprovado">✅ Aprovado</span>`,
-      'sem_caixa':`<span class="caixa-status" style="background:var(--surface2);color:var(--text3);border:1px solid var(--border)">⚪ Sem lançamentos</span>`,
-      'reabastecido_historico':`<span class="caixa-status" style="background:var(--surface2);color:var(--text3);border:1px solid var(--border)">📦 Competência encerrada</span>`
+      'sem_caixa':`<span class="caixa-status" style="background:var(--surface2);color:var(--text3);border:1px solid var(--border)">⚪ Sem lançamentos</span>`
     }[caixa.status]||'';
     const ultimaMov = caixa.id ? _caixaUltimaMovimentacao(caixa.id) : null;
 
@@ -7360,7 +7356,7 @@ async function _renderAdmCaixasConteudo() {
         <div id="email-caixa-${caixa.id}" style="display:none"></div>
       </div>`:''}
       <div id="hist-${sup.email.replace('@','_').replace(/\./g,'_')}"></div>
-      <button class="btn btn-sm btn-secondary" style="width:100%;margin-top:8px" onclick="abrirHistoricoCompetencias('${sup.email}','${sup.name}')">📅 Histórico por Competência</button>
+      <button class="btn btn-sm btn-secondary" style="width:100%;margin-top:8px" onclick="abrirHistoricoCompetencias('${sup.email}','${sup.name}')">📅 Histórico Completo</button>
     </div>`;
   }
 
@@ -7368,9 +7364,11 @@ async function _renderAdmCaixasConteudo() {
 
   for (const sup of supervisores) {
     const histEl = document.getElementById(`hist-${sup.email.replace('@','_').replace(/\./g,'_')}`);
+    // Só as 2 últimas prestações concluídas — a pendente (se existir) já
+    // aparece sempre no topo, no bloco "aguarda_aprovacao" acima.
     if (histEl) histEl.innerHTML = await getHistoricoHtml(sup.email, true);
     // Carregar comprovantes para caixas em aguarda_aprovacao
-    const caixa = _caixaCaixaRelevante(sup);
+    const caixa = _caixaAtivoDoSupervisor(sup.email);
     if (caixa && caixa.status==='aguarda_aprovacao') {
       const compEl = document.getElementById(`adm-comprovantes-${caixa.id}`);
       if (compEl) {
@@ -7391,6 +7389,179 @@ async function _renderAdmCaixasConteudo() {
       }
     }
   }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// VISÃO GESTÃO FINANCEIRA — nasce independente do ciclo financeiro. Fonte
+// única de dados: caixa_lancamentos (nunca caixa.saldoAtual/totalGasto,
+// nunca reconstrução de estado de caixa). "Mês" é o único rótulo — a
+// palavra "Competência" nunca aparece nesta interface.
+// ══════════════════════════════════════════════════════════════════════════
+let _analiseFiltroMes = '';
+let _caixaAnaliseCharts = {};
+
+function _analiseMesesDisponiveis() {
+  return [...new Set((allCaixaLancamentos||[]).map(l => (l.data||'').slice(0,7)).filter(Boolean))].sort();
+}
+
+function _analiseMesAnterior(mesRef) {
+  const [y,m] = mesRef.split('-').map(Number);
+  const d = new Date(y, m-2, 1);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+}
+
+function renderCaixaAnalise() {
+  _renderCaixaAnaliseFiltros();
+  _renderCaixaAnaliseConteudo();
+}
+
+function _renderCaixaAnaliseFiltros() {
+  const wrap = document.getElementById('caixa-analise-filtros');
+  if (!wrap) return;
+  if (wrap.dataset.montado !== '1') {
+    wrap.innerHTML = `
+      <div style="margin-bottom:18px">
+        <label class="form-label" style="font-size:11px">Mês</label><br>
+        <select class="form-select" id="analise-fil-mes" style="width:190px" onchange="_caixaAnaliseAplicarFiltro()"></select>
+      </div>`;
+    wrap.dataset.montado = '1';
+  }
+  _caixaAnaliseAtualizarOpcoesMes();
+}
+
+// Opções atualizadas à parte (sem recriar o <select>) para não perder a
+// seleção do usuário quando o onSnapshot dispara.
+function _caixaAnaliseAtualizarOpcoesMes() {
+  const sel = document.getElementById('analise-fil-mes'); if (!sel) return;
+  const meses = _analiseMesesDisponiveis();
+  if (!meses.length) { sel.innerHTML = '<option value="">Nenhum lançamento cadastrado</option>'; _analiseFiltroMes=''; return; }
+  if (!_analiseFiltroMes || !meses.includes(_analiseFiltroMes)) _analiseFiltroMes = meses[meses.length-1]; // mês mais recente por padrão
+  sel.innerHTML = meses.slice().reverse().map(m=>`<option value="${m}">${_competenciaLabel(m)}</option>`).join('');
+  sel.value = _analiseFiltroMes;
+}
+
+function _caixaAnaliseAplicarFiltro() {
+  _analiseFiltroMes = document.getElementById('analise-fil-mes')?.value || '';
+  _renderCaixaAnaliseConteudo();
+}
+
+function _renderCaixaAnaliseConteudo() {
+  const cardsEl = document.getElementById('caixa-analise-cards');
+  const graficosEl = document.getElementById('caixa-analise-graficos');
+  const tabelaEl = document.getElementById('caixa-analise-tabela');
+  if (!cardsEl) return;
+
+  if (!_analiseFiltroMes) {
+    cardsEl.innerHTML = `<div class="empty"><div class="icon">📊</div><p>Nenhum lançamento cadastrado ainda.</p></div>`;
+    if (graficosEl) graficosEl.innerHTML = '';
+    if (tabelaEl) tabelaEl.innerHTML = '';
+    return;
+  }
+
+  // Cards, ranking e tabela respeitam o mês selecionado.
+  const lancsMes = (allCaixaLancamentos||[]).filter(l => (l.data||'').slice(0,7) === _analiseFiltroMes);
+
+  const totalGasto = lancsMes.reduce((a,l)=>a+(l.valor||0),0);
+  const qtdDespesas = lancsMes.length;
+  const qtdPrestacoes = new Set(lancsMes.map(l=>l.caixaId)).size;
+  const ticketMedio = qtdPrestacoes ? totalGasto/qtdPrestacoes : 0;
+
+  const porSupervisor = {};
+  lancsMes.forEach(l => {
+    const key = l.supervisorEmail || '—';
+    if (!porSupervisor[key]) porSupervisor[key] = {nome:l.supervisorNome||key, total:0, despesas:0, caixaIds:new Set()};
+    porSupervisor[key].total += (l.valor||0);
+    porSupervisor[key].despesas++;
+    porSupervisor[key].caixaIds.add(l.caixaId);
+  });
+  const ranking = Object.values(porSupervisor)
+    .map(s=>({nome:s.nome, total:s.total, despesas:s.despesas, prestacoes:s.caixaIds.size, ticket: s.caixaIds.size?s.total/s.caixaIds.size:0}))
+    .sort((a,b)=>b.total-a.total);
+  const maiorGasto = ranking[0] || null;
+
+  // Comparação com o mês anterior — só dentro do card Valor Total Gasto, não é card novo.
+  const mesAnt = _analiseMesAnterior(_analiseFiltroMes);
+  const totalMesAnterior = (allCaixaLancamentos||[]).filter(l=>(l.data||'').slice(0,7)===mesAnt).reduce((a,l)=>a+(l.valor||0),0);
+  let variacaoHtml = '';
+  if (totalMesAnterior > 0) {
+    const variacaoPct = ((totalGasto - totalMesAnterior) / totalMesAnterior) * 100;
+    const seta = variacaoPct >= 0 ? '▲' : '▼';
+    const cor = variacaoPct >= 0 ? 'var(--red)' : 'var(--green)';
+    variacaoHtml = `<div style="font-size:11px;color:${cor};margin-top:2px">${seta} ${Math.abs(variacaoPct).toFixed(0)}% vs ${_competenciaLabel(mesAnt)}</div>`;
+  }
+
+  cardsEl.innerHTML = `
+    <div class="grid-4" style="margin-bottom:14px">
+      <div class="stat-card"><div class="label">Valor Total Gasto</div><div class="value" style="color:var(--red);font-size:20px">${fmtBRL(totalGasto)}</div>${variacaoHtml}</div>
+      <div class="stat-card"><div class="label">Quantidade de Despesas</div><div class="value" style="color:var(--accent)">${qtdDespesas}</div></div>
+      <div class="stat-card"><div class="label">Quantidade de Prestações</div><div class="value" style="color:var(--accent)">${qtdPrestacoes}</div></div>
+      <div class="stat-card"><div class="label">Ticket Médio</div><div class="value" style="color:var(--green);font-size:20px">${fmtBRL(ticketMedio)}</div></div>
+    </div>
+    <div class="stat-card" style="margin-bottom:20px">
+      <div class="label">Supervisor com Maior Gasto</div>
+      <div class="value" style="font-size:18px">${maiorGasto?maiorGasto.nome:'—'}</div>
+      <div class="sub">${maiorGasto?fmtBRL(maiorGasto.total):'Sem lançamentos neste mês'}</div>
+    </div>`;
+
+  _renderCaixaAnaliseGraficos(ranking);
+  _renderCaixaAnaliseTabela(ranking, totalGasto);
+}
+
+function _renderCaixaAnaliseGraficos(ranking) {
+  const wrap = document.getElementById('caixa-analise-graficos'); if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="margin-bottom:20px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:10px">📈 Evolução Mensal dos Gastos</div>
+      <div style="height:240px"><canvas id="caixa-analise-chart-evolucao"></canvas></div>
+    </div>
+    <div style="margin-bottom:20px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:10px">🏆 Ranking de Supervisores</div>
+      <div style="height:220px"><canvas id="caixa-analise-chart-ranking"></canvas></div>
+    </div>`;
+
+  Object.values(_caixaAnaliseCharts).forEach(c=>{ if (c) try{c.destroy();}catch(e){} });
+  _caixaAnaliseCharts = {};
+
+  // Evolução: SEMPRE a série histórica completa — nunca filtrada pelo mês
+  // selecionado, propositalmente, para permitir ver tendência ao longo do tempo.
+  const porMes = {};
+  (allCaixaLancamentos||[]).forEach(l => { const m=(l.data||'').slice(0,7); if (!m) return; porMes[m]=(porMes[m]||0)+(l.valor||0); });
+  const mesesOrdenados = Object.keys(porMes).sort();
+  const canvasEvo = document.getElementById('caixa-analise-chart-evolucao');
+  if (canvasEvo && mesesOrdenados.length) {
+    _caixaAnaliseCharts.evolucao = new Chart(canvasEvo, {
+      type: mesesOrdenados.length<=1?'bar':'line',
+      data: { labels: mesesOrdenados.map(_competenciaLabel),
+        datasets: [{ label:'Gasto', data: mesesOrdenados.map(m=>porMes[m]), borderColor:'rgb(74,144,217)', backgroundColor:'rgba(74,144,217,.25)', tension:.3 }] },
+      options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true, ticks:{color:'#a0aec0'}, grid:{color:'rgba(255,255,255,.06)'}}, x:{ticks:{color:'#a0aec0'}, grid:{color:'rgba(255,255,255,.06)'}}} }
+    });
+  }
+
+  // Ranking: respeita o mês selecionado (já vem filtrado do chamador).
+  const canvasRank = document.getElementById('caixa-analise-chart-ranking');
+  if (canvasRank && ranking.length) {
+    _caixaAnaliseCharts.ranking = new Chart(canvasRank, {
+      type:'bar',
+      data:{ labels:ranking.map(r=>r.nome), datasets:[{label:'Gasto', data:ranking.map(r=>r.total), backgroundColor:'rgba(226,75,74,.7)'}] },
+      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{beginAtZero:true, ticks:{color:'#a0aec0'}, grid:{color:'rgba(255,255,255,.06)'}}, y:{ticks:{color:'#a0aec0'}, grid:{display:false}}} }
+    });
+  }
+}
+
+function _renderCaixaAnaliseTabela(ranking, totalGasto) {
+  const el = document.getElementById('caixa-analise-tabela'); if (!el) return;
+  if (!ranking.length) { el.innerHTML = '<div class="empty"><p>Nenhum lançamento neste mês.</p></div>'; return; }
+  el.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15)">${['Supervisor','Valor Gasto','Despesas','Prestações','Ticket Médio','Participação %'].map(h=>`<th style="padding:8px 10px;text-align:left;color:var(--text3)">${h}</th>`).join('')}</tr></thead>
+    <tbody>${ranking.map(r=>`<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+      <td style="padding:8px 10px">${r.nome}</td>
+      <td style="padding:8px 10px">${fmtBRL(r.total)}</td>
+      <td style="padding:8px 10px">${r.despesas}</td>
+      <td style="padding:8px 10px">${r.prestacoes}</td>
+      <td style="padding:8px 10px">${fmtBRL(r.ticket)}</td>
+      <td style="padding:8px 10px">${totalGasto?((r.total/totalGasto)*100).toFixed(1):'0'}%</td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
 }
 
 
@@ -7456,14 +7627,14 @@ async function auditarLancamentos(caixaId) {
 async function getHistoricoHtml(email, isAdm=false) {
   const hist = allCaixas.filter(c=>c.supervisorEmail===email&&c.status==='reabastecido_historico').sort((a,b)=>b.createdAt?.localeCompare(a.createdAt));
   if (!hist.length) return `<div style="font-size:13px;color:var(--text3);padding:12px">Nenhuma prestação anterior.</div>`;
-  return hist.slice(0,3).map(h=>`<div class="historico-item">
+  return hist.slice(0,2).map(h=>`<div class="historico-item">
     <div class="hi-header"><span style="font-size:13px;font-weight:600">Prestação ${fmtDT(h.enviadoEm)}</span><span class="hi-valor">-${fmtBRL(h.totalGasto)}</span></div>
     <div style="font-size:12px;color:var(--text3);font-family:'IBM Plex Mono',monospace">Aprovado em ${fmtDT(h.aprovadoEm)} • Reposto em ${fmtDT(h.reabastecidoEm)}</div>
     ${h.obsAprovacao?`<div class="hi-obs">💬 ${h.obsAprovacao}</div>`:''}
   </div>`).join('');
 }
 
-// ── Histórico por Competência (navegação — a visualização "últimas 3" acima continua existindo normalmente) ──
+// ── Histórico Completo (navegação por mês — a visualização "últimas 2" acima continua existindo normalmente) ──
 function _caixaCompetenciaDe(c) {
   const iso = c.enviadoEm || c.createdAt || c.aprovadoEm || '';
   return iso ? iso.slice(0,7) : null; // YYYY-MM
@@ -7475,10 +7646,10 @@ function abrirHistoricoCompetencias(email, nome) {
   const porComp = {};
   hist.forEach(c=>{ const comp=_caixaCompetenciaDe(c); if(!comp) return; if(!porComp[comp]) porComp[comp]=[]; porComp[comp].push(c); });
   const competencias = Object.keys(porComp).sort().reverse();
-  if (!competencias.length) { toast('Nenhuma competência anterior encontrada.','ok'); return; }
+  if (!competencias.length) { toast('Nenhuma prestação anterior encontrada.','ok'); return; }
   _histCompDados = porComp;
   _histCompSelecionada = competencias[0];
-  document.getElementById('modal-hist-comp-titulo').textContent = `📅 Histórico por Competência — ${nome}`;
+  document.getElementById('modal-hist-comp-titulo').textContent = `📅 Histórico Completo — ${nome}`;
   _renderHistoricoCompetenciasModal();
   document.getElementById('modal-hist-comp').classList.add('open');
 }
@@ -7498,7 +7669,7 @@ function _renderHistoricoCompetenciasModal() {
 
   const caixasDaComp = _histCompDados[_histCompSelecionada] || [];
   const el = document.getElementById('histcomp-detalhe');
-  if (!caixasDaComp.length) { el.innerHTML = '<div style="color:var(--text3);font-size:13px">Sem dados para esta competência.</div>'; return; }
+  if (!caixasDaComp.length) { el.innerHTML = '<div style="color:var(--text3);font-size:13px">Sem dados para este mês.</div>'; return; }
   el.innerHTML = caixasDaComp.map(c=>{
     const lancs = (allCaixaLancamentos||[]).filter(l=>l.caixaId===c.id).sort((a,b)=>(a.data||'').localeCompare(b.data||''));
     return `
