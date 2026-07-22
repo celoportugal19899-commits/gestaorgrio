@@ -20618,6 +20618,12 @@ function switchBkoTab(tab) {
 // Só gestor/administrador. Idempotente via ID determinístico (data+posto+
 // área+procedimento+observação normalizados) — nunca ID aleatório.
 // ══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════
+// CONTROLE BACKOFFICE — IMPORTAÇÃO INICIAL (histórico da planilha de 2026)
+// Só gestor/administrador. Idempotência por arquivo+aba+linha (nunca ID
+// aleatório) — preserva linhas de negócio idênticas, nunca confunde arquivos
+// diferentes. Aliases históricos são declarativos (sem fuzzy matching).
+// ══════════════════════════════════════════════════════════════════════════
 const BKO_IMPORT_COL_ALIASES = {
   DATA: ['DATA','DATA DO REGISTRO','DT','DATA REGISTRO'],
   POSTO: ['POSTO','POSTO/UNIDADE','UNIDADE','LOJA'],
@@ -20626,10 +20632,34 @@ const BKO_IMPORT_COL_ALIASES = {
   OBSERVACAO: ['OBSERVACAO','OBS','DESCRICAO','DETALHE','COMENTARIO']
 };
 
+// ── Aliases históricos declarativos (só usados na importação; nunca alteram
+// o texto original da planilha, nem os Cadastros). Chaves normalizadas via
+// normalizarBusca(); valores são o nome oficial esperado — a existência
+// desse nome nos Cadastros carregados ainda é conferida em tempo real antes
+// de aceitar o alias (nunca cria cadastro novo, nunca inventa nome). ──
+const BKO_IMPORT_ALIASES_POSTO = {
+  'SAO JOSE DO VALE R PRETO': 'SAO JOSE DO VALE DO RIO PRETO',
+  'SAO JOSE DO VALE': 'SAO JOSE DO VALE DO RIO PRETO',
+  'BOM JESUS ITABAPOANA': 'BOM JESUS DO ITABAPOANA',
+  'VARRE SAI': 'VARRE-SAI',
+  'PORCINCULA': 'PORCIUNCULA'
+};
+const BKO_IMPORT_ALIASES_AREA = {
+  'INADIPLENCIA': 'INADIMPLENCIA',
+  'RESPOSTA AO CLIT': 'RESPOSTA AO CLIENTE'
+};
+// Chave: "<área oficial normalizada>||<procedimento histórico normalizado>"
+// — o procedimento é sempre resolvido dentro da área já resolvida.
+const BKO_IMPORT_ALIASES_PROCEDIMENTO = {
+  [normalizarBusca('LIGACAO NOVA')+'||'+normalizarBusca('LIG NOVA')]: 'LIGACAO NOVA',
+  [normalizarBusca('FATURAMENTO')+'||'+normalizarBusca('PAGAMENTO DUPL')]: 'PAGAMENTO DUPLICADO',
+  [normalizarBusca('FATURAMENTO')+'||'+normalizarBusca('DATA VENCIMENTO')]: 'DATA DE VENCIMENTO'
+};
+
 let _bkoImportPrevia = null;
 
-// Hash determinístico curto (não criptográfico — só precisa ser estável e
-// ter baixa chance de colisão para alguns milhares de linhas).
+// Hash não criptográfico, só para IDs curtos e estáveis (chave de negócio
+// informativa — nunca decide duplicidade sozinha).
 function _bkoHashChave(str) {
   let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
   for (let i = 0; i < str.length; i++) {
@@ -20642,9 +20672,30 @@ function _bkoHashChave(str) {
   return (4294967296 * (2097151 & h2) + (h1>>>0)).toString(36);
 }
 
-function _bkoImportChaveDeterministica(dataISO, posto, area, procedimento, observacao) {
-  const norm = [dataISO, normalizarBusca(posto), normalizarBusca(area), normalizarBusca(procedimento), normalizarBusca(observacao)].join('|');
-  return 'bkoimp_' + _bkoHashChave(norm);
+// Hash real do conteúdo do arquivo (SHA-256 via WebCrypto) — usado na chave
+// de importação para nunca confundir arquivos diferentes, mesmo com
+// conteúdo parecido. Fallback simples se WebCrypto não estiver disponível.
+async function _bkoHashArquivo(buf) {
+  try {
+    const digest = await crypto.subtle.digest('SHA-256', buf);
+    return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('').slice(0,20);
+  } catch(e) {
+    const view = new Uint8Array(buf);
+    let h = 0; for (let i=0;i<view.length;i+=97) h = (h*31 + view[i]) >>> 0;
+    return 'fb' + h.toString(36) + view.length.toString(36);
+  }
+}
+
+// Chave de IMPORTAÇÃO (idempotência) — arquivo + aba + linha original.
+// Preserva linhas de negócio idênticas dentro do mesmo arquivo; reprocessar
+// o mesmo arquivo não recria as linhas; arquivos diferentes nunca colidem.
+function _bkoImportChaveImportacao(hashArquivo, nomeAba, linhaN) {
+  return 'bkoimp_' + _bkoHashChave(hashArquivo + '||' + normalizarBusca(nomeAba) + '||' + linhaN);
+}
+// Chave de NEGÓCIO — só informativa ("possível repetição de conteúdo"),
+// nunca bloqueia gravação.
+function _bkoImportChaveNegocio(dataISO, posto, area, procedimento, observacao) {
+  return _bkoHashChave([dataISO, normalizarBusca(posto), normalizarBusca(area), normalizarBusca(procedimento), normalizarBusca(observacao)].join('|'));
 }
 
 function _bkoImportParseData(v) {
@@ -20659,6 +20710,16 @@ function _bkoImportParseData(v) {
   m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
   return null;
+}
+
+// "PROCEDIMENTO (ÁREA)" — formato encontrado no histórico de 2026. Quando a
+// célula de Procedimento bate nesse padrão, ele é a fonte de verdade para
+// área+procedimento daquela linha (a coluna Área separada, se existir, é
+// ignorada só nesse caso — o padrão já é autocontido).
+function _bkoImportSepararProcedimentoArea(procCelula) {
+  const m = String(procCelula||'').trim().match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+  if (!m) return null;
+  return { procedimento: m[1].trim(), area: m[2].trim() };
 }
 
 async function renderBkoImportacao() {
@@ -20680,10 +20741,10 @@ async function renderBkoImportacao() {
       <div style="background:var(--surface2);border-radius:14px;padding:24px;margin-bottom:14px">
         <h3 style="margin:0 0 6px;font-size:15px;font-weight:600">📥 Importação Inicial — Histórico 2026</h3>
         <p style="font-size:12px;color:var(--text3);margin:0 0 16px;line-height:1.5">
-          Importa uma única vez o histórico de acionamentos da planilha de 2026. Cada linha gera uma chave
-          determinística (data + posto + área + procedimento + observação, normalizados) — reprocessar o
-          mesmo arquivo não recria registros já importados. Registros manuais existentes nunca são apagados
-          ou sobrescritos.
+          Importa uma única vez o histórico de acionamentos da planilha de 2026. A idempotência é por
+          arquivo + aba + linha original — reprocessar o mesmo arquivo não recria as linhas, e duas linhas
+          de negócio idênticas dentro do arquivo são preservadas. Registros manuais existentes nunca são
+          apagados ou sobrescritos.
         </p>
         <div class="form-group">
           <label class="form-label">Arquivo Excel (.xlsx)</label>
@@ -20691,7 +20752,7 @@ async function renderBkoImportacao() {
                  onchange="document.getElementById('bko-import-file-label').textContent=this.files[0]?'✅ '+this.files[0].name:'Nenhum arquivo selecionado'">
           <div id="bko-import-file-label" style="font-size:12px;color:var(--text3);margin-top:5px">Nenhum arquivo selecionado</div>
         </div>
-        <p style="font-size:11px;color:var(--text3);margin:10px 0 0">Colunas esperadas: Data, Posto, Área, Procedimento, Observação (nomes de cabeçalho flexíveis). A aba REGRAS, se existir no arquivo, é ignorada — serve só de base para Cadastros, não para o histórico.</p>
+        <p style="font-size:11px;color:var(--text3);margin:10px 0 0">Colunas esperadas: Data, Posto, Área, Procedimento, Observação (nomes de cabeçalho flexíveis; procedimento no formato "PROCEDIMENTO (ÁREA)" também é reconhecido). A aba REGRAS, se existir no arquivo, é ignorada.</p>
         <button class="btn btn-primary" style="margin-top:16px;width:100%" onclick="analisarArquivoBackoffice()">🔍 Analisar arquivo</button>
       </div>
       <div style="background:var(--surface2);border-radius:12px;padding:14px 18px">
@@ -20712,6 +20773,7 @@ async function analisarArquivoBackoffice() {
   toast('⏳ Analisando arquivo...', 'ok');
   try {
     const buf = await fi.files[0].arrayBuffer();
+    const hashArquivo = await _bkoHashArquivo(buf);
     const wb = XLSX.read(buf, {type:'array', cellDates:true});
     let wsName = wb.SheetNames.find(n => !n.toLowerCase().includes('regras')) || wb.SheetNames[0];
     const ws = wb.Sheets[wsName];
@@ -20725,59 +20787,126 @@ async function analisarArquivoBackoffice() {
     const faltantes = [];
     if (idxData===undefined) faltantes.push('Data');
     if (idxPosto===undefined) faltantes.push('Posto');
-    if (idxArea===undefined) faltantes.push('Área');
     if (idxProc===undefined) faltantes.push('Procedimento');
     if (faltantes.length) { toast('Colunas não encontradas: ' + faltantes.join(', '), 'err'); return; }
 
     const snapExistentes = await db.collection('controleBackoffice').where('operacaoId','==',operacaoId).get();
     const idsExistentes = new Set(snapExistentes.docs.map(d=>d.id));
 
-    const validas = [], invalidas = [], duplicadas = [], grafiasNaoReconhecidas = [];
+    const validas = [], invalidas = [], grafiasNaoReconhecidas = [];
     const postosSet = new Set(), areasSet = new Set(), procsSet = new Set(), mesesSet = new Set();
-    const chavesDoArquivo = new Set();
+    const jaImportadasAntes = [];
+    const repeticoesConteudo = {}; // chaveNegocio -> {amostra, qtd}
+    // Agrupadores do relatório: "RAW → OFICIAL" -> contagem
+    const aliasesPostoUsados = {}, aliasesAreaUsados = {}, aliasesProcUsados = {};
+    let reconhecidasDireto = 0;
 
     rawArr.slice(1).forEach((row, i) => {
       const linhaN = i + 2;
       if (!row || row.every(c => c===''||c==null)) return;
       const dataISO = _bkoImportParseData(row[idxData]);
-      const postoRaw = String(row[idxPosto]||'').trim();
-      const areaRaw = String(row[idxArea]||'').trim();
-      const procRaw = String(row[idxProc]||'').trim();
+      const postoRawOriginal = String(row[idxPosto]||'').trim();
+      const procCelula = String(row[idxProc]||'').trim();
+      const areaColSeparada = idxArea!==undefined ? String(row[idxArea]||'').trim() : '';
       const obs = idxObs!==undefined ? String(row[idxObs]||'').trim() : '';
 
+      // 3) "PROCEDIMENTO (ÁREA)" é a fonte de verdade quando presente.
+      const separado = _bkoImportSepararProcedimentoArea(procCelula);
+      const areaRawOriginal = separado ? separado.area : areaColSeparada;
+      const procRawOriginal = separado ? separado.procedimento : procCelula;
+
       if (!dataISO) { invalidas.push({linha:linhaN, motivo:'Data inválida ou vazia'}); return; }
-      if (!postoRaw) { invalidas.push({linha:linhaN, motivo:'Posto vazio'}); return; }
-      if (!areaRaw) { invalidas.push({linha:linhaN, motivo:'Área vazia'}); return; }
-      if (!procRaw) { invalidas.push({linha:linhaN, motivo:'Procedimento vazio'}); return; }
+      if (!postoRawOriginal) { invalidas.push({linha:linhaN, motivo:'Posto vazio'}); return; }
+      if (!areaRawOriginal) { invalidas.push({linha:linhaN, motivo:'Área vazia'}); return; }
+      if (!procRawOriginal) { invalidas.push({linha:linhaN, motivo:'Procedimento vazio'}); return; }
 
-      const postoMatch = TODOS_POSTOS_RG.find(p => normalizarBusca(p) === normalizarBusca(postoRaw));
-      if (!postoMatch) { grafiasNaoReconhecidas.push({linha:linhaN, tipo:'Posto', valor:postoRaw}); invalidas.push({linha:linhaN, motivo:`Posto não reconhecido: "${postoRaw}"`}); return; }
+      // ── POSTO: direto → alias declarado → CSAT_NOME_MAP (já existente e curado) → não reconhecido
+      let postoOficial = TODOS_POSTOS_RG.find(p => normalizarBusca(p) === normalizarBusca(postoRawOriginal));
+      let postoViaAlias = false;
+      if (!postoOficial) {
+        const aliasDestino = BKO_IMPORT_ALIASES_POSTO[normalizarBusca(postoRawOriginal)] || CSAT_NOME_MAP[postoRawOriginal.toUpperCase()];
+        if (aliasDestino) {
+          const confirmado = TODOS_POSTOS_RG.find(p => normalizarBusca(p) === normalizarBusca(aliasDestino));
+          if (confirmado) { postoOficial = confirmado; postoViaAlias = true; }
+        }
+      }
+      if (!postoOficial) { grafiasNaoReconhecidas.push({linha:linhaN, tipo:'Posto', valor:postoRawOriginal}); invalidas.push({linha:linhaN, motivo:`Posto não reconhecido: "${postoRawOriginal}"`}); return; }
 
-      const areaMatch = _bkoAreas.find(a => normalizarBusca(a.nome) === normalizarBusca(areaRaw));
-      if (!areaMatch) { grafiasNaoReconhecidas.push({linha:linhaN, tipo:'Área', valor:areaRaw}); invalidas.push({linha:linhaN, motivo:`Área não reconhecida: "${areaRaw}"`}); return; }
+      // ── ÁREA: direto → alias declarado → não reconhecida
+      let areaOficial = _bkoAreas.find(a => normalizarBusca(a.nome) === normalizarBusca(areaRawOriginal));
+      let areaViaAlias = false;
+      if (!areaOficial) {
+        const aliasDestino = BKO_IMPORT_ALIASES_AREA[normalizarBusca(areaRawOriginal)];
+        if (aliasDestino) {
+          const confirmado = _bkoAreas.find(a => normalizarBusca(a.nome) === normalizarBusca(aliasDestino));
+          if (confirmado) { areaOficial = confirmado; areaViaAlias = true; }
+        }
+      }
+      if (!areaOficial) { grafiasNaoReconhecidas.push({linha:linhaN, tipo:'Área', valor:areaRawOriginal}); invalidas.push({linha:linhaN, motivo:`Área não reconhecida: "${areaRawOriginal}"`}); return; }
 
-      const procMatch = _bkoProcedimentos.find(p => p.areaId===areaMatch.id && normalizarBusca(p.nome) === normalizarBusca(procRaw));
-      if (!procMatch) { grafiasNaoReconhecidas.push({linha:linhaN, tipo:'Procedimento', valor:`${procRaw} (${areaRaw})`}); invalidas.push({linha:linhaN, motivo:`Procedimento não reconhecido: "${procRaw}" na área "${areaRaw}"`}); return; }
+      // ── PROCEDIMENTO: sempre validado DENTRO da área já resolvida acima.
+      let procOficial = _bkoProcedimentos.find(p => p.areaId===areaOficial.id && normalizarBusca(p.nome) === normalizarBusca(procRawOriginal));
+      let procViaAlias = false;
+      if (!procOficial) {
+        const chaveAlias = normalizarBusca(areaOficial.nome)+'||'+normalizarBusca(procRawOriginal);
+        const aliasDestino = BKO_IMPORT_ALIASES_PROCEDIMENTO[chaveAlias];
+        if (aliasDestino) {
+          const confirmado = _bkoProcedimentos.find(p => p.areaId===areaOficial.id && normalizarBusca(p.nome) === normalizarBusca(aliasDestino));
+          if (confirmado) { procOficial = confirmado; procViaAlias = true; }
+        }
+      }
+      if (!procOficial) { grafiasNaoReconhecidas.push({linha:linhaN, tipo:'Procedimento', valor:`${procRawOriginal} (${areaRawOriginal})`}); invalidas.push({linha:linhaN, motivo:`Procedimento não reconhecido: "${procRawOriginal}" na área "${areaRawOriginal}"`}); return; }
 
-      const chave = _bkoImportChaveDeterministica(dataISO, postoMatch, areaMatch.nome, procMatch.nome, obs);
-      if (chavesDoArquivo.has(chave)) { duplicadas.push({linha:linhaN, motivo:'Duplicada dentro do próprio arquivo'}); return; }
-      chavesDoArquivo.add(chave);
-      if (idsExistentes.has(chave)) { duplicadas.push({linha:linhaN, motivo:'Já importada anteriormente (mesma data/posto/área/procedimento/observação)'}); return; }
+      // Contabiliza reconhecimento direto vs. via alias (para o relatório agrupado)
+      if (postoViaAlias) { const k = `${postoRawOriginal} → ${postoOficial}`; aliasesPostoUsados[k] = (aliasesPostoUsados[k]||0)+1; }
+      if (areaViaAlias) { const k = `${areaRawOriginal} → ${areaOficial.nome}`; aliasesAreaUsados[k] = (aliasesAreaUsados[k]||0)+1; }
+      if (procViaAlias) { const k = `${procRawOriginal} (${areaOficial.nome}) → ${procOficial.nome}`; aliasesProcUsados[k] = (aliasesProcUsados[k]||0)+1; }
+      if (!postoViaAlias && !areaViaAlias && !procViaAlias) reconhecidasDireto++;
+
+      // Chave de IMPORTAÇÃO (idempotência real) — nunca bloqueia por conteúdo repetido.
+      const idImportacao = _bkoImportChaveImportacao(hashArquivo, wsName, linhaN);
+      if (idsExistentes.has(idImportacao)) { jaImportadasAntes.push({linha:linhaN}); return; }
+
+      // Chave de NEGÓCIO — só alerta informativo, nunca bloqueia.
+      const chaveNegocio = _bkoImportChaveNegocio(dataISO, postoOficial, areaOficial.nome, procOficial.nome, obs);
+      if (!repeticoesConteudo[chaveNegocio]) repeticoesConteudo[chaveNegocio] = { amostra: `${dataISO} • ${postoOficial} • ${areaOficial.nome}/${procOficial.nome}`, linhas: [] };
+      repeticoesConteudo[chaveNegocio].linhas.push(linhaN);
 
       const mesRef = dataISO.slice(0,7);
-      postosSet.add(postoMatch); areasSet.add(areaMatch.nome); procsSet.add(procMatch.nome); mesesSet.add(mesRef);
-      validas.push({ id: chave, data:dataISO, mesRef, posto:postoMatch, areaId:areaMatch.id, areaNome:areaMatch.nome, procedimentoId:procMatch.id, procedimentoNome:procMatch.nome, observacao:obs, linha:linhaN });
+      postosSet.add(postoOficial); areasSet.add(areaOficial.nome); procsSet.add(procOficial.nome); mesesSet.add(mesRef);
+      validas.push({
+        id: idImportacao, data:dataISO, mesRef, linha:linhaN,
+        posto:postoOficial, postoOriginal: postoViaAlias ? postoRawOriginal : null,
+        areaId:areaOficial.id, areaNome:areaOficial.nome, areaOriginal: areaViaAlias ? areaRawOriginal : null,
+        procedimentoId:procOficial.id, procedimentoNome:procOficial.nome, procedimentoOriginal: procViaAlias ? procRawOriginal : null,
+        observacao:obs
+      });
     });
 
+    const repeticoes = Object.values(repeticoesConteudo).filter(g => g.linhas.length > 1);
+    const totalRepeticoes = repeticoes.reduce((a,g)=>a+g.linhas.length,0);
+
     _bkoImportPrevia = {
-      arquivo: fi.files[0].name, aba: wsName,
-      validas, invalidas, duplicadas, grafiasNaoReconhecidas,
+      arquivo: fi.files[0].name, aba: wsName, hashArquivo,
+      totalLinhasLidas: rawArr.length - 1,
+      validas, invalidas, jaImportadasAntes, grafiasNaoReconhecidas,
+      reconhecidasDireto, aliasesPostoUsados, aliasesAreaUsados, aliasesProcUsados,
+      repeticoes, totalRepeticoes,
       meses: [...mesesSet].sort(), postos: [...postosSet].sort((a,b)=>a.localeCompare(b,'pt')),
       areas: [...areasSet].sort((a,b)=>a.localeCompare(b,'pt')), procedimentos: [...procsSet].sort((a,b)=>a.localeCompare(b,'pt')),
       operacaoId
     };
     renderBkoImportacao();
   } catch(e) { console.error(e); toast('Erro ao analisar arquivo: ' + e.message, 'err'); }
+}
+
+function _bkoImportRenderGrupoAlias(titulo, mapa) {
+  const entradas = Object.entries(mapa).sort((a,b)=>b[1]-a[1]);
+  if (!entradas.length) return '';
+  return `<div style="margin-bottom:10px">
+    <div style="font-size:12px;font-weight:700;color:#4a90d9;margin-bottom:4px">${titulo} (${entradas.length} alias, ${entradas.reduce((a,e)=>a+e[1],0)} linha(s))</div>
+    <div style="font-size:11px">${entradas.map(([k,q])=>`<div>${k} — ${q} ocorrência(s)</div>`).join('')}</div>
+  </div>`;
 }
 
 function _bkoRenderPreviaImportacaoBackoffice() {
@@ -20790,7 +20919,7 @@ function _bkoRenderPreviaImportacaoBackoffice() {
           <h3 style="margin:0 0 12px;font-size:15px;font-weight:600">✅ Importação concluída</h3>
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px">
             <div style="background:var(--surface3);border-radius:10px;padding:10px 12px"><div style="font-size:11px;color:var(--text3)">Gravados</div><div style="font-size:18px;font-weight:700;color:#3fb950">${r.gravados}</div></div>
-            <div style="background:var(--surface3);border-radius:10px;padding:10px 12px"><div style="font-size:11px;color:var(--text3)">Ignorados (já existiam)</div><div style="font-size:18px;font-weight:700;color:#d4a72c">${r.ignorados}</div></div>
+            <div style="background:var(--surface3);border-radius:10px;padding:10px 12px"><div style="font-size:11px;color:var(--text3)">Já existiam (ignorados)</div><div style="font-size:18px;font-weight:700;color:#d4a72c">${r.ignorados}</div></div>
             <div style="background:var(--surface3);border-radius:10px;padding:10px 12px"><div style="font-size:11px;color:var(--text3)">Inválidos</div><div style="font-size:18px;font-weight:700;color:#e24b4a">${p.invalidas.length}</div></div>
             <div style="background:var(--surface3);border-radius:10px;padding:10px 12px"><div style="font-size:11px;color:var(--text3)">Erros de gravação</div><div style="font-size:18px;font-weight:700;${r.erros.length?'color:#e24b4a':''}">${r.erros.length}</div></div>
           </div>
@@ -20806,34 +20935,46 @@ function _bkoRenderPreviaImportacaoBackoffice() {
         <p style="font-size:12px;color:var(--text3);margin:0 0 16px">Nenhum dado foi gravado ainda. Aba lida: <strong>${p.aba}</strong>.</p>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px">
           ${[
-            ['Linhas válidas', p.validas.length, '#3fb950'],
-            ['Linhas inválidas', p.invalidas.length, '#e24b4a'],
-            ['Possíveis duplicidades', p.duplicadas.length, '#d4a72c'],
-            ['Meses encontrados', p.meses.length, null],
-            ['Postos encontrados', p.postos.length, null],
-            ['Áreas encontradas', p.areas.length, null],
-            ['Procedimentos encontrados', p.procedimentos.length, null]
+            ['Linhas lidas', p.totalLinhasLidas, null],
+            ['Reconhecidas diretamente', p.reconhecidasDireto, '#3fb950'],
+            ['Convertidas por alias', p.validas.length - p.reconhecidasDireto, '#4a90d9'],
+            ['Realmente inválidas', p.invalidas.length, '#e24b4a'],
+            ['Já importadas antes', p.jaImportadasAntes.length, '#8b8b98'],
+            ['Possíveis repetições (alerta)', p.totalRepeticoes, '#d4a72c'],
+            ['Disponível para importar', p.validas.length, '#3fb950']
           ].map(([t,v,c])=>`<div style="background:var(--surface3);border-radius:10px;padding:10px 12px"><div style="font-size:11px;color:var(--text3)">${t}</div><div style="font-size:18px;font-weight:700;${c?`color:${c}`:''}">${v}</div></div>`).join('')}
         </div>
-        <div style="font-size:12px;color:var(--text3);margin-bottom:10px">Meses: ${p.meses.map(_indMesLabel).join(', ')||'—'}</div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:14px">Meses: ${p.meses.map(_indMesLabel).join(', ')||'—'} • Postos: ${p.postos.length} • Áreas: ${p.areas.length} • Procedimentos: ${p.procedimentos.length}</div>
+
+        ${(Object.keys(p.aliasesPostoUsados).length || Object.keys(p.aliasesAreaUsados).length || Object.keys(p.aliasesProcUsados).length) ? `
+          <details style="background:var(--surface3);border-radius:10px;padding:12px 14px;margin-bottom:14px" open>
+            <summary style="font-size:12px;font-weight:700;color:#4a90d9;cursor:pointer">Grafias convertidas por alias — agrupado (clique para recolher)</summary>
+            <div style="margin-top:10px">
+              ${_bkoImportRenderGrupoAlias('Postos', p.aliasesPostoUsados)}
+              ${_bkoImportRenderGrupoAlias('Áreas', p.aliasesAreaUsados)}
+              ${_bkoImportRenderGrupoAlias('Procedimentos', p.aliasesProcUsados)}
+            </div>
+          </details>` : ''}
 
         ${p.grafiasNaoReconhecidas.length ? `
-          <div style="background:var(--surface3);border-radius:10px;padding:12px 14px;margin-bottom:14px">
-            <div style="font-size:12px;font-weight:700;color:#e24b4a;margin-bottom:6px">⚠ Grafias não reconhecidas (${p.grafiasNaoReconhecidas.length}) — não foram corrigidas automaticamente</div>
-            <div style="max-height:160px;overflow-y:auto;font-size:11px">${p.grafiasNaoReconhecidas.slice(0,50).map(g=>`<div>Linha ${g.linha} — ${g.tipo}: "${g.valor}"</div>`).join('')}${p.grafiasNaoReconhecidas.length>50?`<div style="color:var(--text3)">+ ${p.grafiasNaoReconhecidas.length-50} outra(s)...</div>`:''}</div>
-          </div>` : ''}
+          <details style="background:var(--surface3);border-radius:10px;padding:12px 14px;margin-bottom:14px">
+            <summary style="font-size:12px;font-weight:700;color:#e24b4a;cursor:pointer">⚠ Grafias realmente não reconhecidas (${p.grafiasNaoReconhecidas.length}) — não corrigidas automaticamente, clique para ver linha a linha</summary>
+            <div style="max-height:200px;overflow-y:auto;font-size:11px;margin-top:8px">${p.grafiasNaoReconhecidas.map(g=>`<div>Linha ${g.linha} — ${g.tipo}: "${g.valor}"</div>`).join('')}</div>
+          </details>` : ''}
 
         ${p.invalidas.length ? `
-          <div style="background:var(--surface3);border-radius:10px;padding:12px 14px;margin-bottom:14px">
-            <div style="font-size:12px;font-weight:700;color:#e24b4a;margin-bottom:6px">Linhas inválidas (${p.invalidas.length})</div>
-            <div style="max-height:160px;overflow-y:auto;font-size:11px">${p.invalidas.slice(0,50).map(g=>`<div>Linha ${g.linha} — ${g.motivo}</div>`).join('')}${p.invalidas.length>50?`<div style="color:var(--text3)">+ ${p.invalidas.length-50} outra(s)...</div>`:''}</div>
-          </div>` : ''}
+          <details style="background:var(--surface3);border-radius:10px;padding:12px 14px;margin-bottom:14px">
+            <summary style="font-size:12px;font-weight:700;color:#e24b4a;cursor:pointer">Linhas inválidas — motivo detalhado (${p.invalidas.length}), clique para expandir</summary>
+            <div style="max-height:200px;overflow-y:auto;font-size:11px;margin-top:8px">${p.invalidas.map(g=>`<div>Linha ${g.linha} — ${g.motivo}</div>`).join('')}</div>
+          </details>` : ''}
 
-        ${p.duplicadas.length ? `
-          <div style="background:var(--surface3);border-radius:10px;padding:12px 14px;margin-bottom:14px">
-            <div style="font-size:12px;font-weight:700;color:#d4a72c;margin-bottom:6px">Possíveis duplicidades (${p.duplicadas.length}) — não serão gravadas</div>
-            <div style="max-height:120px;overflow-y:auto;font-size:11px">${p.duplicadas.slice(0,30).map(g=>`<div>Linha ${g.linha} — ${g.motivo}</div>`).join('')}${p.duplicadas.length>30?`<div style="color:var(--text3)">+ ${p.duplicadas.length-30} outra(s)...</div>`:''}</div>
-          </div>` : ''}
+        ${p.totalRepeticoes ? `
+          <details style="background:var(--surface3);border-radius:10px;padding:12px 14px;margin-bottom:14px">
+            <summary style="font-size:12px;font-weight:700;color:#d4a72c;cursor:pointer">ℹ Possível repetição de conteúdo (${p.repeticoes.length} grupo(s), ${p.totalRepeticoes} linha(s)) — apenas alerta, nada é bloqueado</summary>
+            <div style="max-height:200px;overflow-y:auto;font-size:11px;margin-top:8px">${p.repeticoes.map(g=>`<div>${g.amostra} — linhas ${g.linhas.join(', ')}</div>`).join('')}</div>
+          </details>` : ''}
+
+        ${p.jaImportadasAntes.length ? `<div style="font-size:11px;color:var(--text3);margin-bottom:14px">${p.jaImportadasAntes.length} linha(s) já haviam sido importadas por este mesmo arquivo/aba anteriormente — não serão duplicadas.</div>` : ''}
 
         <label style="display:flex;gap:8px;align-items:flex-start;font-size:12px;margin:14px 0;cursor:pointer">
           <input type="checkbox" id="bko-import-confirmo" style="margin-top:2px">
@@ -20879,6 +21020,7 @@ async function confirmarImportacaoBackoffice() {
       batch.set(ref, {
         id: r.id, data:r.data, mesRef:r.mesRef, posto:r.posto, areaId:r.areaId, areaNome:r.areaNome,
         procedimentoId:r.procedimentoId, procedimentoNome:r.procedimentoNome, observacao:r.observacao,
+        postoOriginal: r.postoOriginal, areaOriginal: r.areaOriginal, procedimentoOriginal: r.procedimentoOriginal,
         registradoPor: currentUser.name, registradoPorEmail: currentUser.email,
         criadoEm: new Date().toISOString(), ativo: true, operacaoId: p.operacaoId,
         criticidade: 'baixa', statusAcompanhamento: 'aberto', normalizadoEm: null, normalizadoPor: null, normalizadoPorEmail: null,
@@ -20900,13 +21042,13 @@ async function confirmarImportacaoBackoffice() {
   try {
     await db.collection('controleBackofficeImportConfig').doc('geral').set({
       ultimoImportEm: new Date().toISOString(), ultimoImportPor: currentUser.name, ultimoImportPorEmail: currentUser.email,
-      arquivo: p.arquivo, totalImportado: gravados, totalIgnorados: p.duplicadas.length, totalInvalidas: p.invalidas.length,
+      arquivo: p.arquivo, totalImportado: gravados, totalIgnorados: p.jaImportadasAntes.length, totalInvalidas: p.invalidas.length,
       operacaoId: p.operacaoId
     }, {merge:true});
   } catch(e) { console.error('Erro ao registrar config de import', e); }
 
   toast(`✅ Importação concluída: ${gravados} registro(s) gravado(s)${erros.length?`, ${erros.length} lote(s) com erro`:''}`, 'ok');
-  _bkoImportPrevia = { ...p, resumoFinal: { gravados, erros, ignorados: p.duplicadas.length } };
+  _bkoImportPrevia = { ...p, resumoFinal: { gravados, erros, ignorados: p.jaImportadasAntes.length } };
   renderBkoImportacao();
 }
 
