@@ -1593,6 +1593,7 @@ const PosCanalLabels = {
         <div class="page-header" style="margin:0"><h1>Caixas Rotativos</h1><p>Aprovação e controle financeiro dos supervisores</p></div>
       </div>
       <div id="adm-caixas-stats" class="grid-4" style="margin-bottom:20px"></div>
+      <div id="adm-caixas-filtros"></div>
       <div id="adm-caixas-body"></div>
     </div>
 
@@ -6688,6 +6689,18 @@ async function exportarMeuRegistro() {
 const SUPERVISORES_CAIXA = ['victor.simoes@gruporgbrasil.com','leonardo.costa@gruporgbrasil.com','supervisor.teste@gruporgbrasil.com','teste@gruporgbrasil.com'];
 const VALOR_CAIXA_INICIAL = 1000;
 let allCaixas = [];
+
+// Busca o caixa "ativo" (não histórico) de um supervisor. Se por qualquer
+// motivo existir mais de um documento não-histórico para o mesmo supervisor
+// (ex.: uma falha no meio de uma reposição antiga, antes desta correção),
+// desempata sempre pelo mais recente — nunca deixa um .find() sem critério
+// pegar um documento "aprovado" órfão em vez do "em_uso" atual.
+function _caixaAtivoDoSupervisor(email) {
+  const doSupervisor = allCaixas.filter(c=>c.supervisorEmail===email && c.status!=='reabastecido_historico');
+  if (!doSupervisor.length) return null;
+  if (doSupervisor.length > 1) doSupervisor.sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+  return doSupervisor[0];
+}
 let unsubCaixas = null;
 let allCaixaLancamentos = [];
 let unsubCaixaLancamentos = null;
@@ -6726,7 +6739,7 @@ async function renderSupCaixa() {
   if (!el) return;
 
   // Buscar ou criar caixa do supervisor
-  let caixa = allCaixas.find(c => c.supervisorEmail === currentUser.email && c.status !== 'reabastecido_historico');
+  let caixa = _caixaAtivoDoSupervisor(currentUser.email);
   if (!caixa) {
     const ref = db.collection('caixas').doc();
     const novoCaixa = {
@@ -7169,23 +7182,101 @@ async function enviarParaAprovacao(caixaId) {
 }
 
 // ─── ADM VIEW ───
+// ── Filtros do Dashboard (Competência / Supervisor / Busca) ──
+// Competência nunca é lista fixa: vem sempre de _caixaCompetenciaDe() sobre
+// os caixas realmente cadastrados (reaproveita o mesmo helper já usado no
+// Histórico por Competência).
+let _caixaFiltroCompetencia = '';
+let _caixaFiltroSupervisor = '';
+let _caixaBusca = '';
+
+function _caixaCompetenciasDisponiveis() {
+  return [...new Set(allCaixas.map(_caixaCompetenciaDe).filter(Boolean))].sort().reverse();
+}
+
+// Caixa "relevante" de um supervisor sob os filtros atuais: sem filtro de
+// competência = caixa ativo atual (comportamento de sempre); com filtro =
+// o caixa (ativo ou histórico) daquela competência, desempatando pelo mais
+// recente se houver mais de um.
+function _caixaCaixaRelevante(sup) {
+  if (!_caixaFiltroCompetencia) return _caixaAtivoDoSupervisor(sup.email);
+  const doSupervisor = allCaixas.filter(c=>c.supervisorEmail===sup.email && _caixaCompetenciaDe(c)===_caixaFiltroCompetencia);
+  if (!doSupervisor.length) return null;
+  doSupervisor.sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+  return doSupervisor[0];
+}
+
+function _caixaUltimaMovimentacao(caixaId) {
+  return (allCaixaLancamentos||[]).filter(l=>l.caixaId===caixaId)
+    .reduce((max,l)=> (!max || (l.createdAt||'') > (max.createdAt||'')) ? l : max, null);
+}
+
+function _renderAdmCaixasFiltrosBar() {
+  const wrap = document.getElementById('adm-caixas-filtros');
+  if (!wrap || wrap.dataset.montado === '1') return; // monta só uma vez — não perde o que o usuário está digitando/selecionando a cada onSnapshot
+  const supervisoresBase = allUsers.filter(u=>SUPERVISORES_CAIXA.includes(u.email)&&u.email!=='supervisor.teste@gruporgbrasil.com'&&isAtivo(u));
+  wrap.innerHTML = `
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px">
+      <div><label class="form-label" style="font-size:11px">Competência</label><br>
+        <select class="form-select" id="caixa-fil-competencia" style="width:170px" onchange="_caixaAplicarFiltros()">
+          <option value="">Todos</option>
+        </select>
+      </div>
+      <div><label class="form-label" style="font-size:11px">Supervisor</label><br>
+        <select class="form-select" id="caixa-fil-supervisor" style="width:180px" onchange="_caixaAplicarFiltros()">
+          <option value="">Todos</option>
+          ${supervisoresBase.sort((a,b)=>a.name.localeCompare(b.name,'pt')).map(s=>`<option value="${s.email}">${s.name}</option>`).join('')}
+        </select>
+      </div>
+      <div style="flex:1;min-width:200px"><label class="form-label" style="font-size:11px">Buscar supervisor</label><br>
+        <input class="form-input" id="caixa-fil-busca" placeholder="🔎 Nome do supervisor..." style="width:100%" oninput="_caixaAplicarFiltros()">
+      </div>
+    </div>`;
+  wrap.dataset.montado = '1';
+  _caixaAtualizarOpcoesCompetencia();
+}
+
+// As opções de competência são atualizadas à parte (sem recriar o <select>
+// inteiro) para não perder a seleção atual quando o onSnapshot dispara.
+function _caixaAtualizarOpcoesCompetencia() {
+  const sel = document.getElementById('caixa-fil-competencia'); if (!sel) return;
+  const atual = sel.value;
+  const competencias = _caixaCompetenciasDisponiveis();
+  sel.innerHTML = '<option value="">Todos</option>' + competencias.map(c=>`<option value="${c}">${_competenciaLabel(c)}</option>`).join('');
+  if (competencias.includes(atual)) sel.value = atual;
+}
+
+function _caixaAplicarFiltros() {
+  _caixaFiltroCompetencia = document.getElementById('caixa-fil-competencia')?.value || '';
+  _caixaFiltroSupervisor = document.getElementById('caixa-fil-supervisor')?.value || '';
+  _caixaBusca = document.getElementById('caixa-fil-busca')?.value || '';
+  _renderAdmCaixasConteudo();
+}
+
 async function renderAdmCaixas() {
+  _renderAdmCaixasFiltrosBar();
+  await _renderAdmCaixasConteudo();
+}
+
+async function _renderAdmCaixasConteudo() {
   const el = document.getElementById('adm-caixas-body');
   const stats = document.getElementById('adm-caixas-stats');
   if (!el) return;
+  _caixaAtualizarOpcoesCompetencia();
 
-  const pendentes = allCaixas.filter(c=>c.status==='aguarda_aprovacao').length;
-  const emUso = allCaixas.filter(c=>c.status==='em_uso'||c.status==='rascunho'||c.status==='validado').length;
-  // Total em caixa = soma dos saldos gastos de todos os caixas ativos
-  const totalGastoGeral = allCaixas
-    .filter(c=>c.status!=='reabastecido_historico'&&c.status!=='sem_caixa')
-    .reduce((a,c)=>a+(c.totalGasto||0),0);
-  // Total disponível = valor inicial de cada supervisor ativo
-  const supervisores = allUsers.filter(u=>SUPERVISORES_CAIXA.includes(u.email)&&u.email!=='supervisor.teste@gruporgbrasil.com'&&isAtivo(u));
-  const totalDisponivel = supervisores.reduce((a,sup)=>{
-    const caixa = allCaixas.find(c=>c.supervisorEmail===sup.email&&c.status!=='reabastecido_historico');
-    return a + (caixa ? (caixa.saldoAtual||VALOR_CAIXA_INICIAL) : VALOR_CAIXA_INICIAL);
-  },0);
+  let supervisores = allUsers.filter(u=>SUPERVISORES_CAIXA.includes(u.email)&&u.email!=='supervisor.teste@gruporgbrasil.com'&&isAtivo(u));
+  if (_caixaFiltroSupervisor) supervisores = supervisores.filter(s=>s.email===_caixaFiltroSupervisor);
+  if (_caixaBusca.trim()) { const bn = normalizarBusca(_caixaBusca); supervisores = supervisores.filter(s=>normalizarBusca(s.name).includes(bn)); }
+
+  // Bug corrigido: "Em Uso" agora usa exatamente a mesma base de supervisores
+  // (ativos, sem conta de teste) e o mesmo caixa relevante que é exibido na
+  // lista abaixo — não conta mais documento avulso, duplicado ou de usuário
+  // desativado.
+  const relevantes = supervisores.map(sup => ({sup, caixa: _caixaCaixaRelevante(sup)}));
+  const pendentes = relevantes.filter(x=>x.caixa && x.caixa.status==='aguarda_aprovacao').length;
+  const emUso = relevantes.filter(x=>x.caixa && ['em_uso','rascunho','validado'].includes(x.caixa.status)).length;
+  const totalGastoGeral = relevantes.filter(x=>x.caixa && x.caixa.status!=='sem_caixa').reduce((a,x)=>a+(x.caixa.totalGasto||0),0);
+  const totalDisponivel = relevantes.reduce((a,x)=>a+(x.caixa?(x.caixa.saldoAtual??VALOR_CAIXA_INICIAL):VALOR_CAIXA_INICIAL),0);
 
   if (stats) stats.innerHTML = `
     <div class="stat-card"><div class="label">Aguardando Aprovação</div><div class="value" style="color:${pendentes>0?'var(--yellow)':'var(--green)'}">${pendentes}</div><div class="sub">prestações</div></div>
@@ -7196,8 +7287,8 @@ async function renderAdmCaixas() {
   let html = '';
 
   for (const sup of supervisores) {
-    const caixa = allCaixas.find(c=>c.supervisorEmail===sup.email&&c.status!=='reabastecido_historico') || {saldoInicial:VALOR_CAIXA_INICIAL,saldoAtual:VALOR_CAIXA_INICIAL,totalGasto:0,status:'sem_caixa'};
-    const pct = Math.round(((caixa.saldoInicial-(caixa.saldoAtual||VALOR_CAIXA_INICIAL))/caixa.saldoInicial)*100);
+    const caixa = _caixaCaixaRelevante(sup) || {saldoInicial:VALOR_CAIXA_INICIAL,saldoAtual:VALOR_CAIXA_INICIAL,totalGasto:0,status:'sem_caixa'};
+    const pct = Math.round(((caixa.saldoInicial-(caixa.saldoAtual??VALOR_CAIXA_INICIAL))/caixa.saldoInicial)*100);
     const pbCls = pct>=75?'cpb-red':pct>=50?'cpb-yellow':'cpb-green';
     const saldoCls = pct>=75?'saldo-low':pct>=50?'saldo-warn':'saldo-ok';
     const statusHtml = {
@@ -7206,23 +7297,36 @@ async function renderAdmCaixas() {
       'validado':`<span class="caixa-status cs-aguarda">🟡 Validado — aguardando envio</span>`,
       'aguarda_aprovacao':`<span class="caixa-status cs-pendente">🔴 Aguarda Aprovação</span>`,
       'aprovado':`<span class="caixa-status cs-aprovado">✅ Aprovado</span>`,
-      'sem_caixa':`<span class="caixa-status" style="background:var(--surface2);color:var(--text3);border:1px solid var(--border)">⚪ Sem lançamentos</span>`
+      'sem_caixa':`<span class="caixa-status" style="background:var(--surface2);color:var(--text3);border:1px solid var(--border)">⚪ Sem lançamentos</span>`,
+      'reabastecido_historico':`<span class="caixa-status" style="background:var(--surface2);color:var(--text3);border:1px solid var(--border)">📦 Competência encerrada</span>`
     }[caixa.status]||'';
+    const ultimaMov = caixa.id ? _caixaUltimaMovimentacao(caixa.id) : null;
 
     html += `<div class="caixa-card">
       <div class="caixa-header">
         <div class="caixa-av">${sup.name[0]}</div>
         <div style="flex:1"><div class="caixa-nome">${sup.name}</div><div class="caixa-sub">${sup.cargo}</div></div>
-        <div style="text-align:right">
-          <div class="caixa-saldo-big ${saldoCls}">${fmtBRL(caixa.saldoAtual||VALOR_CAIXA_INICIAL)}</div>
-          <div style="font-size:12px;color:var(--text3)">saldo disponível</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0 12px">
+        <div style="background:var(--surface2);border-radius:8px;padding:8px 10px;text-align:center">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px">Valor do Caixa</div>
+          <div style="font-size:15px;font-weight:700">${fmtBRL(caixa.saldoInicial||VALOR_CAIXA_INICIAL)}</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:8px 10px;text-align:center">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px">Valor Utilizado</div>
+          <div style="font-size:15px;font-weight:700;color:var(--yellow)">${fmtBRL(caixa.totalGasto||0)}</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:8px 10px;text-align:center">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px">Saldo Atual</div>
+          <div class="${saldoCls}" style="font-size:15px;font-weight:700">${fmtBRL(caixa.saldoAtual??VALOR_CAIXA_INICIAL)}</div>
         </div>
       </div>
-      <div class="caixa-progress"><div class="caixa-progress-bar ${pbCls}" style="width:${pct}%"></div></div>
-      <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--text3);margin-bottom:14px">
-        <span>Gasto: <strong style="color:var(--text)">${fmtBRL(caixa.totalGasto||0)}</strong> (${pct}%) • A repor: <strong style="color:var(--yellow)">${fmtBRL(caixa.totalGasto||0)}</strong></span>
+      <div class="caixa-progress"><div class="caixa-progress-bar ${pbCls}" style="width:${Math.max(0,Math.min(100,pct))}%"></div></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--text3);margin:8px 0 4px">
+        <span>${pct}% utilizado</span>
         ${statusHtml}
       </div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:14px">Última movimentação: ${ultimaMov?fmtDT(ultimaMov.createdAt):'—'}</div>
       ${currentUser?.role==='admin' && caixa.status!=='sem_caixa' ? `
       <div style="display:flex;gap:8px;margin-bottom:14px">
         <button class="btn btn-sm btn-secondary" onclick="abrirModalCorrigirSaldo('${caixa.id}','${sup.name}')">🛠 Corrigir Saldo</button>
@@ -7231,7 +7335,8 @@ async function renderAdmCaixas() {
       </div>`:''}
       ${caixa.status==='aguarda_aprovacao'?`
       <div style="background:var(--yellow-bg);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:14px;margin-bottom:14px">
-        <div style="font-size:13px;font-weight:700;color:var(--yellow);margin-bottom:10px">📥 Arquivos da Prestação</div>
+        <div style="font-size:13px;font-weight:700;color:var(--yellow);margin-bottom:6px">📥 Arquivos da Prestação</div>
+        <div id="resumo-${caixa.id}" style="font-size:12px;color:var(--text2);margin-bottom:10px">${fmtBRL(caixa.totalGasto||0)} • ${(_comprovantesCache[caixa.id]||[]).length} comprovante(s) • ${(allCaixaLancamentos||[]).filter(l=>l.caixaId===caixa.id).length} despesa(s)</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
           ${caixa.excelBase64?`<button class="btn btn-sm btn-secondary" onclick="downloadArquivo('${caixa.id}','excel')">📊 ${caixa.excelNome||'Caixa.xlsx'}</button>`:'<span style="font-size:12px;color:var(--red)">⚠ Excel não disponível — peça ao supervisor para reenviar</span>'}
         </div>
@@ -7259,18 +7364,20 @@ async function renderAdmCaixas() {
     </div>`;
   }
 
-  el.innerHTML = html || `<div class="empty"><div class="icon">💰</div><p>Nenhum supervisor com caixa ativo.</p></div>`;
+  el.innerHTML = html || `<div class="empty"><div class="icon">💰</div><p>Nenhum supervisor encontrado com os filtros atuais.</p></div>`;
 
   for (const sup of supervisores) {
     const histEl = document.getElementById(`hist-${sup.email.replace('@','_').replace(/\./g,'_')}`);
     if (histEl) histEl.innerHTML = await getHistoricoHtml(sup.email, true);
     // Carregar comprovantes para caixas em aguarda_aprovacao
-    const caixa = allCaixas.find(c=>c.supervisorEmail===sup.email&&c.status==='aguarda_aprovacao');
-    if (caixa) {
+    const caixa = _caixaCaixaRelevante(sup);
+    if (caixa && caixa.status==='aguarda_aprovacao') {
       const compEl = document.getElementById(`adm-comprovantes-${caixa.id}`);
       if (compEl) {
         await carregarComprovantes(caixa.id);
         const lista = _comprovantesCache[caixa.id] || [];
+        const resumoEl = document.getElementById(`resumo-${caixa.id}`);
+        if (resumoEl) resumoEl.textContent = `${fmtBRL(caixa.totalGasto||0)} • ${lista.length} comprovante(s) • ${(allCaixaLancamentos||[]).filter(l=>l.caixaId===caixa.id).length} despesa(s)`;
         if (lista.length > 0) {
           compEl.innerHTML = `<div style="font-size:12px;color:var(--text2);margin-bottom:6px;font-weight:600">📎 ${lista.length} comprovante(s) anexado(s):</div>` +
             lista.map(c=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
@@ -7285,6 +7392,7 @@ async function renderAdmCaixas() {
     }
   }
 }
+
 
 async function auditarLancamentos(caixaId) {
   const el = document.getElementById('auditoria-'+caixaId);
@@ -7566,20 +7674,31 @@ async function confirmarReabastecimento() {
   if (!valor || valor <= 0) { toast('Informe o valor','err'); return; }
   try {
     const caixa = allCaixas.find(c=>c.id===id);
-    // Arquivar prestação atual no histórico
+    if (!caixa) { toast('Caixa não encontrado — atualize a página e tente novamente','err'); return; }
+    // Atômico: as 3 operações (arquivar antigo, criar novo, remover antigo) têm
+    // que acontecer juntas ou nenhuma delas — evita ficar um caixa "aprovado"
+    // órfão junto do novo "em_uso" caso alguma escrita falhe no meio do caminho
+    // (era exatamente isso que deixava o saldo antigo aparecendo depois da
+    // reposição confirmada).
+    const batch = db.batch();
     const histRef = db.collection('caixas').doc();
-    await histRef.set({...caixa, id:histRef.id, status:'reabastecido_historico', reabastecidoEm:new Date().toISOString()});
-    // Criar novo caixa zerado para o supervisor
+    batch.set(histRef, {...caixa, id:histRef.id, status:'reabastecido_historico', reabastecidoEm:new Date().toISOString()});
     const novoRef = db.collection('caixas').doc();
-    await novoRef.set({id:novoRef.id, supervisorEmail:caixa.supervisorEmail, supervisorNome:caixa.supervisorNome,
+    const novoCaixa = {id:novoRef.id, supervisorEmail:caixa.supervisorEmail, supervisorNome:caixa.supervisorNome,
       saldoInicial:VALOR_CAIXA_INICIAL, saldoAtual:VALOR_CAIXA_INICIAL, totalGasto:0,
       saldoOperacional:VALOR_CAIXA_INICIAL, totalLancamentos:0,
-      status:'em_uso', createdAt:new Date().toISOString()});
-    // Remover caixa antigo
-    await db.collection('caixas').doc(id).delete();
+      status:'em_uso', createdAt:new Date().toISOString()};
+    batch.set(novoRef, novoCaixa);
+    batch.delete(db.collection('caixas').doc(id));
+    await batch.commit();
+    // Atualiza a cópia local imediatamente (sem esperar o round-trip do
+    // onSnapshot) para o saldo já aparecer certo na hora, nesta tela.
+    allCaixas = allCaixas.filter(c=>c.id!==id).concat([{...caixa, id:histRef.id, status:'reabastecido_historico', reabastecidoEm:new Date().toISOString()}, novoCaixa]);
     closeModal('modal-reabastecer');
     toast(`Caixa reabastecido com ${fmtBRL(valor)}! Supervisor pode continuar.`,'ok');
-  } catch(e) { toast('Erro ao reabastecer','err'); }
+    const active = document.querySelector('.view.active');
+    if (active?.id === 'view-adm-caixas') _renderAdmCaixasConteudo();
+  } catch(e) { console.error(e); toast('Erro ao reabastecer: ' + e.message,'err'); }
 }
 
 async function limparArquivos(caixaId) {
