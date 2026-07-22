@@ -20706,6 +20706,19 @@ const BKO_PREFIXO_MIN_LEN = 4;       // evita prefixo/contém de 2-3 letras casa
 //   {status:'direto'|'alias'|'prefixo'|'contido'|'similaridade', match, score?}
 //   {status:'ambiguo', candidatos:[...]}
 //   {status:'nao_encontrado'}
+// Dedup genérico por grafia normalizada — usado só para montar listas de
+// candidatos (Área/Procedimento) da Importação Inicial antes de mandar pro
+// resolvedor. Não mexe em nada que já usa _bkoDedupProcedimentosParaExibicao;
+// não lê nem altera o Firestore, só filtra um array já carregado em memória.
+function _bkoDedupNomes(nomes) {
+  const vistos = new Map();
+  for (const nome of nomes) {
+    const chave = _bkoNormForte(nome);
+    if (!vistos.has(chave)) vistos.set(chave, nome);
+  }
+  return [...vistos.values()];
+}
+
 function _bkoResolverCandidato(rawOriginal, candidatosOriginais, aliasMapNorm) {
   const rawNorm = _bkoNormForte(rawOriginal);
   if (!rawNorm) return { status:'vazio' };
@@ -20922,13 +20935,13 @@ async function analisarArquivoBackoffice() {
       const postoOficial = resPosto.match;
 
       // ── ÁREA ──
-      const resArea = _bkoResolverCandidato(areaRawOriginal, _bkoAreas.map(a=>a.nome), aliasAreaNorm);
+      const resArea = _bkoResolverCandidato(areaRawOriginal, _bkoDedupNomes(_bkoAreas.map(a=>a.nome)), aliasAreaNorm);
       if (resArea.status === 'ambiguo') { grafiasNaoReconhecidas.push({linha:linhaN, tipo:'Área', valor:areaRawOriginal, ambiguo:true, candidatos:resArea.candidatos}); invalidas.push({linha:linhaN, motivo:`Área ambígua: "${areaRawOriginal}" (candidatos: ${resArea.candidatos.join(', ')})`}); return; }
       if (!resArea.match) { grafiasNaoReconhecidas.push({linha:linhaN, tipo:'Área', valor:areaRawOriginal}); invalidas.push({linha:linhaN, motivo:`Área não reconhecida: "${areaRawOriginal}"`}); return; }
       const areaOficial = _bkoAreas.find(a => a.nome === resArea.match);
 
       // ── PROCEDIMENTO (sempre validado dentro da área já resolvida) ──
-      const procDaArea = _bkoProcedimentos.filter(p => p.areaId===areaOficial.id).map(p=>p.nome);
+      const procDaArea = _bkoDedupProcedimentosParaExibicao(_bkoProcedimentos.filter(p => p.areaId===areaOficial.id)).map(p=>p.nome);
       const aliasProcDestino = BKO_IMPORT_ALIASES_PROCEDIMENTO[normalizarBusca(areaOficial.nome)+'||'+normalizarBusca(procRawOriginal)];
       const aliasProcNorm = aliasProcDestino ? { [_bkoNormForte(procRawOriginal)]: aliasProcDestino } : null;
       const resProc = _bkoResolverCandidato(procRawOriginal, procDaArea, aliasProcNorm);
