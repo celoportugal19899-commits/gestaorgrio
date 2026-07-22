@@ -20572,6 +20572,7 @@ let _bkoHistCursor = null;
 let _bkoHistPagina = [];
 let _bkoHistFimAlcancado = false;
 let _bkoHistBusca = '';
+let _bkoHistErro = null;
 
 async function renderControleBackoffice() {
   if (!podeVerControleBackoffice()) return;
@@ -21199,6 +21200,7 @@ async function bkoRecarregarHistoricoAtual() {
 }
 
 async function bkoCarregarMaisHistorico() {
+  _bkoHistErro = null;
   try {
     const operacaoId = await getOperacaoId();
     let q = db.collection('controleBackoffice').where('operacaoId','==',operacaoId).where('ativo','==',true);
@@ -21233,6 +21235,7 @@ async function bkoCarregarMaisHistorico() {
     }
   } catch(e) {
     console.error(e);
+    _bkoHistErro = e.message || 'Erro desconhecido';
     toast('Erro ao carregar histórico — pode ser necessário criar um índice composto no Firestore (ver console)', 'err');
   }
   _bkoRenderTabelaHistorico();
@@ -21256,7 +21259,9 @@ function _bkoRenderTabelaHistorico() {
   ) : _bkoHistPagina;
 
   if (!filtrados.length) {
-    tabEl.innerHTML = bn
+    tabEl.innerHTML = _bkoHistErro
+      ? `<div class="empty"><p>⚠ Erro ao consultar o histórico — os registros não puderam ser lidos do Firestore.</p><p style="font-size:11px;color:var(--text3);margin-top:6px">Pode ser necessário criar um índice composto (ver detalhes no console do navegador). Detalhe: ${_bkoHistErro}</p><button class="btn btn-sm btn-secondary" style="margin-top:10px" onclick="bkoRecarregarHistoricoAtual()">🔄 Tentar novamente</button></div>`
+      : bn
       ? `<div class="empty"><p>Nenhum resultado para "${_bkoHistBusca}" nos ${_bkoHistPagina.length} registro(s) já carregado(s).</p><p style="font-size:12px;color:var(--text3);margin-top:4px">${_bkoHistFimAlcancado ? 'Todos os registros do filtro atual já foram carregados.' : 'Pode haver mais resultados — clique em "Carregar mais" ou refine com os filtros estruturados acima.'}</p></div>`
       : '<div class="empty"><p>Nenhum registro encontrado</p></div>';
   } else {
@@ -21516,6 +21521,7 @@ let _bkoPainelDetOrdCol = 'data';
 let _bkoPainelDetOrdDir = 'desc';
 let _bkoPainelRecorrenciaMin = 2;
 let _bkoPainelCarregando = false;
+let _bkoPainelErro = null;
 let _bkoPainelModoPersonalizado = false;
 const _BKO_PAINEL_DET_PAGE_SIZE = 25;
 
@@ -21663,21 +21669,25 @@ async function bkoPainelAplicarFiltros(forcar) {
 
 async function bkoPainelCarregarDados(de, ate) {
   _bkoPainelCarregando = true;
+  _bkoPainelErro = null;
   const cardsEl = document.getElementById('bko-painel-cards');
   if (cardsEl) cardsEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text3)">⏳ Carregando dados do período...</div>';
   try {
     const operacaoId = await getOperacaoId();
+    // orderBy alinhado ao mesmo padrão já usado (e já indexado) no Histórico
+    // (data desc, criadoEm desc) — a ordenação exibida em cada seção do
+    // Painel é recalculada localmente, então a direção aqui não importa.
     const snap = await db.collection('controleBackoffice')
       .where('operacaoId','==',operacaoId).where('ativo','==',true)
       .where('data','>=',de).where('data','<=',ate)
-      .orderBy('data','asc').get();
+      .orderBy('data','desc').orderBy('criadoEm','desc').get();
     _bkoPainelDados = snap.docs.map(d => ({id:d.id, ...d.data()}));
     _bkoPainelPeriodoCarregado = {de, ate};
     _bkoPainelUltimaAtualizacaoTs = new Date().toISOString();
     if (_bkoPainelDados.length > 15000) toast(`Período com ${_bkoPainelDados.length} registros — considere reduzir para melhor desempenho`, 'err');
   } catch(e) {
     console.error(e);
-    if (cardsEl) cardsEl.innerHTML = '<div class="empty"><p>Erro ao carregar dados do painel — pode ser necessário criar um índice composto no Firestore (ver console).</p></div>';
+    _bkoPainelErro = e.message || 'Erro desconhecido';
     toast('Erro ao carregar painel: ' + e.message, 'err');
     _bkoPainelDados = [];
     _bkoPainelPeriodoCarregado = {de, ate};
@@ -21716,6 +21726,12 @@ function bkoPainelDadosFiltrados() {
 
 function bkoPainelAtualizarTudo() {
   if (_bkoPainelCarregando) return;
+  const cardsEl = document.getElementById('bko-painel-cards');
+  if (_bkoPainelErro) {
+    if (cardsEl) cardsEl.innerHTML = `<div class="empty"><p>⚠ Erro ao carregar dados do painel — os acionamentos não puderam ser lidos do Firestore.</p><p style="font-size:11px;color:var(--text3);margin-top:6px">Pode ser necessário criar um índice composto (ver detalhes no console do navegador). Detalhe: ${_bkoPainelErro}</p><button class="btn btn-sm btn-secondary" style="margin-top:10px" onclick="bkoPainelAplicarFiltros(true)">🔄 Tentar novamente</button></div>`;
+    ['bko-painel-criticos','bko-painel-graficos','bko-painel-rankings','bko-painel-recorrencia','bko-painel-analises','bko-painel-detalhamento'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
+    return;
+  }
   const dados = bkoPainelDadosFiltrados();
   const lbl = document.getElementById('bko-painel-periodo-label');
   if (lbl && _bkoPainelPeriodoCarregado) lbl.textContent = `Período analisado: ${_bkoPainelPeriodoCarregado.de.split('-').reverse().join('/')} a ${_bkoPainelPeriodoCarregado.ate.split('-').reverse().join('/')}`;
