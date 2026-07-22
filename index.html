@@ -2279,6 +2279,15 @@ const PosCanalLabels = {
       <datalist id="dl-bko-procedimentos-edit"></datalist>
     </div>
     <div class="form-group"><label class="form-label">Observação</label><textarea class="form-textarea" id="bkoedit-observacao" maxlength="500"></textarea></div>
+    <div class="form-group"><label class="form-label">Criticidade</label>
+      <select class="form-select" id="bkoedit-criticidade" onchange="_bkoAtualizarBadgeCriticidade('bkoedit-criticidade','bkoedit-criticidade-badge')">
+        <option value="baixa">🟢 Baixa</option>
+        <option value="media">🟡 Média</option>
+        <option value="alta">🟠 Alta</option>
+        <option value="critico">🔴 Crítico</option>
+      </select>
+      <div id="bkoedit-criticidade-badge" style="margin-top:6px"></div>
+    </div>
     <div style="font-size:11px;color:var(--text3);margin:4px 0 8px">A alteração fica registrada para auditoria (valores anteriores e novos, usuário, data/hora).</div>
     <div style="display:flex;gap:10px;margin-top:8px">
       <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-bko-editar')">Cancelar</button>
@@ -2316,6 +2325,50 @@ const PosCanalLabels = {
     <div style="display:flex;gap:10px;margin-top:8px">
       <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-bko-procedimento')">Cancelar</button>
       <button class="btn btn-primary" style="flex:1" onclick="bkoSalvarProcedimento()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: CONTROLE BACKOFFICE — LINHA DO TEMPO DO CASO -->
+<div class="modal-overlay" id="modal-bko-timeline">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header"><div class="modal-title">🕒 Acompanhamento do caso</div><button class="close-btn" onclick="closeModal('modal-bko-timeline')">✕</button></div>
+    <input type="hidden" id="bkotl-registro-id">
+    <div id="bkotl-resumo" style="background:var(--surface2);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <button class="btn btn-sm btn-primary" onclick="bkoAbrirAtualizacao(document.getElementById('bkotl-registro-id').value)">+ Adicionar atualização</button>
+      <button class="btn btn-sm btn-secondary" id="bkotl-btn-normalizar" onclick="bkoAbrirAtualizacao(document.getElementById('bkotl-registro-id').value, 'normalizado')">✅ Marcar como normalizado</button>
+      <button class="btn btn-sm btn-secondary" id="bkotl-btn-reabrir" style="display:none" onclick="bkoReabrirCaso(document.getElementById('bkotl-registro-id').value)">↩️ Reabrir caso</button>
+    </div>
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Atualizações</div>
+    <div id="bkotl-lista" style="max-height:340px;overflow-y:auto"></div>
+    <div style="display:flex;gap:10px;margin-top:12px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-bko-timeline')">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: CONTROLE BACKOFFICE — NOVA ATUALIZAÇÃO DO CASO -->
+<div class="modal-overlay" id="modal-bko-atualizacao">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header"><div class="modal-title" id="bkoat-modal-titulo">+ Adicionar atualização</div><button class="close-btn" onclick="closeModal('modal-bko-atualizacao')">✕</button></div>
+    <input type="hidden" id="bkoat-registro-id">
+    <input type="hidden" id="bkoat-status-forcado">
+    <div class="form-group"><label class="form-label">Texto da atualização <span style="font-weight:400;color:var(--text3)" id="bkoat-count">0/1000</span></label>
+      <textarea class="form-textarea" id="bkoat-texto" maxlength="1000" oninput="document.getElementById('bkoat-count').textContent=this.value.length+'/1000'" placeholder="Ex.: Área de Faturamento realizou o ajuste e a conta foi corrigida."></textarea>
+    </div>
+    <div class="form-group" id="bkoat-status-group"><label class="form-label">Novo status <span style="font-weight:400;color:var(--text3)">(opcional)</span></label>
+      <select class="form-select" id="bkoat-status">
+        <option value="">Manter status atual</option>
+        <option value="aberto">Aberto</option>
+        <option value="em_acompanhamento">Em acompanhamento</option>
+        <option value="aguardando_retorno">Aguardando retorno</option>
+        <option value="normalizado">Normalizado</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-bko-atualizacao')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="bkoSalvarAtualizacao()">Salvar</button>
     </div>
   </div>
 </div>
@@ -14627,11 +14680,25 @@ function podeVerControleBackoffice() {
   // 1) Administrador geral
   if (currentUser.role === 'admin') return true;
   // 2) Permissão declarativa no documento do usuário (arquitetura padrão)
-  if (currentUser.permissoes && currentUser.permissoes.controleBackoffice === 'gestor') return true;
+  //    Operador e gestor têm acesso pleno ao dia a dia do módulo; a diferença
+  //    entre os dois está em bkoEhGestor() (administração de cadastros,
+  //    exportações e recebimento de notificações de caso crítico).
+  if (currentUser.permissoes && ['operador','gestor'].includes(currentUser.permissoes.controleBackoffice)) return true;
   // 3) FALLBACK TEMPORÁRIO — remover assim que os documentos de Plicila e Danielly
   //    tiverem permissoes.controleBackoffice='gestor' gravado no Firestore.
   return ['plicila.silva@gruporgbrasil.com','danielly.ribeiro@gruporgbrasil.com',
           'teste@gruporgbrasil.com'].includes(currentUser.email);
+}
+
+// Nível "gestor": administra cadastros (áreas/procedimentos), exporta, e é
+// quem recebe notificação de caso crítico junto com o administrador.
+// Danielly (operador) faz tudo do dia a dia do módulo, mas não estas ações.
+function bkoEhGestor() {
+  if (!currentUser) return false;
+  if (currentUser.role === 'admin') return true;
+  if (currentUser.permissoes && currentUser.permissoes.controleBackoffice === 'gestor') return true;
+  // Fallback temporário — mesmo critério do módulo, exceto Danielly (operador)
+  return ['plicila.silva@gruporgbrasil.com','teste@gruporgbrasil.com'].includes(currentUser.email);
 }
 
 function _indMesLabel(mesRef) {
@@ -20531,19 +20598,12 @@ function switchBkoTab(tab) {
     if (w) w.style.display = (t===tab) ? 'block' : 'none';
   });
   if (tab === 'novo') renderBkoNovo();
-  else if (tab === 'painel') renderBkoPainelPlaceholder();
+  else if (tab === 'painel') renderBkoPainel();
   else if (tab === 'historico') renderBkoHistorico(true);
   else if (tab === 'cadastros') renderBkoCadastros();
   else if (tab === 'importacao') renderBkoImportacaoPlaceholder();
 }
 
-function renderBkoPainelPlaceholder() {
-  document.getElementById('bko-painel-wrap').innerHTML = `<div style="text-align:center;padding:60px 20px;color:var(--text3)">
-    <div style="font-size:40px;margin-bottom:12px">📊</div>
-    <div style="font-size:15px;font-weight:600;color:var(--text)">Em desenvolvimento</div>
-    <p style="font-size:13px;max-width:420px;margin:8px auto 0">Painel Analítico, Rankings, Gráficos e Análises Inteligentes serão implementados em uma etapa futura.</p>
-  </div>`;
-}
 function renderBkoImportacaoPlaceholder() {
   document.getElementById('bko-importacao-wrap').innerHTML = `<div style="text-align:center;padding:60px 20px;color:var(--text3)">
     <div style="font-size:40px;margin-bottom:12px">📥</div>
@@ -20574,6 +20634,10 @@ function renderBkoNovo() {
       </div>
       <div class="form-group"><label class="form-label">Observação <span style="font-weight:400;color:var(--text3)" id="bko-obs-count">0/500</span></label>
         <textarea class="form-textarea" id="bko-observacao" maxlength="500" oninput="document.getElementById('bko-obs-count').textContent=this.value.length+'/500'"></textarea>
+      </div>
+      <div class="form-group"><label class="form-label">Criticidade</label>
+        <select class="form-select" id="bko-criticidade" onchange="_bkoAtualizarBadgeCriticidade('bko-criticidade','bko-criticidade-badge')">${_BKO_CRITICIDADE_OPCOES.map(o=>`<option value="${o.v}" ${o.v==='baixa'?'selected':''}>${o.icone} ${o.label}</option>`).join('')}</select>
+        <div id="bko-criticidade-badge" style="margin-top:6px">${_bkoBadgeCriticidade('baixa')}</div>
       </div>
       <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap">
         <button class="btn btn-secondary" onclick="bkoLimparForm()">Limpar</button>
@@ -20606,6 +20670,8 @@ function bkoLimparForm() {
   bkoAtualizarProcedimentosDisponiveis();
   const o = document.getElementById('bko-observacao'); if (o) o.value = '';
   const c = document.getElementById('bko-obs-count'); if (c) c.textContent = '0/500';
+  const crit = document.getElementById('bko-criticidade'); if (crit) crit.value = 'baixa';
+  _bkoAtualizarBadgeCriticidade('bko-criticidade','bko-criticidade-badge');
 }
 
 async function bkoSalvar(manterEAdicionarOutro) {
@@ -20614,6 +20680,7 @@ async function bkoSalvar(manterEAdicionarOutro) {
   const areaNome = document.getElementById('bko-area').value.trim();
   const procNome = document.getElementById('bko-procedimento').value.trim();
   const observacao = document.getElementById('bko-observacao').value.trim();
+  const criticidade = document.getElementById('bko-criticidade')?.value || 'baixa';
 
   const hoje = new Date().toISOString().slice(0,10);
   if (!data) { toast('Informe a data', 'err'); return; }
@@ -20627,14 +20694,17 @@ async function bkoSalvar(manterEAdicionarOutro) {
   try {
     const operacaoId = await getOperacaoId();
     const ref = db.collection('controleBackoffice').doc();
-    await ref.set({
+    const novoDoc = {
       id: ref.id, data, mesRef: data.slice(0,7),
       posto: postoNome, areaId: area.id, areaNome: area.nome,
       procedimentoId: proc.id, procedimentoNome: proc.nome,
       observacao, registradoPor: currentUser.name, registradoPorEmail: currentUser.email,
-      criadoEm: new Date().toISOString(), ativo: true, operacaoId
-    });
+      criadoEm: new Date().toISOString(), ativo: true, operacaoId,
+      criticidade, statusAcompanhamento: 'aberto', normalizadoEm: null, normalizadoPor: null, normalizadoPorEmail: null
+    };
+    await ref.set(novoDoc);
     toast('✅ Registro salvo', 'ok');
+    if (criticidade === 'critico') bkoNotificarCasoCritico(novoDoc, 'novo');
     if (manterEAdicionarOutro) {
       document.getElementById('bko-posto').value = '';
       document.getElementById('bko-area').value = '';
@@ -20684,7 +20754,7 @@ function _bkoRenderUltimos() {
 }
 
 function _bkoBuscarRegistroLocal(id) {
-  return _bkoUltimosHoje.find(x => x.id === id) || _bkoHistPagina.find(x => x.id === id) || null;
+  return _bkoUltimosHoje.find(x => x.id === id) || _bkoHistPagina.find(x => x.id === id) || (_bkoPainelDados||[]).find(x => x.id === id) || null;
 }
 
 // ── Edição (registra auditoria) ──
@@ -20702,6 +20772,8 @@ function bkoAbrirEdicao(id) {
   bkoEditAtualizarProcedimentos();
   document.getElementById('bkoedit-procedimento').value = r.procedimentoNome;
   document.getElementById('bkoedit-observacao').value = r.observacao || '';
+  document.getElementById('bkoedit-criticidade').value = r.criticidade || 'baixa';
+  _bkoAtualizarBadgeCriticidade('bkoedit-criticidade','bkoedit-criticidade-badge');
   document.getElementById('modal-bko-editar').classList.add('open');
 }
 
@@ -20725,6 +20797,7 @@ async function bkoSalvarEdicao() {
   const areaNome = document.getElementById('bkoedit-area').value.trim();
   const procNome = document.getElementById('bkoedit-procedimento').value.trim();
   const observacao = document.getElementById('bkoedit-observacao').value.trim();
+  const criticidade = document.getElementById('bkoedit-criticidade').value;
 
   const hoje = new Date().toISOString().slice(0,10);
   if (!data || data > hoje) { toast('Data inválida', 'err'); return; }
@@ -20734,13 +20807,15 @@ async function bkoSalvarEdicao() {
   const proc = _bkoProcedimentos.find(p => p.nome === procNome && p.areaId === area.id);
   if (!proc) { toast('Selecione um procedimento válido', 'err'); return; }
 
-  const valoresNovos = { data, mesRef: data.slice(0,7), posto: postoNome, areaId: area.id, areaNome: area.nome, procedimentoId: proc.id, procedimentoNome: proc.nome, observacao };
-  const valoresAnteriores = { data: original.data, posto: original.posto, areaNome: original.areaNome, procedimentoNome: original.procedimentoNome, observacao: original.observacao || '' };
+  const valoresNovos = { data, mesRef: data.slice(0,7), posto: postoNome, areaId: area.id, areaNome: area.nome, procedimentoId: proc.id, procedimentoNome: proc.nome, observacao, criticidade };
+  const valoresAnteriores = { data: original.data, posto: original.posto, areaNome: original.areaNome, procedimentoNome: original.procedimentoNome, observacao: original.observacao || '', criticidade: original.criticidade || 'baixa' };
+  const criticidadeSubiuParaCritico = valoresAnteriores.criticidade !== 'critico' && criticidade === 'critico';
 
   try {
     await db.collection('controleBackoffice').doc(id).update({ ...valoresNovos, editadoEm: new Date().toISOString(), editadoPor: currentUser.name });
     const refAud = db.collection('controleBackofficeAuditoria').doc();
     await refAud.set({ id: refAud.id, registroId: id, usuario: currentUser.name, usuarioEmail: currentUser.email, dataHora: new Date().toISOString(), tipo: 'edicao', valoresAnteriores, valoresNovos, operacaoId: original.operacaoId });
+    if (criticidadeSubiuParaCritico) bkoNotificarCasoCritico({ ...original, ...valoresNovos }, 'upgrade');
     closeModal('modal-bko-editar');
     toast('✅ Registro atualizado', 'ok');
     bkoCarregarUltimosHoje();
@@ -20824,6 +20899,7 @@ function bkoRenderAreasLista() {
 }
 
 function bkoAbrirNovaArea() {
+  if (!bkoEhGestor()) { toast('Apenas o gestor pode administrar cadastros', 'err'); return; }
   const nome = prompt('Nome da nova área:');
   if (!nome || !nome.trim()) return;
   const nomeT = nome.trim().toUpperCase();
@@ -20841,6 +20917,7 @@ async function bkoCriarArea(nome) {
   } catch(e) { console.error(e); toast('Erro: ' + e.message, 'err'); }
 }
 function bkoAbrirEditarArea(id) {
+  if (!bkoEhGestor()) { toast('Apenas o gestor pode administrar cadastros', 'err'); return; }
   const a = _bkoAreas.find(x => x.id === id); if (!a) return;
   const novoNome = prompt('Editar nome da área:', a.nome);
   if (!novoNome || !novoNome.trim()) return;
@@ -20852,6 +20929,7 @@ function bkoAbrirEditarArea(id) {
   }).catch(e => { console.error(e); toast('Erro: ' + e.message, 'err'); });
 }
 async function bkoToggleAtivoArea(id) {
+  if (!bkoEhGestor()) { toast('Apenas o gestor pode administrar cadastros', 'err'); return; }
   const a = _bkoAreas.find(x => x.id === id); if (!a) return;
   const novoStatus = a.ativo === false;
   try {
@@ -20884,6 +20962,7 @@ function bkoRenderProcedimentosLista() {
 }
 
 function bkoAbrirNovoProcedimento() {
+  if (!bkoEhGestor()) { toast('Apenas o gestor pode administrar cadastros', 'err'); return; }
   document.getElementById('bkoproc-modal-titulo').textContent = 'Novo Procedimento';
   document.getElementById('bkoproc-id').value = '';
   document.getElementById('bkoproc-nome').value = '';
@@ -20893,6 +20972,7 @@ function bkoAbrirNovoProcedimento() {
   document.getElementById('modal-bko-procedimento').classList.add('open');
 }
 function bkoAbrirEditarProcedimento(id) {
+  if (!bkoEhGestor()) { toast('Apenas o gestor pode administrar cadastros', 'err'); return; }
   const p = _bkoProcedimentos.find(x => x.id === id); if (!p) return;
   document.getElementById('bkoproc-modal-titulo').textContent = 'Editar Procedimento';
   document.getElementById('bkoproc-id').value = id;
@@ -20932,6 +21012,7 @@ async function bkoSalvarProcedimento() {
   } catch(e) { console.error(e); toast('Erro: ' + e.message, 'err'); }
 }
 async function bkoToggleAtivoProcedimento(id) {
+  if (!bkoEhGestor()) { toast('Apenas o gestor pode administrar cadastros', 'err'); return; }
   const p = _bkoProcedimentos.find(x => x.id === id); if (!p) return;
   const novoStatus = p.ativo === false;
   try {
@@ -20958,6 +21039,7 @@ function _bkoRenderCargaInicialBox() {
 }
 
 async function bkoProcessarCargaInicial() {
+  if (!bkoEhGestor()) { toast('Apenas o gestor pode administrar cadastros', 'err'); return; }
   if (!confirm('Carregar as áreas e procedimentos da planilha REGRAS? Isso não apaga nada existente, só adiciona o que faltar.')) return;
   try {
     const operacaoId = await getOperacaoId();
@@ -21026,6 +21108,7 @@ function _bkoRenderCorrecoesGrafiaBox() {
 }
 
 async function bkoCorrigirProcedimentoGrafia(id) {
+  if (!bkoEhGestor()) { toast('Apenas o gestor pode administrar cadastros', 'err'); return; }
   const p = _bkoProcedimentos.find(x => x.id === id); if (!p) return;
   const alvo = BKO_CORRECOES_GRAFIA.find(c => c.antigo.toUpperCase() === p.nome.toUpperCase());
   if (!alvo) return;
@@ -21067,6 +21150,20 @@ function renderBkoHistorico(reset) {
         <select class="form-select" id="bko-hist-fil-procedimento" style="width:190px" onchange="bkoRecarregarHistoricoAtual()">
           <option value="">Todos os procedimentos</option>
         </select>
+        <select class="form-select" id="bko-hist-fil-criticidade" style="width:150px" onchange="bkoRecarregarHistoricoAtual()">
+          <option value="">Toda criticidade</option>
+          <option value="baixa">🟢 Baixa</option>
+          <option value="media">🟡 Média</option>
+          <option value="alta">🟠 Alta</option>
+          <option value="critico">🔴 Crítico</option>
+        </select>
+        <select class="form-select" id="bko-hist-fil-status" style="width:170px" onchange="bkoRecarregarHistoricoAtual()">
+          <option value="">Todo status</option>
+          <option value="aberto">Aberto</option>
+          <option value="em_acompanhamento">Em acompanhamento</option>
+          <option value="aguardando_retorno">Aguardando retorno</option>
+          <option value="normalizado">Normalizado</option>
+        </select>
         <button class="btn btn-sm btn-secondary" onclick="bkoLimparFiltrosHistorico()">✕ Limpar filtros</button>
       </div>
       <div id="bko-hist-tabela"></div>
@@ -21091,7 +21188,7 @@ function bkoHistAreaMudou() {
 }
 
 function bkoLimparFiltrosHistorico() {
-  ['bko-hist-fil-mes','bko-hist-fil-de','bko-hist-fil-ate','bko-hist-fil-posto'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  ['bko-hist-fil-mes','bko-hist-fil-de','bko-hist-fil-ate','bko-hist-fil-posto','bko-hist-fil-criticidade','bko-hist-fil-status'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   const a = document.getElementById('bko-hist-fil-area'); if (a) a.value = '';
   bkoHistAreaMudou();
 }
@@ -21112,11 +21209,15 @@ async function bkoCarregarMaisHistorico() {
     const posto = document.getElementById('bko-hist-fil-posto')?.value || '';
     const areaId = document.getElementById('bko-hist-fil-area')?.value || '';
     const procId = document.getElementById('bko-hist-fil-procedimento')?.value || '';
+    const criticidadeFil = document.getElementById('bko-hist-fil-criticidade')?.value || '';
+    const statusFil = document.getElementById('bko-hist-fil-status')?.value || '';
 
     if (mes) q = q.where('mesRef','==',mes);
     if (posto) q = q.where('posto','==',posto);
     if (areaId) q = q.where('areaId','==',areaId);
     if (procId) q = q.where('procedimentoId','==',procId);
+    if (criticidadeFil) q = q.where('criticidade','==',criticidadeFil);
+    if (statusFil) q = q.where('statusAcompanhamento','==',statusFil);
     if (de) q = q.where('data','>=',de);
     if (ate) q = q.where('data','<=',ate);
 
@@ -21159,9 +21260,9 @@ function _bkoRenderTabelaHistorico() {
       ? `<div class="empty"><p>Nenhum resultado para "${_bkoHistBusca}" nos ${_bkoHistPagina.length} registro(s) já carregado(s).</p><p style="font-size:12px;color:var(--text3);margin-top:4px">${_bkoHistFimAlcancado ? 'Todos os registros do filtro atual já foram carregados.' : 'Pode haver mais resultados — clique em "Carregar mais" ou refine com os filtros estruturados acima.'}</p></div>`
       : '<div class="empty"><p>Nenhum registro encontrado</p></div>';
   } else {
-    tabEl.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:980px">
+    tabEl.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:1180px">
       <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15);background:var(--surface3)">
-        ${['Data','Posto','Supervisor','Área','Procedimento','Observação','Registrado por','Data/Hora','Origem','Ações'].map(h=>`<th style="padding:7px 10px;text-align:left;color:var(--text3);font-weight:600;white-space:nowrap">${h}</th>`).join('')}
+        ${['Data','Posto','Supervisor','Área','Procedimento','Criticidade','Status','Observação','Registrado por','Última atualização','Normalizado em','Data/Hora','Origem','Ações'].map(h=>`<th style="padding:7px 10px;text-align:left;color:var(--text3);font-weight:600;white-space:nowrap">${h}</th>`).join('')}
       </tr></thead>
       <tbody>${filtrados.map(r => {
         const supervisor = allPostos.find(p => p.nome === r.posto)?.supervisor || '—';
@@ -21171,21 +21272,1067 @@ function _bkoRenderTabelaHistorico() {
           <td style="padding:6px 10px;white-space:nowrap">${supervisor}</td>
           <td style="padding:6px 10px;white-space:nowrap">${r.areaNome}</td>
           <td style="padding:6px 10px;white-space:nowrap">${r.procedimentoNome}</td>
+          <td style="padding:6px 10px;white-space:nowrap">${_bkoBadgeCriticidade(r.criticidade||'baixa')}</td>
+          <td style="padding:6px 10px;white-space:nowrap">${_bkoBadgeStatus(r.statusAcompanhamento||'aberto')}</td>
           <td style="padding:6px 10px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.observacao||''}">${r.observacao||'—'}</td>
           <td style="padding:6px 10px;white-space:nowrap">${r.registradoPor}</td>
+          <td style="padding:6px 10px;white-space:nowrap;color:var(--text3)">${_bkoUltimaAtualizacaoLabel(r.id)}</td>
+          <td style="padding:6px 10px;white-space:nowrap;color:var(--text3)">${r.normalizadoEm?fmtDT(r.normalizadoEm):'—'}</td>
           <td style="padding:6px 10px;white-space:nowrap;color:var(--text3)">${fmtDT(r.criadoEm)}</td>
           <td style="padding:6px 10px;white-space:nowrap">${r.editadoEm?'✏️ Editado':'Original'}</td>
           <td style="padding:6px 10px;white-space:nowrap">
             <button class="btn btn-sm btn-secondary" onclick="bkoAbrirEdicao('${r.id}')">✏️</button>
             <button class="btn btn-sm btn-danger" onclick="bkoAbrirExclusao('${r.id}')">🗑</button>
+            <button class="btn btn-sm btn-secondary" onclick="bkoAbrirLinhaDoTempo('${r.id}')">🕒</button>
           </td>
         </tr>`;
       }).join('')}</tbody>
     </table></div>`;
   }
   if (btnMais) btnMais.style.display = !_bkoHistFimAlcancado ? 'inline-block' : 'none';
+  _bkoCarregarUltimasAtualizacoesParaTabela(filtrados);
 }
 
+
+// ══════════════════════════════════════════════════════════════════════════
+// CONTROLE BACKOFFICE — ETAPA 2: PAINEL ANALÍTICO + GESTÃO DE CRITICIDADE
+// ══════════════════════════════════════════════════════════════════════════
+
+// ── Criticidade / status: opções, badges e helpers visuais ──
+const _BKO_CRITICIDADE_OPCOES = [
+  { v:'baixa',   label:'Baixa',   icone:'🟢', cor:'#3fb950' },
+  { v:'media',   label:'Média',   icone:'🟡', cor:'#d4a72c' },
+  { v:'alta',    label:'Alta',    icone:'🟠', cor:'#e2884b' },
+  { v:'critico', label:'Crítico', icone:'🔴', cor:'#e24b4a' }
+];
+const _BKO_STATUS_OPCOES = {
+  aberto:              { label:'Aberto',              cor:'#8b8b98' },
+  em_acompanhamento:   { label:'Em acompanhamento',   cor:'#4a90d9' },
+  aguardando_retorno:  { label:'Aguardando retorno',  cor:'#d4a72c' },
+  normalizado:         { label:'Normalizado',          cor:'#3fb950' }
+};
+function _bkoBadgeCriticidade(v) {
+  const o = _BKO_CRITICIDADE_OPCOES.find(x => x.v === v) || _BKO_CRITICIDADE_OPCOES[0];
+  return `<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:${o.cor}22;color:${o.cor};border:1px solid ${o.cor}55">${o.icone} ${o.label}</span>`;
+}
+function _bkoBadgeStatus(v) {
+  const o = _BKO_STATUS_OPCOES[v] || _BKO_STATUS_OPCOES.aberto;
+  return `<span style="display:inline-flex;align-items:center;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:${o.cor}22;color:${o.cor};border:1px solid ${o.cor}55">${o.label}</span>`;
+}
+function _bkoAtualizarBadgeCriticidade(selectId, badgeId) {
+  const sel = document.getElementById(selectId), badge = document.getElementById(badgeId);
+  if (!sel || !badge) return;
+  badge.innerHTML = _bkoBadgeCriticidade(sel.value);
+}
+
+// ── Notificação de caso crítico (reaproveita a central de notificações já existente — addNotificacao) ──
+function bkoDestinatariosNotificacaoCritico() {
+  return allUsers.filter(u =>
+    (u.role === 'admin' || (u.permissoes && u.permissoes.controleBackoffice === 'gestor') ||
+     ['plicila.silva@gruporgbrasil.com','teste@gruporgbrasil.com'].includes(u.email))
+    && u.email !== (currentUser && currentUser.email)
+  );
+}
+async function bkoNotificarCasoCritico(registro, motivo) {
+  try {
+    const destinatarios = bkoDestinatariosNotificacaoCritico();
+    const titulo = motivo === 'reabertura' ? 'Caso crítico reaberto no Controle Backoffice' : 'Novo caso crítico no Controle Backoffice';
+    const obsResumo = (registro.observacao || '').slice(0, 120) + ((registro.observacao||'').length > 120 ? '…' : '');
+    const corpo = `${registro.posto} • ${registro.areaNome} — ${registro.procedimentoNome}${obsResumo ? ' — ' + obsResumo : ''} • ${new Date(registro.criadoEm||Date.now()).toLocaleString('pt-BR')} • Registrado por ${registro.registradoPor||'—'}`;
+    for (const dest of destinatarios) {
+      await addNotificacao(dest.email, titulo, corpo, '🚨', 'red');
+    }
+  } catch(e) { console.error('Erro ao notificar caso crítico', e); }
+}
+
+// ── Atualizações do caso (linha do tempo — collection separada, nunca array no doc principal) ──
+let _bkoAtualizacoesCache = {}; // registroId -> [atualizações ordenadas desc]
+let _bkoUltimasAtualizacoesCache = {}; // registroId -> {label, ts} | null
+
+async function bkoCarregarAtualizacoes(registroId, forcar) {
+  if (!forcar && _bkoAtualizacoesCache[registroId]) return _bkoAtualizacoesCache[registroId];
+  try {
+    const operacaoId = await getOperacaoId();
+    const snap = await db.collection('controleBackofficeAtualizacoes')
+      .where('operacaoId','==',operacaoId).where('registroId','==',registroId).where('ativo','==',true)
+      .orderBy('criadoEm','desc').get();
+    const lista = snap.docs.map(d => ({id:d.id, ...d.data()}));
+    _bkoAtualizacoesCache[registroId] = lista;
+    return lista;
+  } catch(e) { console.error(e); return []; }
+}
+
+function _bkoUltimaAtualizacaoLabel(registroId) {
+  const c = _bkoUltimasAtualizacoesCache[registroId];
+  if (c === undefined) return '…';
+  if (!c) return '—';
+  return fmtDT(c.ts);
+}
+
+// Busca em lote (não 1 leitura por linha) a última atualização de cada registro visível na tabela do Histórico.
+async function _bkoCarregarUltimasAtualizacoesParaTabela(rows) {
+  const idsFaltando = [...new Set(rows.map(r => r.id))].filter(id => _bkoUltimasAtualizacoesCache[id] === undefined);
+  if (!idsFaltando.length) return;
+  try {
+    const operacaoId = await getOperacaoId();
+    for (let i = 0; i < idsFaltando.length; i += 25) {
+      const chunk = idsFaltando.slice(i, i+25);
+      const snap = await db.collection('controleBackofficeAtualizacoes')
+        .where('operacaoId','==',operacaoId).where('registroId','in',chunk).where('ativo','==',true).get();
+      const porRegistro = {};
+      snap.docs.forEach(d => {
+        const at = d.data();
+        if (!porRegistro[at.registroId] || at.criadoEm > porRegistro[at.registroId].ts) porRegistro[at.registroId] = { ts: at.criadoEm };
+      });
+      chunk.forEach(id => { _bkoUltimasAtualizacoesCache[id] = porRegistro[id] || null; });
+    }
+  } catch(e) { console.error(e); idsFaltando.forEach(id => { _bkoUltimasAtualizacoesCache[id] = null; }); }
+  _bkoRenderTabelaHistorico();
+}
+
+function bkoAbrirLinhaDoTempo(registroId) {
+  const r = _bkoBuscarRegistroLocal(registroId) || (_bkoPainelDados||[]).find(x=>x.id===registroId);
+  if (!r) { toast('Registro não encontrado (fora do período/página carregada)', 'err'); return; }
+  document.getElementById('bkotl-registro-id').value = registroId;
+  document.getElementById('bkotl-resumo').innerHTML = `
+    <div><strong>${r.posto}</strong> — ${r.areaNome} / ${r.procedimentoNome}</div>
+    <div style="margin-top:4px">${_bkoBadgeCriticidade(r.criticidade||'baixa')} ${_bkoBadgeStatus(r.statusAcompanhamento||'aberto')}</div>
+    <div style="margin-top:6px;color:var(--text3)">${r.observacao||'—'}</div>`;
+  const podeNormalizar = (r.statusAcompanhamento||'aberto') !== 'normalizado';
+  document.getElementById('bkotl-btn-normalizar').style.display = podeNormalizar ? 'inline-block' : 'none';
+  document.getElementById('bkotl-btn-reabrir').style.display = podeNormalizar ? 'none' : 'inline-block';
+  document.getElementById('modal-bko-timeline').classList.add('open');
+  _bkoRenderLinhaDoTempo(registroId);
+}
+async function _bkoRenderLinhaDoTempo(registroId) {
+  const el = document.getElementById('bkotl-lista');
+  el.innerHTML = '<div style="color:var(--text3);font-size:12px">Carregando…</div>';
+  const lista = await bkoCarregarAtualizacoes(registroId, true);
+  if (!lista.length) { el.innerHTML = '<div style="color:var(--text3);font-size:12px">Nenhuma atualização registrada ainda.</div>'; return; }
+  el.innerHTML = lista.map(a => `
+    <div style="background:var(--surface2);border-radius:8px;padding:10px 12px;margin-bottom:8px">
+      <div style="font-size:11px;color:var(--text3);display:flex;justify-content:space-between">
+        <span>${a.criadoPor}</span><span>${fmtDT(a.criadoEm)}</span>
+      </div>
+      ${a.statusNovo ? `<div style="margin-top:4px">${_bkoBadgeStatus(a.statusAnterior||'aberto')} → ${_bkoBadgeStatus(a.statusNovo)}</div>` : ''}
+      <div style="margin-top:6px;font-size:13px;white-space:pre-wrap">${a.texto}</div>
+    </div>`).join('');
+}
+
+function bkoAbrirAtualizacao(registroId, statusForcado) {
+  document.getElementById('bkoat-registro-id').value = registroId;
+  document.getElementById('bkoat-status-forcado').value = statusForcado || '';
+  document.getElementById('bkoat-texto').value = '';
+  document.getElementById('bkoat-count').textContent = '0/1000';
+  document.getElementById('bkoat-status').value = '';
+  const grupoStatus = document.getElementById('bkoat-status-group');
+  if (statusForcado === 'normalizado') {
+    document.getElementById('bkoat-modal-titulo').textContent = '✅ Marcar como normalizado';
+    document.getElementById('bkoat-texto').placeholder = 'Informe brevemente a solução ou encerramento (obrigatório).';
+    grupoStatus.style.display = 'none';
+  } else {
+    document.getElementById('bkoat-modal-titulo').textContent = '+ Adicionar atualização';
+    document.getElementById('bkoat-texto').placeholder = 'Ex.: Área de Faturamento realizou o ajuste e a conta foi corrigida.';
+    grupoStatus.style.display = 'block';
+  }
+  document.getElementById('modal-bko-atualizacao').classList.add('open');
+}
+
+async function bkoSalvarAtualizacao() {
+  const registroId = document.getElementById('bkoat-registro-id').value;
+  const statusForcado = document.getElementById('bkoat-status-forcado').value;
+  const texto = document.getElementById('bkoat-texto').value.trim();
+  const novoStatusSel = statusForcado || document.getElementById('bkoat-status').value || '';
+  if (!texto) { toast('Informe o texto da atualização', 'err'); return; }
+  const r = _bkoBuscarRegistroLocal(registroId) || (_bkoPainelDados||[]).find(x=>x.id===registroId);
+  if (!r) { toast('Registro não encontrado', 'err'); return; }
+  const statusAnterior = r.statusAcompanhamento || 'aberto';
+  try {
+    const operacaoId = await getOperacaoId();
+    const refAt = db.collection('controleBackofficeAtualizacoes').doc();
+    await refAt.set({
+      id: refAt.id, operacaoId, registroId, texto,
+      statusAnterior, statusNovo: novoStatusSel || null,
+      criadoPor: currentUser.name, criadoPorEmail: currentUser.email,
+      criadoEm: new Date().toISOString(), ativo: true
+    });
+    const updateDoc = {};
+    if (novoStatusSel) updateDoc.statusAcompanhamento = novoStatusSel;
+    if (novoStatusSel === 'normalizado') {
+      updateDoc.normalizadoEm = new Date().toISOString();
+      updateDoc.normalizadoPor = currentUser.name;
+      updateDoc.normalizadoPorEmail = currentUser.email;
+    }
+    if (Object.keys(updateDoc).length) {
+      await db.collection('controleBackoffice').doc(registroId).update(updateDoc);
+      Object.assign(r, updateDoc);
+    }
+    const refAud = db.collection('controleBackofficeAuditoria').doc();
+    await refAud.set({ id: refAud.id, registroId, usuario: currentUser.name, usuarioEmail: currentUser.email, dataHora: new Date().toISOString(), tipo: novoStatusSel === 'normalizado' ? 'normalizacao' : 'atualizacao_caso', valoresAnteriores: { statusAcompanhamento: statusAnterior }, valoresNovos: { statusAcompanhamento: novoStatusSel || statusAnterior, texto }, operacaoId });
+    _bkoUltimasAtualizacoesCache[registroId] = { ts: refAt.get ? new Date().toISOString() : new Date().toISOString() };
+    delete _bkoAtualizacoesCache[registroId];
+    closeModal('modal-bko-atualizacao');
+    toast(novoStatusSel === 'normalizado' ? '✅ Caso normalizado' : '✅ Atualização registrada', 'ok');
+    if (document.getElementById('modal-bko-timeline').classList.contains('open')) { _bkoRenderLinhaDoTempo(registroId); bkoAbrirLinhaDoTempo(registroId); }
+    if (_bkoTabAtiva === 'historico') bkoRecarregarHistoricoAtual();
+    if (_bkoTabAtiva === 'painel' && typeof bkoPainelAtualizarTudo === 'function') bkoPainelAtualizarTudo();
+  } catch(e) { console.error(e); toast('Erro ao salvar atualização: ' + e.message, 'err'); }
+}
+
+async function bkoReabrirCaso(registroId) {
+  const r = _bkoBuscarRegistroLocal(registroId) || (_bkoPainelDados||[]).find(x=>x.id===registroId);
+  if (!r) { toast('Registro não encontrado', 'err'); return; }
+  const motivo = prompt('Motivo da reabertura (obrigatório):');
+  if (!motivo || !motivo.trim()) return;
+  try {
+    const operacaoId = await getOperacaoId();
+    await db.collection('controleBackoffice').doc(registroId).update({ statusAcompanhamento: 'em_acompanhamento', normalizadoEm: null, normalizadoPor: null, normalizadoPorEmail: null });
+    Object.assign(r, { statusAcompanhamento: 'em_acompanhamento', normalizadoEm: null, normalizadoPor: null, normalizadoPorEmail: null });
+    const refAt = db.collection('controleBackofficeAtualizacoes').doc();
+    await refAt.set({ id: refAt.id, operacaoId, registroId, texto: 'Caso reaberto: ' + motivo.trim(), statusAnterior: 'normalizado', statusNovo: 'em_acompanhamento', criadoPor: currentUser.name, criadoPorEmail: currentUser.email, criadoEm: new Date().toISOString(), ativo: true });
+    const refAud = db.collection('controleBackofficeAuditoria').doc();
+    await refAud.set({ id: refAud.id, registroId, usuario: currentUser.name, usuarioEmail: currentUser.email, dataHora: new Date().toISOString(), tipo: 'reabertura', valoresAnteriores: { statusAcompanhamento: 'normalizado' }, valoresNovos: { statusAcompanhamento: 'em_acompanhamento', motivo: motivo.trim() }, operacaoId });
+    delete _bkoAtualizacoesCache[registroId];
+    if ((r.criticidade||'baixa') === 'critico') bkoNotificarCasoCritico(r, 'reabertura');
+    toast('✅ Caso reaberto', 'ok');
+    bkoAbrirLinhaDoTempo(registroId);
+    if (_bkoTabAtiva === 'historico') bkoRecarregarHistoricoAtual();
+    if (_bkoTabAtiva === 'painel' && typeof bkoPainelAtualizarTudo === 'function') bkoPainelAtualizarTudo();
+  } catch(e) { console.error(e); toast('Erro ao reabrir: ' + e.message, 'err'); }
+}
+
+// ── Painel Analítico — estado ──
+let _bkoPainelDados = [];
+let _bkoPainelDadosMesAnterior = null;
+let _bkoPainelMesAnteriorCarregado = null;
+let _bkoPainelPeriodoCarregado = null;
+let _bkoPainelUltimaAtualizacaoTs = null;
+let _bkoPainelCharts = {};
+let _bkoPainelTopProc = 10;
+let _bkoPainelMatrizArea = '';
+let _bkoPainelMatrizTop = 10;
+let _bkoPainelDetPagina = 1;
+let _bkoPainelDetOrdCol = 'data';
+let _bkoPainelDetOrdDir = 'desc';
+let _bkoPainelRecorrenciaMin = 2;
+let _bkoPainelCarregando = false;
+let _bkoPainelModoPersonalizado = false;
+const _BKO_PAINEL_DET_PAGE_SIZE = 25;
+
+// Plugin inline de rótulos de dados para os gráficos do Painel (escopado só
+// às instâncias do Backoffice — não afeta os demais gráficos do sistema).
+const _BKO_ROTULOS_PLUGIN = {
+  id: 'bkoRotulos',
+  afterDatasetsDraw(chart) {
+    const ctx = chart.ctx;
+    chart.data.datasets.forEach((ds, dsIdx) => {
+      const meta = chart.getDatasetMeta(dsIdx);
+      if (meta.hidden) return;
+      meta.data.forEach((el, i) => {
+        const v = ds.data[i];
+        if (v === null || v === undefined || v === 0) return;
+        ctx.save();
+        ctx.fillStyle = '#e6e6ea';
+        ctx.font = '11px sans-serif';
+        const pos = el.tooltipPosition ? el.tooltipPosition() : el;
+        if (chart.config.options && chart.config.options.indexAxis === 'y') {
+          ctx.textAlign = 'left';
+          ctx.fillText(String(v), pos.x + 4, pos.y + 3);
+        } else {
+          ctx.textAlign = 'center';
+          ctx.fillText(String(v), pos.x, pos.y - 6);
+        }
+        ctx.restore();
+      });
+    });
+  }
+};
+
+// Competência considerada "encerrada" quando NÃO é o mês atual E já existe
+// pelo menos 1 documento de indicadores para aquele mesRef (base disponível).
+// Não existe flag de fechamento explícita no sistema — premissa assumida.
+function bkoCompetenciaAtualRef() { return new Date().toISOString().slice(0,7); }
+function bkoCompetenciaFechada(mesRef) {
+  if (!mesRef || mesRef === bkoCompetenciaAtualRef()) return false;
+  return allIndicadores.some(i => i.mesRef === mesRef);
+}
+function _bkoPainelUltimos13Meses() {
+  const arr = []; const now = new Date();
+  for (let i=0;i<13;i++) { const d = new Date(now.getFullYear(), now.getMonth()-i, 1); arr.push(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')); }
+  return arr;
+}
+function _bkoPainelPrimeiroUltimoDiaMes(mesRef) {
+  const [y,m] = mesRef.split('-').map(Number);
+  const de = `${mesRef}-01`;
+  const ultimoDia = new Date(y, m, 0).getDate();
+  const ate = `${mesRef}-${String(ultimoDia).padStart(2,'0')}`;
+  return {de, ate};
+}
+
+function renderBkoPainel() {
+  const wrap = document.getElementById('bko-painel-wrap'); if (!wrap) return;
+  const mesAtual = bkoCompetenciaAtualRef();
+  wrap.innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:6px">
+      <div><label class="form-label" style="font-size:11px">Competência</label>
+        <select class="form-select" id="bko-painel-fil-competencia" style="width:150px" onchange="bkoPainelAoMudarCompetencia()">
+          ${_bkoPainelUltimos13Meses().map(m=>`<option value="${m}" ${m===mesAtual?'selected':''}>${_indMesLabel(m)}</option>`).join('')}
+        </select>
+      </div>
+      <div><label class="form-label" style="font-size:11px">Data inicial</label><input class="form-input" id="bko-painel-fil-de" type="date" style="width:150px" onchange="bkoPainelAoMudarPeriodoManual()"></div>
+      <div><label class="form-label" style="font-size:11px">Data final</label><input class="form-input" id="bko-painel-fil-ate" type="date" style="width:150px" onchange="bkoPainelAoMudarPeriodoManual()"></div>
+      <div><label class="form-label" style="font-size:11px">Posto</label><input class="form-input" id="bko-painel-fil-posto" list="dl-bko-painel-postos" placeholder="Todos" style="width:180px"><datalist id="dl-bko-painel-postos">${[...TODOS_POSTOS_RG].sort((a,b)=>a.localeCompare(b,'pt')).map(p=>`<option value="${p}">`).join('')}</datalist></div>
+      <div><label class="form-label" style="font-size:11px">Supervisor</label><select class="form-select" id="bko-painel-fil-supervisor" style="width:150px"><option value="">Todos</option>${[...new Set(allPostos.map(p=>p.supervisor).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt')).map(s=>`<option value="${s}">${s}</option>`).join('')}</select></div>
+      <div><label class="form-label" style="font-size:11px">Área</label><select class="form-select" id="bko-painel-fil-area" style="width:160px" onchange="bkoPainelAreaMudou()"><option value="">Todas</option>${_bkoAreas.slice().sort((a,b)=>a.nome.localeCompare(b.nome,'pt')).map(a=>`<option value="${a.id}">${a.nome}</option>`).join('')}</select></div>
+      <div><label class="form-label" style="font-size:11px">Procedimento</label><select class="form-select" id="bko-painel-fil-procedimento" style="width:170px"><option value="">Todos</option></select></div>
+      <div><label class="form-label" style="font-size:11px">Origem</label><select class="form-select" id="bko-painel-fil-origem" style="width:120px"><option value="">Todas</option><option value="original">Original</option><option value="editado">Editado</option></select></div>
+      <button class="btn btn-sm btn-primary" onclick="bkoPainelAplicarFiltros(false)">Aplicar filtros</button>
+      <button class="btn btn-sm btn-secondary" onclick="bkoPainelLimparFiltros()">✕ Limpar filtros</button>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:14px" id="bko-painel-periodo-label"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <span style="font-size:11px;color:#3fb950;font-weight:600">🟢 Atualizado em tempo real</span>
+      <span style="font-size:11px;color:var(--text3)" id="bko-painel-ultima-atualizacao"></span>
+    </div>
+    <div id="bko-painel-cards"></div>
+    <div id="bko-painel-criticos"></div>
+    <div id="bko-painel-graficos"></div>
+    <div id="bko-painel-rankings"></div>
+    <div id="bko-painel-recorrencia"></div>
+    <div style="font-size:13px;font-weight:700;margin:22px 0 8px">Análises Inteligentes</div>
+    <div id="bko-painel-analises"></div>
+    <div id="bko-painel-detalhamento"></div>
+    <div style="display:flex;gap:10px;margin:22px 0 10px;flex-wrap:wrap">
+      <button class="btn btn-sm btn-secondary" onclick="bkoPainelExportarExcelDetalhamento()">📥 Exportar detalhamento (Excel)</button>
+      <button class="btn btn-sm btn-secondary" onclick="bkoPainelExportarExcelResumo()">📥 Exportar resumo (Excel)</button>
+      <button class="btn btn-sm btn-secondary" onclick="bkoPainelExportarPdf()">📄 Exportar painel (PDF)</button>
+    </div>
+  `;
+  const {de, ate} = _bkoPainelPrimeiroUltimoDiaMes(mesAtual);
+  document.getElementById('bko-painel-fil-de').value = de;
+  document.getElementById('bko-painel-fil-ate').value = ate;
+  _bkoPainelModoPersonalizado = false;
+  if (!indicadoresCarregados) carregarTodosIndicadores().catch(()=>{});
+  bkoPainelAplicarFiltros(true);
+}
+
+function bkoPainelAreaMudou() {
+  const areaId = document.getElementById('bko-painel-fil-area').value;
+  const sel = document.getElementById('bko-painel-fil-procedimento');
+  if (!areaId) { sel.innerHTML = '<option value="">Todos</option>'; return; }
+  const procs = _bkoDedupProcedimentosParaExibicao(_bkoProcedimentos.filter(p=>p.areaId===areaId)).sort((a,b)=>a.nome.localeCompare(b.nome,'pt'));
+  sel.innerHTML = '<option value="">Todos</option>' + procs.map(p=>`<option value="${p.id}">${p.nome}</option>`).join('');
+}
+function bkoPainelAoMudarCompetencia() {
+  const mes = document.getElementById('bko-painel-fil-competencia').value;
+  const {de, ate} = _bkoPainelPrimeiroUltimoDiaMes(mes);
+  document.getElementById('bko-painel-fil-de').value = de;
+  document.getElementById('bko-painel-fil-ate').value = ate;
+  _bkoPainelModoPersonalizado = false;
+}
+function bkoPainelAoMudarPeriodoManual() { _bkoPainelModoPersonalizado = true; }
+
+function bkoPainelLimparFiltros() {
+  const mesAtual = bkoCompetenciaAtualRef();
+  document.getElementById('bko-painel-fil-competencia').value = mesAtual;
+  const {de, ate} = _bkoPainelPrimeiroUltimoDiaMes(mesAtual);
+  document.getElementById('bko-painel-fil-de').value = de;
+  document.getElementById('bko-painel-fil-ate').value = ate;
+  document.getElementById('bko-painel-fil-posto').value = '';
+  document.getElementById('bko-painel-fil-supervisor').value = '';
+  document.getElementById('bko-painel-fil-area').value = '';
+  bkoPainelAreaMudou();
+  document.getElementById('bko-painel-fil-origem').value = '';
+  _bkoPainelModoPersonalizado = false;
+  bkoPainelAplicarFiltros(true);
+}
+
+async function bkoPainelAplicarFiltros(forcar) {
+  const de = document.getElementById('bko-painel-fil-de')?.value;
+  const ate = document.getElementById('bko-painel-fil-ate')?.value;
+  if (!de || !ate) { toast('Informe um período válido', 'err'); return; }
+  if (de > ate) { toast('Data inicial não pode ser depois da data final', 'err'); return; }
+  const precisaRecarregar = forcar || !_bkoPainelPeriodoCarregado || _bkoPainelPeriodoCarregado.de !== de || _bkoPainelPeriodoCarregado.ate !== ate;
+  if (precisaRecarregar) await bkoPainelCarregarDados(de, ate);
+  if (!_bkoPainelModoPersonalizado) {
+    const mes = document.getElementById('bko-painel-fil-competencia')?.value;
+    await _bkoPainelCarregarMesAnterior(mes);
+  } else { _bkoPainelDadosMesAnterior = null; }
+  bkoPainelAtualizarTudo();
+}
+
+async function bkoPainelCarregarDados(de, ate) {
+  _bkoPainelCarregando = true;
+  const cardsEl = document.getElementById('bko-painel-cards');
+  if (cardsEl) cardsEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text3)">⏳ Carregando dados do período...</div>';
+  try {
+    const operacaoId = await getOperacaoId();
+    const snap = await db.collection('controleBackoffice')
+      .where('operacaoId','==',operacaoId).where('ativo','==',true)
+      .where('data','>=',de).where('data','<=',ate)
+      .orderBy('data','asc').get();
+    _bkoPainelDados = snap.docs.map(d => ({id:d.id, ...d.data()}));
+    _bkoPainelPeriodoCarregado = {de, ate};
+    _bkoPainelUltimaAtualizacaoTs = new Date().toISOString();
+    if (_bkoPainelDados.length > 15000) toast(`Período com ${_bkoPainelDados.length} registros — considere reduzir para melhor desempenho`, 'err');
+  } catch(e) {
+    console.error(e);
+    if (cardsEl) cardsEl.innerHTML = '<div class="empty"><p>Erro ao carregar dados do painel — pode ser necessário criar um índice composto no Firestore (ver console).</p></div>';
+    toast('Erro ao carregar painel: ' + e.message, 'err');
+    _bkoPainelDados = [];
+    _bkoPainelPeriodoCarregado = {de, ate};
+  } finally { _bkoPainelCarregando = false; }
+}
+
+async function _bkoPainelCarregarMesAnterior(mesAtual) {
+  if (!mesAtual) { _bkoPainelDadosMesAnterior = null; return; }
+  if (_bkoPainelMesAnteriorCarregado === mesAtual) return;
+  try {
+    const [y,m] = mesAtual.split('-').map(Number);
+    const dtAnt = new Date(y, m-2, 1);
+    const mesAnt = dtAnt.getFullYear()+'-'+String(dtAnt.getMonth()+1).padStart(2,'0');
+    const operacaoId = await getOperacaoId();
+    const snap = await db.collection('controleBackoffice').where('operacaoId','==',operacaoId).where('ativo','==',true).where('mesRef','==',mesAnt).get();
+    _bkoPainelDadosMesAnterior = snap.docs.map(d=>({id:d.id,...d.data()}));
+    _bkoPainelMesAnteriorCarregado = mesAtual;
+  } catch(e) { console.error(e); _bkoPainelDadosMesAnterior = null; }
+}
+
+function bkoPainelDadosFiltrados() {
+  let d = _bkoPainelDados.slice();
+  const posto = document.getElementById('bko-painel-fil-posto')?.value.trim() || '';
+  const supervisor = document.getElementById('bko-painel-fil-supervisor')?.value || '';
+  const areaId = document.getElementById('bko-painel-fil-area')?.value || '';
+  const procId = document.getElementById('bko-painel-fil-procedimento')?.value || '';
+  const origem = document.getElementById('bko-painel-fil-origem')?.value || '';
+  if (posto) d = d.filter(r => r.posto === posto);
+  if (supervisor) d = d.filter(r => (allPostos.find(p=>p.nome===r.posto)?.supervisor) === supervisor);
+  if (areaId) d = d.filter(r => r.areaId === areaId);
+  if (procId) d = d.filter(r => r.procedimentoId === procId);
+  if (origem === 'original') d = d.filter(r => !r.editadoEm);
+  if (origem === 'editado') d = d.filter(r => !!r.editadoEm);
+  return d;
+}
+
+function bkoPainelAtualizarTudo() {
+  if (_bkoPainelCarregando) return;
+  const dados = bkoPainelDadosFiltrados();
+  const lbl = document.getElementById('bko-painel-periodo-label');
+  if (lbl && _bkoPainelPeriodoCarregado) lbl.textContent = `Período analisado: ${_bkoPainelPeriodoCarregado.de.split('-').reverse().join('/')} a ${_bkoPainelPeriodoCarregado.ate.split('-').reverse().join('/')}`;
+  const ult = document.getElementById('bko-painel-ultima-atualizacao');
+  if (ult && _bkoPainelUltimaAtualizacaoTs) ult.textContent = 'Última atualização: ' + fmtDT(_bkoPainelUltimaAtualizacaoTs);
+  _bkoPainelRenderCards(dados);
+  _bkoPainelRenderCriticos(dados);
+  _bkoPainelRenderGraficos(dados);
+  _bkoPainelRenderRankings(dados);
+  _bkoPainelRenderRecorrencia(dados);
+  _bkoPainelRenderAnalises(dados);
+  _bkoPainelDetPagina = 1;
+  _bkoPainelRenderDetalhamento(dados);
+}
+
+function _bkoPainelRenderCards(dados) {
+  const el = document.getElementById('bko-painel-cards'); if (!el) return;
+  if (!dados.length) { el.innerHTML = '<div class="empty"><p>Nenhum acionamento registrado no período e filtros selecionados.</p></div>'; return; }
+  const total = dados.length;
+  const postos = new Set(dados.map(r=>r.posto));
+  const areas = new Set(dados.map(r=>r.areaId));
+  const procs = new Set(dados.map(r=>r.procedimentoId));
+  const dias = new Set(dados.map(r=>r.data));
+  const mediaDiaria = (total / (dias.size||1)).toFixed(1);
+
+  const porPosto = {};
+  dados.forEach(r => { porPosto[r.posto] = (porPosto[r.posto]||0)+1; });
+  const [postoTopNome, postoTopQtd] = Object.entries(porPosto).sort((a,b)=>b[1]-a[1])[0] || ['—',0];
+
+  const porProc = {};
+  dados.forEach(r => { const k = r.areaId+'||'+r.procedimentoId; if (!porProc[k]) porProc[k] = {nome:r.procedimentoNome, area:r.areaNome, qtd:0}; porProc[k].qtd++; });
+  const procTop = Object.values(porProc).sort((a,b)=>b.qtd-a.qtd)[0] || {nome:'—',area:'—',qtd:0};
+
+  const porCombo = {};
+  dados.forEach(r => { const k = r.posto+'||'+r.procedimentoId; porCombo[k] = (porCombo[k]||0)+1; });
+  const reincidencias = Object.values(porCombo).filter(q=>q>1).length;
+
+  const criticosAbertos = dados.filter(r => (r.criticidade==='critico') && (r.statusAcompanhamento||'aberto')!=='normalizado').length;
+  const altosAbertos = dados.filter(r => (r.criticidade==='alta') && (r.statusAcompanhamento||'aberto')!=='normalizado').length;
+  const normalizadosPeriodo = dados.filter(r => r.statusAcompanhamento==='normalizado').length;
+  const temposNormalizacao = dados.filter(r => r.statusAcompanhamento==='normalizado' && r.normalizadoEm).map(r => (new Date(r.normalizadoEm)-new Date(r.criadoEm))/86400000);
+  const tempoMedioNorm = temposNormalizacao.length ? (temposNormalizacao.reduce((a,b)=>a+b,0)/temposNormalizacao.length).toFixed(1) : null;
+
+  const cards = [
+    {t:'Total de acionamentos', v:total, tip:'Quantidade de registros dentro dos filtros selecionados.'},
+    {t:'Postos com acionamento', v:postos.size, tip:'Quantidade de postos distintos com pelo menos um registro.'},
+    {t:'Áreas acionadas', v:areas.size, tip:'Quantidade de áreas distintas acionadas.'},
+    {t:'Procedimentos acionados', v:procs.size, tip:'Quantidade de procedimentos distintos acionados.'},
+    {t:'Média diária', v:mediaDiaria, tip:'Total de acionamentos ÷ dias com pelo menos 1 registro no período (não todos os dias do calendário).'},
+    {t:'Posto com maior volume', v:postoTopNome, sub:`${postoTopQtd} (${total?((postoTopQtd/total)*100).toFixed(1):0}%)`, tip:'Posto com mais acionamentos e percentual sobre o total.'},
+    {t:'Procedimento mais recorrente', v:procTop.nome, sub:`${procTop.area} • ${procTop.qtd} (${total?((procTop.qtd/total)*100).toFixed(1):0}%)`, tip:'Procedimento com mais ocorrências, área e percentual sobre o total.'},
+    {t:'Reincidências identificadas', v:reincidencias, tip:'Combinações Posto + Procedimento que ocorreram mais de uma vez no período.'},
+    {t:'Casos críticos abertos', v:criticosAbertos, tip:'Criticidade "Crítico" ainda não normalizados, dentro do período/filtros.'},
+    {t:'Casos de alta criticidade', v:altosAbertos, tip:'Criticidade "Alta" ainda não normalizados, dentro do período/filtros.'},
+    {t:'Casos normalizados no período', v:normalizadosPeriodo, tip:'Registros do período/filtros já marcados como normalizados.'},
+    {t:'Tempo médio de normalização', v: tempoMedioNorm!==null ? tempoMedioNorm+' dias' : 'Sem casos normalizados', tip:'Média de dias entre abertura e normalização, considerando casos normalizados no período/filtros.'}
+  ];
+  el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">${cards.map(c=>`
+    <div style="background:var(--surface2);border-radius:10px;padding:12px 14px" title="${c.tip}">
+      <div style="font-size:11px;color:var(--text3);display:flex;justify-content:space-between">${c.t} <span style="cursor:help">ⓘ</span></div>
+      <div style="font-size:20px;font-weight:700;margin-top:4px">${c.v}</div>
+      ${c.sub?`<div style="font-size:11px;color:var(--text3);margin-top:2px">${c.sub}</div>`:''}
+    </div>`).join('')}</div>
+    <div id="bko-painel-proporcional" style="margin-top:10px"></div>`;
+  _bkoPainelRenderProporcional(dados);
+}
+
+async function _bkoPainelRenderProporcional(dados) {
+  const el = document.getElementById('bko-painel-proporcional'); if (!el) return;
+  const mes = document.getElementById('bko-painel-fil-competencia')?.value || '';
+  if (_bkoPainelModoPersonalizado || !mes) {
+    el.innerHTML = `<div style="font-size:12px;color:var(--text3);background:var(--surface2);border-radius:8px;padding:10px 12px">Indicador proporcional disponível apenas quando o filtro representa uma única competência (não período personalizado).</div>`;
+    return;
+  }
+  if (!indicadoresCarregados) { try { await carregarTodosIndicadores(); } catch(e){} }
+  if (!bkoCompetenciaFechada(mes)) {
+    el.innerHTML = `<div style="font-size:12px;color:var(--text3);background:var(--surface2);border-radius:8px;padding:10px 12px">Indicador proporcional disponível após o fechamento da competência.</div>`;
+    return;
+  }
+  const totalAtend = allIndicadores.filter(i=>i.mesRef===mes).reduce((a,i)=>a+(parseInt(i.senhasAtendidas)||0),0);
+  if (!totalAtend) { el.innerHTML = `<div style="font-size:12px;color:var(--text3);background:var(--surface2);border-radius:8px;padding:10px 12px">Base de atendimentos indisponível para esta competência.</div>`; return; }
+  const total = dados.length;
+  const por1000 = (total/totalAtend*1000).toFixed(2);
+  el.innerHTML = `<div style="background:var(--surface2);border-radius:10px;padding:12px 14px;max-width:320px" title="Acionamentos do Backoffice a cada 1.000 atendimentos realizados na competência">
+    <div style="font-size:11px;color:var(--text3)">Acionamentos por 1.000 atendimentos</div>
+    <div style="font-size:20px;font-weight:700;margin-top:4px">${por1000}</div>
+    <div style="font-size:11px;color:var(--text3);margin-top:2px">Base: fechada • ${totalAtend.toLocaleString('pt-BR')} atendimentos</div>
+  </div>`;
+}
+
+function _bkoPainelRenderCriticos(dados) {
+  const el = document.getElementById('bko-painel-criticos'); if (!el) return;
+  const criticosAbertos = dados.filter(r => r.criticidade==='critico' && (r.statusAcompanhamento||'aberto')!=='normalizado');
+  const altosAbertos = dados.filter(r => r.criticidade==='alta' && (r.statusAcompanhamento||'aberto')!=='normalizado').sort((a,b)=>new Date(b.criadoEm)-new Date(a.criadoEm)).slice(0,10);
+  const normalizadosRecentes = dados.filter(r => r.statusAcompanhamento==='normalizado' && r.normalizadoEm).sort((a,b)=>new Date(b.normalizadoEm)-new Date(a.normalizadoEm)).slice(0,10);
+
+  if (!criticosAbertos.length && !altosAbertos.length && !normalizadosRecentes.length) { el.innerHTML = ''; return; }
+
+  _bkoCarregarUltimasAtualizacoesParaTabela(criticosAbertos);
+
+  const agora = Date.now();
+  const criticosOrdenados = criticosAbertos.map(r => {
+    const ultima = _bkoUltimasAtualizacoesCache[r.id];
+    const tsUltima = ultima ? new Date(ultima.ts).getTime() : new Date(r.criadoEm).getTime();
+    return { r, tempoAbertoH: (agora-new Date(r.criadoEm).getTime())/3600000, tsUltima };
+  }).sort((a,b) => a.tsUltima - b.tsUltima || (new Date(b.r.criadoEm)-new Date(a.r.criadoEm)));
+
+  let htmlCriticos = '';
+  if (criticosAbertos.length) {
+    htmlCriticos = `
+    <div style="font-size:13px;font-weight:700;margin:18px 0 10px;color:#e24b4a">🔴 Casos Críticos em Aberto (${criticosAbertos.length})</div>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:900px">
+      <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15);background:var(--surface3)">
+        ${['Abertura','Posto','Área','Procedimento','Observação inicial','Status','Última atualização','Tempo em aberto','Registrado por','Ações'].map(h=>`<th style="padding:7px 10px;text-align:left;color:var(--text3);font-weight:600;white-space:nowrap">${h}</th>`).join('')}
+      </tr></thead>
+      <tbody>${criticosOrdenados.map(({r,tempoAbertoH}) => {
+        const semAtualiz48h = tempoAbertoH > 48;
+        const diasAberto = Math.floor(tempoAbertoH/24);
+        return `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+          <td style="padding:6px 10px;white-space:nowrap">${(r.data||'').split('-').reverse().join('/')}</td>
+          <td style="padding:6px 10px;white-space:nowrap">${r.posto}</td>
+          <td style="padding:6px 10px;white-space:nowrap">${r.areaNome}</td>
+          <td style="padding:6px 10px;white-space:nowrap">${r.procedimentoNome}</td>
+          <td style="padding:6px 10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.observacao||''}">${r.observacao||'—'}</td>
+          <td style="padding:6px 10px;white-space:nowrap">${_bkoBadgeStatus(r.statusAcompanhamento||'aberto')}</td>
+          <td style="padding:6px 10px;white-space:nowrap;color:var(--text3)">${_bkoUltimaAtualizacaoLabel(r.id)}</td>
+          <td style="padding:6px 10px;white-space:nowrap${semAtualiz48h?';color:#e24b4a;font-weight:600':''}">${diasAberto}d${semAtualiz48h?' — Sem atualização há '+diasAberto+' dias':''}</td>
+          <td style="padding:6px 10px;white-space:nowrap">${r.registradoPor}</td>
+          <td style="padding:6px 10px;white-space:nowrap">
+            <button class="btn btn-sm btn-secondary" onclick="bkoAbrirLinhaDoTempo('${r.id}')">🕒 Acompanhar</button>
+            <button class="btn btn-sm btn-secondary" onclick="bkoAbrirEdicao('${r.id}')">✏️</button>
+          </td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`;
+  }
+
+  const listaCompacta = (titulo, cor, lista) => !lista.length ? '' : `
+    <div style="font-size:13px;font-weight:700;margin:18px 0 10px;color:${cor}">${titulo} (${lista.length}${lista.length>=10?'+':''})</div>
+    <div style="display:grid;gap:6px">${lista.map(r => `
+      <div style="background:var(--surface2);border-radius:8px;padding:8px 12px;font-size:12px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <span>${r.posto} — ${r.areaNome}/${r.procedimentoNome} ${_bkoBadgeStatus(r.statusAcompanhamento||'aberto')}</span>
+        <button class="btn btn-sm btn-secondary" onclick="bkoAbrirLinhaDoTempo('${r.id}')">🕒</button>
+      </div>`).join('')}</div>`;
+
+  el.innerHTML = htmlCriticos
+    + listaCompacta('🟠 Altos em Aberto', '#e2884b', altosAbertos)
+    + listaCompacta('✅ Normalizados Recentemente', '#3fb950', normalizadosRecentes)
+    + (criticosAbertos.length||altosAbertos.length||normalizadosRecentes.length ? `<div style="margin:14px 0 4px"><button class="btn btn-sm btn-secondary" onclick="switchBkoTab('historico')">Ver todos no Histórico</button></div>` : '');
+}
+
+function _bkoPainelRenderGraficos(dados) {
+  Object.values(_bkoPainelCharts).forEach(c => { if (c) try{c.destroy();}catch(e){} });
+  _bkoPainelCharts = {};
+  const wrap = document.getElementById('bko-painel-graficos'); if (!wrap) return;
+  if (!dados.length) { wrap.innerHTML = '<div class="empty"><p>Sem dados para gerar gráficos no período/filtros atuais.</p></div>'; return; }
+  wrap.innerHTML = `
+    <div style="font-size:13px;font-weight:700;margin:22px 0 10px">Evolução dos acionamentos</div>
+    <div style="height:260px"><canvas id="bko-chart-evolucao"></canvas></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px">
+      <div>
+        <div style="font-size:13px;font-weight:700;margin-bottom:10px">Acionamentos por área</div>
+        <div style="height:260px"><canvas id="bko-chart-area"></canvas></div>
+      </div>
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="font-size:13px;font-weight:700">Procedimentos mais recorrentes</div>
+          <select class="form-select" style="width:100px" id="bko-painel-top-proc" onchange="_bkoPainelTopProc=parseInt(this.value); _bkoPainelRenderGraficoProc(bkoPainelDadosFiltrados())">
+            <option value="5" ${_bkoPainelTopProc===5?'selected':''}>Top 5</option>
+            <option value="10" ${_bkoPainelTopProc===10?'selected':''}>Top 10</option>
+            <option value="20" ${_bkoPainelTopProc===20?'selected':''}>Top 20</option>
+          </select>
+        </div>
+        <div style="height:260px"><canvas id="bko-chart-proc"></canvas></div>
+      </div>
+    </div>
+    <div style="font-size:13px;font-weight:700;margin:20px 0 10px">Postos com maior volume de acionamentos</div>
+    <div style="height:${Math.max(260, new Set(dados.map(r=>r.posto)).size*22)}px"><canvas id="bko-chart-posto"></canvas></div>
+    <div style="margin-top:24px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <div style="font-size:13px;font-weight:700">Matriz Posto × Procedimento</div>
+        <div style="display:flex;gap:8px">
+          <select class="form-select" style="width:170px" id="bko-painel-matriz-area" onchange="_bkoPainelMatrizArea=this.value; _bkoPainelRenderMatriz(bkoPainelDadosFiltrados())">
+            <option value="">Todas as áreas</option>
+            ${_bkoAreas.slice().sort((a,b)=>a.nome.localeCompare(b.nome,'pt')).map(a=>`<option value="${a.id}" ${a.id===_bkoPainelMatrizArea?'selected':''}>${a.nome}</option>`).join('')}
+          </select>
+          <select class="form-select" style="width:100px" id="bko-painel-matriz-top" onchange="_bkoPainelMatrizTop=parseInt(this.value); _bkoPainelRenderMatriz(bkoPainelDadosFiltrados())">
+            <option value="5" ${_bkoPainelMatrizTop===5?'selected':''}>Top 5</option>
+            <option value="10" ${_bkoPainelMatrizTop===10?'selected':''}>Top 10</option>
+            <option value="20" ${_bkoPainelMatrizTop===20?'selected':''}>Top 20</option>
+          </select>
+        </div>
+      </div>
+      <div id="bko-painel-matriz-wrap" style="overflow-x:auto"></div>
+    </div>
+  `;
+
+  const dias45 = _bkoPainelPeriodoCarregado ? (new Date(_bkoPainelPeriodoCarregado.ate) - new Date(_bkoPainelPeriodoCarregado.de))/86400000 <= 45 : true;
+  const grupos = {};
+  dados.forEach(r => { const k = dias45 ? r.data : r.mesRef; grupos[k] = (grupos[k]||0)+1; });
+  const chaves = Object.keys(grupos).sort();
+  const canvasEvo = document.getElementById('bko-chart-evolucao');
+  if (canvasEvo) {
+    _bkoPainelCharts.evolucao = new Chart(canvasEvo, {
+      type: dias45?'line':'bar',
+      data: { labels: chaves.map(k => dias45 ? k.split('-').reverse().join('/') : _indMesLabel(k)),
+        datasets: [{ label:'Acionamentos', data: chaves.map(k=>grupos[k]), borderColor:'rgb(74,144,217)', backgroundColor:'rgba(74,144,217,.25)', tension:.3 }] },
+      options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true, ticks:{color:'#a0aec0'}, grid:{color:'rgba(255,255,255,.06)'}}, x:{ticks:{color:'#a0aec0'}, grid:{color:'rgba(255,255,255,.06)'}}} },
+      plugins:[_BKO_ROTULOS_PLUGIN]
+    });
+  }
+
+  const porArea = {};
+  dados.forEach(r => { porArea[r.areaNome] = (porArea[r.areaNome]||0)+1; });
+  const areaEntries = Object.entries(porArea).sort((a,b)=>b[1]-a[1]);
+  const canvasArea = document.getElementById('bko-chart-area');
+  if (canvasArea) {
+    _bkoPainelCharts.area = new Chart(canvasArea, {
+      type:'bar',
+      data:{ labels:areaEntries.map(e=>e[0]), datasets:[{label:'Acionamentos', data:areaEntries.map(e=>e[1]), backgroundColor:'rgba(74,144,217,.7)'}] },
+      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{beginAtZero:true, ticks:{color:'#a0aec0'}, grid:{color:'rgba(255,255,255,.06)'}}, y:{ticks:{color:'#a0aec0'}, grid:{display:false}}} },
+      plugins:[_BKO_ROTULOS_PLUGIN]
+    });
+  }
+
+  _bkoPainelRenderGraficoProc(dados);
+
+  const porPostoG = {};
+  dados.forEach(r => { porPostoG[r.posto] = (porPostoG[r.posto]||0)+1; });
+  const postoEntries = Object.entries(porPostoG).sort((a,b)=>b[1]-a[1]);
+  const canvasPosto = document.getElementById('bko-chart-posto');
+  if (canvasPosto) {
+    _bkoPainelCharts.posto = new Chart(canvasPosto, {
+      type:'bar',
+      data:{ labels:postoEntries.map(e=>e[0]), datasets:[{label:'Acionamentos', data:postoEntries.map(e=>e[1]), backgroundColor:postoEntries.map((e,i)=>i<5?'rgba(226,75,74,.75)':'rgba(74,144,217,.6)')}] },
+      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{beginAtZero:true, ticks:{color:'#a0aec0'}, grid:{color:'rgba(255,255,255,.06)'}}, y:{ticks:{color:'#a0aec0'}, grid:{display:false}}} },
+      plugins:[_BKO_ROTULOS_PLUGIN]
+    });
+  }
+
+  _bkoPainelRenderMatriz(dados);
+}
+
+function _bkoPainelRenderGraficoProc(dados) {
+  const canvas = document.getElementById('bko-chart-proc'); if (!canvas) return;
+  if (_bkoPainelCharts.proc) { try{_bkoPainelCharts.proc.destroy();}catch(e){} }
+  const porProc = {};
+  dados.forEach(r => { const k = r.areaNome+' — '+r.procedimentoNome; porProc[k] = (porProc[k]||0)+1; });
+  const entries = Object.entries(porProc).sort((a,b)=>b[1]-a[1]);
+  const top = entries.slice(0, _bkoPainelTopProc);
+  const outros = entries.slice(_bkoPainelTopProc).reduce((a,e)=>a+e[1],0);
+  const labels = top.map(e=>e[0]); const vals = top.map(e=>e[1]);
+  if (outros > 0) { labels.push('Outros'); vals.push(outros); }
+  _bkoPainelCharts.proc = new Chart(canvas, {
+    type:'bar',
+    data:{ labels, datasets:[{label:'Acionamentos', data:vals, backgroundColor:'rgba(212,167,44,.75)'}] },
+    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{beginAtZero:true, ticks:{color:'#a0aec0'}, grid:{color:'rgba(255,255,255,.06)'}}, y:{ticks:{color:'#a0aec0'}, grid:{display:false}}} },
+    plugins:[_BKO_ROTULOS_PLUGIN]
+  });
+}
+
+function _bkoPainelRenderMatriz(dados) {
+  const wrap = document.getElementById('bko-painel-matriz-wrap'); if (!wrap) return;
+  let d = dados;
+  if (_bkoPainelMatrizArea) d = d.filter(r => r.areaId === _bkoPainelMatrizArea);
+  if (!d.length) { wrap.innerHTML = '<div class="empty"><p>Sem dados para montar a matriz com os filtros atuais.</p></div>'; return; }
+  const porProc = {};
+  d.forEach(r => { porProc[r.procedimentoNome] = (porProc[r.procedimentoNome]||0)+1; });
+  const procsTop = Object.entries(porProc).sort((a,b)=>b[1]-a[1]).slice(0,_bkoPainelMatrizTop).map(e=>e[0]);
+  const postos = [...new Set(d.map(r=>r.posto))].sort((a,b)=>a.localeCompare(b,'pt'));
+  const cel = {}; let max = 0;
+  d.forEach(r => { if (!procsTop.includes(r.procedimentoNome)) return; const k = r.posto+'||'+r.procedimentoNome; cel[k] = (cel[k]||0)+1; if (cel[k]>max) max = cel[k]; });
+  wrap.innerHTML = `<table style="border-collapse:collapse;font-size:11px;min-width:${200+procsTop.length*70}px">
+    <thead><tr><th style="padding:6px 8px;text-align:left;color:var(--text3);position:sticky;left:0;background:var(--surface3)">Posto</th>
+      ${procsTop.map(p=>`<th style="padding:6px 8px;color:var(--text3);font-weight:600;white-space:nowrap;max-width:90px">${p}</th>`).join('')}
+    </tr></thead>
+    <tbody>${postos.map(posto => `<tr>
+      <td style="padding:6px 8px;white-space:nowrap;position:sticky;left:0;background:var(--surface2)">${posto}</td>
+      ${procsTop.map(p => { const v = cel[posto+'||'+p]||0; const alpha = max ? (v/max*0.75+(v?0.1:0)) : 0;
+        return `<td style="padding:6px 8px;text-align:center;background:rgba(226,75,74,${alpha});${v?'font-weight:600':'color:var(--text3)'}">${v||'—'}</td>`; }).join('')}
+    </tr>`).join('')}</tbody>
+  </table>`;
+}
+
+function _bkoPainelRenderRankings(dados) {
+  const el = document.getElementById('bko-painel-rankings'); if (!el) return;
+  if (!dados.length) { el.innerHTML = ''; return; }
+  const total = dados.length;
+  const porPosto = {};
+  dados.forEach(r => { if (!porPosto[r.posto]) porPosto[r.posto] = { qtd:0, procs:{}, ultimo:null };
+    porPosto[r.posto].qtd++;
+    porPosto[r.posto].procs[r.procedimentoNome] = (porPosto[r.posto].procs[r.procedimentoNome]||0)+1;
+    if (!porPosto[r.posto].ultimo || r.criadoEm > porPosto[r.posto].ultimo) porPosto[r.posto].ultimo = r.criadoEm;
+  });
+  const rankingVolume = Object.entries(porPosto).map(([posto,info]) => {
+    const procTop = Object.entries(info.procs).sort((a,b)=>b[1]-a[1])[0];
+    return { posto, qtd:info.qtd, pct:(info.qtd/total*100).toFixed(1), procTop: procTop?procTop[0]:'—', ultimo: info.ultimo, supervisor: allPostos.find(p=>p.nome===posto)?.supervisor || '—' };
+  }).sort((a,b)=>b.qtd-a.qtd);
+
+  let htmlProporcional = '';
+  const mes = document.getElementById('bko-painel-fil-competencia')?.value || '';
+  if (!_bkoPainelModoPersonalizado && mes && bkoCompetenciaFechada(mes) && indicadoresCarregados) {
+    const linhas = rankingVolume.map(r => {
+      const atend = allIndicadores.find(i=>i.mesRef===mes && i.postoNome===r.posto);
+      return atend && atend.senhasAtendidas ? { ...r, atendimentos: parseInt(atend.senhasAtendidas)||0, por1000: (r.qtd/(parseInt(atend.senhasAtendidas)||1)*1000) } : null;
+    }).filter(Boolean).sort((a,b)=>b.por1000-a.por1000);
+    const semBase = rankingVolume.length - linhas.length;
+    if (linhas.length) {
+      htmlProporcional = `
+        <div style="font-size:13px;font-weight:700;margin:22px 0 8px">Ranking proporcional</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:8px">⚠ O ranking proporcional considera o volume de atendimentos e não deve ser interpretado isoladamente como indicador de desempenho.${semBase?` (${semBase} posto(s) sem base de atendimento não entraram no ranking.)`:''}</div>
+        <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:640px">
+          <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15);background:var(--surface3)">${['#','Posto','Supervisor','Acionamentos','Atendimentos','Por 1.000 atend.'].map(h=>`<th style="padding:6px 10px;text-align:left;color:var(--text3)">${h}</th>`).join('')}</tr></thead>
+          <tbody>${linhas.map((r,i)=>`<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+            <td style="padding:6px 10px">${i+1}</td><td style="padding:6px 10px">${r.posto}</td><td style="padding:6px 10px">${r.supervisor}</td>
+            <td style="padding:6px 10px">${r.qtd}</td><td style="padding:6px 10px">${r.atendimentos.toLocaleString('pt-BR')}</td><td style="padding:6px 10px">${r.por1000.toFixed(2)}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>`;
+    }
+  }
+
+  const porProc = {};
+  dados.forEach(r => { const k = r.areaId+'||'+r.procedimentoId; if (!porProc[k]) porProc[k] = { nome:r.procedimentoNome, area:r.areaNome, qtd:0, postos:new Set() };
+    porProc[k].qtd++; porProc[k].postos.add(r.posto); });
+  let anteriorPorProc = null;
+  if (!_bkoPainelModoPersonalizado && _bkoPainelDadosMesAnterior) {
+    anteriorPorProc = {};
+    _bkoPainelDadosMesAnterior.forEach(r => { const k=r.areaId+'||'+r.procedimentoId; anteriorPorProc[k]=(anteriorPorProc[k]||0)+1; });
+  }
+  const rankingProc = Object.entries(porProc).map(([k,info]) => {
+    let variacao = 'Sem comparação';
+    if (anteriorPorProc) {
+      const ant = anteriorPorProc[k] || 0;
+      if (ant > 0) variacao = (((info.qtd-ant)/ant)*100).toFixed(1)+'%';
+      else if (info.qtd > 0) variacao = 'Novo no período';
+    }
+    return { nome:info.nome, area:info.area, qtd:info.qtd, postos:info.postos.size, pct:(info.qtd/total*100).toFixed(1), variacao };
+  }).sort((a,b)=>b.qtd-a.qtd);
+
+  el.innerHTML = `
+    <div style="font-size:13px;font-weight:700;margin:22px 0 8px">Ranking por volume</div>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:820px">
+      <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15);background:var(--surface3)">${['#','Posto','Supervisor','Acionamentos','% do total','Procedimento mais recorrente','Último acionamento'].map(h=>`<th style="padding:6px 10px;text-align:left;color:var(--text3)">${h}</th>`).join('')}</tr></thead>
+      <tbody>${rankingVolume.map((r,i)=>`<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+        <td style="padding:6px 10px">${i+1}</td><td style="padding:6px 10px">${r.posto}</td><td style="padding:6px 10px">${r.supervisor}</td>
+        <td style="padding:6px 10px">${r.qtd}</td><td style="padding:6px 10px">${r.pct}%</td><td style="padding:6px 10px">${r.procTop}</td><td style="padding:6px 10px;color:var(--text3)">${fmtDT(r.ultimo)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+    ${htmlProporcional}
+    <div style="font-size:13px;font-weight:700;margin:22px 0 8px">Ranking de procedimentos</div>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:820px">
+      <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15);background:var(--surface3)">${['#','Procedimento','Área','Quantidade','Postos diferentes','%','Variação vs comp. anterior'].map(h=>`<th style="padding:6px 10px;text-align:left;color:var(--text3)">${h}</th>`).join('')}</tr></thead>
+      <tbody>${rankingProc.map((r,i)=>`<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+        <td style="padding:6px 10px">${i+1}</td><td style="padding:6px 10px">${r.nome}</td><td style="padding:6px 10px">${r.area}</td>
+        <td style="padding:6px 10px">${r.qtd}</td><td style="padding:6px 10px">${r.postos}</td><td style="padding:6px 10px">${r.pct}%</td><td style="padding:6px 10px;color:var(--text3)">${r.variacao}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+}
+
+function _bkoPainelRenderRecorrencia(dados) {
+  const el = document.getElementById('bko-painel-recorrencia'); if (!el) return;
+  if (!dados.length) { el.innerHTML = ''; return; }
+  const grupos = {};
+  dados.forEach(r => { const k = r.posto+'||'+r.procedimentoId;
+    if (!grupos[k]) grupos[k] = { posto:r.posto, area:r.areaNome, procedimento:r.procedimentoNome, qtd:0, primeira:r.data, ultima:r.data, obsRecente:r.observacao, criadoRecente:r.criadoEm, supervisor: allPostos.find(p=>p.nome===r.posto)?.supervisor||'—' };
+    const g = grupos[k]; g.qtd++;
+    if (r.data < g.primeira) g.primeira = r.data;
+    if (r.data > g.ultima) g.ultima = r.data;
+    if (!g.criadoRecente || r.criadoEm > g.criadoRecente) { g.criadoRecente = r.criadoEm; g.obsRecente = r.observacao; }
+  });
+  const min = _bkoPainelRecorrenciaMin;
+  const lista = Object.values(grupos).filter(g => g.qtd >= min).sort((a,b)=>b.qtd-a.qtd);
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:22px 0 8px;flex-wrap:wrap;gap:8px">
+      <div style="font-size:13px;font-weight:700">Recorrência (mesmo Posto + Procedimento)</div>
+      <select class="form-select" style="width:170px" id="bko-painel-recorrencia-min" onchange="_bkoPainelRecorrenciaMin=parseInt(this.value); _bkoPainelRenderRecorrencia(bkoPainelDadosFiltrados())">
+        <option value="2" ${min===2?'selected':''}>Somente 2 ou mais</option>
+        <option value="3" ${min===3?'selected':''}>3 ou mais</option>
+        <option value="5" ${min===5?'selected':''}>5 ou mais</option>
+      </select>
+    </div>
+    ${!lista.length ? '<div class="empty"><p>Nenhuma recorrência encontrada com o filtro atual.</p></div>' : `
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:980px">
+      <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15);background:var(--surface3)">${['Posto','Supervisor','Área','Procedimento','Ocorrências','Primeira','Última','Dias entre','Observação mais recente'].map(h=>`<th style="padding:6px 10px;text-align:left;color:var(--text3)">${h}</th>`).join('')}</tr></thead>
+      <tbody>${lista.map(g => {
+        const dias = Math.round((new Date(g.ultima)-new Date(g.primeira))/86400000);
+        return `<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+          <td style="padding:6px 10px">${g.posto}</td><td style="padding:6px 10px">${g.supervisor}</td><td style="padding:6px 10px">${g.area}</td><td style="padding:6px 10px">${g.procedimento}</td>
+          <td style="padding:6px 10px">${g.qtd}</td><td style="padding:6px 10px">${g.primeira.split('-').reverse().join('/')}</td><td style="padding:6px 10px">${g.ultima.split('-').reverse().join('/')}</td>
+          <td style="padding:6px 10px">${dias}</td><td style="padding:6px 10px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${g.obsRecente||''}">${g.obsRecente||'—'}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`}
+    <div style="font-size:11px;color:var(--text3);margin-top:8px">"Procedimento recorrente" pode indicar oportunidade de orientação ou possível necessidade de reciclagem — não representa, isoladamente, falha do posto.</div>
+  `;
+}
+
+function _bkoPainelRenderAnalises(dados) {
+  const el = document.getElementById('bko-painel-analises'); if (!el) return;
+  if (dados.length < 3 || !_bkoPainelPeriodoCarregado) { el.innerHTML = '<div class="empty"><p>Dados insuficientes no período/filtros para gerar análises inteligentes.</p></div>'; return; }
+  const total = dados.length;
+  const periodoLabel = `${_bkoPainelPeriodoCarregado.de.split('-').reverse().join('/')} a ${_bkoPainelPeriodoCarregado.ate.split('-').reverse().join('/')}`;
+  const analises = [];
+
+  const porPosto = {}; dados.forEach(r=>{porPosto[r.posto]=(porPosto[r.posto]||0)+1;});
+  const topPosto = Object.entries(porPosto).sort((a,b)=>b[1]-a[1])[0];
+  if (topPosto) analises.push(`O posto ${topPosto[0]} concentrou ${(topPosto[1]/total*100).toFixed(0)}% dos acionamentos do período (${periodoLabel}), com base na contagem de registros por posto.`);
+
+  const porProc = {}; dados.forEach(r=>{const k=r.areaNome+' — '+r.procedimentoNome; porProc[k]=(porProc[k]||0)+1;});
+  const topProc = Object.entries(porProc).sort((a,b)=>b[1]-a[1])[0];
+  if (topProc) analises.push(`${topProc[0]} foi o procedimento mais registrado do período (${periodoLabel}), com ${topProc[1]} ocorrência(s) — ${(topProc[1]/total*100).toFixed(0)}% do total.`);
+
+  if (topProc) {
+    const nomeProc = topProc[0].split(' — ')[1];
+    const postosDoProc = new Set(dados.filter(r=>r.procedimentoNome===nomeProc).map(r=>r.posto));
+    if (postosDoProc.size > 1) analises.push(`${nomeProc} foi registrado em ${postosDoProc.size} postos diferentes no período (${periodoLabel}), com base nos registros ativos.`);
+  }
+
+  const porArea = {}; dados.forEach(r=>{porArea[r.areaNome]=(porArea[r.areaNome]||0)+1;});
+  const areaEntries = Object.entries(porArea).sort((a,b)=>b[1]-a[1]);
+  if (areaEntries.length) analises.push(`A área ${areaEntries[0][0]} respondeu por ${(areaEntries[0][1]/total*100).toFixed(0)}% dos acionamentos do período (${periodoLabel}), com base na contagem de registros por área.`);
+
+  const procEntries = Object.entries(porProc).sort((a,b)=>b[1]-a[1]);
+  if (procEntries.length >= 5) {
+    const soma5 = procEntries.slice(0,5).reduce((a,e)=>a+e[1],0);
+    analises.push(`Cinco procedimentos representam ${(soma5/total*100).toFixed(0)}% dos acionamentos do período (${periodoLabel}), com base na contagem de registros.`);
+  }
+
+  if (_bkoPainelDadosMesAnterior && !_bkoPainelModoPersonalizado) {
+    const porAreaAnt = {}; _bkoPainelDadosMesAnterior.forEach(r=>{porAreaAnt[r.areaNome]=(porAreaAnt[r.areaNome]||0)+1;});
+    const variacoes = areaEntries.map(([nome,qtd]) => { const ant = porAreaAnt[nome]||0; return { nome, qtd, ant, delta: ant>0 ? ((qtd-ant)/ant*100) : null }; }).filter(v=>v.delta!==null);
+    if (variacoes.length) {
+      const maiorCresc = variacoes.slice().sort((a,b)=>b.delta-a.delta)[0];
+      const maiorRed = variacoes.slice().sort((a,b)=>a.delta-b.delta)[0];
+      if (maiorCresc && maiorCresc.delta > 0) analises.push(`A área ${maiorCresc.nome} apresentou variação de ${maiorCresc.delta.toFixed(0)}% em relação à competência anterior, com base na comparação de registros por área.`);
+      if (maiorRed && maiorRed.delta < 0 && maiorRed.nome !== maiorCresc?.nome) analises.push(`A área ${maiorRed.nome} apresentou variação de ${maiorRed.delta.toFixed(0)}% em relação à competência anterior, com base na comparação de registros por área.`);
+    }
+  }
+
+  const gruposRec = {}; dados.forEach(r=>{const k=r.posto+'||'+r.procedimentoId; gruposRec[k]=(gruposRec[k]||0)+1;});
+  const maiorRecorrencia = Object.entries(gruposRec).sort((a,b)=>b[1]-a[1])[0];
+  if (maiorRecorrencia && maiorRecorrencia[1] > 1) {
+    const [posto, procId] = maiorRecorrencia[0].split('||');
+    const nomeProc = (dados.find(r=>r.procedimentoId===procId)||{}).procedimentoNome || '';
+    analises.push(`${nomeProc} se repetiu ${maiorRecorrencia[1]} vezes no posto ${posto} no período (${periodoLabel}) — possível oportunidade de orientação.`);
+  }
+
+  const mes = document.getElementById('bko-painel-fil-competencia')?.value || '';
+  if (!_bkoPainelModoPersonalizado && mes && bkoCompetenciaFechada(mes) && indicadoresCarregados) {
+    const comProporcional = Object.entries(porPosto).map(([posto,qtd]) => {
+      const atend = allIndicadores.find(i=>i.mesRef===mes && i.postoNome===posto);
+      return atend && atend.senhasAtendidas ? { posto, qtd, por1000: qtd/parseInt(atend.senhasAtendidas)*1000 } : null;
+    }).filter(Boolean);
+    if (comProporcional.length >= 2) {
+      const mediaPor1000 = comProporcional.reduce((a,x)=>a+x.por1000,0)/comProporcional.length;
+      const maiorAbs = comProporcional.slice().sort((a,b)=>b.qtd-a.qtd)[0];
+      const maiorProp = comProporcional.slice().sort((a,b)=>b.por1000-a.por1000)[0];
+      if (maiorAbs && Math.abs(maiorAbs.por1000-mediaPor1000) < mediaPor1000*0.25) analises.push(`O posto ${maiorAbs.posto} possui volume absoluto elevado, mas resultado proporcional (${maiorAbs.por1000.toFixed(1)} por 1.000 atendimentos) próximo da média do período (${periodoLabel}).`);
+      if (maiorProp && maiorAbs && maiorProp.qtd < maiorAbs.qtd*0.5) analises.push(`O posto ${maiorProp.posto} possui poucos acionamentos absolutos (${maiorProp.qtd}), mas taxa elevada de ${maiorProp.por1000.toFixed(1)} por 1.000 atendimentos no período (${periodoLabel}).`);
+    }
+  }
+
+  const criticosAbertos = dados.filter(r => r.criticidade==='critico' && (r.statusAcompanhamento||'aberto')!=='normalizado');
+  if (criticosAbertos.length) analises.push(`Existem ${criticosAbertos.length} caso(s) crítico(s) em aberto no período/filtros atuais (${periodoLabel}), com base no status de acompanhamento.`);
+
+  el.innerHTML = analises.length
+    ? `<div style="display:grid;gap:8px">${analises.map(a=>`<div style="background:var(--surface2);border-radius:8px;padding:10px 12px;font-size:12px;line-height:1.5">💡 ${a}</div>`).join('')}</div>`
+    : '<div class="empty"><p>Dados insuficientes para gerar análises inteligentes com os filtros atuais.</p></div>';
+}
+
+function _bkoPainelRenderDetalhamento(dados) {
+  const el = document.getElementById('bko-painel-detalhamento'); if (!el) return;
+  const buscaAnterior = document.getElementById('bko-painel-det-busca')?.value || '';
+  const busca = normalizarBusca(buscaAnterior);
+  let lista = busca ? dados.filter(r => normalizarBusca(r.posto||'').includes(busca) || normalizarBusca(r.areaNome||'').includes(busca) || normalizarBusca(r.procedimentoNome||'').includes(busca) || normalizarBusca(r.observacao||'').includes(busca)) : dados.slice();
+  const ordCol = _bkoPainelDetOrdCol, ordDir = _bkoPainelDetOrdDir;
+  lista.sort((a,b) => { const va=a[ordCol]||'', vb=b[ordCol]||''; return ordDir==='asc' ? (va>vb?1:va<vb?-1:0) : (va<vb?1:va>vb?-1:0); });
+  const totalFiltrado = lista.length;
+  const totalPaginas = Math.max(1, Math.ceil(totalFiltrado / _BKO_PAINEL_DET_PAGE_SIZE));
+  if (_bkoPainelDetPagina > totalPaginas) _bkoPainelDetPagina = totalPaginas;
+  const inicio = (_bkoPainelDetPagina-1)*_BKO_PAINEL_DET_PAGE_SIZE;
+  const pagina = lista.slice(inicio, inicio+_BKO_PAINEL_DET_PAGE_SIZE);
+  const colunas = [ ['data','Data'], ['posto','Posto'], ['areaNome','Área'], ['procedimentoNome','Procedimento'], ['observacao','Observação'], ['registradoPor','Registrado por'] ];
+  el.innerHTML = `
+    <div style="font-size:13px;font-weight:700;margin:22px 0 10px">Detalhamento</div>
+    <input class="form-input" id="bko-painel-det-busca" placeholder="🔎 Pesquisar nos registros carregados..." value="${buscaAnterior}" oninput="bkoPainelDetBuscar(this.value)" style="margin-bottom:10px">
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:900px">
+      <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15);background:var(--surface3)">
+        ${colunas.map(([k,label])=>`<th style="padding:6px 10px;text-align:left;color:var(--text3);cursor:pointer;white-space:nowrap" onclick="bkoPainelOrdenarDet('${k}')">${label}${ordCol===k?(ordDir==='asc'?' ▲':' ▼'):''}</th>`).join('')}
+        <th style="padding:6px 10px;text-align:left;color:var(--text3)">Origem</th><th style="padding:6px 10px;text-align:left;color:var(--text3)">Ações</th>
+      </tr></thead>
+      <tbody>${pagina.map(r=>`<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+        <td style="padding:6px 10px;white-space:nowrap">${(r.data||'').split('-').reverse().join('/')}</td>
+        <td style="padding:6px 10px;white-space:nowrap">${r.posto}</td>
+        <td style="padding:6px 10px;white-space:nowrap">${r.areaNome}</td>
+        <td style="padding:6px 10px;white-space:nowrap">${r.procedimentoNome}</td>
+        <td style="padding:6px 10px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.observacao||''}">${r.observacao||'—'}</td>
+        <td style="padding:6px 10px;white-space:nowrap">${r.registradoPor}</td>
+        <td style="padding:6px 10px;white-space:nowrap">${r.editadoEm?'✏️ Editado':'Original'}</td>
+        <td style="padding:6px 10px;white-space:nowrap"><button class="btn btn-sm btn-secondary" onclick="bkoAbrirEdicao('${r.id}')">✏️</button></td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;flex-wrap:wrap;gap:8px">
+      <div style="font-size:11px;color:var(--text3)">Exibindo ${pagina.length?inicio+1:0}–${inicio+pagina.length} de ${totalFiltrado} registro(s) do período</div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm btn-secondary" ${_bkoPainelDetPagina<=1?'disabled':''} onclick="bkoPainelDetPaginaAnterior()">‹ Anterior</button>
+        <span style="font-size:12px;align-self:center">${_bkoPainelDetPagina} / ${totalPaginas}</span>
+        <button class="btn btn-sm btn-secondary" ${_bkoPainelDetPagina>=totalPaginas?'disabled':''} onclick="bkoPainelDetProximaPagina()">Próxima ›</button>
+      </div>
+    </div>`;
+}
+function bkoPainelDetBuscar(v) { clearTimeout(window._bkoPainelDetBuscaDebounce); window._bkoPainelDetBuscaDebounce = setTimeout(()=>{ _bkoPainelDetPagina=1; _bkoPainelRenderDetalhamento(bkoPainelDadosFiltrados()); }, 150); }
+function bkoPainelOrdenarDet(col) { if (_bkoPainelDetOrdCol===col) _bkoPainelDetOrdDir = _bkoPainelDetOrdDir==='asc'?'desc':'asc'; else { _bkoPainelDetOrdCol=col; _bkoPainelDetOrdDir='asc'; } _bkoPainelRenderDetalhamento(bkoPainelDadosFiltrados()); }
+function bkoPainelDetPaginaAnterior() { if (_bkoPainelDetPagina>1) { _bkoPainelDetPagina--; _bkoPainelRenderDetalhamento(bkoPainelDadosFiltrados()); } }
+function bkoPainelDetProximaPagina() { _bkoPainelDetPagina++; _bkoPainelRenderDetalhamento(bkoPainelDadosFiltrados()); }
+
+// ── Exportações (gate: apenas gestor) ──
+function bkoPainelExportarExcelDetalhamento() {
+  if (!bkoEhGestor()) { toast('Apenas o gestor pode exportar', 'err'); return; }
+  const dados = bkoPainelDadosFiltrados();
+  if (!dados.length) { toast('Nenhum dado para exportar', 'err'); return; }
+  const rows = dados.map(r => ({
+    Data: r.data, Competencia: r.mesRef, Posto: r.posto, Supervisor: allPostos.find(p=>p.nome===r.posto)?.supervisor||'—',
+    Area: r.areaNome, Procedimento: r.procedimentoNome, Observacao: r.observacao||'', RegistradoPor: r.registradoPor,
+    DataHoraRegistro: fmtDT(r.criadoEm), Origem: r.editadoEm?'Editado':'Original', Criticidade: r.criticidade||'baixa', Status: r.statusAcompanhamento||'aberto'
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Detalhamento');
+  XLSX.writeFile(wb, `ControleBackoffice_Detalhamento_${_bkoPainelPeriodoCarregado.de}_a_${_bkoPainelPeriodoCarregado.ate}.xlsx`);
+}
+
+function bkoPainelExportarExcelResumo() {
+  if (!bkoEhGestor()) { toast('Apenas o gestor pode exportar', 'err'); return; }
+  const dados = bkoPainelDadosFiltrados();
+  if (!dados.length) { toast('Nenhum dado para exportar', 'err'); return; }
+  const wb = XLSX.utils.book_new();
+  const total = dados.length;
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([{ TotalAcionamentos: total, PostosComAcionamento: new Set(dados.map(r=>r.posto)).size, AreasAcionadas: new Set(dados.map(r=>r.areaId)).size, ProcedimentosAcionados: new Set(dados.map(r=>r.procedimentoId)).size, Periodo: `${_bkoPainelPeriodoCarregado.de} a ${_bkoPainelPeriodoCarregado.ate}` }]), 'Resumo');
+  const porPosto = {}; dados.forEach(r=>{porPosto[r.posto]=(porPosto[r.posto]||0)+1;});
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(Object.entries(porPosto).sort((a,b)=>b[1]-a[1]).map(([posto,qtd])=>({Posto:posto, Acionamentos:qtd, Supervisor: allPostos.find(p=>p.nome===posto)?.supervisor||'—', PctDoTotal: (qtd/total*100).toFixed(1)+'%'}))), 'Por Posto');
+  const porArea = {}; dados.forEach(r=>{porArea[r.areaNome]=(porArea[r.areaNome]||0)+1;});
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(Object.entries(porArea).sort((a,b)=>b[1]-a[1]).map(([area,qtd])=>({Area:area, Acionamentos:qtd, PctDoTotal: (qtd/total*100).toFixed(1)+'%'}))), 'Por Área');
+  const porProc = {}; dados.forEach(r=>{const k=r.areaNome+'||'+r.procedimentoNome; porProc[k]=(porProc[k]||0)+1;});
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(Object.entries(porProc).sort((a,b)=>b[1]-a[1]).map(([k,qtd])=>{const [area,proc]=k.split('||'); return {Area:area, Procedimento:proc, Acionamentos:qtd, PctDoTotal: (qtd/total*100).toFixed(1)+'%'};})), 'Por Procedimento');
+  const gruposRec = {}; dados.forEach(r=>{const k=r.posto+'||'+r.procedimentoId; if(!gruposRec[k]) gruposRec[k]={posto:r.posto,procedimento:r.procedimentoNome,qtd:0}; gruposRec[k].qtd++;});
+  const recorrencias = Object.values(gruposRec).filter(g=>g.qtd>1).sort((a,b)=>b.qtd-a.qtd).map(g=>({Posto:g.posto, Procedimento:g.procedimento, Ocorrencias:g.qtd}));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(recorrencias.length?recorrencias:[{Info:'Nenhuma recorrência no período'}]), 'Recorrências');
+  const mes = document.getElementById('bko-painel-fil-competencia')?.value || '';
+  if (!_bkoPainelModoPersonalizado && mes && bkoCompetenciaFechada(mes) && indicadoresCarregados) {
+    const linhas = Object.entries(porPosto).map(([posto,qtd]) => { const atend = allIndicadores.find(i=>i.mesRef===mes && i.postoNome===posto); return atend && atend.senhasAtendidas ? { Posto:posto, Acionamentos:qtd, Atendimentos: atend.senhasAtendidas, Por1000Atend: (qtd/parseInt(atend.senhasAtendidas)*1000).toFixed(2) } : null; }).filter(Boolean);
+    if (linhas.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(linhas), 'Indicador Proporcional');
+  }
+  XLSX.writeFile(wb, `ControleBackoffice_Resumo_${_bkoPainelPeriodoCarregado.de}_a_${_bkoPainelPeriodoCarregado.ate}.xlsx`);
+}
+
+async function bkoPainelExportarPdf() {
+  if (!bkoEhGestor()) { toast('Apenas o gestor pode exportar', 'err'); return; }
+  const dados = bkoPainelDadosFiltrados();
+  if (!dados.length) { toast('Nenhum dado para exportar', 'err'); return; }
+  toast('Gerando PDF...', 'ok');
+  try {
+    const { PDFDocument, StandardFonts, rgb } = PDFLib;
+    const pdfDoc = await PDFDocument.create();
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    let page = pdfDoc.addPage([595, 842]);
+    let y = 800;
+    const draw = (text, opts={}) => { page.drawText(String(text), { x: opts.x||40, y, size: opts.size||10, font: opts.bold?fontBold:font, color: rgb(0.1,0.1,0.12) }); y -= opts.gap||16; };
+    const quebraPagina = () => { if (y < 60) { page = pdfDoc.addPage([595,842]); y = 800; } };
+
+    draw('Controle Backoffice — Painel Analítico', {size:16, bold:true, gap:22});
+    draw(`Periodo: ${_bkoPainelPeriodoCarregado.de.split('-').reverse().join('/')} a ${_bkoPainelPeriodoCarregado.ate.split('-').reverse().join('/')}`, {size:11, gap:16});
+    const posto = document.getElementById('bko-painel-fil-posto')?.value || '';
+    const areaId = document.getElementById('bko-painel-fil-area')?.value || '';
+    const areaNome = areaId ? (_bkoAreas.find(a=>a.id===areaId)?.nome||'') : '';
+    draw(`Filtros: Posto: ${posto||'Todos'} | Area: ${areaNome||'Todas'}`, {size:9, gap:20});
+
+    const total = dados.length;
+    draw('Cards', {size:13, bold:true, gap:18});
+    [`Total de acionamentos: ${total}`,
+     `Postos com acionamento: ${new Set(dados.map(r=>r.posto)).size}`,
+     `Areas acionadas: ${new Set(dados.map(r=>r.areaId)).size}`,
+     `Procedimentos acionados: ${new Set(dados.map(r=>r.procedimentoId)).size}`
+    ].forEach(t => { draw(t, {size:10, gap:14}); quebraPagina(); });
+
+    y -= 6; quebraPagina();
+    draw('Graficos', {size:13, bold:true, gap:18});
+    for (const key of ['evolucao','area','proc','posto']) {
+      const chart = _bkoPainelCharts[key];
+      if (!chart) continue;
+      try {
+        const imgData = chart.toBase64Image();
+        const img = await pdfDoc.embedPng(imgData);
+        const w = 500, h = w * (img.height/img.width);
+        if (y - h < 60) { page = pdfDoc.addPage([595,842]); y = 800; }
+        page.drawImage(img, { x:40, y:y-h, width:w, height:h });
+        y -= h + 20;
+      } catch(e) { console.error('Erro ao embutir gráfico no PDF', e); }
+    }
+
+    quebraPagina();
+    draw('Rankings (top 10 por volume)', {size:13, bold:true, gap:18});
+    const porPostoPdf = {}; dados.forEach(r=>{porPostoPdf[r.posto]=(porPostoPdf[r.posto]||0)+1;});
+    Object.entries(porPostoPdf).sort((a,b)=>b[1]-a[1]).slice(0,10).forEach(([posto,qtd],i) => { draw(`${i+1}. ${posto} — ${qtd}`, {size:9, gap:13}); quebraPagina(); });
+
+    quebraPagina();
+    draw(`Gerado em ${new Date().toLocaleString('pt-BR')}`, {size:8, gap:12});
+
+    const bytes = await pdfDoc.save();
+    const blob = new Blob([bytes], {type:'application/pdf'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `ControleBackoffice_Painel_${_bkoPainelPeriodoCarregado.de}_a_${_bkoPainelPeriodoCarregado.ate}.pdf`;
+    a.click();
+  } catch(e) { console.error(e); toast('Erro ao gerar PDF: ' + e.message, 'err'); }
+}
 
 // ══════════════════════════════════════════════════════════════════════════
 // FERRAMENTAS ADMINISTRATIVAS DE MANUTENÇÃO — window.* (console do navegador)
