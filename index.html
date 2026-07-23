@@ -7409,8 +7409,8 @@ let _analiseFiltroMes = '';
 let _analiseFiltroSupervisor = '';
 let _caixaAnaliseCharts = {};
 // Diagnóstico: quantos documentos "reabastecido_historico" existem sem
-// reabastecidoEm ou totalGasto — esses nunca são estimados, só ignorados da
-// métrica de Prestação Concluída, e avisados aqui para a administração.
+// reabastecidoEm ou totalGasto — esses nunca são estimados, só ignorados de
+// toda a Visão Gestão Financeira, e avisados aqui para a administração.
 let _caixaAnaliseDocsInconsistentes = 0;
 
 // Mesmo padrão visual de rótulos de dados já usado no resto do sistema
@@ -7443,42 +7443,15 @@ const _CAIXA_ROTULOS_PLUGIN_BRL = {
   }
 };
 
-function _analiseMesesDisponiveis() {
-  return [...new Set((allCaixaLancamentos||[]).map(l => (l.data||'').slice(0,7)).filter(Boolean))].sort();
-}
-
-function _analiseMesAnterior(mesRef) {
-  const [y,m] = mesRef.split('-').map(Number);
-  const d = new Date(y, m-2, 1);
-  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
-}
-
 // ══════════════════════════════════════════════════════════════════════════
-// DUAS REFERÊNCIAS TEMPORAIS DISTINTAS E INTENCIONAIS — não misturar:
-//
-//  • GASTO MENSAL (Valor Total Gasto, Evolução Mensal, "Valor Gasto" na
-//    tabela/ranking) usa a DATA DO LANÇAMENTO (caixa_lancamentos.data).
-//    Responde: "quanto foi efetivamente gasto naquele mês-calendário".
-//
-//  • PRESTAÇÃO CONCLUÍDA (Quantidade de Prestações, Ticket Médio) usa a
-//    DATA DO REABASTECIMENTO (caixas.reabastecidoEm, só docs com
-//    status==='reabastecido_historico'). Responde: "quantas prestações
-//    foram efetivamente fechadas naquele mês". Nunca usa caixaId de
-//    lançamento para contar prestação — um mesmo ciclo só é contado uma
-//    única vez, no mês em que foi de fato encerrado.
+// FONTE ÚNICA DA VISÃO GESTÃO FINANCEIRA — documentos em `caixas` com
+// status==='reabastecido_historico'. Data = reabastecidoEm. Valor = totalGasto.
+// Supervisor = supervisorEmail/supervisorNome. Esta tela NUNCA lê
+// caixa_lancamentos — o objetivo não é "quando cada despesa aconteceu", é
+// "quanto cada prestação concluída representou para a empresa". Documento
+// sem reabastecidoEm ou totalGasto é ignorado (nunca estimado) e contado em
+// _caixaAnaliseDocsInconsistentes.
 // ══════════════════════════════════════════════════════════════════════════
-
-// Lançamentos (GASTO MENSAL) de um supervisor específico (ou todos).
-function _analiseLancamentos(filtrarPorMes) {
-  let l = allCaixaLancamentos || [];
-  if (filtrarPorMes && _analiseFiltroMes) l = l.filter(x => (x.data||'').slice(0,7) === _analiseFiltroMes);
-  if (_analiseFiltroSupervisor) l = l.filter(x => x.supervisorEmail === _analiseFiltroSupervisor);
-  return l;
-}
-
-// Prestações concluídas (PRESTAÇÃO CONCLUÍDA) — só caixas já reabastecidos,
-// com reabastecidoEm e totalGasto presentes. Documento sem esses campos é
-// ignorado aqui (nunca estimado) e contado em _caixaAnaliseDocsInconsistentes.
 function _analisePrestacoesConcluidas(filtrarPorMes) {
   const validas = [];
   let inconsistentes = 0;
@@ -7492,6 +7465,17 @@ function _analisePrestacoesConcluidas(filtrarPorMes) {
   if (filtrarPorMes && _analiseFiltroMes) l = l.filter(c => (c.reabastecidoEm||'').slice(0,7) === _analiseFiltroMes);
   if (_analiseFiltroSupervisor) l = l.filter(c => c.supervisorEmail === _analiseFiltroSupervisor);
   return l;
+}
+
+function _analiseMesesDisponiveis() {
+  const validos = (allCaixas||[]).filter(c=>c.status==='reabastecido_historico' && c.reabastecidoEm);
+  return [...new Set(validos.map(c => c.reabastecidoEm.slice(0,7)))].sort();
+}
+
+function _analiseMesAnterior(mesRef) {
+  const [y,m] = mesRef.split('-').map(Number);
+  const d = new Date(y, m-2, 1);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
 }
 
 function renderCaixaAnalise() {
@@ -7527,7 +7511,7 @@ function _renderCaixaAnaliseFiltros() {
 function _caixaAnaliseAtualizarOpcoesMes() {
   const sel = document.getElementById('analise-fil-mes'); if (!sel) return;
   const meses = _analiseMesesDisponiveis();
-  if (!meses.length) { sel.innerHTML = '<option value="">Nenhum lançamento cadastrado</option>'; _analiseFiltroMes=''; return; }
+  if (!meses.length) { sel.innerHTML = '<option value="">Nenhuma prestação concluída</option>'; _analiseFiltroMes=''; return; }
   if (!_analiseFiltroMes || !meses.includes(_analiseFiltroMes)) _analiseFiltroMes = meses[meses.length-1]; // mês mais recente por padrão
   sel.innerHTML = meses.slice().reverse().map(m=>`<option value="${m}">${_competenciaLabel(m)}</option>`).join('');
   sel.value = _analiseFiltroMes;
@@ -7543,7 +7527,7 @@ function _renderCaixaAnaliseDiagnostico() {
   const el = document.getElementById('caixa-analise-diagnostico'); if (!el) return;
   if (!_caixaAnaliseDocsInconsistentes) { el.innerHTML = ''; return; }
   el.innerHTML = `<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--yellow)">
-    ⚠️ ${_caixaAnaliseDocsInconsistentes} prestação(ões) concluída(s) sem "reabastecidoEm" ou "totalGasto" foi(ram) ignorada(s) da métrica de Quantidade de Prestações e Ticket Médio (nenhum valor foi estimado). Verifique esses registros diretamente no Firestore.
+    ⚠️ ${_caixaAnaliseDocsInconsistentes} prestação(ões) concluída(s) sem "reabastecidoEm" ou "totalGasto" foi(ram) ignorada(s) de toda a Visão Gestão Financeira (nenhum valor foi estimado). Verifique esses registros diretamente no Firestore.
   </div>`;
 }
 
@@ -7554,61 +7538,44 @@ function _renderCaixaAnaliseConteudo() {
   if (!cardsEl) return;
 
   if (!_analiseFiltroMes) {
-    cardsEl.innerHTML = `<div class="empty"><div class="icon">📊</div><p>Nenhum lançamento cadastrado ainda.</p></div>`;
+    cardsEl.innerHTML = `<div class="empty"><div class="icon">📊</div><p>Nenhuma prestação concluída ainda.</p></div>`;
     if (graficosEl) graficosEl.innerHTML = '';
     if (tabelaEl) tabelaEl.innerHTML = '';
+    _renderCaixaAnaliseDiagnostico();
     return;
   }
 
-  // GASTO MENSAL — data do lançamento.
-  const lancsMes = _analiseLancamentos(true);
-  const totalGastoMes = lancsMes.reduce((a,l)=>a+(l.valor||0),0);
-
-  // PRESTAÇÃO CONCLUÍDA — data do reabastecimento. _analisePrestacoesConcluidas
-  // já atualiza _caixaAnaliseDocsInconsistentes como efeito colateral.
+  // Fonte única: prestações concluídas (reabastecido_historico) do mês e
+  // supervisor filtrados. _analisePrestacoesConcluidas já atualiza
+  // _caixaAnaliseDocsInconsistentes como efeito colateral.
   const prestacoesMes = _analisePrestacoesConcluidas(true);
-  const qtdPrestacoes = prestacoesMes.length;
-  const valorPrestacoesConcluidas = prestacoesMes.reduce((a,c)=>a+(c.totalGasto||0),0);
-  const ticketMedio = qtdPrestacoes ? valorPrestacoesConcluidas/qtdPrestacoes : 0;
   _renderCaixaAnaliseDiagnostico();
 
-  // Ranking/Tabela: uma linha por supervisor, combinando as duas fontes —
-  // gasto mensal (lançamentos) e prestações concluídas (reabastecimentos) —
-  // sem misturar os cálculos de uma na outra.
-  const porSupervisorGasto = {};
-  lancsMes.forEach(l => {
-    const key = l.supervisorEmail || '—';
-    if (!porSupervisorGasto[key]) porSupervisorGasto[key] = {nome:l.supervisorNome||key, total:0};
-    porSupervisorGasto[key].total += (l.valor||0);
-  });
-  const porSupervisorPrestacoes = {};
+  const totalGasto = prestacoesMes.reduce((a,c)=>a+(c.totalGasto||0),0);
+  const qtdPrestacoes = prestacoesMes.length;
+  const ticketMedio = qtdPrestacoes ? totalGasto/qtdPrestacoes : 0;
+
+  const porSupervisor = {};
   prestacoesMes.forEach(c => {
     const key = c.supervisorEmail || '—';
-    if (!porSupervisorPrestacoes[key]) porSupervisorPrestacoes[key] = {nome:c.supervisorNome||key, qtd:0, valor:0};
-    porSupervisorPrestacoes[key].qtd++;
-    porSupervisorPrestacoes[key].valor += (c.totalGasto||0);
+    if (!porSupervisor[key]) porSupervisor[key] = {nome:c.supervisorNome||key, total:0, qtd:0};
+    porSupervisor[key].total += (c.totalGasto||0);
+    porSupervisor[key].qtd++;
   });
-  const chaves = new Set([...Object.keys(porSupervisorGasto), ...Object.keys(porSupervisorPrestacoes)]);
-  const ranking = [...chaves].map(key => {
-    const g = porSupervisorGasto[key];
-    const p = porSupervisorPrestacoes[key];
-    return {
-      nome: (g&&g.nome) || (p&&p.nome) || key,
-      totalGasto: g ? g.total : 0,
-      qtdPrestacoes: p ? p.qtd : 0,
-      ticket: p && p.qtd ? p.valor/p.qtd : 0
-    };
-  }).sort((a,b)=>b.totalGasto-a.totalGasto);
+  const ranking = Object.values(porSupervisor)
+    .map(s=>({nome:s.nome, totalGasto:s.total, qtdPrestacoes:s.qtd, ticket: s.qtd?s.total/s.qtd:0}))
+    .sort((a,b)=>b.totalGasto-a.totalGasto);
   const maiorGasto = ranking[0] || null;
 
-  // Comparação com o mês anterior (Gasto Mensal, mesmo supervisor se filtrado).
+  // Comparação com o mês anterior — mesma fonte, mesmo supervisor se filtrado.
   const mesAnt = _analiseMesAnterior(_analiseFiltroMes);
-  const totalMesAnterior = (allCaixaLancamentos||[])
-    .filter(l => (l.data||'').slice(0,7)===mesAnt && (!_analiseFiltroSupervisor || l.supervisorEmail===_analiseFiltroSupervisor))
-    .reduce((a,l)=>a+(l.valor||0),0);
+  const totalMesAnterior = (allCaixas||[])
+    .filter(c => c.status==='reabastecido_historico' && c.reabastecidoEm && c.totalGasto!=null
+      && c.reabastecidoEm.slice(0,7)===mesAnt && (!_analiseFiltroSupervisor || c.supervisorEmail===_analiseFiltroSupervisor))
+    .reduce((a,c)=>a+(c.totalGasto||0),0);
   let variacaoHtml = '';
   if (totalMesAnterior > 0) {
-    const variacaoPct = ((totalGastoMes - totalMesAnterior) / totalMesAnterior) * 100;
+    const variacaoPct = ((totalGasto - totalMesAnterior) / totalMesAnterior) * 100;
     const seta = variacaoPct >= 0 ? '▲' : '▼';
     const cor = variacaoPct >= 0 ? 'var(--red)' : 'var(--green)';
     variacaoHtml = `<div style="font-size:11px;color:${cor};margin-top:2px">${seta} ${Math.abs(variacaoPct).toFixed(0)}% vs ${_competenciaLabel(mesAnt)}</div>`;
@@ -7616,14 +7583,14 @@ function _renderCaixaAnaliseConteudo() {
 
   cardsEl.innerHTML = `
     <div class="grid-4" style="margin-bottom:14px">
-      <div class="stat-card"><div class="label">Valor Total Gasto</div><div class="value" style="color:var(--red);font-size:20px">${fmtBRL(totalGastoMes)}</div>${variacaoHtml}<div class="sub">data do lançamento</div></div>
-      <div class="stat-card"><div class="label">Quantidade de Prestações</div><div class="value" style="color:var(--accent)">${qtdPrestacoes}</div><div class="sub">prestações concluídas no mês</div></div>
-      <div class="stat-card"><div class="label">Ticket Médio</div><div class="value" style="color:var(--green);font-size:20px">${fmtBRL(ticketMedio)}</div><div class="sub">prestações concluídas ÷ quantidade</div></div>
-      <div class="stat-card"><div class="label">Supervisor com Maior Gasto</div><div class="value" style="font-size:16px">${maiorGasto&&maiorGasto.totalGasto?maiorGasto.nome:'—'}</div><div class="sub">${maiorGasto&&maiorGasto.totalGasto?fmtBRL(maiorGasto.totalGasto):'Sem lançamentos neste mês'}</div></div>
+      <div class="stat-card"><div class="label">Valor Total Gasto</div><div class="value" style="color:var(--red);font-size:20px">${fmtBRL(totalGasto)}</div>${variacaoHtml}<div class="sub">prestações concluídas no mês</div></div>
+      <div class="stat-card"><div class="label">Quantidade de Prestações</div><div class="value" style="color:var(--accent)">${qtdPrestacoes}</div><div class="sub">concluídas no mês</div></div>
+      <div class="stat-card"><div class="label">Ticket Médio</div><div class="value" style="color:var(--green);font-size:20px">${fmtBRL(ticketMedio)}</div><div class="sub">Valor Total Gasto ÷ Prestações</div></div>
+      <div class="stat-card"><div class="label">Supervisor com Maior Gasto</div><div class="value" style="font-size:16px">${maiorGasto?maiorGasto.nome:'—'}</div><div class="sub">${maiorGasto?fmtBRL(maiorGasto.totalGasto):'Sem prestações neste mês'}</div></div>
     </div>`;
 
   _renderCaixaAnaliseGraficos(ranking);
-  _renderCaixaAnaliseTabela(ranking, totalGastoMes);
+  _renderCaixaAnaliseTabela(ranking, totalGasto);
 }
 
 function _renderCaixaAnaliseGraficos(ranking) {
@@ -7631,24 +7598,23 @@ function _renderCaixaAnaliseGraficos(ranking) {
   wrap.innerHTML = `
     <div style="margin-bottom:20px">
       <div style="font-size:13px;font-weight:700;margin-bottom:10px">📈 Evolução Mensal dos Gastos${_analiseFiltroSupervisor?' — '+(allUsers.find(u=>u.email===_analiseFiltroSupervisor)?.name||''):''}</div>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Baseado na data do lançamento — sempre a série histórica completa, independente do mês selecionado no filtro.</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Prestações concluídas (data do reabastecimento) — sempre a série histórica completa, independente do mês selecionado no filtro.</div>
       <div style="height:240px"><canvas id="caixa-analise-chart-evolucao"></canvas></div>
     </div>
     <div style="margin-bottom:20px">
       <div style="font-size:13px;font-weight:700;margin-bottom:10px">🏆 Ranking de Supervisores</div>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Gasto mensal (data do lançamento) no mês selecionado.</div>
       <div style="height:220px"><canvas id="caixa-analise-chart-ranking"></canvas></div>
     </div>`;
 
   Object.values(_caixaAnaliseCharts).forEach(c=>{ if (c) try{c.destroy();}catch(e){} });
   _caixaAnaliseCharts = {};
 
-  // Evolução: SEMPRE a série histórica completa de meses (GASTO MENSAL, data
-  // do lançamento) — nunca limitada pelo mês selecionado. Respeita o filtro
-  // de Supervisor quando houver (soma de todos quando "Todos" estiver ativo).
-  const lancsEvolucao = _analiseLancamentos(false);
+  // Evolução: SEMPRE a série histórica completa de meses — nunca limitada
+  // pelo mês selecionado. Mesma fonte (prestações concluídas), respeitando
+  // o filtro de Supervisor quando houver.
+  const prestacoesTodas = _analisePrestacoesConcluidas(false);
   const porMes = {};
-  lancsEvolucao.forEach(l => { const m=(l.data||'').slice(0,7); if (!m) return; porMes[m]=(porMes[m]||0)+(l.valor||0); });
+  prestacoesTodas.forEach(c => { const m=c.reabastecidoEm.slice(0,7); porMes[m]=(porMes[m]||0)+(c.totalGasto||0); });
   const mesesOrdenados = Object.keys(porMes).sort();
   const canvasEvo = document.getElementById('caixa-analise-chart-evolucao');
   if (canvasEvo && mesesOrdenados.length) {
@@ -7661,7 +7627,7 @@ function _renderCaixaAnaliseGraficos(ranking) {
     });
   }
 
-  // Ranking: GASTO MENSAL por supervisor, no mês+supervisor filtrado (já vem pronto do chamador).
+  // Ranking: mesma fonte, mês+supervisor filtrado (já vem pronto do chamador).
   const canvasRank = document.getElementById('caixa-analise-chart-ranking');
   if (canvasRank && ranking.length) {
     _caixaAnaliseCharts.ranking = new Chart(canvasRank, {
@@ -7673,9 +7639,9 @@ function _renderCaixaAnaliseGraficos(ranking) {
   }
 }
 
-function _renderCaixaAnaliseTabela(ranking, totalGastoMes) {
+function _renderCaixaAnaliseTabela(ranking, totalGasto) {
   const el = document.getElementById('caixa-analise-tabela'); if (!el) return;
-  if (!ranking.length) { el.innerHTML = '<div class="empty"><p>Nenhum dado neste mês.</p></div>'; return; }
+  if (!ranking.length) { el.innerHTML = '<div class="empty"><p>Nenhuma prestação concluída neste mês.</p></div>'; return; }
   el.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
     <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15)">${['Supervisor','Valor Gasto','Quantidade de Prestações','Ticket Médio','Participação %'].map(h=>`<th style="padding:8px 10px;text-align:left;color:var(--text3)">${h}</th>`).join('')}</tr></thead>
     <tbody>${ranking.map(r=>`<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
@@ -7683,10 +7649,11 @@ function _renderCaixaAnaliseTabela(ranking, totalGastoMes) {
       <td style="padding:8px 10px">${fmtBRL(r.totalGasto)}</td>
       <td style="padding:8px 10px">${r.qtdPrestacoes}</td>
       <td style="padding:8px 10px">${fmtBRL(r.ticket)}</td>
-      <td style="padding:8px 10px">${totalGastoMes?((r.totalGasto/totalGastoMes)*100).toFixed(1):'0'}%</td>
+      <td style="padding:8px 10px">${totalGasto?((r.totalGasto/totalGasto)*100).toFixed(1):'0'}%</td>
     </tr>`).join('')}</tbody>
   </table></div>`;
 }
+
 
 
 
