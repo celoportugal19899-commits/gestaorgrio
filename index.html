@@ -9,6 +9,7 @@
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-storage-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
@@ -2841,6 +2842,14 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+// Storage — usado exclusivamente pela Central de Conhecimento (Etapa 2).
+// Nenhum outro módulo do sistema usa Storage; arquivos de outros módulos
+// continuam em Base64 no Firestore, sem mudança. Inicialização protegida:
+// se o Storage falhar (ex.: bucket não habilitado), o resto do sistema
+// (Firestore, todos os outros módulos) continua funcionando normalmente —
+// só as ações de upload da Central de Conhecimento ficam indisponíveis.
+let storage = null;
+try { storage = firebase.storage(); } catch(e) { console.error('Falha ao inicializar o Firebase Storage — recursos de arquivo da Central de Conhecimento ficarão indisponíveis:', e); }
 
 // ══════════════════════════════════════
 // STATE
@@ -8840,27 +8849,6 @@ function alternarAbaConhecimento(aba) {
 function _ccAvisoFuturo() { toast('Funcionalidade disponível em uma próxima etapa.', 'ok'); }
 
 // ── Tela 1: Minha Central ──
-function renderMinhaCentralConhecimento() {
-  const el = document.getElementById('cc-minha-central-wrap'); if (!el) return;
-  // TODO (próxima etapa): substituir os valores fixos abaixo por consultas
-  // reais ao Firestore (progresso do colaborador, treinamentos agendados,
-  // conteúdos concluídos etc.)
-  el.innerHTML = `
-    <div class="page-header" style="margin:0 0 18px"><h1 style="font-size:18px">Minha Central</h1><p>Acompanhe seus treinamentos, conteúdos pendentes e materiais recentes.</p></div>
-    <div class="grid-4" style="margin-bottom:24px">
-      <div class="stat-card"><div class="label">Conteúdos Pendentes</div><div class="value">0</div></div>
-      <div class="stat-card"><div class="label">Treinamentos Agendados</div><div class="value">0</div></div>
-      <div class="stat-card"><div class="label">Em Andamento</div><div class="value">0</div></div>
-      <div class="stat-card"><div class="label">Concluídos</div><div class="value">0</div></div>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px">
-      <div><div style="font-size:13px;font-weight:700;margin-bottom:10px">Próximos Treinamentos</div><div class="empty"><p>Nenhum treinamento agendado.</p></div></div>
-      <div><div style="font-size:13px;font-weight:700;margin-bottom:10px">Conteúdos Pendentes</div><div class="empty"><p>Nenhum conteúdo pendente.</p></div></div>
-      <div><div style="font-size:13px;font-weight:700;margin-bottom:10px">Continuar de Onde Parei</div><div class="empty"><p>Nenhum conteúdo em andamento.</p></div></div>
-      <div><div style="font-size:13px;font-weight:700;margin-bottom:10px">Últimos Concluídos</div><div class="empty"><p>Nenhum conteúdo concluído recentemente.</p></div></div>
-    </div>`;
-}
-
 // ── Tela 2: Agenda ──
 function ccAgendaAlternarModo(modo) { _ccAgendaModo = modo; renderAgendaConhecimento(); }
 function renderAgendaConhecimento() {
@@ -8877,55 +8865,6 @@ function renderAgendaConhecimento() {
       <button class="btn btn-sm" style="border:none;${_ccAgendaModo==='lista'?'background:var(--accent);color:#fff':'background:transparent;color:var(--text2)'}" onclick="ccAgendaAlternarModo('lista')">📋 Lista</button>
     </div>
     <div class="empty"><p>Nenhum treinamento agendado.</p></div>`;
-}
-
-// ── Tela 3: Biblioteca ──
-function ccBibliotecaFiltrar(f) { _ccBibliotecaFiltro = f; renderBibliotecaConhecimento(); }
-function renderBibliotecaConhecimento() {
-  const el = document.getElementById('cc-biblioteca-wrap'); if (!el) return;
-  // TODO (próxima etapa): pesquisa real + consulta de conteúdos no Firestore.
-  const filtros = [['todos','Todos'],['procedimentos','Procedimentos'],['manuais','Manuais'],['videos','Vídeos'],['links','Links'],['apresentacoes','Apresentações']];
-  el.innerHTML = `
-    <div class="page-header" style="margin:0 0 16px"><h1 style="font-size:18px">Biblioteca</h1></div>
-    <input class="form-input" placeholder="🔎 Pesquisar conteúdos..." style="margin-bottom:14px;max-width:420px">
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">
-      ${filtros.map(([v,l])=>`<button class="btn btn-sm ${_ccBibliotecaFiltro===v?'btn-primary':'btn-secondary'}" onclick="ccBibliotecaFiltrar('${v}')">${l}</button>`).join('')}
-    </div>
-    <div class="empty"><p>Nenhum conteúdo disponível na biblioteca.</p></div>`;
-}
-
-// ── Tela 4: FiqueLigado ──
-function ccFiqueLigadoFiltrar(f) { _ccFiqueLigadoFiltro = f; renderFiqueLigadoConhecimento(); }
-function renderFiqueLigadoConhecimento() {
-  const el = document.getElementById('cc-fiqueligado-wrap'); if (!el) return;
-  // TODO (próxima etapa): consultar comunicados no Firestore.
-  const filtros = [['todos','Todos'],['pendentes','Pendentes'],['concluidos','Concluídos'],['urgentes','Urgentes']];
-  el.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
-      <div class="page-header" style="margin:0"><h1 style="font-size:18px">FiqueLigado</h1><p>Comunicados e atualizações operacionais importantes.</p></div>
-      ${podeGerenciarCentralConhecimento() ? `<button class="btn btn-primary btn-sm" onclick="_ccAvisoFuturo()">+ Novo FiqueLigado</button>` : ''}
-    </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 20px">
-      ${filtros.map(([v,l])=>`<button class="btn btn-sm ${_ccFiqueLigadoFiltro===v?'btn-primary':'btn-secondary'}" onclick="ccFiqueLigadoFiltrar('${v}')">${l}</button>`).join('')}
-    </div>
-    <div class="empty"><p>Nenhum FiqueLigado disponível.</p></div>`;
-}
-
-// ── Tela 5: Treinamentos ──
-function ccTreinamentosFiltrar(f) { _ccTreinamentosFiltro = f; renderTreinamentosConhecimento(); }
-function renderTreinamentosConhecimento() {
-  const el = document.getElementById('cc-treinamentos-wrap'); if (!el) return;
-  // TODO (próxima etapa): consultar treinamentos no Firestore.
-  const filtros = [['todos','Todos'],['agendados','Agendados'],['andamento','Em Andamento'],['concluidos','Concluídos']];
-  el.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
-      <div class="page-header" style="margin:0"><h1 style="font-size:18px">Treinamentos</h1></div>
-      ${podeGerenciarCentralConhecimento() ? `<button class="btn btn-primary btn-sm" onclick="_ccAvisoFuturo()">+ Novo Treinamento</button>` : ''}
-    </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 20px">
-      ${filtros.map(([v,l])=>`<button class="btn btn-sm ${_ccTreinamentosFiltro===v?'btn-primary':'btn-secondary'}" onclick="ccTreinamentosFiltrar('${v}')">${l}</button>`).join('')}
-    </div>
-    <div class="empty"><p>Nenhum treinamento disponível.</p></div>`;
 }
 
 // ── Tela 6: Gestão — exclusiva Marcelo/Plicila. Protegida em 3 pontos:
@@ -8972,8 +8911,7 @@ function alternarAbaGestaoConhecimento(aba) {
         <div class="stat-card"><div class="label">Leitura Média</div><div class="value">0%</div></div>
       </div>`;
   } else if (aba === 'conteudos') {
-    el.innerHTML = `<div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="btn btn-primary btn-sm" onclick="_ccAvisoFuturo()">+ Novo Conteúdo</button></div>`
-      + _ccTabelaVaziaConhecimento(['Título','Categoria','Versão','Publicado em','Obrigatório','Público','Status','Ações'], 'Nenhum conteúdo cadastrado.');
+    conhecimentoRenderGestaoConteudosTab();
   } else if (aba === 'treinamentos') {
     el.innerHTML = _ccTabelaVaziaConhecimento(['Título','Data','Instrutor','Participantes','Presentes','Ausentes','Quiz','Status','Ações'], 'Nenhum treinamento cadastrado.');
   } else if (aba === 'participacao') {
@@ -8992,6 +8930,1022 @@ function _ccTabelaVaziaConhecimento(colunas, textoVazio) {
     <tbody><tr><td colspan="${colunas.length}"><div class="empty"><p>${textoVazio}</p></div></td></tr></tbody>
   </table></div>`;
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// CENTRAL DE CONHECIMENTO — ETAPA 2 (fluxo funcional completo, sem
+// pergunta/quiz/agenda/presença — fora de escopo nesta etapa)
+// Arquitetura congelada: coleções, IDs, versionamento, status, Timestamp
+// server-side para instantes e string 'YYYY-MM-DD' só para datas de
+// calendário, arquivos exclusivamente via Storage.
+// ══════════════════════════════════════════════════════════════════════════
+
+// ── Campos adicionais ao modelo congelado, confirmados nesta rodada de
+// validação (ver resposta da Etapa 2 — correção) ──
+//
+// conteudoTexto (string, opcional, conhecimento_conteudos): corpo do
+// conteúdo quando formatoPrincipal==='texto'. A arquitetura previa o formato
+// "texto" mas não tinha campo para o corpo — sem ele o formato não funciona.
+// Usado só quando formatoPrincipal==='texto'; ignorado nos demais formatos.
+//
+// chaveAplicacao (string, obrigatório, conhecimento_publicos): string
+// "{publicoTipo}:{publicoValorId}" (ou "todos:todos"), gravada junto com
+// publicoTipo/publicoValorId — nunca os substitui. Existe só para permitir
+// resolver "quais conteúdos se aplicam a este usuário" em 1 única consulta
+// (`where('chaveAplicacao','in',[...])`, até 6 identidades por usuário),
+// em vez de 1 consulta por publicoTipo possível (6x mais leituras). Sempre
+// recomputada a partir de publicoTipo/publicoValorId no momento da gravação
+// (conhecimentoSalvarPublicos apaga e recria os documentos a cada save, então
+// nunca fica desatualizada). Sem colisão entre tipos porque o tipo é sempre
+// o prefixo antes de ":".
+const CN_TIPOS = [['fiqueligado','FiqueLigado'],['treinamento','Treinamento'],['procedimento','Procedimento'],['manual','Manual'],['video','Vídeo'],['link','Link'],['apresentacao','Apresentação']];
+const CN_TIPO_LABEL = Object.fromEntries(CN_TIPOS);
+const CN_TIPOS_ARQUIVO_ACEITOS = ['application/pdf','application/vnd.ms-powerpoint','application/vnd.openxmlformats-officedocument.presentationml.presentation','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','image/jpeg','image/png','image/webp'];
+const CN_TIPOS_CAPA_ACEITOS = ['image/jpeg','image/png','image/webp'];
+const CN_TAMANHO_MAX_ARQUIVO = 25 * 1024 * 1024; // 25MB
+const CN_TAMANHO_MAX_CAPA = 5 * 1024 * 1024;     // 5MB
+
+// ── Estado (sem listener — leitura simples sob demanda, conforme etapa) ──
+let _cnConteudos = [];
+let _cnConteudosCarregados = false;
+let _cnFiltroStatus = 'todos';
+let _cnFiltroTipo = '';
+let _cnBuscaTitulo = '';
+let _cnConteudoEmEdicaoId = null;
+let _cnPublicosEdicao = [];
+let _cnArquivoSelecionado = null;
+let _cnCapaSelecionada = null;
+let _cnSalvandoFormulario = false;
+let _cnConteudosAplicaveisCache = null;
+let _cnProgressoUsuarioCache = null;
+let _cnBibliotecaFiltroTipo = '';
+let _cnBibliotecaBusca = '';
+let _cnConteudoVisualizandoId = null;
+let _cnAbaOrigemVisualizacao = 'biblioteca';
+
+// Única checagem de permissão administrativa da Central de Conhecimento —
+// todas as ações abaixo chamam este guard, nunca repetem e-mail/role direto.
+function _cnExigirGestao() {
+  if (!podeGerenciarCentralConhecimento()) { toast('Você não tem permissão para esta ação.', 'err'); return false; }
+  return true;
+}
+
+function _cnFmtTs(ts) {
+  if (!ts) return '—';
+  try { return fmtDT(ts.toDate().toISOString()); } catch(e) { return '—'; }
+}
+
+// ── Storage helpers ──
+// Sanitiza o nome do arquivo antes de usar no path do Storage — remove
+// acentos, espaços e qualquer caractere fora de [a-zA-Z0-9._-], que é o
+// conjunto seguro para paths do Firebase Storage.
+function _cnSanitizarNomeArquivo(nome) {
+  const semAcento = (nome||'arquivo').normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  return semAcento.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120) || 'arquivo';
+}
+async function _cnUploadArquivoGenerico(file, path, onProgress) {
+  if (!storage) return Promise.reject(new Error('Storage indisponível — não foi possível enviar o arquivo.'));
+  return new Promise((resolve, reject) => {
+    const ref = storage.ref(path);
+    const task = ref.put(file);
+    task.on('state_changed',
+      snap => { if (onProgress) onProgress(Math.round(snap.bytesTransferred / snap.totalBytes * 100)); },
+      err => reject(err),
+      async () => { try { const url = await task.snapshot.ref.getDownloadURL(); resolve({ url, path }); } catch(e) { reject(e); } }
+    );
+  });
+}
+async function _cnExcluirArquivoStorage(path) {
+  if (!path || !storage) return;
+  try { await storage.ref(path).delete(); } catch(e) { console.error('Erro ao excluir arquivo do Storage (ignorado):', e); }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// GESTÃO → CONTEÚDOS
+// ══════════════════════════════════════════════════════════════════════════
+function conhecimentoRenderGestaoConteudosTab() {
+  const el = document.getElementById('cc-gestao-conteudo'); if (!el) return;
+  if (!_cnExigirGestao()) { el.innerHTML = `<div class="empty"><p>Você não tem acesso a esta área.</p></div>`; return; }
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <select class="form-select" id="cn-gestao-fil-status" style="width:150px" onchange="conhecimentoAplicarFiltrosGestao()">
+          <option value="todos">Todos</option><option value="rascunho">Rascunhos</option><option value="publicado">Publicados</option><option value="arquivado">Arquivados</option>
+        </select>
+        <select class="form-select" id="cn-gestao-fil-tipo" style="width:170px" onchange="conhecimentoAplicarFiltrosGestao()">
+          <option value="">Todos os tipos</option>${CN_TIPOS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}
+        </select>
+        <input class="form-input" id="cn-gestao-fil-busca" placeholder="🔎 Pesquisar por título..." style="width:220px" oninput="conhecimentoAplicarFiltrosGestao()">
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="conhecimentoAbrirNovoConteudo()">+ Novo Conteúdo</button>
+    </div>
+    <div id="cn-gestao-conteudos-lista"><div style="text-align:center;padding:30px;color:var(--text3)">⏳ Carregando...</div></div>`;
+  conhecimentoCarregarConteudosGestao(true);
+}
+
+async function conhecimentoCarregarConteudosGestao(forcar) {
+  if (!_cnExigirGestao()) return;
+  if (_cnConteudosCarregados && !forcar) { conhecimentoRenderConteudosGestao(); return; }
+  const el = document.getElementById('cn-gestao-conteudos-lista');
+  try {
+    const operacaoId = await getOperacaoId();
+    const snap = await db.collection('conhecimento_conteudos').where('operacaoId','==',operacaoId).where('versaoAtual','==',true).get();
+    _cnConteudos = snap.docs.map(d=>({id:d.id,...d.data()}));
+    _cnConteudosCarregados = true;
+    conhecimentoRenderConteudosGestao();
+  } catch(e) { console.error(e); if (el) el.innerHTML = `<div class="empty"><p>Erro ao carregar conteúdos: ${e.message}</p></div>`; }
+}
+
+function conhecimentoAplicarFiltrosGestao() {
+  _cnFiltroStatus = document.getElementById('cn-gestao-fil-status')?.value || 'todos';
+  _cnFiltroTipo = document.getElementById('cn-gestao-fil-tipo')?.value || '';
+  _cnBuscaTitulo = document.getElementById('cn-gestao-fil-busca')?.value || '';
+  conhecimentoRenderConteudosGestao();
+}
+
+function _cnBadgeStatus(status) {
+  const map = {rascunho:['Rascunho','#8b8b98'], publicado:['Publicado','#3fb950'], arquivado:['Arquivado','#8b8b98']};
+  const [label,cor] = map[status]||[status,'#8b8b98'];
+  return `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap;background:${cor}22;color:${cor};border:1px solid ${cor}55">${label}</span>`;
+}
+
+function _cnAcoesConteudo(c) {
+  if (c.status === 'rascunho') return `
+    <button class="btn btn-sm btn-secondary" onclick="conhecimentoEditarRascunho('${c.id}')">✏️ Editar</button>
+    <button class="btn btn-sm btn-primary" onclick="conhecimentoPublicarConteudo('${c.id}')">📢 Publicar</button>
+    <button class="btn btn-sm btn-danger" onclick="conhecimentoExcluirRascunho('${c.id}')">🗑 Excluir</button>`;
+  if (c.status === 'publicado') return `
+    <button class="btn btn-sm btn-secondary" onclick="conhecimentoVisualizarConteudo('${c.id}','gestao')">👁 Visualizar</button>
+    <button class="btn btn-sm btn-secondary" onclick="conhecimentoArquivarConteudo('${c.id}')">📦 Arquivar</button>`;
+  return `<button class="btn btn-sm btn-secondary" onclick="conhecimentoVisualizarConteudo('${c.id}','gestao')">👁 Visualizar</button>`;
+}
+
+function conhecimentoRenderConteudosGestao() {
+  const el = document.getElementById('cn-gestao-conteudos-lista'); if (!el) return;
+  let lista = _cnConteudos.slice();
+  if (_cnFiltroStatus !== 'todos') lista = lista.filter(c=>c.status===_cnFiltroStatus);
+  if (_cnFiltroTipo) lista = lista.filter(c=>c.tipo===_cnFiltroTipo);
+  if (_cnBuscaTitulo.trim()) { const bn = normalizarBusca(_cnBuscaTitulo); lista = lista.filter(c=>normalizarBusca(c.titulo||'').includes(bn)); }
+  lista.sort((a,b)=> (b.atualizadoEm?.toMillis?.()||0) - (a.atualizadoEm?.toMillis?.()||0));
+
+  if (!lista.length) { el.innerHTML = '<div class="empty"><p>Nenhum conteúdo cadastrado.</p></div>'; return; }
+
+  el.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15)">${['Título','Tipo','Versão','Obrigatório','Formato','Publicado em','Status','Ações'].map(h=>`<th style="padding:8px 10px;text-align:left;color:var(--text3);white-space:nowrap">${h}</th>`).join('')}</tr></thead>
+    <tbody>${lista.map(c=>`<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+      <td style="padding:8px 10px">${c.titulo||'(sem título)'}</td>
+      <td style="padding:8px 10px;white-space:nowrap">${CN_TIPO_LABEL[c.tipo]||c.tipo||'—'}</td>
+      <td style="padding:8px 10px">v${c.versao||1}</td>
+      <td style="padding:8px 10px">${c.obrigatorio?'Sim':'Não'}</td>
+      <td style="padding:8px 10px;white-space:nowrap">${c.formatoPrincipal||'—'}</td>
+      <td style="padding:8px 10px;white-space:nowrap">${_cnFmtTs(c.publicadoEm)}</td>
+      <td style="padding:8px 10px">${_cnBadgeStatus(c.status)}</td>
+      <td style="padding:8px 10px;white-space:nowrap">${_cnAcoesConteudo(c)}</td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// FORMULÁRIO DE CONTEÚDO (modal grande, criado dinamicamente)
+// ══════════════════════════════════════════════════════════════════════════
+function _cnGarantirModalFormulario() {
+  let el = document.getElementById('modal-cn-formulario');
+  if (el) return el;
+  el = document.createElement('div');
+  el.className = 'modal-overlay';
+  el.id = 'modal-cn-formulario';
+  el.innerHTML = `<div class="modal" style="max-width:640px;max-height:88vh;overflow-y:auto">
+    <div class="modal-header"><div class="modal-title" id="cn-form-titulo">+ Novo Conteúdo</div><button class="close-btn" onclick="closeModal('modal-cn-formulario')">✕</button></div>
+    <div id="cn-form-status-badge" style="margin-bottom:12px"></div>
+
+    <div class="form-group"><label class="form-label">Tipo</label>
+      <select class="form-select" id="cn-f-tipo">${CN_TIPOS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select>
+    </div>
+    <div class="form-group"><label class="form-label">Título</label><input class="form-input" id="cn-f-titulo" maxlength="150"></div>
+    <div class="form-group"><label class="form-label">Descrição</label><textarea class="form-textarea" id="cn-f-descricao" maxlength="500"></textarea></div>
+
+    <div style="display:flex;gap:16px;margin:6px 0 14px;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="cn-f-obrigatorio"> Obrigatório</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="cn-f-download" checked> Permitir download</label>
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <div class="form-group" style="flex:1;min-width:160px"><label class="form-label">Prazo para conclusão (dias)</label><input class="form-input" type="number" min="0" id="cn-f-prazo" placeholder="Opcional"></div>
+      <div class="form-group" style="flex:1;min-width:160px"><label class="form-label">Tempo estimado (minutos)</label><input class="form-input" type="number" min="0" id="cn-f-tempo" placeholder="Opcional"></div>
+    </div>
+
+    <div class="form-group"><label class="form-label">Formato principal</label>
+      <select class="form-select" id="cn-f-formato" onchange="_cnAtualizarCamposFormato()">
+        <option value="arquivo">Arquivo</option><option value="video">Vídeo</option><option value="link">Link</option><option value="texto">Texto</option>
+      </select>
+    </div>
+    <div id="cn-f-campo-arquivo" class="form-group">
+      <label class="form-label">Arquivo principal <span style="font-weight:400;color:var(--text3)">(PDF, PPT(X), DOC(X), XLS(X) ou imagem — até 25MB)</span></label>
+      <input type="file" class="form-input" id="cn-f-arquivo-input" accept=".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,image/*" style="padding:6px" onchange="_cnSelecionarArquivo(this)">
+      <div id="cn-f-arquivo-atual" style="font-size:12px;color:var(--text3);margin-top:6px"></div>
+      <div id="cn-f-arquivo-progresso" style="display:none;margin-top:8px"><div class="progress-wrap"><div class="progress-bar" id="cn-f-arquivo-progresso-bar" style="width:0%"></div></div></div>
+    </div>
+    <div id="cn-f-campo-video" class="form-group" style="display:none"><label class="form-label">URL do vídeo</label><input class="form-input" id="cn-f-video-url" placeholder="https://..."></div>
+    <div id="cn-f-campo-link" class="form-group" style="display:none"><label class="form-label">Link externo</label><input class="form-input" id="cn-f-link-url" placeholder="https://..."></div>
+    <div id="cn-f-campo-texto" class="form-group" style="display:none"><label class="form-label">Conteúdo textual</label><textarea class="form-textarea" id="cn-f-texto-conteudo" style="min-height:140px"></textarea></div>
+
+    <div class="form-group">
+      <label class="form-label">Imagem de capa <span style="font-weight:400;color:var(--text3)">(JPG, PNG ou WEBP — até 5MB, opcional)</span></label>
+      <input type="file" class="form-input" id="cn-f-capa-input" accept="image/jpeg,image/png,image/webp" style="padding:6px" onchange="_cnSelecionarCapa(this)">
+      <div id="cn-f-capa-preview" style="margin-top:8px"></div>
+      <div id="cn-f-capa-progresso" style="display:none;margin-top:8px"><div class="progress-wrap"><div class="progress-bar" id="cn-f-capa-progresso-bar" style="width:0%"></div></div></div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Público-alvo</label>
+      <div id="cn-f-publicos-lista"></div>
+      <button class="btn btn-sm btn-secondary" style="margin-top:6px" onclick="conhecimentoAdicionarRegraPublico()">+ Adicionar regra de público</button>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-cn-formulario')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" id="cn-f-btn-salvar" onclick="conhecimentoSalvarRascunho()">💾 Salvar Rascunho</button>
+    </div>
+  </div>`;
+  document.body.appendChild(el);
+  return el;
+}
+
+function _cnAtualizarCamposFormato() {
+  const f = document.getElementById('cn-f-formato')?.value;
+  document.getElementById('cn-f-campo-arquivo').style.display = f==='arquivo' ? 'block' : 'none';
+  document.getElementById('cn-f-campo-video').style.display = f==='video' ? 'block' : 'none';
+  document.getElementById('cn-f-campo-link').style.display = f==='link' ? 'block' : 'none';
+  document.getElementById('cn-f-campo-texto').style.display = f==='texto' ? 'block' : 'none';
+}
+
+function _cnSelecionarArquivo(input) {
+  const file = input.files[0]; if (!file) return;
+  if (!CN_TIPOS_ARQUIVO_ACEITOS.includes(file.type)) { toast('Tipo de arquivo não aceito.', 'err'); input.value=''; return; }
+  if (file.size > CN_TAMANHO_MAX_ARQUIVO) { toast('Arquivo maior que o limite de 25MB.', 'err'); input.value=''; return; }
+  _cnArquivoSelecionado = file;
+  document.getElementById('cn-f-arquivo-atual').textContent = `Selecionado: ${file.name} (${_fmtBytes(file.size)}) — será enviado ao salvar.`;
+}
+function _cnSelecionarCapa(input) {
+  const file = input.files[0]; if (!file) return;
+  if (!CN_TIPOS_CAPA_ACEITOS.includes(file.type)) { toast('Formato de imagem não aceito para capa.', 'err'); input.value=''; return; }
+  if (file.size > CN_TAMANHO_MAX_CAPA) { toast('Imagem de capa maior que o limite de 5MB.', 'err'); input.value=''; return; }
+  _cnCapaSelecionada = file;
+  const reader = new FileReader();
+  reader.onload = () => { document.getElementById('cn-f-capa-preview').innerHTML = `<img src="${reader.result}" style="max-height:100px;border-radius:8px">`; };
+  reader.readAsDataURL(file);
+}
+
+// ── Público-alvo (sub-formulário dinâmico) ──
+function conhecimentoAdicionarRegraPublico() {
+  _cnPublicosEdicao.push({tipo:'todos', valorId:'', valorNome:''});
+  _cnRenderPublicosForm();
+}
+function conhecimentoRemoverRegraPublico(idx) {
+  if (_cnPublicosEdicao.length <= 1) { toast('É necessária ao menos 1 regra de público.', 'err'); return; }
+  _cnPublicosEdicao.splice(idx,1);
+  _cnRenderPublicosForm();
+}
+function conhecimentoMudarTipoRegraPublico(idx, tipo) {
+  _cnPublicosEdicao[idx] = {tipo, valorId:'', valorNome:''};
+  _cnRenderPublicosForm();
+}
+function conhecimentoMudarValorRegraPublico(idx, tipo, inputEl) {
+  const val = inputEl.value;
+  if (tipo === 'perfil' || tipo === 'posto') {
+    _cnPublicosEdicao[idx].valorId = val; _cnPublicosEdicao[idx].valorNome = val;
+  } else if (tipo === 'cargo') {
+    _cnPublicosEdicao[idx].valorId = val; _cnPublicosEdicao[idx].valorNome = val;
+  } else if (tipo === 'supervisor') {
+    const u = (allUsers||[]).find(x=>x.email===val);
+    // Corrigido: identifica o supervisor pelo e-mail (estável), não pelo
+    // primeiro nome — evita ambiguidade entre supervisores de mesmo nome e
+    // acompanha exatamente a mesma chave usada em _cnIdentidadesUsuarioAtual().
+    _cnPublicosEdicao[idx].valorId = u ? u.email : val;
+    _cnPublicosEdicao[idx].valorNome = u ? u.name : val;
+  } else if (tipo === 'colaborador') {
+    const u = (allUsers||[]).find(x => `${x.name} (${x.email})` === val || x.email === val);
+    _cnPublicosEdicao[idx].valorId = u ? u.email : val;
+    _cnPublicosEdicao[idx].valorNome = u ? u.name : val;
+  }
+}
+
+function _cnOpcoesValorPublico(regra, idx) {
+  const bindAttr = `onchange="conhecimentoMudarValorRegraPublico(${idx},'${regra.tipo}',this)"`;
+  if (regra.tipo === 'todos') return '<div style="font-size:12px;color:var(--text3);padding:8px 0">Aplica-se a todos os usuários.</div>';
+  if (regra.tipo === 'perfil') {
+    const opcoes = [['collaborator','Colaborador'],['posto','Posto'],['admin','Administrador']];
+    return `<select class="form-select" ${bindAttr}><option value="">Selecione...</option>${opcoes.map(([v,l])=>`<option value="${v}" ${regra.valorId===v?'selected':''}>${l}</option>`).join('')}</select>`;
+  }
+  if (regra.tipo === 'cargo') {
+    const cargos = [...new Set((allUsers||[]).map(u=>u.cargo).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt'));
+    return `<select class="form-select" ${bindAttr}><option value="">Selecione...</option>${cargos.map(c=>`<option value="${c}" ${regra.valorId===c?'selected':''}>${c}</option>`).join('')}</select>`;
+  }
+  if (regra.tipo === 'supervisor') {
+    const supervisores = (allUsers||[]).filter(u=>SUPERVISORES_CAIXA.includes(u.email) && u.email!=='supervisor.teste@gruporgbrasil.com');
+    return `<select class="form-select" ${bindAttr}><option value="">Selecione...</option>${supervisores.map(s=>`<option value="${s.email}" ${regra.valorId===s.email?'selected':''}>${s.name}</option>`).join('')}</select>`;
+  }
+  if (regra.tipo === 'posto') {
+    return `<select class="form-select" ${bindAttr}><option value="">Selecione...</option>${[...TODOS_POSTOS_RG].sort((a,b)=>a.localeCompare(b,'pt')).map(p=>`<option value="${p}" ${regra.valorId===p?'selected':''}>${p}</option>`).join('')}</select>`;
+  }
+  if (regra.tipo === 'colaborador') {
+    return `<input class="form-input" list="cn-dl-colaboradores" value="${regra.valorNome?`${regra.valorNome} (${regra.valorId})`:''}" placeholder="Buscar colaborador..." ${bindAttr}>
+      <datalist id="cn-dl-colaboradores">${(allUsers||[]).filter(u=>u.email).sort((a,b)=>a.name.localeCompare(b.name,'pt')).map(u=>`<option value="${u.name} (${u.email})">`).join('')}</datalist>`;
+  }
+  return '';
+}
+
+function _cnRenderPublicosForm() {
+  const el = document.getElementById('cn-f-publicos-lista'); if (!el) return;
+  el.innerHTML = _cnPublicosEdicao.map((regra, idx) => `
+    <div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;background:var(--surface2);border-radius:8px;padding:8px">
+      <select class="form-select" style="width:150px" onchange="conhecimentoMudarTipoRegraPublico(${idx}, this.value)">
+        ${[['todos','Todos'],['perfil','Perfil'],['cargo','Cargo'],['supervisor','Supervisor'],['posto','Posto'],['colaborador','Colaborador específico']].map(([v,l])=>`<option value="${v}" ${regra.tipo===v?'selected':''}>${l}</option>`).join('')}
+      </select>
+      <div style="flex:1">${_cnOpcoesValorPublico(regra, idx)}</div>
+      <button class="btn btn-sm btn-danger" onclick="conhecimentoRemoverRegraPublico(${idx})">✕</button>
+    </div>`).join('');
+}
+
+// ── Abrir formulário (novo ou edição) ──
+function conhecimentoAbrirNovoConteudo() {
+  if (!_cnExigirGestao()) return;
+  _cnConteudoEmEdicaoId = null;
+  _cnArquivoSelecionado = null;
+  _cnCapaSelecionada = null;
+  _cnPublicosEdicao = [{tipo:'todos', valorId:'', valorNome:''}];
+  _cnGarantirModalFormulario();
+  document.getElementById('cn-form-titulo').textContent = '+ Novo Conteúdo';
+  document.getElementById('cn-form-status-badge').innerHTML = '';
+  document.getElementById('cn-f-tipo').value = 'fiqueligado';
+  document.getElementById('cn-f-titulo').value = '';
+  document.getElementById('cn-f-descricao').value = '';
+  document.getElementById('cn-f-obrigatorio').checked = false;
+  document.getElementById('cn-f-download').checked = true;
+  document.getElementById('cn-f-prazo').value = '';
+  document.getElementById('cn-f-tempo').value = '';
+  document.getElementById('cn-f-formato').value = 'arquivo';
+  document.getElementById('cn-f-video-url').value = '';
+  document.getElementById('cn-f-link-url').value = '';
+  document.getElementById('cn-f-texto-conteudo').value = '';
+  document.getElementById('cn-f-arquivo-atual').textContent = '';
+  document.getElementById('cn-f-capa-preview').innerHTML = '';
+  document.getElementById('cn-f-arquivo-input').value = '';
+  document.getElementById('cn-f-capa-input').value = '';
+  document.getElementById('cn-f-btn-salvar').textContent = '💾 Salvar Rascunho';
+  _cnAtualizarCamposFormato();
+  _cnRenderPublicosForm();
+  document.getElementById('modal-cn-formulario').classList.add('open');
+}
+
+async function conhecimentoEditarRascunho(id) {
+  if (!_cnExigirGestao()) return;
+  const c = _cnConteudos.find(x=>x.id===id);
+  if (!c) { toast('Conteúdo não encontrado.', 'err'); return; }
+  if (c.status !== 'rascunho') { toast('Somente rascunhos podem ser editados nesta etapa.', 'err'); return; }
+  _cnConteudoEmEdicaoId = id;
+  _cnArquivoSelecionado = null;
+  _cnCapaSelecionada = null;
+  _cnGarantirModalFormulario();
+  document.getElementById('cn-form-titulo').textContent = '✏️ Editar Rascunho';
+  document.getElementById('cn-form-status-badge').innerHTML = _cnBadgeStatus(c.status);
+  document.getElementById('cn-f-tipo').value = c.tipo || 'fiqueligado';
+  document.getElementById('cn-f-titulo').value = c.titulo || '';
+  document.getElementById('cn-f-descricao').value = c.descricao || '';
+  document.getElementById('cn-f-obrigatorio').checked = !!c.obrigatorio;
+  document.getElementById('cn-f-download').checked = c.downloadPermitido !== false;
+  document.getElementById('cn-f-prazo').value = c.prazoConclusaoDias ?? '';
+  document.getElementById('cn-f-tempo').value = c.tempoEstimadoMinutos ?? '';
+  document.getElementById('cn-f-formato').value = c.formatoPrincipal || 'arquivo';
+  document.getElementById('cn-f-video-url').value = c.videoUrl || '';
+  document.getElementById('cn-f-link-url').value = c.linkUrl || '';
+  document.getElementById('cn-f-texto-conteudo').value = c.conteudoTexto || '';
+  document.getElementById('cn-f-arquivo-atual').textContent = c.arquivoNome ? `Arquivo atual: ${c.arquivoNome} (${_fmtBytes(c.arquivoTamanho||0)})` : '';
+  document.getElementById('cn-f-capa-preview').innerHTML = c.imagemCapaUrl ? `<img src="${c.imagemCapaUrl}" style="max-height:100px;border-radius:8px">` : '';
+  document.getElementById('cn-f-arquivo-input').value = '';
+  document.getElementById('cn-f-capa-input').value = '';
+  document.getElementById('cn-f-btn-salvar').textContent = '💾 Salvar Alterações';
+  _cnAtualizarCamposFormato();
+  await _cnCarregarPublicosParaEdicao(id);
+  document.getElementById('modal-cn-formulario').classList.add('open');
+}
+
+async function _cnCarregarPublicosParaEdicao(conteudoId) {
+  try {
+    const operacaoId = await getOperacaoId();
+    const snap = await db.collection('conhecimento_publicos').where('operacaoId','==',operacaoId).where('conteudoId','==',conteudoId).get();
+    _cnPublicosEdicao = snap.docs.map(d=>{ const v=d.data(); return {tipo:v.publicoTipo, valorId:v.publicoValorId||'', valorNome:v.publicoValorNome||''}; });
+    if (!_cnPublicosEdicao.length) _cnPublicosEdicao = [{tipo:'todos', valorId:'', valorNome:''}];
+  } catch(e) { console.error(e); _cnPublicosEdicao = [{tipo:'todos', valorId:'', valorNome:''}]; }
+  _cnRenderPublicosForm();
+}
+
+function _cnLerCamposFormulario() {
+  return {
+    tipo: document.getElementById('cn-f-tipo').value,
+    titulo: document.getElementById('cn-f-titulo').value.trim(),
+    descricao: document.getElementById('cn-f-descricao').value.trim(),
+    obrigatorio: document.getElementById('cn-f-obrigatorio').checked,
+    downloadPermitido: document.getElementById('cn-f-download').checked,
+    prazoConclusaoDias: document.getElementById('cn-f-prazo').value ? parseInt(document.getElementById('cn-f-prazo').value,10) : null,
+    tempoEstimadoMinutos: document.getElementById('cn-f-tempo').value ? parseInt(document.getElementById('cn-f-tempo').value,10) : null,
+    formatoPrincipal: document.getElementById('cn-f-formato').value,
+    videoUrl: document.getElementById('cn-f-video-url').value.trim(),
+    linkUrl: document.getElementById('cn-f-link-url').value.trim(),
+    conteudoTexto: document.getElementById('cn-f-texto-conteudo').value.trim()
+  };
+}
+
+// ── Salvar rascunho (cria ou atualiza) ──
+async function conhecimentoSalvarRascunho() {
+  if (!_cnExigirGestao()) return;
+  if (_cnSalvandoFormulario) return; // trava contra duplo clique
+  const dados = _cnLerCamposFormulario();
+  if (!dados.titulo) { toast('Informe ao menos o título para salvar o rascunho.', 'err'); return; }
+
+  _cnSalvandoFormulario = true;
+  const btn = document.getElementById('cn-f-btn-salvar'); if (btn) btn.disabled = true;
+  try {
+    const operacaoId = await getOperacaoId();
+    let conteudoId = _cnConteudoEmEdicaoId;
+    let conteudoAtual = conteudoId ? _cnConteudos.find(x=>x.id===conteudoId) : null;
+
+    // Upload do arquivo principal, se um novo foi selecionado
+    let dadosArquivo = {};
+    if (_cnArquivoSelecionado) {
+      if (!conteudoId) { const ref = db.collection('conhecimento_conteudos').doc(); conteudoId = ref.id; }
+      const progWrap = document.getElementById('cn-f-arquivo-progresso'); if (progWrap) progWrap.style.display = 'block';
+      const path = `central-conhecimento/${operacaoId}/conteudos/${conteudoId}/arquivo_${Date.now()}_${_cnSanitizarNomeArquivo(_cnArquivoSelecionado.name)}`;
+      const up = await _cnUploadArquivoGenerico(_cnArquivoSelecionado, path, pct => { const b = document.getElementById('cn-f-arquivo-progresso-bar'); if (b) b.style.width = pct+'%'; });
+      // Substituição de rascunho: exclui o arquivo anterior do Storage (só é seguro porque é rascunho, nunca publicado)
+      if (conteudoAtual?.arquivoStoragePath) await _cnExcluirArquivoStorage(conteudoAtual.arquivoStoragePath);
+      dadosArquivo = { arquivoUrl: up.url, arquivoStoragePath: up.path, arquivoNome: _cnArquivoSelecionado.name, arquivoTamanho: _cnArquivoSelecionado.size, arquivoTipo: _cnArquivoSelecionado.type };
+    }
+
+    // Upload da capa, se uma nova foi selecionada
+    let dadosCapa = {};
+    if (_cnCapaSelecionada) {
+      if (!conteudoId) { const ref = db.collection('conhecimento_conteudos').doc(); conteudoId = ref.id; }
+      const progWrap = document.getElementById('cn-f-capa-progresso'); if (progWrap) progWrap.style.display = 'block';
+      const path = `central-conhecimento/${operacaoId}/conteudos/${conteudoId}/capa_${Date.now()}_${_cnSanitizarNomeArquivo(_cnCapaSelecionada.name)}`;
+      const up = await _cnUploadArquivoGenerico(_cnCapaSelecionada, path, pct => { const b = document.getElementById('cn-f-capa-progresso-bar'); if (b) b.style.width = pct+'%'; });
+      if (conteudoAtual?.imagemCapaStoragePath) await _cnExcluirArquivoStorage(conteudoAtual.imagemCapaStoragePath);
+      dadosCapa = { imagemCapaUrl: up.url, imagemCapaStoragePath: up.path };
+    }
+
+    const payload = { ...dados, ...dadosArquivo, ...dadosCapa, operacaoId, atualizadoEm: firebase.firestore.FieldValue.serverTimestamp() };
+
+    let uploadConcluido = !!(_cnArquivoSelecionado || _cnCapaSelecionada);
+    // A partir daqui só restam operações no Firestore — Storage e Firestore
+    // NÃO fazem parte da mesma operação atômica (não existe transação entre
+    // os dois produtos). Se o Firestore falhar agora, o(s) arquivo(s) já
+    // enviado(s) ao Storage ficam órfãos (upload não é revertido
+    // automaticamente) — o catch abaixo avisa isso explicitamente.
+    if (conteudoId && conteudoAtual) {
+      // edição de rascunho existente
+      await db.collection('conhecimento_conteudos').doc(conteudoId).update(payload);
+    } else {
+      // Criação — v1 conforme arquitetura congelada. REGRA ÚNICA E DEFINITIVA:
+      // documentoBaseId da v1 é o próprio id do documento (nunca null) — assim
+      // conteudoBaseId do progresso é sempre estável desde a v1, sem depender
+      // de fallback "documentoBaseId || id" espalhado por várias funções.
+      // versaoAnteriorId continua null (não existe versão anterior à v1).
+      const ref = conteudoId ? db.collection('conhecimento_conteudos').doc(conteudoId) : db.collection('conhecimento_conteudos').doc();
+      conteudoId = ref.id;
+      await ref.set({
+        ...payload, id: ref.id,
+        status: 'rascunho', versao: 1, versaoAtual: true, documentoBaseId: ref.id, versaoAnteriorId: null,
+        exigeReciclagem: false, motivoNovaVersao: null, validacao: 'nenhuma',
+        criadoPor: currentUser.name, criadoPorEmail: currentUser.email,
+        criadoEm: firebase.firestore.FieldValue.serverTimestamp(),
+        publicadoPor: null, publicadoPorEmail: null, publicadoEm: null,
+        arquivadoPor: null, arquivadoPorEmail: null, arquivadoEm: null
+      });
+    }
+
+    await conhecimentoSalvarPublicos(conteudoId);
+    _cnArquivoSelecionado = null; _cnCapaSelecionada = null;
+    closeModal('modal-cn-formulario');
+    toast('✅ Rascunho salvo.', 'ok');
+    conhecimentoCarregarConteudosGestao(true);
+  } catch(e) {
+    console.error(e);
+    if (uploadConcluido) {
+      toast('Erro ao salvar o rascunho no banco após o envio do arquivo — o arquivo já enviado pode ter ficado órfão no Storage e pode precisar de limpeza manual. Detalhe: ' + e.message, 'err');
+    } else {
+      toast('Erro ao salvar rascunho: ' + e.message, 'err');
+    }
+  } finally {
+    _cnSalvandoFormulario = false;
+    if (btn) btn.disabled = false;
+    const pa = document.getElementById('cn-f-arquivo-progresso'); if (pa) pa.style.display = 'none';
+    const pc = document.getElementById('cn-f-capa-progresso'); if (pc) pc.style.display = 'none';
+  }
+}
+
+// Sincroniza as regras de público sem duplicar: apaga as existentes e recria
+// a partir do estado atual do formulário (coleção leve, sem custo relevante).
+async function conhecimentoSalvarPublicos(conteudoId, batchExterno) {
+  if (!_cnExigirGestao()) return; // defesa contra chamada direta pelo console — as chamadas normais já vêm de funções que checam antes
+  const operacaoId = await getOperacaoId();
+  const snapExistentes = await db.collection('conhecimento_publicos').where('operacaoId','==',operacaoId).where('conteudoId','==',conteudoId).get();
+  const batch = batchExterno || db.batch();
+  snapExistentes.docs.forEach(d => batch.delete(d.ref));
+  _cnPublicosEdicao.forEach(regra => {
+    if (regra.tipo !== 'todos' && !regra.valorId) return; // regra incompleta, ignora
+    const ref = db.collection('conhecimento_publicos').doc();
+    batch.set(ref, {
+      id: ref.id, operacaoId, conteudoId,
+      publicoTipo: regra.tipo, publicoValorId: regra.tipo==='todos' ? null : regra.valorId,
+      publicoValorNome: regra.tipo==='todos' ? null : regra.valorNome,
+      chaveAplicacao: regra.tipo==='todos' ? 'todos:todos' : `${regra.tipo}:${regra.valorId}`,
+      modo: 'inclusao', prioridade: 0,
+      criadoPor: currentUser.name, criadoPorEmail: currentUser.email,
+      criadoEm: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  });
+  if (!batchExterno) await batch.commit();
+}
+
+// ── Excluir rascunho ──
+let _cnExcluindoRascunho = false;
+async function conhecimentoExcluirRascunho(id) {
+  if (!_cnExigirGestao()) return;
+  if (_cnExcluindoRascunho) return; // trava contra duplo clique
+  const c = _cnConteudos.find(x=>x.id===id);
+  if (!c || c.status !== 'rascunho') { toast('Somente rascunhos podem ser excluídos.', 'err'); return; }
+  if (!confirm(`Excluir o rascunho "${c.titulo}"? Essa ação não pode ser desfeita.`)) return;
+  _cnExcluindoRascunho = true;
+  try {
+    // Reconfere o status direto no Firestore antes de excluir — nunca confia
+    // só no cache local (_cnConteudos), que pode estar desatualizado (ex.:
+    // outro admin publicou o mesmo rascunho há poucos segundos) ou, no
+    // limite, ser contornado chamando esta função direto pelo console.
+    const docAtual = await db.collection('conhecimento_conteudos').doc(id).get();
+    if (!docAtual.exists) { toast('Este conteúdo não existe mais.', 'err'); conhecimentoCarregarConteudosGestao(true); return; }
+    const statusReal = docAtual.data().status;
+    if (statusReal !== 'rascunho') { toast('Este conteúdo não é mais um rascunho — exclusão bloqueada.', 'err'); conhecimentoCarregarConteudosGestao(true); return; }
+
+    const operacaoId = await getOperacaoId();
+    const snapPublicos = await db.collection('conhecimento_publicos').where('operacaoId','==',operacaoId).where('conteudoId','==',id).get();
+    const batch = db.batch();
+    snapPublicos.docs.forEach(d => batch.delete(d.ref));
+    batch.delete(db.collection('conhecimento_conteudos').doc(id));
+    // Firestore primeiro, Storage depois: se o Firestore falhar, nenhum
+    // arquivo é tocado (nunca fica doc apontando pra arquivo já excluído).
+    // Se o Storage falhar depois do Firestore ter sido excluído com sucesso,
+    // o pior caso é um arquivo órfão no bucket — sem doc pra referenciá-lo,
+    // sem risco de inconsistência de dado, só custo de armazenamento a mais.
+    await batch.commit();
+    if (docAtual.data().arquivoStoragePath) await _cnExcluirArquivoStorage(docAtual.data().arquivoStoragePath);
+    if (docAtual.data().imagemCapaStoragePath) await _cnExcluirArquivoStorage(docAtual.data().imagemCapaStoragePath);
+    toast('🗑 Rascunho excluído.', 'ok');
+    conhecimentoCarregarConteudosGestao(true);
+  } catch(e) { console.error(e); toast('Erro ao excluir: ' + e.message, 'err'); } finally { _cnExcluindoRascunho = false; }
+}
+
+// ── Publicar ──
+function _cnValidarParaPublicacao(c) {
+  const erros = [];
+  if (!c.tipo) erros.push('Tipo é obrigatório.');
+  if (!c.titulo) erros.push('Título é obrigatório.');
+  if (!c.formatoPrincipal) erros.push('Formato principal é obrigatório.');
+  if (c.formatoPrincipal === 'arquivo' && !c.arquivoUrl) erros.push('Envie o arquivo principal antes de publicar.');
+  if (c.formatoPrincipal === 'link' && !c.linkUrl) erros.push('Informe o link externo antes de publicar.');
+  if (c.formatoPrincipal === 'video' && !c.videoUrl) erros.push('Informe a URL do vídeo antes de publicar.');
+  if (c.formatoPrincipal === 'texto' && !c.conteudoTexto) erros.push('Preencha o conteúdo textual antes de publicar.');
+  return erros;
+}
+
+async function conhecimentoPublicarConteudo(id) {
+  if (!_cnExigirGestao()) return;
+  const c = _cnConteudos.find(x=>x.id===id);
+  if (!c || c.status !== 'rascunho') { toast('Somente rascunhos podem ser publicados.', 'err'); return; }
+  const erros = _cnValidarParaPublicacao(c);
+  if (erros.length) { toast('Não é possível publicar: ' + erros.join(' '), 'err'); return; }
+  if (!confirm(`Publicar "${c.titulo}"? Depois de publicado, o conteúdo não pode mais ser excluído ou editado de forma destrutiva.`)) return;
+  try {
+    const operacaoId = await getOperacaoId();
+    const batch = db.batch();
+    batch.update(db.collection('conhecimento_conteudos').doc(id), {
+      status: 'publicado', versao: 1, versaoAtual: true, validacao: 'nenhuma',
+      publicadoPor: currentUser.name, publicadoPorEmail: currentUser.email,
+      publicadoEm: firebase.firestore.FieldValue.serverTimestamp(),
+      atualizadoEm: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    // Re-confirma as regras de público no mesmo batch atômico da publicação
+    const snapPublicos = await db.collection('conhecimento_publicos').where('operacaoId','==',operacaoId).where('conteudoId','==',id).get();
+    if (!snapPublicos.size) {
+      const ref = db.collection('conhecimento_publicos').doc();
+      batch.set(ref, { id:ref.id, operacaoId, conteudoId:id, publicoTipo:'todos', publicoValorId:null, publicoValorNome:null, chaveAplicacao:'todos:todos', modo:'inclusao', prioridade:0, criadoPor:currentUser.name, criadoPorEmail:currentUser.email, criadoEm: firebase.firestore.FieldValue.serverTimestamp() });
+    }
+    await batch.commit();
+    toast('📢 Conteúdo publicado!', 'ok');
+    conhecimentoCarregarConteudosGestao(true);
+  } catch(e) { console.error(e); toast('Erro ao publicar: ' + e.message, 'err'); }
+}
+
+// ── Arquivar ──
+async function conhecimentoArquivarConteudo(id) {
+  if (!_cnExigirGestao()) return;
+  const c = _cnConteudos.find(x=>x.id===id);
+  if (!c || c.status !== 'publicado') { toast('Somente conteúdos publicados podem ser arquivados.', 'err'); return; }
+  if (!confirm(`Arquivar "${c.titulo}"? Ele deixará de aparecer para os usuários, mas todo o histórico é preservado.`)) return;
+  try {
+    await db.collection('conhecimento_conteudos').doc(id).update({
+      status: 'arquivado',
+      arquivadoPor: currentUser.name, arquivadoPorEmail: currentUser.email,
+      arquivadoEm: firebase.firestore.FieldValue.serverTimestamp(),
+      atualizadoEm: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    toast('📦 Conteúdo arquivado.', 'ok');
+    conhecimentoCarregarConteudosGestao(true);
+  } catch(e) { console.error(e); toast('Erro ao arquivar: ' + e.message, 'err'); }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// RESOLUÇÃO DE PÚBLICO APLICÁVEL (usada por Biblioteca/FiqueLigado/Treinamentos/Minha Central)
+// ══════════════════════════════════════════════════════════════════════════
+// allPostos.supervisor só guarda o primeiro nome (dado de outro módulo, fora
+// de escopo alterar) — resolvemos esse nome para o e-mail estável do
+// supervisor aqui, no ponto de leitura, para casar com o valorId (e-mail)
+// agora gravado em conhecimento_publicos.
+function _cnResolverSupervisorEmailPorNome(nome) {
+  if (!nome) return null;
+  const u = (allUsers||[]).find(x => SUPERVISORES_CAIXA.includes(x.email) && x.name === nome);
+  return u ? u.email : null;
+}
+
+function _cnIdentidadesUsuarioAtual() {
+  const chaves = ['todos:todos', `perfil:${currentUser.role}`, `colaborador:${currentUser.email}`];
+  if (currentUser.cargo) chaves.push(`cargo:${currentUser.cargo}`);
+  const postoNome = currentUser.role === 'posto' ? (currentUser.name || currentUser.nome) : currentUser.local;
+  if (postoNome) {
+    chaves.push(`posto:${postoNome}`);
+    const supervisorNome = (allPostos||[]).find(p=>p.nome===postoNome)?.supervisor;
+    const supervisorEmail = _cnResolverSupervisorEmailPorNome(supervisorNome);
+    if (supervisorEmail) chaves.push(`supervisor:${supervisorEmail}`);
+  }
+  return chaves;
+}
+
+async function conhecimentoResolverConteudosAplicaveis(forcar) {
+  if (_cnConteudosAplicaveisCache && !forcar) return _cnConteudosAplicaveisCache;
+  try {
+    const operacaoId = await getOperacaoId();
+    const chaves = _cnIdentidadesUsuarioAtual();
+    const publicosSnap = await db.collection('conhecimento_publicos').where('operacaoId','==',operacaoId).where('chaveAplicacao','in',chaves).get();
+    const idsAplicaveis = new Set(publicosSnap.docs.map(d=>d.data().conteudoId));
+    if (!idsAplicaveis.size) { _cnConteudosAplicaveisCache = []; return []; }
+    const snapConteudos = await db.collection('conhecimento_conteudos').where('operacaoId','==',operacaoId).where('status','==','publicado').where('versaoAtual','==',true).get();
+    _cnConteudosAplicaveisCache = snapConteudos.docs.map(d=>({id:d.id,...d.data()})).filter(c=>idsAplicaveis.has(c.id));
+    return _cnConteudosAplicaveisCache;
+  } catch(e) { console.error('Erro ao resolver conteúdos aplicáveis', e); return []; }
+}
+
+async function _cnCarregarProgressoUsuario(forcar) {
+  if (_cnProgressoUsuarioCache && !forcar) return _cnProgressoUsuarioCache;
+  try {
+    const operacaoId = await getOperacaoId();
+    const snap = await db.collection('conhecimento_progresso').where('operacaoId','==',operacaoId).where('colaboradorEmail','==',currentUser.email).get();
+    _cnProgressoUsuarioCache = {};
+    snap.docs.forEach(d => { const v = d.data(); _cnProgressoUsuarioCache[v.conteudoBaseId] = v; });
+    return _cnProgressoUsuarioCache;
+  } catch(e) { console.error(e); _cnProgressoUsuarioCache = {}; return {}; }
+}
+
+function _cnStatusVisualDoUsuario(conteudo, progressoMap) {
+  // documentoBaseId agora é sempre gravado desde a v1 (nunca null) — o "|| .id"
+  // aqui é só rede de segurança, não a regra principal.
+  const baseId = conteudo.documentoBaseId || conteudo.id;
+  const p = progressoMap[baseId];
+  if (!p) return 'novo';
+  if (p.status === 'concluido') return 'concluido';
+  return 'andamento';
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// BIBLIOTECA / FIQUELIGADO / TREINAMENTOS — função compartilhada por tipo
+// ══════════════════════════════════════════════════════════════════════════
+function _cnCardConteudo(c, statusVisual) {
+  const statusLabel = {novo:['Novo','#4a90d9'], andamento:['Em andamento','#e2954b'], concluido:['Concluído','#3fb950']}[statusVisual];
+  return `<div style="background:var(--surface2);border-radius:12px;overflow:hidden;display:flex;flex-direction:column">
+    ${c.imagemCapaUrl ? `<img src="${c.imagemCapaUrl}" style="width:100%;height:110px;object-fit:cover">` : `<div style="width:100%;height:110px;background:var(--surface3);display:flex;align-items:center;justify-content:center;font-size:32px">${_cnIconeTipo(c.tipo)}</div>`}
+    <div style="padding:12px;flex:1;display:flex;flex-direction:column">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;margin-bottom:6px">
+        <span style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">${CN_TIPO_LABEL[c.tipo]||c.tipo}</span>
+        <span style="font-size:10px;font-weight:700;color:${statusLabel[1]}">${statusLabel[0]}</span>
+      </div>
+      <div style="font-size:14px;font-weight:700;margin-bottom:4px">${c.titulo}</div>
+      <div style="font-size:12px;color:var(--text3);flex:1;margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">${c.descricao||''}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--text3);margin-bottom:10px">
+        <span>${c.tempoEstimadoMinutos?`⏱ ${c.tempoEstimadoMinutos} min`:''}</span>
+        <span>${c.obrigatorio?'🔴 Obrigatório':'Opcional'}</span>
+      </div>
+      <button class="btn btn-sm btn-primary" style="width:100%" onclick="conhecimentoAbrirConteudo('${c.id}')">${statusVisual==='novo'?'Abrir':(statusVisual==='concluido'?'Ver novamente':'Continuar')}</button>
+    </div>
+  </div>`;
+}
+function _cnIconeTipo(tipo) {
+  return {fiqueligado:'📢', treinamento:'🎓', procedimento:'📋', manual:'📖', video:'🎬', link:'🔗', apresentacao:'📊'}[tipo] || '📄';
+}
+
+// Função reutilizável: carrega e renderiza os conteúdos de um tipo (ou todos)
+// no container informado, com pesquisa e filtro de tipo opcionais.
+async function conhecimentoRenderListaPorTipo(containerId, tipoFixo, opts) {
+  const el = document.getElementById(containerId); if (!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text3)">⏳ Carregando...</div>';
+  const [conteudos, progressoMap] = await Promise.all([conhecimentoResolverConteudosAplicaveis(), _cnCarregarProgressoUsuario()]);
+  let lista = conteudos.slice();
+  if (tipoFixo) lista = lista.filter(c=>c.tipo===tipoFixo);
+  if (opts?.filtroTipo) lista = lista.filter(c=>c.tipo===opts.filtroTipo);
+  if (opts?.busca?.trim()) { const bn = normalizarBusca(opts.busca); lista = lista.filter(c=>normalizarBusca(c.titulo||'').includes(bn)); }
+  if (!lista.length) { el.innerHTML = `<div class="empty"><p>${opts?.textoVazio || 'Nenhum conteúdo disponível.'}</p></div>`; return; }
+  el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px">
+    ${lista.map(c=>_cnCardConteudo(c, _cnStatusVisualDoUsuario(c, progressoMap))).join('')}
+  </div>`;
+}
+
+function renderBibliotecaConhecimento() {
+  const el = document.getElementById('cc-biblioteca-wrap'); if (!el) return;
+  const filtros = [['','Todos'],['fiqueligado','FiqueLigado'],['treinamento','Treinamentos'],['procedimento','Procedimentos'],['manual','Manuais'],['video','Vídeos'],['link','Links'],['apresentacao','Apresentações']];
+  el.innerHTML = `
+    <div class="page-header" style="margin:0 0 16px"><h1 style="font-size:18px">Biblioteca</h1></div>
+    <input class="form-input" id="cn-bib-busca" placeholder="🔎 Pesquisar conteúdos..." style="margin-bottom:14px;max-width:420px" oninput="conhecimentoAplicarFiltroBiblioteca()">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">
+      ${filtros.map(([v,l])=>`<button class="btn btn-sm ${_cnBibliotecaFiltroTipo===v?'btn-primary':'btn-secondary'}" onclick="conhecimentoFiltrarBiblioteca('${v}')">${l}</button>`).join('')}
+    </div>
+    <div id="cn-biblioteca-lista"></div>`;
+  conhecimentoRenderListaPorTipo('cn-biblioteca-lista', '', {filtroTipo:_cnBibliotecaFiltroTipo, busca:_cnBibliotecaBusca, textoVazio:'Nenhum conteúdo disponível na biblioteca.'});
+}
+function conhecimentoFiltrarBiblioteca(tipo) { _cnBibliotecaFiltroTipo = tipo; renderBibliotecaConhecimento(); }
+function conhecimentoAplicarFiltroBiblioteca() { _cnBibliotecaBusca = document.getElementById('cn-bib-busca')?.value || ''; conhecimentoRenderListaPorTipo('cn-biblioteca-lista', '', {filtroTipo:_cnBibliotecaFiltroTipo, busca:_cnBibliotecaBusca, textoVazio:'Nenhum conteúdo disponível na biblioteca.'}); }
+
+function renderFiqueLigadoConhecimento() {
+  const el = document.getElementById('cc-fiqueligado-wrap'); if (!el) return;
+  el.innerHTML = `
+    <div class="page-header" style="margin:0 0 16px"><h1 style="font-size:18px">FiqueLigado</h1><p>Comunicados e atualizações operacionais importantes.</p></div>
+    <div id="cn-fiqueligado-lista"></div>`;
+  conhecimentoRenderListaPorTipo('cn-fiqueligado-lista', 'fiqueligado', {textoVazio:'Nenhum FiqueLigado disponível.'});
+}
+
+function renderTreinamentosConhecimento() {
+  const el = document.getElementById('cc-treinamentos-wrap'); if (!el) return;
+  // TODO (próxima etapa): agenda, turmas e presença. Nesta etapa, treinamento
+  // é consumido como qualquer outro conteúdo publicado.
+  el.innerHTML = `
+    <div class="page-header" style="margin:0 0 16px"><h1 style="font-size:18px">Treinamentos</h1></div>
+    <div id="cn-treinamentos-lista"></div>`;
+  conhecimentoRenderListaPorTipo('cn-treinamentos-lista', 'treinamento', {textoVazio:'Nenhum treinamento disponível.'});
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// MINHA CENTRAL — dados reais
+// ══════════════════════════════════════════════════════════════════════════
+async function renderMinhaCentralConhecimento() {
+  const el = document.getElementById('cc-minha-central-wrap'); if (!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text3)">⏳ Carregando...</div>';
+  const [conteudos, progressoMap] = await Promise.all([conhecimentoResolverConteudosAplicaveis(), _cnCarregarProgressoUsuario()]);
+
+  const pendentes = conteudos.filter(c => _cnStatusVisualDoUsuario(c, progressoMap) === 'novo');
+  const andamento = conteudos.filter(c => _cnStatusVisualDoUsuario(c, progressoMap) === 'andamento');
+  const concluidos = conteudos.filter(c => _cnStatusVisualDoUsuario(c, progressoMap) === 'concluido');
+  const treinamentosAgendados = conteudos.filter(c => c.tipo === 'treinamento' && _cnStatusVisualDoUsuario(c, progressoMap) !== 'concluido');
+
+  const blocoLista = (lista, textoVazio, max=4) => !lista.length
+    ? `<div class="empty"><p>${textoVazio}</p></div>`
+    : `<div style="display:grid;gap:8px">${lista.slice(0,max).map(c=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface2);border-radius:8px;padding:10px 12px;cursor:pointer" onclick="conhecimentoAbrirConteudo('${c.id}')">
+          <div><div style="font-size:13px;font-weight:600">${_cnIconeTipo(c.tipo)} ${c.titulo}</div><div style="font-size:11px;color:var(--text3)">${CN_TIPO_LABEL[c.tipo]||c.tipo}</div></div>
+          <span style="font-size:12px;color:var(--accent)">Abrir ›</span>
+        </div>`).join('')}
+        ${lista.length>max?`<button class="btn btn-sm btn-secondary" onclick="alternarAbaConhecimento('biblioteca')">Ver todos na Biblioteca</button>`:''}
+      </div>`;
+
+  el.innerHTML = `
+    <div class="page-header" style="margin:0 0 18px"><h1 style="font-size:18px">Minha Central</h1><p>Acompanhe seus treinamentos, conteúdos pendentes e materiais recentes.</p></div>
+    <div class="grid-4" style="margin-bottom:24px">
+      <div class="stat-card"><div class="label">Conteúdos Pendentes</div><div class="value">${pendentes.length}</div></div>
+      <div class="stat-card"><div class="label">Treinamentos Agendados</div><div class="value">${treinamentosAgendados.length}</div></div>
+      <div class="stat-card"><div class="label">Em Andamento</div><div class="value">${andamento.length}</div></div>
+      <div class="stat-card"><div class="label">Concluídos</div><div class="value">${concluidos.length}</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px">
+      <div><div style="font-size:13px;font-weight:700;margin-bottom:10px">Próximos Treinamentos</div>${blocoLista(treinamentosAgendados,'Nenhum treinamento agendado.')}</div>
+      <div><div style="font-size:13px;font-weight:700;margin-bottom:10px">Conteúdos Pendentes</div>${blocoLista(pendentes,'Nenhum conteúdo pendente.')}</div>
+      <div><div style="font-size:13px;font-weight:700;margin-bottom:10px">Continuar de Onde Parei</div>${blocoLista(andamento,'Nenhum conteúdo em andamento.')}</div>
+      <div><div style="font-size:13px;font-weight:700;margin-bottom:10px">Últimos Concluídos</div>${blocoLista(concluidos,'Nenhum conteúdo concluído recentemente.')}</div>
+    </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// VISUALIZAÇÃO E CONSUMO
+// ══════════════════════════════════════════════════════════════════════════
+function _cnGarantirModalVisualizar() {
+  let el = document.getElementById('modal-cn-visualizar');
+  if (el) return el;
+  el = document.createElement('div');
+  el.className = 'modal-overlay';
+  el.id = 'modal-cn-visualizar';
+  el.innerHTML = `<div class="modal" style="max-width:820px;max-height:92vh;overflow-y:auto">
+    <div class="modal-header"><div class="modal-title" id="cn-vis-titulo">Conteúdo</div><button class="close-btn" onclick="conhecimentoFecharVisualizacao()">✕</button></div>
+    <div id="cn-vis-corpo"></div>
+  </div>`;
+  document.body.appendChild(el);
+  return el;
+}
+function conhecimentoFecharVisualizacao() {
+  closeModal('modal-cn-visualizar');
+  _cnConteudoVisualizandoId = null;
+}
+
+// Chamada tanto pela Gestão (visualizar sem contar progresso) quanto pelas
+// telas de consumo (abrir conta como abertura/progresso).
+async function conhecimentoVisualizarConteudo(id) {
+  await conhecimentoAbrirConteudo(id, true);
+}
+
+async function conhecimentoAbrirConteudo(id, somenteVisualizacaoGestao) {
+  const conteudo = (_cnConteudosAplicaveisCache||[]).find(c=>c.id===id) || _cnConteudos.find(c=>c.id===id);
+  let c = conteudo;
+  if (!c) {
+    try {
+      const operacaoId = await getOperacaoId();
+      const doc = await db.collection('conhecimento_conteudos').doc(id).get();
+      // Isolamento entre operações: só aceita o documento se pertencer à
+      // operacaoId atual, mesmo vindo de uma busca direta por ID.
+      if (doc.exists && doc.data().operacaoId === operacaoId) c = {id:doc.id, ...doc.data()};
+    } catch(e) { console.error(e); }
+  }
+  if (!c) { toast('Conteúdo não encontrado.', 'err'); return; }
+
+  _cnConteudoVisualizandoId = id;
+  _cnGarantirModalVisualizar();
+  document.getElementById('cn-vis-titulo').textContent = c.titulo;
+
+  let progresso = null;
+  if (!somenteVisualizacaoGestao) {
+    progresso = await conhecimentoRegistrarAbertura(c);
+  }
+
+  const corpoEl = document.getElementById('cn-vis-corpo');
+  const jaConcluido = progresso?.status === 'concluido';
+  corpoEl.innerHTML = `
+    ${c.imagemCapaUrl?`<img src="${c.imagemCapaUrl}" style="width:100%;max-height:200px;object-fit:cover;border-radius:10px;margin-bottom:14px">`:''}
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;font-size:12px;color:var(--text3)">
+      <span>${_cnIconeTipo(c.tipo)} ${CN_TIPO_LABEL[c.tipo]||c.tipo}</span>
+      ${c.tempoEstimadoMinutos?`<span>⏱ ${c.tempoEstimadoMinutos} min</span>`:''}
+      <span>${c.obrigatorio?'🔴 Obrigatório':'Opcional'}</span>
+    </div>
+    ${c.descricao?`<p style="font-size:13px;color:var(--text2);margin-bottom:16px">${c.descricao}</p>`:''}
+    <div id="cn-vis-conteudo-principal" style="margin-bottom:16px"></div>
+    ${!somenteVisualizacaoGestao ? `<div id="cn-vis-acoes" style="display:flex;gap:10px;flex-wrap:wrap"></div>` : ''}
+  `;
+
+  const principalEl = document.getElementById('cn-vis-conteudo-principal');
+  if (c.formatoPrincipal === 'arquivo' && c.arquivoUrl) {
+    if ((c.arquivoTipo||'').includes('pdf')) {
+      principalEl.innerHTML = `<iframe src="${c.arquivoUrl}" style="width:100%;height:60vh;border:1px solid var(--border);border-radius:8px" onload="_cnMarcarPdfVisualizado()"></iframe>`;
+    } else {
+      principalEl.innerHTML = `<div class="empty"><p>Este formato não pode ser visualizado diretamente aqui.</p></div>`;
+    }
+    if (c.downloadPermitido !== false) principalEl.innerHTML += `<a href="${c.arquivoUrl}" target="_blank" rel="noopener" class="btn btn-sm btn-secondary" style="margin-top:8px;display:inline-block;text-decoration:none">⬇ Baixar / Abrir arquivo</a>`;
+  } else if (c.formatoPrincipal === 'video' && c.videoUrl) {
+    if (/youtube\.com|youtu\.be|vimeo\.com/.test(c.videoUrl)) {
+      const embedUrl = _cnUrlEmbedVideo(c.videoUrl);
+      principalEl.innerHTML = embedUrl ? `<iframe src="${embedUrl}" style="width:100%;height:360px;border:none;border-radius:8px" allowfullscreen></iframe>` : `<a href="${c.videoUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-primary">▶ Assistir vídeo</a>`;
+    } else {
+      principalEl.innerHTML = `<a href="${c.videoUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-primary">▶ Assistir vídeo (link externo)</a>`;
+    }
+  } else if (c.formatoPrincipal === 'link' && c.linkUrl) {
+    principalEl.innerHTML = `<div class="empty"><p>Este conteúdo está disponível em um link externo.</p></div><a href="${c.linkUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="margin-top:10px;display:inline-block">🔗 Acessar conteúdo externo</a>`;
+  } else if (c.formatoPrincipal === 'texto') {
+    principalEl.innerHTML = `<div style="white-space:pre-wrap;font-size:13px;line-height:1.6" id="cn-vis-texto-corpo">${c.conteudoTexto||''}</div>`;
+  } else {
+    principalEl.innerHTML = `<div class="empty"><p>Conteúdo indisponível.</p></div>`;
+  }
+
+  if (!somenteVisualizacaoGestao) {
+    const acoesEl = document.getElementById('cn-vis-acoes');
+    if (jaConcluido) {
+      acoesEl.innerHTML = `<span style="color:var(--green);font-weight:600;font-size:13px">✅ Concluído</span>`;
+    } else if (c.formatoPrincipal === 'texto') {
+      acoesEl.innerHTML = `<button class="btn btn-primary btn-sm" onclick="conhecimentoConcluirConteudo('${c.id}')">✓ Concluir</button>`;
+    } else if ((c.arquivoTipo||'').includes('pdf')) {
+      acoesEl.innerHTML = `<button class="btn btn-primary btn-sm" id="cn-vis-btn-concluir" onclick="conhecimentoConcluirConteudo('${c.id}')" disabled>✓ Concluir (role até o final do PDF)</button>`;
+    } else {
+      acoesEl.innerHTML = `<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;width:100%">
+        <input type="checkbox" id="cn-vis-confirmo" onchange="document.getElementById('cn-vis-btn-concluir').disabled=!this.checked">
+        Confirmo que acessei e consultei este conteúdo.
+      </label>
+      <button class="btn btn-primary btn-sm" id="cn-vis-btn-concluir" onclick="conhecimentoConcluirConteudo('${c.id}')" disabled>✓ Concluir</button>`;
+    }
+  }
+
+  document.getElementById('modal-cn-visualizar').classList.add('open');
+}
+
+function _cnMarcarPdfVisualizado() {
+  // Sem API confiável de "página atual" num iframe de PDF nativo do navegador —
+  // regra explícita e simples: liberar "Concluir" quando o PDF terminar de carregar.
+  const btn = document.getElementById('cn-vis-btn-concluir');
+  if (btn) btn.disabled = false;
+}
+
+function _cnUrlEmbedVideo(url) {
+  const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/);
+  if (yt) return `https://www.youtube.com/embed/${yt[1]}`;
+  const vm = url.match(/vimeo\.com\/(\d+)/);
+  if (vm) return `https://player.vimeo.com/video/${vm[1]}`;
+  return null;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// PROGRESSO
+// ══════════════════════════════════════════════════════════════════════════
+// Firestore aceita "." e "@" nativamente em IDs de documento (só "/" é
+// proibido) — normalizar só para minúsculas/trim é suficiente, estável e
+// reversível (o "normalizado" é o próprio e-mail). A versão anterior
+// trocava tudo por "_", o que podia colidir dois e-mails distintos
+// (ex.: "a.b@x.com" e "a_b@x.com" davam o mesmo resultado) — corrigido.
+function _cnEmailNormalizado(email) { return (email||'').toLowerCase().trim(); }
+
+async function conhecimentoRegistrarAbertura(conteudo) {
+  try {
+    const operacaoId = await getOperacaoId();
+    const conteudoBaseId = conteudo.documentoBaseId || conteudo.id;
+    const progId = `${conteudoBaseId}_${_cnEmailNormalizado(currentUser.email)}`;
+    const ref = db.collection('conhecimento_progresso').doc(progId);
+    const doc = await ref.get();
+    if (!doc.exists) {
+      let prazoEm = null;
+      if (conteudo.prazoConclusaoDias && conteudo.publicadoEm) {
+        const base = conteudo.publicadoEm.toDate ? conteudo.publicadoEm.toDate() : new Date();
+        base.setDate(base.getDate() + conteudo.prazoConclusaoDias);
+        prazoEm = `${base.getFullYear()}-${String(base.getMonth()+1).padStart(2,'0')}-${String(base.getDate()).padStart(2,'0')}`;
+      }
+      await ref.set({
+        operacaoId, conteudoBaseId, colaboradorEmail: currentUser.email, colaboradorNome: currentUser.name,
+        versaoAtualId: conteudo.id, status: 'em_andamento',
+        primeiraAberturaEm: firebase.firestore.FieldValue.serverTimestamp(),
+        ultimaAberturaEm: firebase.firestore.FieldValue.serverTimestamp(),
+        percentual: 0, chegouAoFinal: false, concluidoEm: null, prazoEm,
+        atualizadoEm: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    } else {
+      await ref.update({ ultimaAberturaEm: firebase.firestore.FieldValue.serverTimestamp(), atualizadoEm: firebase.firestore.FieldValue.serverTimestamp() });
+    }
+    const atualizado = await ref.get();
+    const dados = { id: atualizado.id, ...atualizado.data() };
+    if (_cnProgressoUsuarioCache) _cnProgressoUsuarioCache[conteudoBaseId] = dados;
+    return dados;
+  } catch(e) { console.error('Erro ao registrar abertura', e); return null; }
+}
+
+async function conhecimentoConcluirConteudo(conteudoId) {
+  const btn = document.getElementById('cn-vis-btn-concluir'); if (btn) { if (btn.disabled) return; btn.disabled = true; }
+  try {
+    const operacaoId = await getOperacaoId();
+    const c = (_cnConteudosAplicaveisCache||[]).find(x=>x.id===conteudoId) || _cnConteudos.find(x=>x.id===conteudoId);
+    if (!c) { toast('Conteúdo não encontrado.', 'err'); return; }
+    const conteudoBaseId = c.documentoBaseId || c.id;
+    const progId = `${conteudoBaseId}_${_cnEmailNormalizado(currentUser.email)}`;
+    const versaoId = `${conteudoId}_${_cnEmailNormalizado(currentUser.email)}`;
+    const progRef = db.collection('conhecimento_progresso').doc(progId);
+    const versaoRef = db.collection('conhecimento_progresso_versoes').doc(versaoId);
+
+    // Transação (não batch simples): a existência do certificado é
+    // reverificada no momento exato do commit, não só antes — isso fecha a
+    // janela de corrida de um clique duplo muito rápido gerar 2 gravações
+    // concorrentes e uma delas pisar no concluidoEm da outra.
+    let jaConcluido = false;
+    await db.runTransaction(async (tx) => {
+      const versaoDoc = await tx.get(versaoRef);
+      if (versaoDoc.exists) { jaConcluido = true; return; }
+      tx.set(progRef, {
+        status: 'concluido', percentual: 100, chegouAoFinal: true,
+        concluidoEm: firebase.firestore.FieldValue.serverTimestamp(),
+        atualizadoEm: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      tx.set(versaoRef, {
+        id: versaoId, operacaoId, conteudoId, conteudoBaseId, versao: c.versao||1,
+        colaboradorEmail: currentUser.email, colaboradorNome: currentUser.name,
+        concluidoEm: firebase.firestore.FieldValue.serverTimestamp(),
+        tempoEstimadoMinutos: c.tempoEstimadoMinutos ?? null, // snapshot do tempo estimado do conteúdo — não é tempo medido de fato (ver observação sobre rastreamento no formato não-PDF)
+        classificacaoEntendimento: null // sem validação nesta etapa
+      });
+    });
+
+    if (jaConcluido) { toast('Este conteúdo já foi concluído.', 'ok'); return; }
+
+    if (_cnProgressoUsuarioCache) {
+      _cnProgressoUsuarioCache[conteudoBaseId] = { ..._cnProgressoUsuarioCache[conteudoBaseId], status:'concluido', percentual:100, chegouAoFinal:true };
+    }
+    toast('✅ Conteúdo concluído!', 'ok');
+    conhecimentoFecharVisualizacao();
+    if (_ccAbaAtiva === 'minha-central') renderMinhaCentralConhecimento();
+  } catch(e) { console.error(e); toast('Erro ao concluir: ' + e.message, 'err'); if (btn) btn.disabled = false; }
+}
+
+
 
 function abrirEmailRecarga(recargaId) {
   const r = allRecargas.find(r=>r.id===recargaId);
