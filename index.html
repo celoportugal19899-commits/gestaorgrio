@@ -1616,8 +1616,22 @@ const PosCanalLabels = {
       <div class="topbar">
         <div class="page-header" style="margin:0"><h1>Combustível</h1><p>Recargas dos cartões dos supervisores</p></div>
       </div>
-      <div id="adm-comb-stats" class="grid-4" style="margin-bottom:20px"></div>
-      <div id="adm-comb-body"></div>
+      <div style="margin-bottom:18px">
+        <div style="display:inline-flex;background:var(--surface2);border-radius:10px;padding:4px;gap:4px">
+          <button id="comb-visao-btn-operacional" class="btn btn-sm" style="border:none" onclick="_combMudarVisao('operacional')">⛽ Operacional</button>
+          <button id="comb-visao-btn-analise" class="btn btn-sm" style="border:none" onclick="_combMudarVisao('analise')">📊 Gestão Financeira</button>
+        </div>
+      </div>
+      <div id="comb-visao-operacional">
+        <div id="adm-comb-stats" class="grid-4" style="margin-bottom:20px"></div>
+        <div id="adm-comb-body"></div>
+      </div>
+      <div id="comb-visao-analise" style="display:none">
+        <div id="comb-analise-filtros"></div>
+        <div id="comb-analise-cards"></div>
+        <div id="comb-analise-graficos"></div>
+        <div id="comb-analise-tabela"></div>
+      </div>
     </div>
 
     <!-- ADM — RELATÓRIO COMBUSTÍVEL -->
@@ -8505,6 +8519,245 @@ async function renderAdmCombustivel() {
     </div>`;
   });
   el.innerHTML = html || `<div class="empty"><div class="icon">⛽</div><p>Nenhum supervisor cadastrado.</p></div>`;
+  _combAplicarEstadoToggle();
+  if (_combVisao === 'analise') renderCombAnalise();
+}
+
+// ── Alternância entre as duas visões do módulo (mesmo módulo, dois jeitos de
+// ver o dado — mesmo padrão já usado no Caixa Rotativo) ──
+let _combVisao = 'operacional';
+function _combAplicarEstadoToggle() {
+  const opEl = document.getElementById('comb-visao-operacional');
+  const anEl = document.getElementById('comb-visao-analise');
+  if (opEl) opEl.style.display = _combVisao==='operacional' ? 'block' : 'none';
+  if (anEl) anEl.style.display = _combVisao==='analise' ? 'block' : 'none';
+  const btnOp = document.getElementById('comb-visao-btn-operacional');
+  const btnAn = document.getElementById('comb-visao-btn-analise');
+  if (btnOp) { btnOp.style.background = _combVisao==='operacional'?'var(--accent)':'transparent'; btnOp.style.color = _combVisao==='operacional'?'#fff':'var(--text2)'; }
+  if (btnAn) { btnAn.style.background = _combVisao==='analise'?'var(--accent)':'transparent'; btnAn.style.color = _combVisao==='analise'?'#fff':'var(--text2)'; }
+}
+function _combMudarVisao(v) {
+  _combVisao = v;
+  _combAplicarEstadoToggle();
+  if (v==='analise') renderCombAnalise();
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// COMBUSTÍVEL — VISÃO GESTÃO FINANCEIRA
+// Fonte única: `recargas` com status==='confirmada'. Data = confirmadaEm
+// (nunca `mes`, que é só o mês da solicitação). Valor = `valor`. Nunca lê
+// usos_combustivel (consumo do saldo, não desembolso da empresa). Mesmo
+// padrão já aprovado e em produção no Caixa Rotativo — inclusive reaproveita
+// _CAIXA_ROTULOS_PLUGIN_BRL e _competenciaLabel, já globais.
+// ══════════════════════════════════════════════════════════════════════════
+let _combAnaliseFiltroMes = '';
+let _combAnaliseFiltroSupervisor = '';
+let _combAnaliseCharts = {};
+// Diagnóstico: quantas recargas "confirmada" existem sem confirmadaEm, valor
+// válido ou supervisorEmail — nunca estimadas, só ignoradas e avisadas aqui.
+let _combAnaliseDocsInconsistentes = 0;
+
+function _combRecargasConfirmadas(filtrarPorMes) {
+  const validas = [];
+  let inconsistentes = 0;
+  (allRecargas||[]).forEach(r => {
+    if (r.status !== 'confirmada') return;
+    if (!r.confirmadaEm || r.valor===undefined || r.valor===null || isNaN(r.valor) || !r.supervisorEmail) { inconsistentes++; return; }
+    validas.push(r);
+  });
+  _combAnaliseDocsInconsistentes = inconsistentes;
+  let l = validas;
+  if (filtrarPorMes && _combAnaliseFiltroMes) l = l.filter(r => r.confirmadaEm.slice(0,7) === _combAnaliseFiltroMes);
+  if (_combAnaliseFiltroSupervisor) l = l.filter(r => r.supervisorEmail === _combAnaliseFiltroSupervisor);
+  return l;
+}
+
+function _combAnaliseMesesDisponiveis() {
+  const validas = (allRecargas||[]).filter(r=>r.status==='confirmada' && r.confirmadaEm);
+  return [...new Set(validas.map(r => r.confirmadaEm.slice(0,7)))].sort();
+}
+
+function _combAnaliseMesAnterior(mesRef) {
+  const [y,m] = mesRef.split('-').map(Number);
+  const d = new Date(y, m-2, 1);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+}
+
+function renderCombAnalise() {
+  _renderCombAnaliseFiltros();
+  _renderCombAnaliseConteudo();
+}
+
+function _renderCombAnaliseFiltros() {
+  const wrap = document.getElementById('comb-analise-filtros');
+  if (!wrap) return;
+  if (wrap.dataset.montado !== '1') {
+    const supervisoresBase = allUsers.filter(u=>SUPERVISORES_CAIXA.includes(u.email)&&u.email!=='supervisor.teste@gruporgbrasil.com'&&isAtivo(u));
+    wrap.innerHTML = `
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:18px">
+        <div><label class="form-label" style="font-size:11px">Mês</label><br>
+          <select class="form-select" id="comb-analise-fil-mes" style="width:190px" onchange="_combAnaliseAplicarFiltro()"></select>
+        </div>
+        <div><label class="form-label" style="font-size:11px">Supervisor</label><br>
+          <select class="form-select" id="comb-analise-fil-supervisor" style="width:180px" onchange="_combAnaliseAplicarFiltro()">
+            <option value="">Todos</option>
+            ${supervisoresBase.sort((a,b)=>a.name.localeCompare(b.name,'pt')).map(s=>`<option value="${s.email}">${s.name}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div id="comb-analise-diagnostico"></div>`;
+    wrap.dataset.montado = '1';
+  }
+  _combAnaliseAtualizarOpcoesMes();
+}
+
+// Opções de mês atualizadas à parte (sem recriar o <select>) para não perder
+// a seleção do usuário quando o onSnapshot dispara.
+function _combAnaliseAtualizarOpcoesMes() {
+  const sel = document.getElementById('comb-analise-fil-mes'); if (!sel) return;
+  const meses = _combAnaliseMesesDisponiveis();
+  if (!meses.length) { sel.innerHTML = '<option value="">Nenhuma recarga confirmada</option>'; _combAnaliseFiltroMes=''; return; }
+  if (!_combAnaliseFiltroMes || !meses.includes(_combAnaliseFiltroMes)) _combAnaliseFiltroMes = meses[meses.length-1]; // mês mais recente por padrão
+  sel.innerHTML = meses.slice().reverse().map(m=>`<option value="${m}">${_competenciaLabel(m)}</option>`).join('');
+  sel.value = _combAnaliseFiltroMes;
+}
+
+function _combAnaliseAplicarFiltro() {
+  _combAnaliseFiltroMes = document.getElementById('comb-analise-fil-mes')?.value || '';
+  _combAnaliseFiltroSupervisor = document.getElementById('comb-analise-fil-supervisor')?.value || '';
+  _renderCombAnaliseConteudo();
+}
+
+function _renderCombAnaliseDiagnostico() {
+  const el = document.getElementById('comb-analise-diagnostico'); if (!el) return;
+  if (!_combAnaliseDocsInconsistentes) { el.innerHTML = ''; return; }
+  el.innerHTML = `<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--yellow)">
+    ⚠️ ${_combAnaliseDocsInconsistentes} recarga(s) confirmada(s) sem "confirmadaEm", "valor" válido ou "supervisorEmail" foi(ram) ignorada(s) de toda a Visão Gestão Financeira (nenhum valor foi estimado). Verifique esses registros diretamente no Firestore.
+  </div>`;
+}
+
+function _renderCombAnaliseConteudo() {
+  const cardsEl = document.getElementById('comb-analise-cards');
+  const graficosEl = document.getElementById('comb-analise-graficos');
+  const tabelaEl = document.getElementById('comb-analise-tabela');
+  if (!cardsEl) return;
+
+  if (!_combAnaliseFiltroMes) {
+    cardsEl.innerHTML = `<div class="empty"><div class="icon">📊</div><p>Nenhuma recarga confirmada ainda.</p></div>`;
+    if (graficosEl) graficosEl.innerHTML = '';
+    if (tabelaEl) tabelaEl.innerHTML = '';
+    _renderCombAnaliseDiagnostico();
+    return;
+  }
+
+  // Fonte única: recargas confirmadas (por confirmadaEm) do mês e supervisor
+  // filtrados. _combRecargasConfirmadas já atualiza _combAnaliseDocsInconsistentes.
+  const recargasMes = _combRecargasConfirmadas(true);
+  _renderCombAnaliseDiagnostico();
+
+  const totalGasto = recargasMes.reduce((a,r)=>a+(r.valor||0),0);
+  const qtdRecargas = recargasMes.length;
+  const ticketMedio = qtdRecargas ? totalGasto/qtdRecargas : 0;
+
+  const porSupervisor = {};
+  recargasMes.forEach(r => {
+    const key = r.supervisorEmail || '—';
+    if (!porSupervisor[key]) porSupervisor[key] = {nome:r.supervisorNome||key, total:0, qtd:0};
+    porSupervisor[key].total += (r.valor||0);
+    porSupervisor[key].qtd++;
+  });
+  const ranking = Object.values(porSupervisor)
+    .map(s=>({nome:s.nome, totalGasto:s.total, qtdRecargas:s.qtd, ticket: s.qtd?s.total/s.qtd:0}))
+    .sort((a,b)=>b.totalGasto-a.totalGasto);
+  const maiorGasto = ranking[0] || null;
+
+  // Comparação com o mês anterior — mesma fonte, mesmo supervisor se filtrado.
+  const mesAnt = _combAnaliseMesAnterior(_combAnaliseFiltroMes);
+  const totalMesAnterior = (allRecargas||[])
+    .filter(r => r.status==='confirmada' && r.confirmadaEm && r.valor!=null && r.supervisorEmail
+      && r.confirmadaEm.slice(0,7)===mesAnt && (!_combAnaliseFiltroSupervisor || r.supervisorEmail===_combAnaliseFiltroSupervisor))
+    .reduce((a,r)=>a+(r.valor||0),0);
+  let variacaoHtml = '';
+  if (totalMesAnterior > 0) {
+    const variacaoPct = ((totalGasto - totalMesAnterior) / totalMesAnterior) * 100;
+    const seta = variacaoPct >= 0 ? '▲' : '▼';
+    const cor = variacaoPct >= 0 ? 'var(--red)' : 'var(--green)';
+    variacaoHtml = `<div style="font-size:11px;color:${cor};margin-top:2px">${seta} ${Math.abs(variacaoPct).toFixed(0)}% vs ${_competenciaLabel(mesAnt)}</div>`;
+  }
+
+  const participacaoMaiorGasto = maiorGasto && totalGasto ? ((maiorGasto.totalGasto/totalGasto)*100).toFixed(1) : null;
+
+  cardsEl.innerHTML = `
+    <div class="grid-4" style="margin-bottom:14px">
+      <div class="stat-card"><div class="label">Valor Total Gasto</div><div class="value" style="color:var(--red);font-size:20px">${fmtBRL(totalGasto)}</div>${variacaoHtml}<div class="sub">recargas confirmadas no mês</div></div>
+      <div class="stat-card"><div class="label">Quantidade de Recargas</div><div class="value" style="color:var(--accent)">${qtdRecargas}</div><div class="sub">confirmadas no mês</div></div>
+      <div class="stat-card"><div class="label">Ticket Médio</div><div class="value" style="color:var(--green);font-size:20px">${fmtBRL(ticketMedio)}</div><div class="sub">Valor Total Gasto ÷ Recargas</div></div>
+      <div class="stat-card"><div class="label">Supervisor com Maior Gasto</div><div class="value" style="font-size:16px">${maiorGasto?maiorGasto.nome:'—'}</div><div class="sub">${maiorGasto?`${fmtBRL(maiorGasto.totalGasto)} • ${participacaoMaiorGasto}%`:'Sem recargas neste mês'}</div></div>
+    </div>`;
+
+  _renderCombAnaliseGraficos(ranking);
+  _renderCombAnaliseTabela(ranking, totalGasto);
+}
+
+function _renderCombAnaliseGraficos(ranking) {
+  const wrap = document.getElementById('comb-analise-graficos'); if (!wrap) return;
+  wrap.innerHTML = `
+    <div style="margin-bottom:20px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:10px">📈 Evolução Mensal dos Gastos${_combAnaliseFiltroSupervisor?' — '+(allUsers.find(u=>u.email===_combAnaliseFiltroSupervisor)?.name||''):''}</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Recargas confirmadas (data do confirmadaEm) — sempre a série histórica completa, independente do mês selecionado no filtro.</div>
+      <div style="height:240px"><canvas id="comb-analise-chart-evolucao"></canvas></div>
+    </div>
+    <div style="margin-bottom:20px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:10px">🏆 Ranking de Supervisores</div>
+      <div style="height:220px"><canvas id="comb-analise-chart-ranking"></canvas></div>
+    </div>`;
+
+  Object.values(_combAnaliseCharts).forEach(c=>{ if (c) try{c.destroy();}catch(e){} });
+  _combAnaliseCharts = {};
+
+  // Evolução: SEMPRE a série histórica completa de meses — nunca limitada
+  // pelo mês selecionado. Mesma fonte (recargas confirmadas), respeitando o
+  // filtro de Supervisor quando houver.
+  const recargasTodas = _combRecargasConfirmadas(false);
+  const porMes = {};
+  recargasTodas.forEach(r => { const m=r.confirmadaEm.slice(0,7); porMes[m]=(porMes[m]||0)+(r.valor||0); });
+  const mesesOrdenados = Object.keys(porMes).sort();
+  const canvasEvo = document.getElementById('comb-analise-chart-evolucao');
+  if (canvasEvo && mesesOrdenados.length) {
+    _combAnaliseCharts.evolucao = new Chart(canvasEvo, {
+      type: mesesOrdenados.length<=1?'bar':'line',
+      data: { labels: mesesOrdenados.map(_competenciaLabel),
+        datasets: [{ label:'Gasto', data: mesesOrdenados.map(m=>porMes[m]), borderColor:'rgb(74,144,217)', backgroundColor:'rgba(74,144,217,.25)', tension:.3 }] },
+      options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true, ticks:{color:'#a0aec0'}, grid:{color:'rgba(255,255,255,.06)'}}, x:{ticks:{color:'#a0aec0'}, grid:{color:'rgba(255,255,255,.06)'}}} },
+      plugins: [_CAIXA_ROTULOS_PLUGIN_BRL]
+    });
+  }
+
+  // Ranking: mesma fonte, mês+supervisor filtrado (já vem pronto do chamador).
+  const canvasRank = document.getElementById('comb-analise-chart-ranking');
+  if (canvasRank && ranking.length) {
+    _combAnaliseCharts.ranking = new Chart(canvasRank, {
+      type:'bar',
+      data:{ labels:ranking.map(r=>r.nome), datasets:[{label:'Gasto', data:ranking.map(r=>r.totalGasto), backgroundColor:'rgba(226,75,74,.7)'}] },
+      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{beginAtZero:true, ticks:{color:'#a0aec0'}, grid:{color:'rgba(255,255,255,.06)'}}, y:{ticks:{color:'#a0aec0'}, grid:{display:false}}} },
+      plugins: [_CAIXA_ROTULOS_PLUGIN_BRL]
+    });
+  }
+}
+
+function _renderCombAnaliseTabela(ranking, totalGasto) {
+  const el = document.getElementById('comb-analise-tabela'); if (!el) return;
+  if (!ranking.length) { el.innerHTML = '<div class="empty"><p>Nenhuma recarga confirmada neste mês.</p></div>'; return; }
+  el.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15)">${['Supervisor','Valor Gasto','Quantidade de Recargas','Ticket Médio','Participação %'].map(h=>`<th style="padding:8px 10px;text-align:left;color:var(--text3)">${h}</th>`).join('')}</tr></thead>
+    <tbody>${ranking.map(r=>`<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+      <td style="padding:8px 10px">${r.nome}</td>
+      <td style="padding:8px 10px">${fmtBRL(r.totalGasto)}</td>
+      <td style="padding:8px 10px">${r.qtdRecargas}</td>
+      <td style="padding:8px 10px">${fmtBRL(r.ticket)}</td>
+      <td style="padding:8px 10px">${totalGasto?((r.totalGasto/totalGasto)*100).toFixed(1):'0'}%</td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
 }
 
 function abrirEmailRecarga(recargaId) {
