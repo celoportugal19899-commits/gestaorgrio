@@ -802,6 +802,7 @@ const PosCanalLabels = {
         <div class="sidebar-item" id="nav-rh-atestado-adm" onclick="showView('adm-rh-atestado',this)"><span class="icon">🏥</span> Atestados <span id="atestado-badge-adm" style="display:none;background:var(--accent);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
         <div class="sidebar-item" id="nav-rh-folha-adm" onclick="showView('adm-rh-folha',this)"><span class="icon">📋</span> Folha de Ponto <span id="folha-badge-adm" style="display:none;background:var(--yellow);color:#000;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
         <div class="sidebar-item" id="nav-rh-medidas-adm" onclick="showView('adm-medidas-disciplinares',this)"><span class="icon">⚖️</span> Medidas Disciplinares</div>
+        <div class="sidebar-item" id="nav-central-conhecimento-adm" onclick="showView('central-conhecimento',this)"><span class="icon">📚</span> Central de Conhecimento</div>
       </div>
     </div>
     <div id="nav-collab" style="display:none">
@@ -810,6 +811,7 @@ const PosCanalLabels = {
         <div class="sidebar-item active" onclick="showView('col-tasks',this)"><span class="icon">◈</span> Minhas Tarefas</div>
         <div class="sidebar-item" onclick="showView('col-ponto',this)"><span class="icon">⏱</span> Meu Ponto</div>
         <div class="sidebar-item" onclick="showView('col-incidencias',this)"><span class="icon">📋</span> Incidências</div>
+        <div class="sidebar-item" onclick="showView('central-conhecimento',this)"><span class="icon">📚</span> Central de Conhecimento</div>
       </div>
       <div class="sidebar-section" id="nav-collab-qualidade-section" style="display:none">
         <div class="sidebar-section-label">Qualidade</div>
@@ -826,6 +828,7 @@ const PosCanalLabels = {
       <div class="sidebar-section">
         <div class="sidebar-section-label">Atendimento</div>
         <div class="sidebar-item active" onclick="showView('posto-registro',this)"><span class="icon">🏪</span> Registro</div>
+        <div class="sidebar-item" onclick="showView('central-conhecimento',this)"><span class="icon">📚</span> Central de Conhecimento</div>
       </div>
     </div>
     <div id="nav-supervisor" style="display:none">
@@ -838,6 +841,7 @@ const PosCanalLabels = {
         <div class="sidebar-item" onclick="showView('adm-incidencias',this)"><span class="icon">📋</span> Incidências <span id="inc-badge-sup" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px">0</span></div>
         <div class="sidebar-item" onclick="showView('sup-caixa',this)"><span class="icon">💰</span> Caixa Rotativo</div>
         <div class="sidebar-item" onclick="showView('sup-combustivel',this)"><span class="icon">⛽</span> Recarga Combustível</div>
+        <div class="sidebar-item" onclick="showView('central-conhecimento',this)"><span class="icon">📚</span> Central de Conhecimento</div>
       </div>
       <div class="sidebar-section">
         <div class="sidebar-section-label">Recursos Humanos</div>
@@ -1643,6 +1647,29 @@ const PosCanalLabels = {
         </div>
       </div>
       <div id="rel-comb-body"></div>
+    </div>
+
+    <!-- CENTRAL DE CONHECIMENTO -->
+    <div id="view-central-conhecimento" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>📚 Central de Conhecimento</h1><p>Treinamentos, materiais e comunicados do GestãoRGRio</p></div>
+      </div>
+      <div style="margin-bottom:18px;overflow-x:auto">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="csat-tab" id="cc-tab-minha-central" onclick="alternarAbaConhecimento('minha-central')">🏠 Minha Central</button>
+          <button class="csat-tab" id="cc-tab-agenda" onclick="alternarAbaConhecimento('agenda')">📅 Agenda</button>
+          <button class="csat-tab" id="cc-tab-biblioteca" onclick="alternarAbaConhecimento('biblioteca')">📚 Biblioteca</button>
+          <button class="csat-tab" id="cc-tab-fiqueligado" onclick="alternarAbaConhecimento('fiqueligado')">📢 FiqueLigado</button>
+          <button class="csat-tab" id="cc-tab-treinamentos" onclick="alternarAbaConhecimento('treinamentos')">🎓 Treinamentos</button>
+          <button class="csat-tab" id="cc-tab-gestao" onclick="alternarAbaConhecimento('gestao')" style="display:none">📊 Gestão</button>
+        </div>
+      </div>
+      <div id="cc-minha-central-wrap"></div>
+      <div id="cc-agenda-wrap" style="display:none"></div>
+      <div id="cc-biblioteca-wrap" style="display:none"></div>
+      <div id="cc-fiqueligado-wrap" style="display:none"></div>
+      <div id="cc-treinamentos-wrap" style="display:none"></div>
+      <div id="cc-gestao-wrap" style="display:none"></div>
     </div>
 
     <!-- ADM — HOLERITE -->
@@ -4302,6 +4329,7 @@ function showView(name, el) {
   if (name === 'adm-qualidade-reclamacoes') renderReclamacoes();
   if (name === 'adm-qualidade-trocas') renderTrocas();
   if (name === 'adm-qualidade-backoffice') renderControleBackoffice();
+  if (name === 'central-conhecimento') abrirCentralConhecimento();
   // Render imediato ao navegar (cancela debounce pendente e renderiza já)
   clearTimeout(_refreshTimer);
   _refreshTimer = null;
@@ -8757,6 +8785,211 @@ function _renderCombAnaliseTabela(ranking, totalGasto) {
       <td style="padding:8px 10px">${fmtBRL(r.ticket)}</td>
       <td style="padding:8px 10px">${totalGasto?((r.totalGasto/totalGasto)*100).toFixed(1):'0'}%</td>
     </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// CENTRAL DE CONHECIMENTO — ETAPA 1 (esqueleto estrutural)
+// Sem consultas ao Firestore nesta etapa. Dados simulados/zerados só para
+// validar layout. Pontos de conexão futura marcados com TODO.
+// ══════════════════════════════════════════════════════════════════════════
+
+// Função ÚNICA responsável por decidir quem pode acessar a Gestão da Central
+// de Conhecimento — usa a identificação já existente no sistema (role admin
+// = Marcelo; e-mail da Plicila, mesmo padrão já usado em podeVerControleBackoffice).
+// Não espalhar essa checagem em outras funções: quando existir permissão
+// declarativa (ex.: centralConhecimento.gestao), só este ponto muda.
+function podeGerenciarCentralConhecimento() {
+  if (!currentUser) return false;
+  if (currentUser.role === 'admin') return true;
+  return currentUser.email === 'plicila.silva@gruporgbrasil.com';
+}
+
+let _ccAbaAtiva = 'minha-central';
+let _ccGestaoAbaAtiva = 'dashboard';
+let _ccAgendaModo = 'calendario';
+let _ccBibliotecaFiltro = 'todos';
+let _ccFiqueLigadoFiltro = 'todos';
+let _ccTreinamentosFiltro = 'todos';
+
+function abrirCentralConhecimento() {
+  const tabGestao = document.getElementById('cc-tab-gestao');
+  if (tabGestao) tabGestao.style.display = podeGerenciarCentralConhecimento() ? '' : 'none';
+  alternarAbaConhecimento((_ccAbaAtiva === 'gestao' && !podeGerenciarCentralConhecimento()) ? 'minha-central' : _ccAbaAtiva);
+}
+
+function alternarAbaConhecimento(aba) {
+  // Proteção: mesmo chamando alternarAbaConhecimento('gestao') direto pelo
+  // console (sem clicar na aba, que já fica oculta no HTML), a permissão é
+  // checada de novo aqui.
+  if (aba === 'gestao' && !podeGerenciarCentralConhecimento()) { toast('Você não tem acesso a esta área.', 'err'); aba = 'minha-central'; }
+  _ccAbaAtiva = aba;
+  ['minha-central','agenda','biblioteca','fiqueligado','treinamentos','gestao'].forEach(a => {
+    const btn = document.getElementById('cc-tab-'+a), wrap = document.getElementById('cc-'+a+'-wrap');
+    if (btn) btn.classList.toggle('active', a===aba);
+    if (wrap) wrap.style.display = (a===aba) ? 'block' : 'none';
+  });
+  if (aba === 'minha-central') renderMinhaCentralConhecimento();
+  else if (aba === 'agenda') renderAgendaConhecimento();
+  else if (aba === 'biblioteca') renderBibliotecaConhecimento();
+  else if (aba === 'fiqueligado') renderFiqueLigadoConhecimento();
+  else if (aba === 'treinamentos') renderTreinamentosConhecimento();
+  else if (aba === 'gestao') renderGestaoConhecimento();
+}
+
+function _ccAvisoFuturo() { toast('Funcionalidade disponível em uma próxima etapa.', 'ok'); }
+
+// ── Tela 1: Minha Central ──
+function renderMinhaCentralConhecimento() {
+  const el = document.getElementById('cc-minha-central-wrap'); if (!el) return;
+  // TODO (próxima etapa): substituir os valores fixos abaixo por consultas
+  // reais ao Firestore (progresso do colaborador, treinamentos agendados,
+  // conteúdos concluídos etc.)
+  el.innerHTML = `
+    <div class="page-header" style="margin:0 0 18px"><h1 style="font-size:18px">Minha Central</h1><p>Acompanhe seus treinamentos, conteúdos pendentes e materiais recentes.</p></div>
+    <div class="grid-4" style="margin-bottom:24px">
+      <div class="stat-card"><div class="label">Conteúdos Pendentes</div><div class="value">0</div></div>
+      <div class="stat-card"><div class="label">Treinamentos Agendados</div><div class="value">0</div></div>
+      <div class="stat-card"><div class="label">Em Andamento</div><div class="value">0</div></div>
+      <div class="stat-card"><div class="label">Concluídos</div><div class="value">0</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px">
+      <div><div style="font-size:13px;font-weight:700;margin-bottom:10px">Próximos Treinamentos</div><div class="empty"><p>Nenhum treinamento agendado.</p></div></div>
+      <div><div style="font-size:13px;font-weight:700;margin-bottom:10px">Conteúdos Pendentes</div><div class="empty"><p>Nenhum conteúdo pendente.</p></div></div>
+      <div><div style="font-size:13px;font-weight:700;margin-bottom:10px">Continuar de Onde Parei</div><div class="empty"><p>Nenhum conteúdo em andamento.</p></div></div>
+      <div><div style="font-size:13px;font-weight:700;margin-bottom:10px">Últimos Concluídos</div><div class="empty"><p>Nenhum conteúdo concluído recentemente.</p></div></div>
+    </div>`;
+}
+
+// ── Tela 2: Agenda ──
+function ccAgendaAlternarModo(modo) { _ccAgendaModo = modo; renderAgendaConhecimento(); }
+function renderAgendaConhecimento() {
+  const el = document.getElementById('cc-agenda-wrap'); if (!el) return;
+  // TODO (próxima etapa): consultar treinamentos agendados no Firestore e
+  // renderizar um calendário funcional.
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:16px">
+      <div class="page-header" style="margin:0"><h1 style="font-size:18px">Agenda de Treinamentos</h1></div>
+      ${podeGerenciarCentralConhecimento() ? `<button class="btn btn-primary btn-sm" onclick="_ccAvisoFuturo()">+ Novo Treinamento</button>` : ''}
+    </div>
+    <div style="display:inline-flex;background:var(--surface2);border-radius:10px;padding:4px;gap:4px;margin-bottom:18px">
+      <button class="btn btn-sm" style="border:none;${_ccAgendaModo==='calendario'?'background:var(--accent);color:#fff':'background:transparent;color:var(--text2)'}" onclick="ccAgendaAlternarModo('calendario')">📅 Calendário</button>
+      <button class="btn btn-sm" style="border:none;${_ccAgendaModo==='lista'?'background:var(--accent);color:#fff':'background:transparent;color:var(--text2)'}" onclick="ccAgendaAlternarModo('lista')">📋 Lista</button>
+    </div>
+    <div class="empty"><p>Nenhum treinamento agendado.</p></div>`;
+}
+
+// ── Tela 3: Biblioteca ──
+function ccBibliotecaFiltrar(f) { _ccBibliotecaFiltro = f; renderBibliotecaConhecimento(); }
+function renderBibliotecaConhecimento() {
+  const el = document.getElementById('cc-biblioteca-wrap'); if (!el) return;
+  // TODO (próxima etapa): pesquisa real + consulta de conteúdos no Firestore.
+  const filtros = [['todos','Todos'],['procedimentos','Procedimentos'],['manuais','Manuais'],['videos','Vídeos'],['links','Links'],['apresentacoes','Apresentações']];
+  el.innerHTML = `
+    <div class="page-header" style="margin:0 0 16px"><h1 style="font-size:18px">Biblioteca</h1></div>
+    <input class="form-input" placeholder="🔎 Pesquisar conteúdos..." style="margin-bottom:14px;max-width:420px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">
+      ${filtros.map(([v,l])=>`<button class="btn btn-sm ${_ccBibliotecaFiltro===v?'btn-primary':'btn-secondary'}" onclick="ccBibliotecaFiltrar('${v}')">${l}</button>`).join('')}
+    </div>
+    <div class="empty"><p>Nenhum conteúdo disponível na biblioteca.</p></div>`;
+}
+
+// ── Tela 4: FiqueLigado ──
+function ccFiqueLigadoFiltrar(f) { _ccFiqueLigadoFiltro = f; renderFiqueLigadoConhecimento(); }
+function renderFiqueLigadoConhecimento() {
+  const el = document.getElementById('cc-fiqueligado-wrap'); if (!el) return;
+  // TODO (próxima etapa): consultar comunicados no Firestore.
+  const filtros = [['todos','Todos'],['pendentes','Pendentes'],['concluidos','Concluídos'],['urgentes','Urgentes']];
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+      <div class="page-header" style="margin:0"><h1 style="font-size:18px">FiqueLigado</h1><p>Comunicados e atualizações operacionais importantes.</p></div>
+      ${podeGerenciarCentralConhecimento() ? `<button class="btn btn-primary btn-sm" onclick="_ccAvisoFuturo()">+ Novo FiqueLigado</button>` : ''}
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 20px">
+      ${filtros.map(([v,l])=>`<button class="btn btn-sm ${_ccFiqueLigadoFiltro===v?'btn-primary':'btn-secondary'}" onclick="ccFiqueLigadoFiltrar('${v}')">${l}</button>`).join('')}
+    </div>
+    <div class="empty"><p>Nenhum FiqueLigado disponível.</p></div>`;
+}
+
+// ── Tela 5: Treinamentos ──
+function ccTreinamentosFiltrar(f) { _ccTreinamentosFiltro = f; renderTreinamentosConhecimento(); }
+function renderTreinamentosConhecimento() {
+  const el = document.getElementById('cc-treinamentos-wrap'); if (!el) return;
+  // TODO (próxima etapa): consultar treinamentos no Firestore.
+  const filtros = [['todos','Todos'],['agendados','Agendados'],['andamento','Em Andamento'],['concluidos','Concluídos']];
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+      <div class="page-header" style="margin:0"><h1 style="font-size:18px">Treinamentos</h1></div>
+      ${podeGerenciarCentralConhecimento() ? `<button class="btn btn-primary btn-sm" onclick="_ccAvisoFuturo()">+ Novo Treinamento</button>` : ''}
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 20px">
+      ${filtros.map(([v,l])=>`<button class="btn btn-sm ${_ccTreinamentosFiltro===v?'btn-primary':'btn-secondary'}" onclick="ccTreinamentosFiltrar('${v}')">${l}</button>`).join('')}
+    </div>
+    <div class="empty"><p>Nenhum treinamento disponível.</p></div>`;
+}
+
+// ── Tela 6: Gestão — exclusiva Marcelo/Plicila. Protegida em 3 pontos:
+// aba oculta no HTML (style="display:none" por padrão), checagem em
+// alternarAbaConhecimento(), e checagem de novo aqui dentro — impede acesso
+// por chamada manual da função no console. ──
+function renderGestaoConhecimento() {
+  const el = document.getElementById('cc-gestao-wrap'); if (!el) return;
+  if (!podeGerenciarCentralConhecimento()) { el.innerHTML = `<div class="empty"><p>Você não tem acesso a esta área.</p></div>`; return; }
+  el.innerHTML = `
+    <div class="page-header" style="margin:0 0 16px"><h1 style="font-size:18px">Gestão da Central de Conhecimento</h1></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px">
+      <button class="csat-tab" id="cc-gestao-tab-dashboard" onclick="alternarAbaGestaoConhecimento('dashboard')">Dashboard</button>
+      <button class="csat-tab" id="cc-gestao-tab-conteudos" onclick="alternarAbaGestaoConhecimento('conteudos')">Conteúdos</button>
+      <button class="csat-tab" id="cc-gestao-tab-treinamentos" onclick="alternarAbaGestaoConhecimento('treinamentos')">Treinamentos</button>
+      <button class="csat-tab" id="cc-gestao-tab-participacao" onclick="alternarAbaGestaoConhecimento('participacao')">Participação</button>
+      <button class="csat-tab" id="cc-gestao-tab-entendimento" onclick="alternarAbaGestaoConhecimento('entendimento')">Entendimento</button>
+      <button class="csat-tab" id="cc-gestao-tab-reciclagens" onclick="alternarAbaGestaoConhecimento('reciclagens')">Reciclagens</button>
+    </div>
+    <div id="cc-gestao-conteudo"></div>`;
+  alternarAbaGestaoConhecimento(_ccGestaoAbaAtiva);
+}
+
+function alternarAbaGestaoConhecimento(aba) {
+  if (!podeGerenciarCentralConhecimento()) return; // proteção redundante contra chamada manual
+  _ccGestaoAbaAtiva = aba;
+  ['dashboard','conteudos','treinamentos','participacao','entendimento','reciclagens'].forEach(a => {
+    const btn = document.getElementById('cc-gestao-tab-'+a);
+    if (btn) btn.classList.toggle('active', a===aba);
+  });
+  const el = document.getElementById('cc-gestao-conteudo'); if (!el) return;
+
+  if (aba === 'dashboard') {
+    // TODO (próxima etapa): calcular estes cards a partir do Firestore.
+    el.innerHTML = `
+      <div class="grid-4" style="margin-bottom:16px">
+        <div class="stat-card"><div class="label">Conteúdos Publicados</div><div class="value">0</div></div>
+        <div class="stat-card"><div class="label">Treinamentos Realizados</div><div class="value">0</div></div>
+        <div class="stat-card"><div class="label">Participantes</div><div class="value">0</div></div>
+        <div class="stat-card"><div class="label">Pendências</div><div class="value">0</div></div>
+      </div>
+      <div class="grid-4">
+        <div class="stat-card"><div class="label">Reciclagens</div><div class="value">0</div></div>
+        <div class="stat-card"><div class="label">Leitura Média</div><div class="value">0%</div></div>
+      </div>`;
+  } else if (aba === 'conteudos') {
+    el.innerHTML = `<div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="btn btn-primary btn-sm" onclick="_ccAvisoFuturo()">+ Novo Conteúdo</button></div>`
+      + _ccTabelaVaziaConhecimento(['Título','Categoria','Versão','Publicado em','Obrigatório','Público','Status','Ações'], 'Nenhum conteúdo cadastrado.');
+  } else if (aba === 'treinamentos') {
+    el.innerHTML = _ccTabelaVaziaConhecimento(['Título','Data','Instrutor','Participantes','Presentes','Ausentes','Quiz','Status','Ações'], 'Nenhum treinamento cadastrado.');
+  } else if (aba === 'participacao') {
+    el.innerHTML = _ccTabelaVaziaConhecimento(['Colaborador','Posto','Supervisor','Treinamentos','Presença','Pendências','Reciclagens'], 'Nenhuma participação registrada.');
+  } else if (aba === 'entendimento') {
+    // TODO (próxima etapa): sem gráficos ainda — só a tabela, conforme etapa 1.
+    el.innerHTML = _ccTabelaVaziaConhecimento(['Colaborador','Conteúdos Respondidos','Domínio Imediato','Precisou Revisar','Necessitou Apoio'], 'Nenhum resultado de entendimento disponível.');
+  } else if (aba === 'reciclagens') {
+    el.innerHTML = _ccTabelaVaziaConhecimento(['Conteúdo','Versão Atual','Público','Pendentes','Prazo','Status'], 'Nenhuma reciclagem pendente.');
+  }
+}
+
+function _ccTabelaVaziaConhecimento(colunas, textoVazio) {
+  return `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15)">${colunas.map(c=>`<th style="padding:8px 10px;text-align:left;color:var(--text3);white-space:nowrap">${c}</th>`).join('')}</tr></thead>
+    <tbody><tr><td colspan="${colunas.length}"><div class="empty"><p>${textoVazio}</p></div></td></tr></tbody>
   </table></div>`;
 }
 
