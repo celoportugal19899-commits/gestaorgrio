@@ -6744,6 +6744,14 @@ function initCaixas() {
     allCaixaLancamentos = snap.docs.map(d => ({id:d.id,...d.data()}));
     const active = document.querySelector('.view.active');
     if (active?.id === 'view-sup-caixa') renderSupCaixa();
+    // Correção: a Visão Gestão Financeira (e a "última movimentação" da
+    // Visão Operacional) dependem inteiramente de allCaixaLancamentos —
+    // antes, só a coleção "caixas" acordava essa tela, então um lançamento
+    // novo podia ficar de fora até a próxima mudança em "caixas".
+    if (active?.id === 'view-adm-caixas') {
+      _renderAdmCaixasConteudo();
+      if (_caixaVisao === 'analise') renderCaixaAnalise();
+    }
   });
 }
 
@@ -7398,7 +7406,38 @@ async function _renderAdmCaixasConteudo() {
 // palavra "Competência" nunca aparece nesta interface.
 // ══════════════════════════════════════════════════════════════════════════
 let _analiseFiltroMes = '';
+let _analiseFiltroSupervisor = '';
 let _caixaAnaliseCharts = {};
+
+// Mesmo padrão visual de rótulos de dados já usado no resto do sistema
+// (_BKO_ROTULOS_PLUGIN), só formatando o valor em R$ em vez de número cru.
+const _CAIXA_ROTULOS_PLUGIN_BRL = {
+  id: 'caixaRotulosBRL',
+  afterDatasetsDraw(chart) {
+    const ctx = chart.ctx;
+    chart.data.datasets.forEach((ds, dsIdx) => {
+      const meta = chart.getDatasetMeta(dsIdx);
+      if (meta.hidden) return;
+      meta.data.forEach((el, i) => {
+        const v = ds.data[i];
+        if (v === null || v === undefined || v === 0) return;
+        ctx.save();
+        ctx.fillStyle = '#e6e6ea';
+        ctx.font = '11px sans-serif';
+        const pos = el.tooltipPosition ? el.tooltipPosition() : el;
+        const label = fmtBRL(v);
+        if (chart.config.options && chart.config.options.indexAxis === 'y') {
+          ctx.textAlign = 'left';
+          ctx.fillText(label, pos.x + 4, pos.y + 3);
+        } else {
+          ctx.textAlign = 'center';
+          ctx.fillText(label, pos.x, pos.y - 6);
+        }
+        ctx.restore();
+      });
+    });
+  }
+};
 
 function _analiseMesesDisponiveis() {
   return [...new Set((allCaixaLancamentos||[]).map(l => (l.data||'').slice(0,7)).filter(Boolean))].sort();
@@ -7410,6 +7449,15 @@ function _analiseMesAnterior(mesRef) {
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
 }
 
+// Lançamentos de um supervisor específico (ou todos) — usada tanto pelo mês
+// filtrado quanto pela evolução (que nunca é limitada pelo mês).
+function _analiseLancamentos(filtrarPorMes) {
+  let l = allCaixaLancamentos || [];
+  if (filtrarPorMes && _analiseFiltroMes) l = l.filter(x => (x.data||'').slice(0,7) === _analiseFiltroMes);
+  if (_analiseFiltroSupervisor) l = l.filter(x => x.supervisorEmail === _analiseFiltroSupervisor);
+  return l;
+}
+
 function renderCaixaAnalise() {
   _renderCaixaAnaliseFiltros();
   _renderCaixaAnaliseConteudo();
@@ -7419,18 +7467,26 @@ function _renderCaixaAnaliseFiltros() {
   const wrap = document.getElementById('caixa-analise-filtros');
   if (!wrap) return;
   if (wrap.dataset.montado !== '1') {
+    const supervisoresBase = allUsers.filter(u=>SUPERVISORES_CAIXA.includes(u.email)&&u.email!=='supervisor.teste@gruporgbrasil.com'&&isAtivo(u));
     wrap.innerHTML = `
-      <div style="margin-bottom:18px">
-        <label class="form-label" style="font-size:11px">Mês</label><br>
-        <select class="form-select" id="analise-fil-mes" style="width:190px" onchange="_caixaAnaliseAplicarFiltro()"></select>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:18px">
+        <div><label class="form-label" style="font-size:11px">Mês</label><br>
+          <select class="form-select" id="analise-fil-mes" style="width:190px" onchange="_caixaAnaliseAplicarFiltro()"></select>
+        </div>
+        <div><label class="form-label" style="font-size:11px">Supervisor</label><br>
+          <select class="form-select" id="analise-fil-supervisor" style="width:180px" onchange="_caixaAnaliseAplicarFiltro()">
+            <option value="">Todos</option>
+            ${supervisoresBase.sort((a,b)=>a.name.localeCompare(b.name,'pt')).map(s=>`<option value="${s.email}">${s.name}</option>`).join('')}
+          </select>
+        </div>
       </div>`;
     wrap.dataset.montado = '1';
   }
   _caixaAnaliseAtualizarOpcoesMes();
 }
 
-// Opções atualizadas à parte (sem recriar o <select>) para não perder a
-// seleção do usuário quando o onSnapshot dispara.
+// Opções de mês atualizadas à parte (sem recriar o <select>) para não perder
+// a seleção do usuário quando o onSnapshot dispara.
 function _caixaAnaliseAtualizarOpcoesMes() {
   const sel = document.getElementById('analise-fil-mes'); if (!sel) return;
   const meses = _analiseMesesDisponiveis();
@@ -7442,6 +7498,7 @@ function _caixaAnaliseAtualizarOpcoesMes() {
 
 function _caixaAnaliseAplicarFiltro() {
   _analiseFiltroMes = document.getElementById('analise-fil-mes')?.value || '';
+  _analiseFiltroSupervisor = document.getElementById('analise-fil-supervisor')?.value || '';
   _renderCaixaAnaliseConteudo();
 }
 
@@ -7458,30 +7515,32 @@ function _renderCaixaAnaliseConteudo() {
     return;
   }
 
-  // Cards, ranking e tabela respeitam o mês selecionado.
-  const lancsMes = (allCaixaLancamentos||[]).filter(l => (l.data||'').slice(0,7) === _analiseFiltroMes);
+  // Mês + Supervisor (quando selecionado) — Cards, Ranking, Tabela e o total
+  // do mês corrente sempre respeitam os dois filtros combinados.
+  const lancsMes = _analiseLancamentos(true);
 
   const totalGasto = lancsMes.reduce((a,l)=>a+(l.valor||0),0);
-  const qtdDespesas = lancsMes.length;
   const qtdPrestacoes = new Set(lancsMes.map(l=>l.caixaId)).size;
   const ticketMedio = qtdPrestacoes ? totalGasto/qtdPrestacoes : 0;
 
   const porSupervisor = {};
   lancsMes.forEach(l => {
     const key = l.supervisorEmail || '—';
-    if (!porSupervisor[key]) porSupervisor[key] = {nome:l.supervisorNome||key, total:0, despesas:0, caixaIds:new Set()};
+    if (!porSupervisor[key]) porSupervisor[key] = {nome:l.supervisorNome||key, total:0, caixaIds:new Set()};
     porSupervisor[key].total += (l.valor||0);
-    porSupervisor[key].despesas++;
     porSupervisor[key].caixaIds.add(l.caixaId);
   });
   const ranking = Object.values(porSupervisor)
-    .map(s=>({nome:s.nome, total:s.total, despesas:s.despesas, prestacoes:s.caixaIds.size, ticket: s.caixaIds.size?s.total/s.caixaIds.size:0}))
+    .map(s=>({nome:s.nome, total:s.total, prestacoes:s.caixaIds.size, ticket: s.caixaIds.size?s.total/s.caixaIds.size:0}))
     .sort((a,b)=>b.total-a.total);
   const maiorGasto = ranking[0] || null;
 
-  // Comparação com o mês anterior — só dentro do card Valor Total Gasto, não é card novo.
+  // Comparação com o mês anterior (mesmo supervisor filtrado, se houver) —
+  // só dentro do card Valor Total Gasto, não é card novo.
   const mesAnt = _analiseMesAnterior(_analiseFiltroMes);
-  const totalMesAnterior = (allCaixaLancamentos||[]).filter(l=>(l.data||'').slice(0,7)===mesAnt).reduce((a,l)=>a+(l.valor||0),0);
+  const totalMesAnterior = (allCaixaLancamentos||[])
+    .filter(l => (l.data||'').slice(0,7)===mesAnt && (!_analiseFiltroSupervisor || l.supervisorEmail===_analiseFiltroSupervisor))
+    .reduce((a,l)=>a+(l.valor||0),0);
   let variacaoHtml = '';
   if (totalMesAnterior > 0) {
     const variacaoPct = ((totalGasto - totalMesAnterior) / totalMesAnterior) * 100;
@@ -7493,14 +7552,9 @@ function _renderCaixaAnaliseConteudo() {
   cardsEl.innerHTML = `
     <div class="grid-4" style="margin-bottom:14px">
       <div class="stat-card"><div class="label">Valor Total Gasto</div><div class="value" style="color:var(--red);font-size:20px">${fmtBRL(totalGasto)}</div>${variacaoHtml}</div>
-      <div class="stat-card"><div class="label">Quantidade de Despesas</div><div class="value" style="color:var(--accent)">${qtdDespesas}</div></div>
       <div class="stat-card"><div class="label">Quantidade de Prestações</div><div class="value" style="color:var(--accent)">${qtdPrestacoes}</div></div>
-      <div class="stat-card"><div class="label">Ticket Médio</div><div class="value" style="color:var(--green);font-size:20px">${fmtBRL(ticketMedio)}</div></div>
-    </div>
-    <div class="stat-card" style="margin-bottom:20px">
-      <div class="label">Supervisor com Maior Gasto</div>
-      <div class="value" style="font-size:18px">${maiorGasto?maiorGasto.nome:'—'}</div>
-      <div class="sub">${maiorGasto?fmtBRL(maiorGasto.total):'Sem lançamentos neste mês'}</div>
+      <div class="stat-card"><div class="label">Ticket Médio</div><div class="value" style="color:var(--green);font-size:20px">${fmtBRL(ticketMedio)}</div><div class="sub">Valor Total Gasto ÷ Prestações</div></div>
+      <div class="stat-card"><div class="label">Supervisor com Maior Gasto</div><div class="value" style="font-size:16px">${maiorGasto?maiorGasto.nome:'—'}</div><div class="sub">${maiorGasto?fmtBRL(maiorGasto.total):'Sem lançamentos neste mês'}</div></div>
     </div>`;
 
   _renderCaixaAnaliseGraficos(ranking);
@@ -7511,7 +7565,7 @@ function _renderCaixaAnaliseGraficos(ranking) {
   const wrap = document.getElementById('caixa-analise-graficos'); if (!wrap) return;
   wrap.innerHTML = `
     <div style="margin-bottom:20px">
-      <div style="font-size:13px;font-weight:700;margin-bottom:10px">📈 Evolução Mensal dos Gastos</div>
+      <div style="font-size:13px;font-weight:700;margin-bottom:10px">📈 Evolução Mensal dos Gastos${_analiseFiltroSupervisor?' — '+(allUsers.find(u=>u.email===_analiseFiltroSupervisor)?.name||''):''}</div>
       <div style="height:240px"><canvas id="caixa-analise-chart-evolucao"></canvas></div>
     </div>
     <div style="margin-bottom:20px">
@@ -7522,10 +7576,12 @@ function _renderCaixaAnaliseGraficos(ranking) {
   Object.values(_caixaAnaliseCharts).forEach(c=>{ if (c) try{c.destroy();}catch(e){} });
   _caixaAnaliseCharts = {};
 
-  // Evolução: SEMPRE a série histórica completa — nunca filtrada pelo mês
-  // selecionado, propositalmente, para permitir ver tendência ao longo do tempo.
+  // Evolução: SEMPRE a série histórica completa de meses — nunca limitada
+  // pelo mês selecionado. Respeita o filtro de Supervisor quando houver
+  // (soma de todos os supervisores quando "Todos" estiver selecionado).
+  const lancsEvolucao = _analiseLancamentos(false);
   const porMes = {};
-  (allCaixaLancamentos||[]).forEach(l => { const m=(l.data||'').slice(0,7); if (!m) return; porMes[m]=(porMes[m]||0)+(l.valor||0); });
+  lancsEvolucao.forEach(l => { const m=(l.data||'').slice(0,7); if (!m) return; porMes[m]=(porMes[m]||0)+(l.valor||0); });
   const mesesOrdenados = Object.keys(porMes).sort();
   const canvasEvo = document.getElementById('caixa-analise-chart-evolucao');
   if (canvasEvo && mesesOrdenados.length) {
@@ -7533,17 +7589,19 @@ function _renderCaixaAnaliseGraficos(ranking) {
       type: mesesOrdenados.length<=1?'bar':'line',
       data: { labels: mesesOrdenados.map(_competenciaLabel),
         datasets: [{ label:'Gasto', data: mesesOrdenados.map(m=>porMes[m]), borderColor:'rgb(74,144,217)', backgroundColor:'rgba(74,144,217,.25)', tension:.3 }] },
-      options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true, ticks:{color:'#a0aec0'}, grid:{color:'rgba(255,255,255,.06)'}}, x:{ticks:{color:'#a0aec0'}, grid:{color:'rgba(255,255,255,.06)'}}} }
+      options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true, ticks:{color:'#a0aec0'}, grid:{color:'rgba(255,255,255,.06)'}}, x:{ticks:{color:'#a0aec0'}, grid:{color:'rgba(255,255,255,.06)'}}} },
+      plugins: [_CAIXA_ROTULOS_PLUGIN_BRL]
     });
   }
 
-  // Ranking: respeita o mês selecionado (já vem filtrado do chamador).
+  // Ranking: respeita mês + supervisor (já vem filtrado do chamador).
   const canvasRank = document.getElementById('caixa-analise-chart-ranking');
   if (canvasRank && ranking.length) {
     _caixaAnaliseCharts.ranking = new Chart(canvasRank, {
       type:'bar',
       data:{ labels:ranking.map(r=>r.nome), datasets:[{label:'Gasto', data:ranking.map(r=>r.total), backgroundColor:'rgba(226,75,74,.7)'}] },
-      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{beginAtZero:true, ticks:{color:'#a0aec0'}, grid:{color:'rgba(255,255,255,.06)'}}, y:{ticks:{color:'#a0aec0'}, grid:{display:false}}} }
+      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{beginAtZero:true, ticks:{color:'#a0aec0'}, grid:{color:'rgba(255,255,255,.06)'}}, y:{ticks:{color:'#a0aec0'}, grid:{display:false}}} },
+      plugins: [_CAIXA_ROTULOS_PLUGIN_BRL]
     });
   }
 }
@@ -7552,11 +7610,10 @@ function _renderCaixaAnaliseTabela(ranking, totalGasto) {
   const el = document.getElementById('caixa-analise-tabela'); if (!el) return;
   if (!ranking.length) { el.innerHTML = '<div class="empty"><p>Nenhum lançamento neste mês.</p></div>'; return; }
   el.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
-    <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15)">${['Supervisor','Valor Gasto','Despesas','Prestações','Ticket Médio','Participação %'].map(h=>`<th style="padding:8px 10px;text-align:left;color:var(--text3)">${h}</th>`).join('')}</tr></thead>
+    <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15)">${['Supervisor','Valor Gasto','Quantidade de Prestações','Ticket Médio','Participação %'].map(h=>`<th style="padding:8px 10px;text-align:left;color:var(--text3)">${h}</th>`).join('')}</tr></thead>
     <tbody>${ranking.map(r=>`<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
       <td style="padding:8px 10px">${r.nome}</td>
       <td style="padding:8px 10px">${fmtBRL(r.total)}</td>
-      <td style="padding:8px 10px">${r.despesas}</td>
       <td style="padding:8px 10px">${r.prestacoes}</td>
       <td style="padding:8px 10px">${fmtBRL(r.ticket)}</td>
       <td style="padding:8px 10px">${totalGasto?((r.total/totalGasto)*100).toFixed(1):'0'}%</td>
