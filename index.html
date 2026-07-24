@@ -8825,6 +8825,19 @@ function abrirCentralConhecimento() {
   const tabGestao = document.getElementById('cc-tab-gestao');
   if (tabGestao) tabGestao.style.display = podeGerenciarCentralConhecimento() ? '' : 'none';
   alternarAbaConhecimento((_ccAbaAtiva === 'gestao' && !podeGerenciarCentralConhecimento()) ? 'minha-central' : _ccAbaAtiva);
+  _cnChecarFiqueLigadoPendente();
+}
+
+// Ao existir FiqueLigado aplicável e ainda não concluído, abre automaticamente
+// — uma vez por sessão (não fica reabrindo a cada troca de aba do módulo).
+let _cnFiqueLigadoPopupMostrado = false;
+async function _cnChecarFiqueLigadoPendente() {
+  if (_cnFiqueLigadoPopupMostrado) return;
+  try {
+    const [conteudos, progressoMap] = await Promise.all([conhecimentoResolverConteudosAplicaveis(), _cnCarregarProgressoUsuario()]);
+    const pendente = conteudos.find(c => c.tipo === 'fiqueligado' && _cnStatusVisualDoUsuario(c, progressoMap) !== 'concluido');
+    if (pendente) { _cnFiqueLigadoPopupMostrado = true; conhecimentoAbrirConteudo(pendente.id); }
+  } catch(e) { console.error('Erro ao checar FiqueLigado pendente', e); }
 }
 
 function alternarAbaConhecimento(aba) {
@@ -8915,7 +8928,7 @@ function alternarAbaGestaoConhecimento(aba) {
   } else if (aba === 'treinamentos') {
     el.innerHTML = _ccTabelaVaziaConhecimento(['Título','Data','Instrutor','Participantes','Presentes','Ausentes','Quiz','Status','Ações'], 'Nenhum treinamento cadastrado.');
   } else if (aba === 'participacao') {
-    el.innerHTML = _ccTabelaVaziaConhecimento(['Colaborador','Posto','Supervisor','Treinamentos','Presença','Pendências','Reciclagens'], 'Nenhuma participação registrada.');
+    conhecimentoRenderVisaoPorPosto();
   } else if (aba === 'entendimento') {
     // TODO (próxima etapa): sem gráficos ainda — só a tabela, conforme etapa 1.
     el.innerHTML = _ccTabelaVaziaConhecimento(['Colaborador','Conteúdos Respondidos','Domínio Imediato','Precisou Revisar','Necessitou Apoio'], 'Nenhum resultado de entendimento disponível.');
@@ -9025,19 +9038,38 @@ async function _cnExcluirArquivoStorage(path) {
 function conhecimentoRenderGestaoConteudosTab() {
   const el = document.getElementById('cc-gestao-conteudo'); if (!el) return;
   if (!_cnExigirGestao()) { el.innerHTML = `<div class="empty"><p>Você não tem acesso a esta área.</p></div>`; return; }
+  const anoAtual = new Date().getFullYear();
+  const meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   el.innerHTML = `
-    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <select class="form-select" id="cn-gestao-fil-status" style="width:150px" onchange="conhecimentoAplicarFiltrosGestao()">
-          <option value="todos">Todos</option><option value="rascunho">Rascunhos</option><option value="publicado">Publicados</option><option value="arquivado">Arquivados</option>
+    <div id="cn-gestao-cards" style="margin-bottom:16px"></div>
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <select class="form-select" id="cn-gestao-fil-status" style="width:140px" onchange="conhecimentoAplicarFiltrosGestao()">
+          <option value="todos">Todos os status</option><option value="rascunho">Rascunhos</option><option value="publicado">Publicados</option><option value="arquivado">Arquivados</option>
         </select>
-        <select class="form-select" id="cn-gestao-fil-tipo" style="width:170px" onchange="conhecimentoAplicarFiltrosGestao()">
+        <select class="form-select" id="cn-gestao-fil-tipo" style="width:160px" onchange="conhecimentoAplicarFiltrosGestao()">
           <option value="">Todos os tipos</option>${CN_TIPOS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}
         </select>
+        <select class="form-select" id="cn-gestao-fil-mes" style="width:110px" onchange="conhecimentoAplicarFiltrosGestao()">
+          <option value="">Mês</option>${meses.map((m,i)=>`<option value="${i+1}">${m}</option>`).join('')}
+        </select>
+        <select class="form-select" id="cn-gestao-fil-ano" style="width:100px" onchange="conhecimentoAplicarFiltrosGestao()">
+          <option value="">Ano</option>${[anoAtual,anoAtual-1,anoAtual-2].map(a=>`<option value="${a}">${a}</option>`).join('')}
+        </select>
+        <select class="form-select" id="cn-gestao-fil-obrigatorio" style="width:120px" onchange="conhecimentoAplicarFiltrosGestao()">
+          <option value="">Obrig./Opc.</option><option value="sim">Obrigatório</option><option value="nao">Opcional</option>
+        </select>
+        <select class="form-select" id="cn-gestao-fil-validacao" style="width:150px" onchange="conhecimentoAplicarFiltrosGestao()">
+          <option value="">Toda validação</option><option value="nenhuma">Nenhuma</option><option value="pergunta_unica">Pergunta única</option><option value="quiz">Quiz</option>
+        </select>
+        <select class="form-select" id="cn-gestao-fil-criador" style="width:170px" onchange="conhecimentoAplicarFiltrosGestao()"><option value="">Todos os criadores</option></select>
+        <select class="form-select" id="cn-gestao-fil-posto" style="width:170px" onchange="conhecimentoAplicarFiltrosGestao()"><option value="">Todos os postos</option>${[...TODOS_POSTOS_RG].sort((a,b)=>a.localeCompare(b,'pt')).map(p=>`<option value="${p}">${p}</option>`).join('')}</select>
         <input class="form-input" id="cn-gestao-fil-busca" placeholder="🔎 Pesquisar por título..." style="width:220px" oninput="conhecimentoAplicarFiltrosGestao()">
+        <button class="btn btn-sm btn-secondary" onclick="conhecimentoExportarGestaoCSV()">⬇ Exportar CSV</button>
       </div>
       <button class="btn btn-primary btn-sm" onclick="conhecimentoAbrirNovoConteudo()">+ Novo Conteúdo</button>
     </div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:10px">O filtro de Posto usa <strong>alcance direto</strong> (regras de público cadastradas especificamente para aquele posto ou "Todos") — não recalcula o alcance efetivo por cargo/supervisor nesta lista, para não gerar leitura ilimitada. Use a aba "Participação" para acompanhamento por posto.</div>
     <div id="cn-gestao-conteudos-lista"><div style="text-align:center;padding:30px;color:var(--text3)">⏳ Carregando...</div></div>`;
   conhecimentoCarregarConteudosGestao(true);
 }
@@ -9051,6 +9083,11 @@ async function conhecimentoCarregarConteudosGestao(forcar) {
     const snap = await db.collection('conhecimento_conteudos').where('operacaoId','==',operacaoId).where('versaoAtual','==',true).get();
     _cnConteudos = snap.docs.map(d=>({id:d.id,...d.data()}));
     _cnConteudosCarregados = true;
+    const selCriador = document.getElementById('cn-gestao-fil-criador');
+    if (selCriador) {
+      const criadores = [...new Set(_cnConteudos.map(c=>c.criadoPor).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt'));
+      selCriador.innerHTML = '<option value="">Todos os criadores</option>' + criadores.map(c=>`<option value="${c}">${c}</option>`).join('');
+    }
     conhecimentoRenderConteudosGestao();
   } catch(e) { console.error(e); if (el) el.innerHTML = `<div class="empty"><p>Erro ao carregar conteúdos: ${e.message}</p></div>`; }
 }
@@ -9079,29 +9116,240 @@ function _cnAcoesConteudo(c) {
   return `<button class="btn btn-sm btn-secondary" onclick="conhecimentoVisualizarConteudo('${c.id}','gestao')">👁 Visualizar</button>`;
 }
 
-function conhecimentoRenderConteudosGestao() {
-  const el = document.getElementById('cn-gestao-conteudos-lista'); if (!el) return;
+// Data relevante de CADA conteúdo pro filtro de mês/ano — depende do status
+// daquele próprio registro (não do filtro de status escolhido): publicado
+// usa publicadoEm, arquivado usa arquivadoEm, rascunho usa criadoEm.
+function _cnDataRelevante(c) {
+  if (c.status === 'publicado') return c.publicadoEm;
+  if (c.status === 'arquivado') return c.arquivadoEm;
+  return c.criadoEm;
+}
+
+// Postos com regra DIRETA (publicoTipo==='posto') entre os conteúdos
+// informados — 1 leitura só, nunca por conteúdo. "Todos" conta como
+// alcançando qualquer posto also (usado no filtro de posto).
+async function _cnConteudoIdsComAlcanceDireto(posto) {
+  const operacaoId = await getOperacaoId();
+  const snap = await db.collection('conhecimento_publicos').where('operacaoId','==',operacaoId).where('chaveAplicacao','in',['todos:todos', `posto:${posto}`]).get();
+  return new Set(snap.docs.map(d=>d.data().conteudoId));
+}
+
+async function _cnConteudosFiltradosGestao() {
   let lista = _cnConteudos.slice();
   if (_cnFiltroStatus !== 'todos') lista = lista.filter(c=>c.status===_cnFiltroStatus);
   if (_cnFiltroTipo) lista = lista.filter(c=>c.tipo===_cnFiltroTipo);
   if (_cnBuscaTitulo.trim()) { const bn = normalizarBusca(_cnBuscaTitulo); lista = lista.filter(c=>normalizarBusca(c.titulo||'').includes(bn)); }
-  lista.sort((a,b)=> (b.atualizadoEm?.toMillis?.()||0) - (a.atualizadoEm?.toMillis?.()||0));
 
-  if (!lista.length) { el.innerHTML = '<div class="empty"><p>Nenhum conteúdo cadastrado.</p></div>'; return; }
+  const mes = document.getElementById('cn-gestao-fil-mes')?.value || '';
+  const ano = document.getElementById('cn-gestao-fil-ano')?.value || '';
+  if (mes || ano) {
+    lista = lista.filter(c => {
+      const ts = _cnDataRelevante(c);
+      if (!ts || !ts.toDate) return false;
+      const d = ts.toDate();
+      if (mes && (d.getMonth()+1) !== parseInt(mes,10)) return false;
+      if (ano && d.getFullYear() !== parseInt(ano,10)) return false;
+      return true;
+    });
+  }
+
+  const obrig = document.getElementById('cn-gestao-fil-obrigatorio')?.value || '';
+  if (obrig === 'sim') lista = lista.filter(c=>c.obrigatorio);
+  if (obrig === 'nao') lista = lista.filter(c=>!c.obrigatorio);
+
+  const validacao = document.getElementById('cn-gestao-fil-validacao')?.value || '';
+  if (validacao) lista = lista.filter(c => (c.validacao||'nenhuma') === validacao);
+
+  const criador = document.getElementById('cn-gestao-fil-criador')?.value || '';
+  if (criador) lista = lista.filter(c=>c.criadoPor===criador);
+
+  const posto = document.getElementById('cn-gestao-fil-posto')?.value || '';
+  if (posto) {
+    const idsAlcancados = await _cnConteudoIdsComAlcanceDireto(posto);
+    lista = lista.filter(c=>idsAlcancados.has(c.id));
+  }
+
+  return lista;
+}
+
+async function conhecimentoRenderConteudosGestao() {
+  const el = document.getElementById('cn-gestao-conteudos-lista'); if (!el) return;
+  const lista = await _cnConteudosFiltradosGestao();
+  lista.sort((a,b)=> (b.atualizadoEm?.toMillis?.()||0) - (a.atualizadoEm?.toMillis?.()||0));
+  await _cnRenderCardsGestao(lista);
+
+  if (!lista.length) { el.innerHTML = '<div class="empty"><p>Nenhum conteúdo cadastrado com os filtros atuais.</p></div>'; return; }
 
   el.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
-    <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15)">${['Título','Tipo','Versão','Obrigatório','Formato','Publicado em','Status','Ações'].map(h=>`<th style="padding:8px 10px;text-align:left;color:var(--text3);white-space:nowrap">${h}</th>`).join('')}</tr></thead>
+    <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15)">${['Título','Tipo','Versão','Obrigatório','Validação','Formato','Criado por','Publicado em','Status','Ações'].map(h=>`<th style="padding:8px 10px;text-align:left;color:var(--text3);white-space:nowrap">${h}</th>`).join('')}</tr></thead>
     <tbody>${lista.map(c=>`<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
       <td style="padding:8px 10px">${c.titulo||'(sem título)'}</td>
       <td style="padding:8px 10px;white-space:nowrap">${CN_TIPO_LABEL[c.tipo]||c.tipo||'—'}</td>
       <td style="padding:8px 10px">v${c.versao||1}</td>
       <td style="padding:8px 10px">${c.obrigatorio?'Sim':'Não'}</td>
+      <td style="padding:8px 10px;white-space:nowrap">${({nenhuma:'Nenhuma',pergunta_unica:'Pergunta única',quiz:'Quiz'})[c.validacao||'nenhuma']}</td>
       <td style="padding:8px 10px;white-space:nowrap">${c.formatoPrincipal||'—'}</td>
+      <td style="padding:8px 10px;white-space:nowrap">${c.criadoPor||'—'}</td>
       <td style="padding:8px 10px;white-space:nowrap">${_cnFmtTs(c.publicadoEm)}</td>
       <td style="padding:8px 10px">${_cnBadgeStatus(c.status)}</td>
       <td style="padding:8px 10px;white-space:nowrap">${_cnAcoesConteudo(c)}</td>
     </tr>`).join('')}</tbody>
   </table></div>`;
+}
+
+// Cards recalculam sobre o MESMO conjunto já filtrado (nunca somam outra
+// operação — _cnConteudos já vem só da operacaoId atual). "Conclusões" é a
+// única métrica que exige leitura adicional — feita em lote (chunks de 10,
+// como já é padrão no resto do sistema), só para os conteúdos já filtrados,
+// nunca para a operação inteira.
+async function _cnRenderCardsGestao(listaFiltrada) {
+  const el = document.getElementById('cn-gestao-cards'); if (!el) return;
+  const publicados = listaFiltrada.filter(c=>c.status==='publicado').length;
+  const treinamentos = listaFiltrada.filter(c=>c.tipo==='treinamento').length;
+  const fiqueligados = listaFiltrada.filter(c=>c.tipo==='fiqueligado').length;
+  const obrigatorios = listaFiltrada.filter(c=>c.obrigatorio).length;
+
+  let conclusoes = 0;
+  const idsPublicados = listaFiltrada.filter(c=>c.status==='publicado').map(c=>c.id);
+  if (idsPublicados.length) {
+    try {
+      const operacaoId = await getOperacaoId();
+      for (let i=0;i<idsPublicados.length;i+=10) {
+        const chunk = idsPublicados.slice(i,i+10);
+        const snap = await db.collection('conhecimento_progresso_versoes').where('operacaoId','==',operacaoId).where('conteudoId','in',chunk).get();
+        conclusoes += snap.size;
+      }
+    } catch(e) { console.error('Erro ao calcular conclusões (cards):', e); }
+  }
+
+  el.innerHTML = `<div class="grid-4">
+    <div class="stat-card"><div class="label">Conteúdos (filtro atual)</div><div class="value">${listaFiltrada.length}</div></div>
+    <div class="stat-card"><div class="label">Publicados</div><div class="value" style="color:var(--green)">${publicados}</div></div>
+    <div class="stat-card"><div class="label">Treinamentos</div><div class="value">${treinamentos}</div></div>
+    <div class="stat-card"><div class="label">FiqueLigado</div><div class="value">${fiqueligados}</div></div>
+    <div class="stat-card"><div class="label">Obrigatórios</div><div class="value" style="color:var(--yellow)">${obrigatorios}</div></div>
+    <div class="stat-card"><div class="label">Conclusões (nos publicados do filtro)</div><div class="value" style="color:var(--accent)">${conclusoes}</div></div>
+  </div>`;
+}
+
+// Exporta exatamente o conjunto já filtrado — nunca inventa alcance/conclusão
+// que não foi realmente calculado nesta tela (postos alcançados e % de
+// conclusão por colaborador ficam pra aba Participação, que já resolve isso
+// caso a caso; aqui a exportação traz só o que a lista de Gestão mostra).
+async function conhecimentoExportarGestaoCSV() {
+  if (!_cnExigirGestao()) return;
+  const lista = await _cnConteudosFiltradosGestao();
+  if (!lista.length) { toast('Nenhum conteúdo para exportar com os filtros atuais.', 'err'); return; }
+  const cols = ['Tipo','Título','Versão','Status','Obrigatório','Validação','Criado por','Criado em','Publicado por','Publicado em'];
+  const linhas = lista.map(c => [
+    CN_TIPO_LABEL[c.tipo]||c.tipo, c.titulo||'', c.versao||1, c.status,
+    c.obrigatorio?'Sim':'Não', ({nenhuma:'Nenhuma',pergunta_unica:'Pergunta única',quiz:'Quiz'})[c.validacao||'nenhuma'],
+    c.criadoPor||'', _cnFmtTs(c.criadoEm), c.publicadoPor||'', _cnFmtTs(c.publicadoEm)
+  ]);
+  const csv = [cols, ...linhas].map(l => l.map(v => `"${String(v).replace(/"/g,'""')}"`).join(';')).join('\r\n');
+  const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `central-conhecimento-gestao-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// VISÃO POR POSTO (aba "Participação" da Gestão) — alcance direto + colabo-
+// radores ativos do posto, leitura sempre limitada ao posto selecionado.
+// ══════════════════════════════════════════════════════════════════════════
+function conhecimentoRenderVisaoPorPosto() {
+  const el = document.getElementById('cc-gestao-conteudo'); if (!el) return;
+  if (!_cnExigirGestao()) { el.innerHTML = `<div class="empty"><p>Você não tem acesso a esta área.</p></div>`; return; }
+  el.innerHTML = `
+    <div style="font-size:13px;font-weight:700;margin-bottom:4px">Acompanhamento por Posto</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:14px">Considera conteúdos publicados com alcance direto ao posto (regra "Posto" ou "Todos"). Alcance por cargo/supervisor/colaborador específico não entra nesta visão nesta etapa — evita leitura ilimitada.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      <select class="form-select" id="cn-posto-fil-posto" style="width:200px" onchange="conhecimentoAplicarFiltroPosto()">
+        <option value="">Selecione um posto</option>${[...TODOS_POSTOS_RG].sort((a,b)=>a.localeCompare(b,'pt')).map(p=>`<option value="${p}">${p}</option>`).join('')}
+      </select>
+      <select class="form-select" id="cn-posto-fil-tipo" style="width:160px" onchange="conhecimentoAplicarFiltroPosto()">
+        <option value="">Todos os tipos</option>${CN_TIPOS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}
+      </select>
+      <select class="form-select" id="cn-posto-fil-status" style="width:150px" onchange="conhecimentoAplicarFiltroPosto()">
+        <option value="todos">Todos</option><option value="pendente">Pendentes</option><option value="andamento">Em andamento</option><option value="concluido">Concluídos</option>
+      </select>
+    </div>
+    <div id="cn-posto-resultado"><div class="empty"><p>Selecione um posto para ver o acompanhamento.</p></div></div>`;
+}
+
+async function conhecimentoAplicarFiltroPosto() {
+  if (!_cnExigirGestao()) return;
+  const posto = document.getElementById('cn-posto-fil-posto')?.value || '';
+  const resEl = document.getElementById('cn-posto-resultado'); if (!resEl) return;
+  if (!posto) { resEl.innerHTML = '<div class="empty"><p>Selecione um posto para ver o acompanhamento.</p></div>'; return; }
+  resEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text3)">⏳ Carregando...</div>';
+  try {
+    const operacaoId = await getOperacaoId();
+    const tipoFiltro = document.getElementById('cn-posto-fil-tipo')?.value || '';
+    const statusFiltro = document.getElementById('cn-posto-fil-status')?.value || 'todos';
+
+    if (!_cnConteudosCarregados) { const snap = await db.collection('conhecimento_conteudos').where('operacaoId','==',operacaoId).where('versaoAtual','==',true).get(); _cnConteudos = snap.docs.map(d=>({id:d.id,...d.data()})); _cnConteudosCarregados = true; }
+
+    // Conteúdos publicados com alcance direto ao posto — 1 leitura, nunca por conteúdo.
+    const idsAlcancados = await _cnConteudoIdsComAlcanceDireto(posto);
+    let conteudosDoPosto = _cnConteudos.filter(c=>c.status==='publicado' && idsAlcancados.has(c.id));
+    if (tipoFiltro) conteudosDoPosto = conteudosDoPosto.filter(c=>c.tipo===tipoFiltro);
+    if (!conteudosDoPosto.length) { resEl.innerHTML = '<div class="empty"><p>Nenhum conteúdo aplicável a este posto com os filtros atuais.</p></div>'; return; }
+
+    const colaboradores = (allUsers||[]).filter(u=>u.local===posto && isAtivo(u));
+    if (!colaboradores.length) { resEl.innerHTML = '<div class="empty"><p>Nenhum colaborador ativo cadastrado para este posto.</p></div>'; return; }
+
+    // Progresso em lote (chunks de 10), limitado aos conteúdos já filtrados —
+    // nunca lê a coleção inteira.
+    const baseIds = conteudosDoPosto.map(c=>c.documentoBaseId||c.id);
+    const progressoPorColaborador = {};
+    for (let i=0;i<baseIds.length;i+=10) {
+      const chunk = baseIds.slice(i,i+10);
+      const snap = await db.collection('conhecimento_progresso').where('operacaoId','==',operacaoId).where('conteudoBaseId','in',chunk).get();
+      snap.docs.forEach(d=>{ const v=d.data(); if (!progressoPorColaborador[v.colaboradorEmail]) progressoPorColaborador[v.colaboradorEmail]={}; progressoPorColaborador[v.colaboradorEmail][v.conteudoBaseId]=v; });
+    }
+
+    let linhas = [];
+    colaboradores.forEach(col => {
+      conteudosDoPosto.forEach(c => {
+        const baseId = c.documentoBaseId||c.id;
+        const p = (progressoPorColaborador[col.email]||{})[baseId];
+        const status = !p ? 'pendente' : (p.status==='concluido'?'concluido':'andamento');
+        linhas.push({ colaborador: col.name, conteudo: c.titulo, tipo: c.tipo, versao: c.versao||1, status, concluidoEm: p?.concluidoEm, ultimaAberturaEm: p?.ultimaAberturaEm });
+      });
+    });
+
+    const concluidosReal = linhas.filter(l=>l.status==='concluido').length;
+    const andamentoReal = linhas.filter(l=>l.status==='andamento').length;
+    const pendentesReal = linhas.filter(l=>l.status==='pendente').length;
+    const pct = linhas.length ? Math.round(concluidosReal/linhas.length*100) : 0;
+
+    let linhasExibidas = linhas;
+    if (statusFiltro !== 'todos') linhasExibidas = linhas.filter(l=>l.status===statusFiltro);
+    const ordem = {pendente:0, andamento:1, concluido:2};
+    linhasExibidas = linhasExibidas.slice().sort((a,b)=>ordem[a.status]-ordem[b.status]);
+
+    resEl.innerHTML = `
+      <div class="grid-4" style="margin-bottom:16px">
+        <div class="stat-card"><div class="label">Conteúdos aplicáveis</div><div class="value">${conteudosDoPosto.length}</div></div>
+        <div class="stat-card"><div class="label">Colaboradores alcançados</div><div class="value">${colaboradores.length}</div></div>
+        <div class="stat-card"><div class="label">Concluídos / Andamento / Pendentes</div><div class="value" style="font-size:15px">${concluidosReal} / ${andamentoReal} / ${pendentesReal}</div></div>
+        <div class="stat-card"><div class="label">% Conclusão</div><div class="value" style="color:var(--green)">${pct}%</div></div>
+      </div>
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15)">${['Colaborador','Conteúdo','Tipo','Versão','Status','Última abertura','Concluído em'].map(h=>`<th style="padding:7px 10px;text-align:left;color:var(--text3);white-space:nowrap">${h}</th>`).join('')}</tr></thead>
+        <tbody>${linhasExibidas.map(l=>`<tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+          <td style="padding:6px 10px">${l.colaborador}</td>
+          <td style="padding:6px 10px">${l.conteudo}</td>
+          <td style="padding:6px 10px;white-space:nowrap">${CN_TIPO_LABEL[l.tipo]||l.tipo}</td>
+          <td style="padding:6px 10px">v${l.versao}</td>
+          <td style="padding:6px 10px">${({pendente:'⚪ Pendente',andamento:'🟡 Em andamento',concluido:'🟢 Concluído'})[l.status]}</td>
+          <td style="padding:6px 10px;white-space:nowrap">${l.ultimaAberturaEm?_cnFmtTs(l.ultimaAberturaEm):'—'}</td>
+          <td style="padding:6px 10px;white-space:nowrap">${l.concluidoEm?_cnFmtTs(l.concluidoEm):'—'}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>`;
+  } catch(e) { console.error(e); resEl.innerHTML = `<div class="empty"><p>Erro ao carregar acompanhamento: ${e.message}</p></div>`; }
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -9118,7 +9366,7 @@ function _cnGarantirModalFormulario() {
     <div id="cn-form-status-badge" style="margin-bottom:12px"></div>
 
     <div class="form-group"><label class="form-label">Tipo</label>
-      <select class="form-select" id="cn-f-tipo">${CN_TIPOS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select>
+      <select class="form-select" id="cn-f-tipo" onchange="_cnAtualizarValidacaoOpcoes()">${CN_TIPOS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select>
     </div>
     <div class="form-group"><label class="form-label">Título</label><input class="form-input" id="cn-f-titulo" maxlength="150"></div>
     <div class="form-group"><label class="form-label">Descrição</label><textarea class="form-textarea" id="cn-f-descricao" maxlength="500"></textarea></div>
@@ -9159,6 +9407,12 @@ function _cnGarantirModalFormulario() {
       <div id="cn-f-publicos-lista"></div>
       <button class="btn btn-sm btn-secondary" style="margin-top:6px" onclick="conhecimentoAdicionarRegraPublico()">+ Adicionar regra de público</button>
     </div>
+
+    <div class="form-group">
+      <label class="form-label">Validação</label>
+      <select class="form-select" id="cn-f-validacao" onchange="conhecimentoMudarValidacao()"></select>
+    </div>
+    <div id="cn-f-perguntas-wrap" style="display:none;margin-bottom:14px"></div>
 
     <div style="display:flex;gap:10px;margin-top:16px">
       <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-cn-formulario')">Cancelar</button>
@@ -9293,6 +9547,8 @@ function conhecimentoAbrirNovoConteudo() {
   document.getElementById('cn-f-btn-salvar').textContent = '💾 Salvar Rascunho';
   _cnAtualizarCamposFormato();
   _cnRenderPublicosForm();
+  _cnPerguntasEdicao = [];
+  _cnAtualizarValidacaoOpcoes();
   document.getElementById('modal-cn-formulario').classList.add('open');
 }
 
@@ -9325,6 +9581,8 @@ async function conhecimentoEditarRascunho(id) {
   document.getElementById('cn-f-btn-salvar').textContent = '💾 Salvar Alterações';
   _cnAtualizarCamposFormato();
   await _cnCarregarPublicosParaEdicao(id);
+  _cnAtualizarValidacaoOpcoes(c.validacao || 'nenhuma');
+  await _cnCarregarPerguntasParaEdicao(id);
   document.getElementById('modal-cn-formulario').classList.add('open');
 }
 
@@ -9336,6 +9594,129 @@ async function _cnCarregarPublicosParaEdicao(conteudoId) {
     if (!_cnPublicosEdicao.length) _cnPublicosEdicao = [{tipo:'todos', valorId:'', valorNome:''}];
   } catch(e) { console.error(e); _cnPublicosEdicao = [{tipo:'todos', valorId:'', valorNome:''}]; }
   _cnRenderPublicosForm();
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// VALIDAÇÃO (Nenhuma / Pergunta única / Quiz) — cadastro de perguntas no
+// mesmo fluxo do conteúdo, sem exigir salvar primeiro.
+// ══════════════════════════════════════════════════════════════════════════
+let _cnValidacaoAtual = 'nenhuma';
+let _cnPerguntasEdicao = [];
+
+function _cnOpcoesValidacaoParaTipo(tipo) {
+  // FiqueLigado: pergunta única é obrigatória (não permite Nenhuma nem Quiz).
+  if (tipo === 'fiqueligado') return [['pergunta_unica','Pergunta única (obrigatória)']];
+  return [['nenhuma','Nenhuma'],['pergunta_unica','Pergunta única'],['quiz','Quiz']];
+}
+
+function _cnAtualizarValidacaoOpcoes(valorDesejado) {
+  const tipo = document.getElementById('cn-f-tipo')?.value;
+  const sel = document.getElementById('cn-f-validacao'); if (!sel) return;
+  const opcoes = _cnOpcoesValidacaoParaTipo(tipo);
+  const alvo = valorDesejado || sel.value;
+  sel.innerHTML = opcoes.map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
+  sel.value = opcoes.some(([v])=>v===alvo) ? alvo : opcoes[0][0];
+  _cnValidacaoAtual = sel.value;
+  if (_cnValidacaoAtual !== 'nenhuma' && !_cnPerguntasEdicao.length) _cnPerguntasEdicao = [_cnNovaPerguntaVazia()];
+  if (_cnValidacaoAtual === 'nenhuma') _cnPerguntasEdicao = [];
+  _cnRenderPerguntasForm();
+}
+
+function conhecimentoMudarValidacao() {
+  _cnValidacaoAtual = document.getElementById('cn-f-validacao').value;
+  if (_cnValidacaoAtual !== 'nenhuma' && !_cnPerguntasEdicao.length) _cnPerguntasEdicao = [_cnNovaPerguntaVazia()];
+  if (_cnValidacaoAtual === 'nenhuma') _cnPerguntasEdicao = [];
+  _cnRenderPerguntasForm();
+}
+
+function _cnNovaPerguntaVazia() {
+  return { enunciado:'', alternativas:[{id:'a',texto:''},{id:'b',texto:''},{id:'c',texto:''}], alternativaCorreta:'a', explicacao:'' };
+}
+
+function conhecimentoAdicionarPergunta() {
+  if (_cnPerguntasEdicao.length >= 5) { toast('Máximo de 5 perguntas no quiz.', 'err'); return; }
+  _cnPerguntasEdicao.push(_cnNovaPerguntaVazia());
+  _cnRenderPerguntasForm();
+}
+function conhecimentoRemoverPergunta(idx) {
+  if (_cnPerguntasEdicao.length <= 1) { toast('É necessária ao menos 1 pergunta.', 'err'); return; }
+  _cnPerguntasEdicao.splice(idx,1); // remove e desloca os índices seguintes — ordem preservada, sem precisar de drag-and-drop
+  _cnRenderPerguntasForm();
+}
+function conhecimentoAtualizarPergunta(idx, campo, valor) { if (_cnPerguntasEdicao[idx]) _cnPerguntasEdicao[idx][campo] = valor; }
+function conhecimentoAtualizarAlternativa(idx, altIdx, valor) { if (_cnPerguntasEdicao[idx]) _cnPerguntasEdicao[idx].alternativas[altIdx].texto = valor; }
+function _cnEsc(s) { return (s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+function _cnRenderPerguntasForm() {
+  const wrap = document.getElementById('cn-f-perguntas-wrap'); if (!wrap) return;
+  if (_cnValidacaoAtual === 'nenhuma') { wrap.innerHTML=''; wrap.style.display='none'; return; }
+  wrap.style.display = 'block';
+  let html = `<div style="font-size:11px;color:var(--text3);margin:0 0 8px;text-transform:uppercase;letter-spacing:.5px">${_cnValidacaoAtual==='quiz'?`Perguntas do quiz (${_cnPerguntasEdicao.length} de até 5)`:'Pergunta única'}</div>`;
+  html += _cnPerguntasEdicao.map((p,idx)=>_cnCardPerguntaForm(p,idx)).join('');
+  if (_cnValidacaoAtual === 'quiz' && _cnPerguntasEdicao.length < 5) {
+    html += `<button class="btn btn-sm btn-secondary" onclick="conhecimentoAdicionarPergunta()">+ Adicionar pergunta</button>`;
+  }
+  wrap.innerHTML = html;
+}
+
+function _cnCardPerguntaForm(p, idx) {
+  const previa = p.enunciado ? `<div style="font-size:11px;color:var(--text3);margin-top:8px">Prévia: <strong>${_cnEsc(p.enunciado)}</strong> — correta: ${p.alternativaCorreta.toUpperCase()}</div>` : '';
+  return `<div style="background:var(--surface2);border-radius:10px;padding:14px;margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <strong style="font-size:12px">Pergunta ${idx+1}</strong>
+      ${_cnValidacaoAtual==='quiz' && _cnPerguntasEdicao.length>1 ? `<button class="btn btn-sm btn-danger" onclick="conhecimentoRemoverPergunta(${idx})">✕ Remover</button>` : ''}
+    </div>
+    <div class="form-group"><label class="form-label" style="font-size:11px">Texto da pergunta</label><input class="form-input" value="${_cnEsc(p.enunciado)}" oninput="conhecimentoAtualizarPergunta(${idx},'enunciado',this.value)"></div>
+    ${['a','b','c'].map((letra,i)=>`
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+        <input type="radio" name="cn-correta-${idx}" ${p.alternativaCorreta===letra?'checked':''} onchange="conhecimentoAtualizarPergunta(${idx},'alternativaCorreta','${letra}')">
+        <input class="form-input" style="flex:1" placeholder="Alternativa ${letra.toUpperCase()}" value="${_cnEsc(p.alternativas[i].texto)}" oninput="conhecimentoAtualizarAlternativa(${idx},${i},this.value)">
+      </div>`).join('')}
+    <div class="form-group" style="margin-top:6px"><label class="form-label" style="font-size:11px">Explicação da resposta (opcional)</label><input class="form-input" value="${_cnEsc(p.explicacao||'')}" oninput="conhecimentoAtualizarPergunta(${idx},'explicacao',this.value)"></div>
+    ${previa}
+  </div>`;
+}
+
+// Checagem estrutural leve no momento de salvar RASCUNHO (não exige perguntas
+// completas — só a regra de tipo/validação, que é estrutural). Completude
+// das perguntas só é exigida na publicação (ver _cnValidarParaPublicacao).
+function _cnValidarPerguntasParaSalvar(dados) {
+  const erros = [];
+  if (dados.tipo === 'fiqueligado' && dados.validacao !== 'pergunta_unica') erros.push('FiqueLigado exige validação "Pergunta única".');
+  return erros;
+}
+
+async function _cnCarregarPerguntasParaEdicao(conteudoId) {
+  try {
+    const operacaoId = await getOperacaoId();
+    const snap = await db.collection('conhecimento_perguntas').where('operacaoId','==',operacaoId).where('conteudoId','==',conteudoId).get();
+    _cnPerguntasEdicao = snap.docs.map(d=>d.data()).sort((a,b)=>(a.ordem||0)-(b.ordem||0))
+      .map(v=>({ enunciado:v.enunciado||'', alternativas:(v.alternativas||[{id:'a',texto:''},{id:'b',texto:''},{id:'c',texto:''}]), alternativaCorreta:v.alternativaCorreta||'a', explicacao:v.explicacao||'' }));
+  } catch(e) { console.error(e); _cnPerguntasEdicao = []; }
+  _cnRenderPerguntasForm();
+}
+
+// Sincroniza perguntas sem duplicar: apaga as existentes e recria a partir
+// do formulário — mesmo padrão já usado em conhecimentoSalvarPublicos.
+async function conhecimentoSalvarPerguntas(conteudoId) {
+  if (!_cnExigirGestao()) return;
+  const operacaoId = await getOperacaoId();
+  const snapExistentes = await db.collection('conhecimento_perguntas').where('operacaoId','==',operacaoId).where('conteudoId','==',conteudoId).get();
+  const batch = db.batch();
+  snapExistentes.docs.forEach(d => batch.delete(d.ref));
+  if (_cnValidacaoAtual !== 'nenhuma') {
+    _cnPerguntasEdicao.forEach((p, idx) => {
+      const ref = db.collection('conhecimento_perguntas').doc();
+      batch.set(ref, {
+        id: ref.id, operacaoId, conteudoId, ordem: idx+1,
+        enunciado: p.enunciado || '', alternativas: p.alternativas.map(a=>({id:a.id, texto:a.texto||''})),
+        alternativaCorreta: p.alternativaCorreta || 'a', explicacao: p.explicacao || '',
+        criadoPor: currentUser.name, criadoPorEmail: currentUser.email,
+        criadoEm: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    });
+  }
+  await batch.commit();
 }
 
 function _cnLerCamposFormulario() {
@@ -9350,7 +9731,8 @@ function _cnLerCamposFormulario() {
     formatoPrincipal: document.getElementById('cn-f-formato').value,
     videoUrl: document.getElementById('cn-f-video-url').value.trim(),
     linkUrl: document.getElementById('cn-f-link-url').value.trim(),
-    conteudoTexto: document.getElementById('cn-f-texto-conteudo').value.trim()
+    conteudoTexto: document.getElementById('cn-f-texto-conteudo').value.trim(),
+    validacao: document.getElementById('cn-f-validacao').value
   };
 }
 
@@ -9360,9 +9742,21 @@ async function conhecimentoSalvarRascunho() {
   if (_cnSalvandoFormulario) return; // trava contra duplo clique
   const dados = _cnLerCamposFormulario();
   if (!dados.titulo) { toast('Informe ao menos o título para salvar o rascunho.', 'err'); return; }
+  if (!dados.tipo) { toast('Selecione o tipo do conteúdo.', 'err'); return; }
+  const errosValidacao = _cnValidarPerguntasParaSalvar(dados);
+  if (errosValidacao.length) { toast(errosValidacao[0], 'err'); return; }
 
+  // BUG CRÍTICO CORRIGIDO: esta variável precisa existir ANTES do try, senão
+  // um erro ocorrido antes da linha onde ela era declarada (upload no Storage
+  // falhando, getOperacaoId() falhando, etc.) fazia o catch tentar ler uma
+  // variável fora de escopo — um SEGUNDO erro (ReferenceError) que mascarava
+  // o primeiro, nenhum toast chegava a rodar, e o clique ficava sem nenhum
+  // retorno visível. Era exatamente o sintoma relatado.
+  let uploadConcluido = false;
   _cnSalvandoFormulario = true;
-  const btn = document.getElementById('cn-f-btn-salvar'); if (btn) btn.disabled = true;
+  const btn = document.getElementById('cn-f-btn-salvar');
+  const textoOriginalBtn = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Salvando...'; }
   try {
     const operacaoId = await getOperacaoId();
     let conteudoId = _cnConteudoEmEdicaoId;
@@ -9375,6 +9769,7 @@ async function conhecimentoSalvarRascunho() {
       const progWrap = document.getElementById('cn-f-arquivo-progresso'); if (progWrap) progWrap.style.display = 'block';
       const path = `central-conhecimento/${operacaoId}/conteudos/${conteudoId}/arquivo_${Date.now()}_${_cnSanitizarNomeArquivo(_cnArquivoSelecionado.name)}`;
       const up = await _cnUploadArquivoGenerico(_cnArquivoSelecionado, path, pct => { const b = document.getElementById('cn-f-arquivo-progresso-bar'); if (b) b.style.width = pct+'%'; });
+      uploadConcluido = true;
       // Substituição de rascunho: exclui o arquivo anterior do Storage (só é seguro porque é rascunho, nunca publicado)
       if (conteudoAtual?.arquivoStoragePath) await _cnExcluirArquivoStorage(conteudoAtual.arquivoStoragePath);
       dadosArquivo = { arquivoUrl: up.url, arquivoStoragePath: up.path, arquivoNome: _cnArquivoSelecionado.name, arquivoTamanho: _cnArquivoSelecionado.size, arquivoTipo: _cnArquivoSelecionado.type };
@@ -9387,13 +9782,13 @@ async function conhecimentoSalvarRascunho() {
       const progWrap = document.getElementById('cn-f-capa-progresso'); if (progWrap) progWrap.style.display = 'block';
       const path = `central-conhecimento/${operacaoId}/conteudos/${conteudoId}/capa_${Date.now()}_${_cnSanitizarNomeArquivo(_cnCapaSelecionada.name)}`;
       const up = await _cnUploadArquivoGenerico(_cnCapaSelecionada, path, pct => { const b = document.getElementById('cn-f-capa-progresso-bar'); if (b) b.style.width = pct+'%'; });
+      uploadConcluido = true;
       if (conteudoAtual?.imagemCapaStoragePath) await _cnExcluirArquivoStorage(conteudoAtual.imagemCapaStoragePath);
       dadosCapa = { imagemCapaUrl: up.url, imagemCapaStoragePath: up.path };
     }
 
     const payload = { ...dados, ...dadosArquivo, ...dadosCapa, operacaoId, atualizadoEm: firebase.firestore.FieldValue.serverTimestamp() };
 
-    let uploadConcluido = !!(_cnArquivoSelecionado || _cnCapaSelecionada);
     // A partir daqui só restam operações no Firestore — Storage e Firestore
     // NÃO fazem parte da mesma operação atômica (não existe transação entre
     // os dois produtos). Se o Firestore falhar agora, o(s) arquivo(s) já
@@ -9413,7 +9808,7 @@ async function conhecimentoSalvarRascunho() {
       await ref.set({
         ...payload, id: ref.id,
         status: 'rascunho', versao: 1, versaoAtual: true, documentoBaseId: ref.id, versaoAnteriorId: null,
-        exigeReciclagem: false, motivoNovaVersao: null, validacao: 'nenhuma',
+        exigeReciclagem: false, motivoNovaVersao: null,
         criadoPor: currentUser.name, criadoPorEmail: currentUser.email,
         criadoEm: firebase.firestore.FieldValue.serverTimestamp(),
         publicadoPor: null, publicadoPorEmail: null, publicadoEm: null,
@@ -9422,12 +9817,13 @@ async function conhecimentoSalvarRascunho() {
     }
 
     await conhecimentoSalvarPublicos(conteudoId);
+    await conhecimentoSalvarPerguntas(conteudoId);
     _cnArquivoSelecionado = null; _cnCapaSelecionada = null;
     closeModal('modal-cn-formulario');
     toast('✅ Rascunho salvo.', 'ok');
     conhecimentoCarregarConteudosGestao(true);
   } catch(e) {
-    console.error(e);
+    console.error('Erro ao salvar rascunho da Central de Conhecimento:', e);
     if (uploadConcluido) {
       toast('Erro ao salvar o rascunho no banco após o envio do arquivo — o arquivo já enviado pode ter ficado órfão no Storage e pode precisar de limpeza manual. Detalhe: ' + e.message, 'err');
     } else {
@@ -9435,7 +9831,7 @@ async function conhecimentoSalvarRascunho() {
     }
   } finally {
     _cnSalvandoFormulario = false;
-    if (btn) btn.disabled = false;
+    if (btn) { btn.disabled = false; btn.textContent = textoOriginalBtn; }
     const pa = document.getElementById('cn-f-arquivo-progresso'); if (pa) pa.style.display = 'none';
     const pc = document.getElementById('cn-f-capa-progresso'); if (pc) pc.style.display = 'none';
   }
@@ -9486,8 +9882,10 @@ async function conhecimentoExcluirRascunho(id) {
 
     const operacaoId = await getOperacaoId();
     const snapPublicos = await db.collection('conhecimento_publicos').where('operacaoId','==',operacaoId).where('conteudoId','==',id).get();
+    const snapPerguntas = await db.collection('conhecimento_perguntas').where('operacaoId','==',operacaoId).where('conteudoId','==',id).get();
     const batch = db.batch();
     snapPublicos.docs.forEach(d => batch.delete(d.ref));
+    snapPerguntas.docs.forEach(d => batch.delete(d.ref));
     batch.delete(db.collection('conhecimento_conteudos').doc(id));
     // Firestore primeiro, Storage depois: se o Firestore falhar, nenhum
     // arquivo é tocado (nunca fica doc apontando pra arquivo já excluído).
@@ -9503,7 +9901,7 @@ async function conhecimentoExcluirRascunho(id) {
 }
 
 // ── Publicar ──
-function _cnValidarParaPublicacao(c) {
+async function _cnValidarParaPublicacao(c) {
   const erros = [];
   if (!c.tipo) erros.push('Tipo é obrigatório.');
   if (!c.titulo) erros.push('Título é obrigatório.');
@@ -9512,6 +9910,21 @@ function _cnValidarParaPublicacao(c) {
   if (c.formatoPrincipal === 'link' && !c.linkUrl) erros.push('Informe o link externo antes de publicar.');
   if (c.formatoPrincipal === 'video' && !c.videoUrl) erros.push('Informe a URL do vídeo antes de publicar.');
   if (c.formatoPrincipal === 'texto' && !c.conteudoTexto) erros.push('Preencha o conteúdo textual antes de publicar.');
+  if (c.tipo === 'fiqueligado' && c.validacao !== 'pergunta_unica') erros.push('FiqueLigado exige validação "Pergunta única".');
+
+  if (c.validacao && c.validacao !== 'nenhuma') {
+    try {
+      const operacaoId = await getOperacaoId();
+      const snap = await db.collection('conhecimento_perguntas').where('operacaoId','==',operacaoId).where('conteudoId','==',c.id).get();
+      const perguntas = snap.docs.map(d=>d.data());
+      if (!perguntas.length) erros.push('Cadastre ao menos 1 pergunta antes de publicar.');
+      perguntas.forEach((p,i) => {
+        if (!p.enunciado || !p.enunciado.trim()) erros.push(`Pergunta ${i+1}: texto vazio.`);
+        if (!p.alternativas || p.alternativas.length !== 3 || p.alternativas.some(a=>!a.texto || !a.texto.trim())) erros.push(`Pergunta ${i+1}: as 3 alternativas precisam estar preenchidas.`);
+        if (!['a','b','c'].includes(p.alternativaCorreta)) erros.push(`Pergunta ${i+1}: selecione a alternativa correta.`);
+      });
+    } catch(e) { console.error(e); erros.push('Erro ao validar perguntas: ' + e.message); }
+  }
   return erros;
 }
 
@@ -9519,14 +9932,17 @@ async function conhecimentoPublicarConteudo(id) {
   if (!_cnExigirGestao()) return;
   const c = _cnConteudos.find(x=>x.id===id);
   if (!c || c.status !== 'rascunho') { toast('Somente rascunhos podem ser publicados.', 'err'); return; }
-  const erros = _cnValidarParaPublicacao(c);
+  const erros = await _cnValidarParaPublicacao(c);
   if (erros.length) { toast('Não é possível publicar: ' + erros.join(' '), 'err'); return; }
   if (!confirm(`Publicar "${c.titulo}"? Depois de publicado, o conteúdo não pode mais ser excluído ou editado de forma destrutiva.`)) return;
   try {
     const operacaoId = await getOperacaoId();
     const batch = db.batch();
     batch.update(db.collection('conhecimento_conteudos').doc(id), {
-      status: 'publicado', versao: 1, versaoAtual: true, validacao: 'nenhuma',
+      // BUG CORRIGIDO: a publicação forçava validacao='nenhuma' sempre,
+      // sobrescrevendo o que o admin configurou (pergunta única/quiz).
+      // A validação já definida no cadastro é preservada.
+      status: 'publicado', versao: 1, versaoAtual: true,
       publicadoPor: currentUser.name, publicadoPorEmail: currentUser.email,
       publicadoEm: firebase.firestore.FieldValue.serverTimestamp(),
       atualizadoEm: firebase.firestore.FieldValue.serverTimestamp()
@@ -9825,22 +10241,52 @@ async function conhecimentoAbrirConteudo(id, somenteVisualizacaoGestao) {
 
   if (!somenteVisualizacaoGestao) {
     const acoesEl = document.getElementById('cn-vis-acoes');
+    const temValidacao = c.validacao && c.validacao !== 'nenhuma';
+    const rotuloBtn = temValidacao ? 'Responder e concluir' : '✓ Concluir';
     if (jaConcluido) {
       acoesEl.innerHTML = `<span style="color:var(--green);font-weight:600;font-size:13px">✅ Concluído</span>`;
     } else if (c.formatoPrincipal === 'texto') {
-      acoesEl.innerHTML = `<button class="btn btn-primary btn-sm" onclick="conhecimentoConcluirConteudo('${c.id}')">✓ Concluir</button>`;
+      acoesEl.innerHTML = `<button class="btn btn-primary btn-sm" id="cn-vis-btn-concluir" onclick="_cnLiberarConclusaoOuQuestionario('${c.id}')" disabled>${temValidacao?rotuloBtn+' (role até o final)':rotuloBtn}</button>`;
+      _cnAtivarGateScrollTexto();
     } else if ((c.arquivoTipo||'').includes('pdf')) {
-      acoesEl.innerHTML = `<button class="btn btn-primary btn-sm" id="cn-vis-btn-concluir" onclick="conhecimentoConcluirConteudo('${c.id}')" disabled>✓ Concluir (role até o final do PDF)</button>`;
+      acoesEl.innerHTML = `<button class="btn btn-primary btn-sm" id="cn-vis-btn-concluir" onclick="_cnLiberarConclusaoOuQuestionario('${c.id}')" disabled>${rotuloBtn} (role até o final do PDF)</button>`;
     } else {
       acoesEl.innerHTML = `<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;width:100%">
         <input type="checkbox" id="cn-vis-confirmo" onchange="document.getElementById('cn-vis-btn-concluir').disabled=!this.checked">
         Confirmo que acessei e consultei este conteúdo.
       </label>
-      <button class="btn btn-primary btn-sm" id="cn-vis-btn-concluir" onclick="conhecimentoConcluirConteudo('${c.id}')" disabled>✓ Concluir</button>`;
+      <button class="btn btn-primary btn-sm" id="cn-vis-btn-concluir" onclick="_cnLiberarConclusaoOuQuestionario('${c.id}')" disabled>${rotuloBtn}</button>`;
     }
   }
 
   document.getElementById('modal-cn-visualizar').classList.add('open');
+}
+
+function _cnBuscarConteudoLocal(id) {
+  return (_cnConteudosAplicaveisCache||[]).find(c=>c.id===id) || _cnConteudos.find(c=>c.id===id) || (_cnQuestionarioAtual?.conteudo?.id===id ? _cnQuestionarioAtual.conteudo : null);
+}
+
+// Regra mínima de consumo cumprida (rolou o PDF/texto ou marcou o checkbox)
+// → decide se libera direto ou abre o questionário obrigatório.
+function _cnLiberarConclusaoOuQuestionario(conteudoId) {
+  const c = _cnBuscarConteudoLocal(conteudoId);
+  if (c && c.validacao && c.validacao !== 'nenhuma') conhecimentoIniciarQuestionario(conteudoId);
+  else conhecimentoConcluirConteudo(conteudoId);
+}
+
+// Libera o botão de concluir/responder quando o texto foi rolado até o fim
+// (ou já cabe inteiro na tela, sem precisar rolar).
+function _cnAtivarGateScrollTexto() {
+  const modalBody = document.querySelector('#modal-cn-visualizar .modal');
+  if (!modalBody) return;
+  const checar = () => {
+    const chegouFim = modalBody.scrollTop + modalBody.clientHeight >= modalBody.scrollHeight - 24;
+    if (chegouFim) { const btn = document.getElementById('cn-vis-btn-concluir'); if (btn) btn.disabled = false; }
+  };
+  if (modalBody._cnScrollHandler) modalBody.removeEventListener('scroll', modalBody._cnScrollHandler);
+  modalBody._cnScrollHandler = checar;
+  modalBody.addEventListener('scroll', checar);
+  setTimeout(checar, 300);
 }
 
 function _cnMarcarPdfVisualizado() {
@@ -9900,11 +10346,110 @@ async function conhecimentoRegistrarAbertura(conteudo) {
   } catch(e) { console.error('Erro ao registrar abertura', e); return null; }
 }
 
-async function conhecimentoConcluirConteudo(conteudoId) {
+// ══════════════════════════════════════════════════════════════════════════
+// FLUXO DE PERGUNTA ÚNICA / QUIZ NO CONSUMO — usado por FiqueLigado
+// (obrigatório, 3 alternativas, até 2 tentativas, revela a correta na 2ª
+// erro) e Treinamento (pergunta única ou quiz, repete até acertar).
+// ══════════════════════════════════════════════════════════════════════════
+let _cnQuestionarioAtual = null;
+
+async function conhecimentoIniciarQuestionario(conteudoId) {
+  const c = _cnBuscarConteudoLocal(conteudoId);
+  if (!c) { toast('Conteúdo não encontrado.', 'err'); return; }
+  try {
+    const operacaoId = await getOperacaoId();
+    const snap = await db.collection('conhecimento_perguntas').where('operacaoId','==',operacaoId).where('conteudoId','==',conteudoId).get();
+    const perguntas = snap.docs.map(d=>d.data()).sort((a,b)=>(a.ordem||0)-(b.ordem||0));
+    if (!perguntas.length) { toast('Este conteúdo não possui perguntas configuradas — fale com a Gestão.', 'err'); return; }
+    _cnQuestionarioAtual = { conteudo: c, perguntas, indice: 0, tentativasPorPergunta: [] };
+    _cnRenderPerguntaAtual();
+  } catch(e) { console.error(e); toast('Erro ao carregar a pergunta: ' + e.message, 'err'); }
+}
+
+function _cnRenderPerguntaAtual() {
+  const q = _cnQuestionarioAtual; if (!q) return;
+  const p = q.perguntas[q.indice];
+  const acoesEl = document.getElementById('cn-vis-acoes'); if (!acoesEl) return;
+  const ehQuiz = q.conteudo.validacao === 'quiz';
+  acoesEl.innerHTML = `
+    <div style="background:var(--surface2);border-radius:10px;padding:16px;width:100%">
+      ${ehQuiz?`<div style="font-size:11px;color:var(--text3);margin-bottom:8px">Pergunta ${q.indice+1} de ${q.perguntas.length}</div>`:''}
+      <div style="font-size:14px;font-weight:600;margin-bottom:12px">${p.enunciado}</div>
+      <div id="cn-quest-alternativas" style="display:grid;gap:8px;margin-bottom:10px">
+        ${p.alternativas.map(a=>`<button class="btn btn-secondary" style="text-align:left" onclick="conhecimentoResponderPergunta('${a.id}')">${a.texto}</button>`).join('')}
+      </div>
+      <div id="cn-quest-feedback" style="font-size:13px"></div>
+    </div>`;
+}
+
+async function conhecimentoResponderPergunta(alternativaId) {
+  const q = _cnQuestionarioAtual; if (!q) return;
+  // Desabilita as alternativas imediatamente pra impedir clique duplo na mesma tentativa
+  document.querySelectorAll('#cn-quest-alternativas button').forEach(b=>b.disabled=true);
+  const p = q.perguntas[q.indice];
+  const correta = alternativaId === p.alternativaCorreta;
+  const tentativaAtual = (q.tentativasPorPergunta[q.indice]||0) + 1;
+  q.tentativasPorPergunta[q.indice] = tentativaAtual;
+
+  try {
+    const operacaoId = await getOperacaoId();
+    const ref = db.collection('conhecimento_respostas').doc();
+    await ref.set({
+      id: ref.id, operacaoId, conteudoId: q.conteudo.id, perguntaId: p.id || `${q.conteudo.id}_p${q.indice+1}`,
+      colaboradorEmail: currentUser.email, colaboradorNome: currentUser.name,
+      tentativa: tentativaAtual, alternativaEscolhida: alternativaId, correta,
+      versaoConteudo: q.conteudo.versao || 1,
+      respondidoEm: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  } catch(e) { console.error('Erro ao registrar resposta (não bloqueia o fluxo do colaborador):', e); }
+
+  const feedbackEl = document.getElementById('cn-quest-feedback');
+  // Pergunta única (FiqueLigado/Treinamento): até 2 tentativas, revela a
+  // correta na 2ª errada. Quiz: repete a mesma pergunta até acertar, sem
+  // limite de tentativas (regra oficial já definida).
+  const maxTentativas = q.conteudo.validacao === 'quiz' ? Infinity : 2;
+
+  if (correta) {
+    feedbackEl.innerHTML = `<span style="color:var(--green)">✅ Resposta correta!</span>`;
+    setTimeout(() => _cnAvancarQuestionario(), 900);
+  } else if (tentativaAtual >= maxTentativas) {
+    const corretaTexto = (p.alternativas.find(a=>a.id===p.alternativaCorreta)||{}).texto || '';
+    feedbackEl.innerHTML = `<span style="color:var(--red)">❌ Resposta incorreta.</span><div style="margin-top:6px;color:var(--text2)">Resposta correta: <strong>${corretaTexto}</strong>${p.explicacao?' — '+p.explicacao:''}</div>`;
+    setTimeout(() => _cnAvancarQuestionario(), 2200);
+  } else {
+    feedbackEl.innerHTML = `<span style="color:var(--red)">❌ Resposta incorreta. Tente novamente.</span>`;
+    setTimeout(() => { document.querySelectorAll('#cn-quest-alternativas button').forEach(b=>b.disabled=false); }, 400);
+  }
+}
+
+async function _cnAvancarQuestionario() {
+  const q = _cnQuestionarioAtual; if (!q) return;
+  if (q.indice < q.perguntas.length - 1) {
+    q.indice++;
+    _cnRenderPerguntaAtual();
+  } else {
+    const classificacao = _cnCalcularClassificacao(q);
+    const conteudoId = q.conteudo.id;
+    _cnQuestionarioAtual = null;
+    await conhecimentoConcluirConteudo(conteudoId, classificacao);
+  }
+}
+
+// Sem nota, sem reprovação — só uma leitura de quão direto o colaborador foi:
+// acertou tudo de primeira / precisou de uma segunda tentativa em alguma /
+// precisou de mais que isso (ou teve a resposta revelada).
+function _cnCalcularClassificacao(q) {
+  const maiorTentativa = Math.max(1, ...q.tentativasPorPergunta);
+  if (maiorTentativa <= 1) return 'dominio_imediato';
+  if (maiorTentativa === 2) return 'precisou_revisar';
+  return 'necessitou_apoio';
+}
+
+async function conhecimentoConcluirConteudo(conteudoId, classificacaoEntendimento) {
   const btn = document.getElementById('cn-vis-btn-concluir'); if (btn) { if (btn.disabled) return; btn.disabled = true; }
   try {
     const operacaoId = await getOperacaoId();
-    const c = (_cnConteudosAplicaveisCache||[]).find(x=>x.id===conteudoId) || _cnConteudos.find(x=>x.id===conteudoId);
+    const c = (_cnConteudosAplicaveisCache||[]).find(x=>x.id===conteudoId) || _cnConteudos.find(x=>x.id===conteudoId) || (_cnQuestionarioAtual?.conteudo?.id===conteudoId ? _cnQuestionarioAtual.conteudo : null);
     if (!c) { toast('Conteúdo não encontrado.', 'err'); return; }
     const conteudoBaseId = c.documentoBaseId || c.id;
     const progId = `${conteudoBaseId}_${_cnEmailNormalizado(currentUser.email)}`;
@@ -9930,7 +10475,7 @@ async function conhecimentoConcluirConteudo(conteudoId) {
         colaboradorEmail: currentUser.email, colaboradorNome: currentUser.name,
         concluidoEm: firebase.firestore.FieldValue.serverTimestamp(),
         tempoEstimadoMinutos: c.tempoEstimadoMinutos ?? null, // snapshot do tempo estimado do conteúdo — não é tempo medido de fato (ver observação sobre rastreamento no formato não-PDF)
-        classificacaoEntendimento: null // sem validação nesta etapa
+        classificacaoEntendimento: classificacaoEntendimento || null
       });
     });
 
