@@ -9738,56 +9738,97 @@ function _cnLerCamposFormulario() {
 
 // ── Salvar rascunho (cria ou atualiza) ──
 async function conhecimentoSalvarRascunho() {
-  if (!_cnExigirGestao()) return;
-  if (_cnSalvandoFormulario) return; // trava contra duplo clique
-  const dados = _cnLerCamposFormulario();
-  if (!dados.titulo) { toast('Informe ao menos o título para salvar o rascunho.', 'err'); return; }
-  if (!dados.tipo) { toast('Selecione o tipo do conteúdo.', 'err'); return; }
-  const errosValidacao = _cnValidarPerguntasParaSalvar(dados);
-  if (errosValidacao.length) { toast(errosValidacao[0], 'err'); return; }
+  console.log('[CN] conhecimentoSalvarRascunho: INÍCIO');
 
-  // BUG CRÍTICO CORRIGIDO: esta variável precisa existir ANTES do try, senão
-  // um erro ocorrido antes da linha onde ela era declarada (upload no Storage
-  // falhando, getOperacaoId() falhando, etc.) fazia o catch tentar ler uma
-  // variável fora de escopo — um SEGUNDO erro (ReferenceError) que mascarava
-  // o primeiro, nenhum toast chegava a rodar, e o clique ficava sem nenhum
-  // retorno visível. Era exatamente o sintoma relatado.
+  if (!_cnExigirGestao()) { console.log('[CN] PAROU: _cnExigirGestao() retornou false (sem permissão).'); return; }
+  console.log('[CN] passou por _cnExigirGestao()');
+
+  if (_cnSalvandoFormulario) { console.log('[CN] PAROU: _cnSalvandoFormulario já é true (trava de duplo clique).'); return; }
+  console.log('[CN] passou pela trava de duplo clique');
+
+  // _cnLerCamposFormulario() roda FORA do try principal — se algum campo do
+  // formulário não existir no DOM (id errado, modal não totalmente montado),
+  // isso lança um erro aqui, ANTES de qualquer try/catch, e o clique morre
+  // sem nenhum rastro. Envolvido em try/catch só pra garantir que, se for
+  // isso, o log abaixo mostra exatamente qual campo.
+  let dados;
+  try {
+    dados = _cnLerCamposFormulario();
+    console.log('[CN] _cnLerCamposFormulario() OK:', dados);
+  } catch(eLeitura) {
+    console.error('[CN] PAROU: erro ao ler os campos do formulário (provável id de elemento inexistente):', eLeitura);
+    toast('Erro ao ler o formulário: ' + eLeitura.message, 'err');
+    return;
+  }
+
+  if (!dados.titulo) { console.log('[CN] PAROU: título vazio.'); toast('Informe ao menos o título para salvar o rascunho.', 'err'); return; }
+  if (!dados.tipo) { console.log('[CN] PAROU: tipo vazio.'); toast('Selecione o tipo do conteúdo.', 'err'); return; }
+  console.log('[CN] validação básica (título/tipo) OK');
+
+  const errosValidacao = _cnValidarPerguntasParaSalvar(dados);
+  if (errosValidacao.length) { console.log('[CN] PAROU: validação estrutural de perguntas falhou:', errosValidacao); toast(errosValidacao[0], 'err'); return; }
+  console.log('[CN] validação estrutural de perguntas OK');
+
+  // BUG CRÍTICO CORRIGIDO ANTERIORMENTE: esta variável precisa existir ANTES
+  // do try, senão um erro ocorrido antes da linha onde ela era declarada
+  // (upload no Storage falhando, getOperacaoId() falhando, etc.) fazia o
+  // catch tentar ler uma variável fora de escopo — um SEGUNDO erro que
+  // mascarava o primeiro. Mantido corrigido; instrumentado agora pra achar
+  // qualquer outra causa, caso essa não seja (ou não seja mais) a única.
   let uploadConcluido = false;
   _cnSalvandoFormulario = true;
   const btn = document.getElementById('cn-f-btn-salvar');
   const textoOriginalBtn = btn ? btn.textContent : '';
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Salvando...'; }
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Salvando...'; console.log('[CN] botão desabilitado e texto trocado para "Salvando..."'); }
+  else { console.warn('[CN] AVISO: botão #cn-f-btn-salvar não encontrado no DOM — a UI não vai mostrar carregamento, mas a gravação segue.'); }
+
   try {
+    console.log('[CN] entrou no try principal — chamando getOperacaoId()');
     const operacaoId = await getOperacaoId();
+    console.log('[CN] getOperacaoId() OK:', operacaoId);
+    if (!operacaoId) console.warn('[CN] AVISO: operacaoId veio vazio/undefined — as próximas gravações provavelmente vão falhar ou ficar incorretas.');
+
     let conteudoId = _cnConteudoEmEdicaoId;
     let conteudoAtual = conteudoId ? _cnConteudos.find(x=>x.id===conteudoId) : null;
+    console.log('[CN] modo:', conteudoId ? `edição (conteudoId=${conteudoId}, encontrado no cache local=${!!conteudoAtual})` : 'criação (novo conteúdo)');
 
     // Upload do arquivo principal, se um novo foi selecionado
     let dadosArquivo = {};
     if (_cnArquivoSelecionado) {
-      if (!conteudoId) { const ref = db.collection('conhecimento_conteudos').doc(); conteudoId = ref.id; }
+      console.log('[CN] arquivo principal selecionado:', _cnArquivoSelecionado.name, _cnArquivoSelecionado.size, _cnArquivoSelecionado.type);
+      if (!storage) console.warn('[CN] AVISO: variável global "storage" está null — o Storage não inicializou; o upload vai falhar agora.');
+      if (!conteudoId) { const ref = db.collection('conhecimento_conteudos').doc(); conteudoId = ref.id; console.log('[CN] gerado novo conteudoId antecipado para path do Storage:', conteudoId); }
       const progWrap = document.getElementById('cn-f-arquivo-progresso'); if (progWrap) progWrap.style.display = 'block';
       const path = `central-conhecimento/${operacaoId}/conteudos/${conteudoId}/arquivo_${Date.now()}_${_cnSanitizarNomeArquivo(_cnArquivoSelecionado.name)}`;
+      console.log('[CN] iniciando upload do arquivo principal para path:', path);
       const up = await _cnUploadArquivoGenerico(_cnArquivoSelecionado, path, pct => { const b = document.getElementById('cn-f-arquivo-progresso-bar'); if (b) b.style.width = pct+'%'; });
+      console.log('[CN] upload do arquivo principal concluído:', up);
       uploadConcluido = true;
-      // Substituição de rascunho: exclui o arquivo anterior do Storage (só é seguro porque é rascunho, nunca publicado)
-      if (conteudoAtual?.arquivoStoragePath) await _cnExcluirArquivoStorage(conteudoAtual.arquivoStoragePath);
+      if (conteudoAtual?.arquivoStoragePath) { console.log('[CN] excluindo arquivo anterior do Storage:', conteudoAtual.arquivoStoragePath); await _cnExcluirArquivoStorage(conteudoAtual.arquivoStoragePath); }
       dadosArquivo = { arquivoUrl: up.url, arquivoStoragePath: up.path, arquivoNome: _cnArquivoSelecionado.name, arquivoTamanho: _cnArquivoSelecionado.size, arquivoTipo: _cnArquivoSelecionado.type };
+    } else {
+      console.log('[CN] nenhum arquivo principal novo selecionado — pulando upload de arquivo.');
     }
 
     // Upload da capa, se uma nova foi selecionada
     let dadosCapa = {};
     if (_cnCapaSelecionada) {
-      if (!conteudoId) { const ref = db.collection('conhecimento_conteudos').doc(); conteudoId = ref.id; }
+      console.log('[CN] capa selecionada:', _cnCapaSelecionada.name, _cnCapaSelecionada.size, _cnCapaSelecionada.type);
+      if (!conteudoId) { const ref = db.collection('conhecimento_conteudos').doc(); conteudoId = ref.id; console.log('[CN] gerado novo conteudoId antecipado (capa):', conteudoId); }
       const progWrap = document.getElementById('cn-f-capa-progresso'); if (progWrap) progWrap.style.display = 'block';
       const path = `central-conhecimento/${operacaoId}/conteudos/${conteudoId}/capa_${Date.now()}_${_cnSanitizarNomeArquivo(_cnCapaSelecionada.name)}`;
+      console.log('[CN] iniciando upload da capa para path:', path);
       const up = await _cnUploadArquivoGenerico(_cnCapaSelecionada, path, pct => { const b = document.getElementById('cn-f-capa-progresso-bar'); if (b) b.style.width = pct+'%'; });
+      console.log('[CN] upload da capa concluído:', up);
       uploadConcluido = true;
-      if (conteudoAtual?.imagemCapaStoragePath) await _cnExcluirArquivoStorage(conteudoAtual.imagemCapaStoragePath);
+      if (conteudoAtual?.imagemCapaStoragePath) { console.log('[CN] excluindo capa anterior do Storage:', conteudoAtual.imagemCapaStoragePath); await _cnExcluirArquivoStorage(conteudoAtual.imagemCapaStoragePath); }
       dadosCapa = { imagemCapaUrl: up.url, imagemCapaStoragePath: up.path };
+    } else {
+      console.log('[CN] nenhuma capa nova selecionada — pulando upload de capa.');
     }
 
     const payload = { ...dados, ...dadosArquivo, ...dadosCapa, operacaoId, atualizadoEm: firebase.firestore.FieldValue.serverTimestamp() };
+    console.log('[CN] payload montado, prestes a gravar no Firestore:', payload);
 
     // A partir daqui só restam operações no Firestore — Storage e Firestore
     // NÃO fazem parte da mesma operação atômica (não existe transação entre
@@ -9795,8 +9836,9 @@ async function conhecimentoSalvarRascunho() {
     // enviado(s) ao Storage ficam órfãos (upload não é revertido
     // automaticamente) — o catch abaixo avisa isso explicitamente.
     if (conteudoId && conteudoAtual) {
-      // edição de rascunho existente
+      console.log('[CN] gravando UPDATE em conhecimento_conteudos/' + conteudoId);
       await db.collection('conhecimento_conteudos').doc(conteudoId).update(payload);
+      console.log('[CN] UPDATE concluído com sucesso.');
     } else {
       // Criação — v1 conforme arquitetura congelada. REGRA ÚNICA E DEFINITIVA:
       // documentoBaseId da v1 é o próprio id do documento (nunca null) — assim
@@ -9805,6 +9847,8 @@ async function conhecimentoSalvarRascunho() {
       // versaoAnteriorId continua null (não existe versão anterior à v1).
       const ref = conteudoId ? db.collection('conhecimento_conteudos').doc(conteudoId) : db.collection('conhecimento_conteudos').doc();
       conteudoId = ref.id;
+      console.log('[CN] gravando SET (criação) em conhecimento_conteudos/' + conteudoId);
+      if (!currentUser) console.error('[CN] ERRO GRAVE: currentUser está undefined/null — o SET abaixo vai falhar ao ler currentUser.name/.email.');
       await ref.set({
         ...payload, id: ref.id,
         status: 'rascunho', versao: 1, versaoAtual: true, documentoBaseId: ref.id, versaoAnteriorId: null,
@@ -9814,22 +9858,33 @@ async function conhecimentoSalvarRascunho() {
         publicadoPor: null, publicadoPorEmail: null, publicadoEm: null,
         arquivadoPor: null, arquivadoPorEmail: null, arquivadoEm: null
       });
+      console.log('[CN] SET (criação) concluído com sucesso. Novo conteudoId:', conteudoId);
     }
 
+    console.log('[CN] chamando conhecimentoSalvarPublicos(', conteudoId, ')');
     await conhecimentoSalvarPublicos(conteudoId);
+    console.log('[CN] conhecimentoSalvarPublicos concluído.');
+
+    console.log('[CN] chamando conhecimentoSalvarPerguntas(', conteudoId, ')');
     await conhecimentoSalvarPerguntas(conteudoId);
+    console.log('[CN] conhecimentoSalvarPerguntas concluído.');
+
     _cnArquivoSelecionado = null; _cnCapaSelecionada = null;
     closeModal('modal-cn-formulario');
     toast('✅ Rascunho salvo.', 'ok');
+    console.log('[CN] SUCESSO TOTAL — rascunho salvo, modal fechado, toast exibido.');
     conhecimentoCarregarConteudosGestao(true);
   } catch(e) {
-    console.error('Erro ao salvar rascunho da Central de Conhecimento:', e);
+    console.error('[CN] ❌ ERRO CAPTURADO no try principal de conhecimentoSalvarRascunho:', e);
+    console.error('[CN] stack do erro:', e && e.stack);
+    console.error('[CN] uploadConcluido no momento do erro:', uploadConcluido);
     if (uploadConcluido) {
       toast('Erro ao salvar o rascunho no banco após o envio do arquivo — o arquivo já enviado pode ter ficado órfão no Storage e pode precisar de limpeza manual. Detalhe: ' + e.message, 'err');
     } else {
       toast('Erro ao salvar rascunho: ' + e.message, 'err');
     }
   } finally {
+    console.log('[CN] bloco finally — restaurando botão e travas.');
     _cnSalvandoFormulario = false;
     if (btn) { btn.disabled = false; btn.textContent = textoOriginalBtn; }
     const pa = document.getElementById('cn-f-arquivo-progresso'); if (pa) pa.style.display = 'none';
