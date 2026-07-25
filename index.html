@@ -18196,6 +18196,38 @@ async function setOperacaoId(valor) {
   return v;
 }
 
+// ── Etapa 2 da migração de autenticação (arquitetura aprovada) — só leitura
+// de configuração, com default seguro. NÃO é chamada por doLogin() nem por
+// nenhum outro ponto do sistema nesta etapa; existe só pra estar disponível
+// quando a Etapa 3 (Passo 2 do login) for implementada.
+async function getConfigMigracaoAuth() {
+  const DEFAULT_DESLIGADO = { modoHibridoAtivo: false, loginExclusivoFirebaseAuth: false, authVersion: 1 };
+  try {
+    const snap = await db.collection('sistema_config').doc('autenticacao').get();
+    if (!snap.exists) return DEFAULT_DESLIGADO;
+
+    const dados = snap.data() || {};
+
+    // Cada campo é validado individualmente — documento incompleto ou com
+    // valor de tipo/formato errado em QUALQUER campo cai no default seguro
+    // daquele campo, nunca herda um valor inesperado.
+    const modoHibridoAtivo = dados.modoHibridoAtivo === true;
+
+    // Regra de segurança explícita: loginExclusivoFirebaseAuth só pode ser
+    // considerado true se modoHibridoAtivo também for explicitamente true —
+    // nunca fica "ativo sozinho".
+    const loginExclusivoFirebaseAuth = modoHibridoAtivo && dados.loginExclusivoFirebaseAuth === true;
+
+    const authVersion = Number.isFinite(dados.authVersion) ? dados.authVersion : 1;
+
+    return { modoHibridoAtivo, loginExclusivoFirebaseAuth, authVersion };
+  } catch (e) {
+    // Qualquer erro de leitura (rede, permissão, etc.) — assume desligado.
+    console.error('Erro ao ler sistema_config/autenticacao — assumindo modo desligado:', e);
+    return DEFAULT_DESLIGADO;
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // FERRAMENTA ADMINISTRATIVA DE DIAGNÓSTICO DE IMPORTAÇÕES
 // Arquitetura oficial GestãoRGRio: todo módulo com importação deve poder ser
