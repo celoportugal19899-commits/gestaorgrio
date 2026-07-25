@@ -1,7 +1,11 @@
-name = "gestaorgrio"
+name = "Gestaorgrio"
 compatibility_date = "2026-05-19"
 main = "worker.js"
 
 [assets]
 directory = "."
-binding = "ASSETS"
+binding = "ATIVOS"
+
+[[r2_buckets]]
+binding = "ARQUIVOS_BUCKET"
+bucket_name = "gestaorgrio-arquivos"
