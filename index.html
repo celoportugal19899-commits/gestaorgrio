@@ -10,6 +10,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-storage-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
@@ -2850,6 +2851,13 @@ const db = firebase.firestore();
 // só as ações de upload da Central de Conhecimento ficam indisponíveis.
 let storage = null;
 try { storage = firebase.storage(); } catch(e) { console.error('Falha ao inicializar o Firebase Storage — recursos de arquivo da Central de Conhecimento ficarão indisponíveis:', e); }
+// Auth — Etapa 1 da migração de autenticação (arquitetura aprovada). Só
+// inicializa a referência; NENHUMA chamada (signIn/signOut/createUser) é
+// feita aqui ou em qualquer outro ponto do sistema nesta etapa. Nenhum
+// comportamento existente muda — login/logout continuam 100% no Firestore,
+// exatamente como antes desta linha.
+let auth = null;
+try { auth = firebase.auth(); } catch(e) { console.error('Falha ao inicializar o Firebase Authentication (sem efeito no sistema atual, nada depende disso ainda):', e); }
 
 // ══════════════════════════════════════
 // STATE
