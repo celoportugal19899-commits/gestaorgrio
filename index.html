@@ -9126,7 +9126,7 @@ const CN_TIPO_LABEL = Object.fromEntries(CN_TIPOS);
 const CN_TIPOS_ARQUIVO_ACEITOS = ['application/pdf','application/vnd.ms-powerpoint','application/vnd.openxmlformats-officedocument.presentationml.presentation','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','image/jpeg','image/png','image/webp'];
 const CN_TIPOS_CAPA_ACEITOS = ['image/jpeg','image/png','image/webp'];
 const CN_TAMANHO_MAX_ARQUIVO = 25 * 1024 * 1024; // 25MB
-const CN_TAMANHO_MAX_CAPA = 5 * 1024 * 1024;     // 5MB
+const CN_TAMANHO_MAX_CAPA = 10 * 1024 * 1024;    // 10MB — mesma regra já existente para imagens no R2
 
 // ── Estado (sem listener — leitura simples sob demanda, conforme etapa) ──
 let _cnConteudos = [];
@@ -9181,6 +9181,145 @@ async function _cnUploadArquivoGenerico(file, path, onProgress) {
 async function _cnExcluirArquivoStorage(path) {
   if (!path || !storage) return;
   try { await storage.ref(path).delete(); } catch(e) { console.error('Erro ao excluir arquivo do Storage (ignorado):', e); }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// STORAGE R2 (Cloudflare Worker) — arquivo PRINCIPAL do conteúdo (PDF,
+// imagem quando é o próprio conteúdo, DOCX/XLSX/PPTX, MP4). A imagem de
+// CAPA continua no Firebase Storage, deliberadamente — ver decisão no
+// relatório da entrega (mover capa pra R2 exigiria buscar imagem
+// autenticada por card ao carregar a listagem, o que contraria a regra de
+// nunca tocar no R2 ao listar, ou tornar o bucket público, que é proibido).
+//
+// Nunca obriga Firebase Auth pro resto do sistema — só as funções abaixo
+// (upload/leitura/download/exclusão de arquivo) checam sessão do Auth;
+// tudo mais no módulo continua funcionando com o modo híbrido desligado.
+// ══════════════════════════════════════════════════════════════════════════
+const CN_R2_LIMITES = {
+  'application/pdf': 25 * 1024 * 1024,
+  'image/jpeg': 10 * 1024 * 1024,
+  'image/png': 10 * 1024 * 1024,
+  'image/webp': 10 * 1024 * 1024,
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 25 * 1024 * 1024,
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 25 * 1024 * 1024,
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 25 * 1024 * 1024,
+  'video/mp4': 80 * 1024 * 1024
+};
+
+function _cnMensagemSessaoInvalida() {
+  toast('Não foi possível validar sua sessão para acessar o arquivo. Saia e entre novamente no sistema.', 'err');
+}
+
+// Único ponto que obtém o Firebase ID Token — nunca gravado em lugar
+// nenhum (nem Firestore, nem URL), nunca logado no console.
+async function getStorageIdToken() {
+  const firebaseUser = auth && auth.currentUser;
+  if (!firebaseUser) return null;
+  try { return await firebaseUser.getIdToken(); }
+  catch(e) { console.error('Erro ao obter ID Token do Firebase Auth (sem detalhe do token no log):', e && e.code); return null; }
+}
+
+// Upload pro R2 via Worker. PDF/imagem/Office usam multipart/form-data
+// (Content-Type nunca setado manualmente — o navegador gera o boundary).
+// MP4 usa o corpo bruto da requisição, direto de um File/Blob — o fetch()
+// já trata isso como stream nativamente; nunca passamos por
+// FileReader/arrayBuffer() aqui, então o vídeo nunca é materializado
+// inteiro em memória no navegador antes de enviar.
+async function uploadArquivoR2(file, { modulo, categoria, operacaoId, referenciaId }) {
+  const token = await getStorageIdToken();
+  if (!token) { _cnMensagemSessaoInvalida(); throw new Error('sem_sessao_firebase'); }
+
+  const limite = CN_R2_LIMITES[file.type];
+  if (!limite) throw new Error('unsupported_file_type');
+  if (file.size > limite) throw new Error('file_too_large');
+
+  let resp;
+  if (file.type === 'video/mp4') {
+    const params = new URLSearchParams({ modulo, categoria, operacaoId, referenciaId: referenciaId || '', filename: file.name || 'video.mp4' });
+    resp = await fetch(`/api/storage/upload?${params.toString()}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'video/mp4' },
+      body: file
+    });
+  } else {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('modulo', modulo);
+    form.append('categoria', categoria);
+    form.append('operacaoId', operacaoId);
+    if (referenciaId) form.append('referenciaId', referenciaId);
+    resp = await fetch('/api/storage/upload', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: form
+    });
+  }
+
+  const data = await resp.json().catch(() => ({ ok: false, error: 'invalid_response' }));
+  if (!resp.ok || !data.ok) throw new Error((data && data.error) || 'storage_error');
+  return data.arquivo;
+}
+
+async function _cnBuscarBlobR2(path) {
+  const token = await getStorageIdToken();
+  if (!token) { _cnMensagemSessaoInvalida(); return null; }
+  try {
+    const resp = await fetch(`/api/storage/file?path=${encodeURIComponent(path)}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!resp.ok) { console.error('Erro ao buscar arquivo do R2, status:', resp.status); return null; }
+    return await resp.blob();
+  } catch(e) { console.error('Erro de rede ao buscar arquivo do R2:', e && e.message); return null; }
+}
+
+// <video>/<img>/<iframe src="..."> não enviam Authorization customizado —
+// por isso o conteúdo é sempre buscado autenticado primeiro (Blob) e só
+// depois vira uma blob URL temporária usada no visualizador.
+let _cnUltimaBlobUrlAberta = null;
+let _cnUltimaBlobUrlCapa = null; // separado do blob do arquivo/vídeo principal — os dois podem estar abertos ao mesmo tempo
+async function abrirArquivoR2(path) {
+  const blob = await _cnBuscarBlobR2(path);
+  if (!blob) return null;
+  _cnRevogarBlobArquivoR2();
+  const url = URL.createObjectURL(blob);
+  _cnUltimaBlobUrlAberta = url;
+  return url;
+}
+function _cnRevogarBlobArquivoR2() {
+  if (_cnUltimaBlobUrlAberta) { URL.revokeObjectURL(_cnUltimaBlobUrlAberta); _cnUltimaBlobUrlAberta = null; }
+}
+
+async function downloadArquivoR2(path, nomeArquivo) {
+  const token = await getStorageIdToken();
+  if (!token) { _cnMensagemSessaoInvalida(); return; }
+  try {
+    const resp = await fetch(`/api/storage/download?path=${encodeURIComponent(path)}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!resp.ok) { toast('Erro ao baixar o arquivo.', 'err'); return; }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = nomeArquivo || 'arquivo';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch(e) { console.error('Erro ao baixar arquivo do R2:', e && e.message); toast('Erro ao baixar o arquivo.', 'err'); }
+}
+
+// Reaproveita a MESMA checagem administrativa do módulo (_cnExigirGestao) —
+// nenhuma regra de perfil nova é criada aqui.
+async function excluirArquivoR2(path, operacaoId) {
+  const token = await getStorageIdToken();
+  if (!token) { _cnMensagemSessaoInvalida(); return false; }
+  try {
+    const resp = await fetch('/api/storage/file', {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, operacaoId })
+    });
+    const data = await resp.json().catch(() => ({ ok: false }));
+    return resp.ok && !!data.ok;
+  } catch(e) { console.error('Erro ao excluir arquivo do R2:', e && e.message); return false; }
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -9725,8 +9864,19 @@ async function conhecimentoEditarRascunho(id) {
   document.getElementById('cn-f-video-url').value = c.videoUrl || '';
   document.getElementById('cn-f-link-url').value = c.linkUrl || '';
   document.getElementById('cn-f-texto-conteudo').value = c.conteudoTexto || '';
-  document.getElementById('cn-f-arquivo-atual').textContent = c.arquivoNome ? `Arquivo atual: ${c.arquivoNome} (${_fmtBytes(c.arquivoTamanho||0)})` : '';
-  document.getElementById('cn-f-capa-preview').innerHTML = c.imagemCapaUrl ? `<img src="${c.imagemCapaUrl}" style="max-height:100px;border-radius:8px">` : '';
+  document.getElementById('cn-f-arquivo-atual').textContent = (c.arquivo?.nomeOriginal || c.arquivoNome) ? `Arquivo atual: ${c.arquivo?.nomeOriginal || c.arquivoNome} (${_fmtBytes(c.arquivo?.tamanho ?? c.arquivoTamanho ?? 0)})` : '';
+  // Preview da capa: busca autenticada só acontece aqui (o admin abriu ESTE
+  // conteúdo específico pra editar — não é a listagem, então 1 requisição
+  // pontual não fere a regra de não buscar capas em massa).
+  const capaPreviewEl = document.getElementById('cn-f-capa-preview');
+  capaPreviewEl.innerHTML = '';
+  if (c.imagemCapa?.storage === 'r2' && c.imagemCapa.path) {
+    abrirArquivoR2(c.imagemCapa.path).then(blobUrl => {
+      if (blobUrl) capaPreviewEl.innerHTML = `<img src="${blobUrl}" style="max-height:100px;border-radius:8px">`;
+    });
+  } else if (c.imagemCapaUrl) {
+    capaPreviewEl.innerHTML = `<img src="${c.imagemCapaUrl}" style="max-height:100px;border-radius:8px">`;
+  }
   document.getElementById('cn-f-arquivo-input').value = '';
   document.getElementById('cn-f-capa-input').value = '';
   document.getElementById('cn-f-btn-salvar').textContent = '💾 Salvar Alterações';
@@ -9927,10 +10077,12 @@ async function conhecimentoSalvarRascunho() {
   // mascarava o primeiro. Mantido corrigido; instrumentado agora pra achar
   // qualquer outra causa, caso essa não seja (ou não seja mais) a única.
   let uploadConcluido = false;
+  let arquivoR2RecemEnviado = null; // mesmo motivo do uploadConcluido: precisa existir antes do try, senão o catch quebra ao referenciá-la
+  let capaR2RecemEnviada = null;    // idem, para a capa
   _cnSalvandoFormulario = true;
   const btn = document.getElementById('cn-f-btn-salvar');
   const textoOriginalBtn = btn ? btn.textContent : '';
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Salvando...'; console.log('[CN] botão desabilitado e texto trocado para "Salvando..."'); }
+  if (btn) { btn.disabled = true; btn.textContent = (_cnArquivoSelecionado || _cnCapaSelecionada) ? '⏳ Enviando arquivo...' : '⏳ Salvando conteúdo...'; console.log('[CN] botão desabilitado, texto:', btn.textContent); }
   else { console.warn('[CN] AVISO: botão #cn-f-btn-salvar não encontrado no DOM — a UI não vai mostrar carregamento, mas a gravação segue.'); }
 
   try {
@@ -9943,43 +10095,87 @@ async function conhecimentoSalvarRascunho() {
     let conteudoAtual = conteudoId ? _cnConteudos.find(x=>x.id===conteudoId) : null;
     console.log('[CN] modo:', conteudoId ? `edição (conteudoId=${conteudoId}, encontrado no cache local=${!!conteudoAtual})` : 'criação (novo conteúdo)');
 
-    // Upload do arquivo principal, se um novo foi selecionado
+    // Upload do arquivo PRINCIPAL, se um novo foi selecionado — vai pro R2
+    // via Worker (autenticado por Firebase ID Token), não mais pro Firebase
+    // Storage. arquivoR2RecemEnviado guarda o path só deste upload, pra
+    // permitir compensação (excluir) caso o Firestore falhe logo abaixo —
+    // nunca aponta pra outro arquivo além do que acabou de subir aqui.
     let dadosArquivo = {};
     if (_cnArquivoSelecionado) {
       console.log('[CN] arquivo principal selecionado:', _cnArquivoSelecionado.name, _cnArquivoSelecionado.size, _cnArquivoSelecionado.type);
-      if (!storage) console.warn('[CN] AVISO: variável global "storage" está null — o Storage não inicializou; o upload vai falhar agora.');
-      if (!conteudoId) { const ref = db.collection('conhecimento_conteudos').doc(); conteudoId = ref.id; console.log('[CN] gerado novo conteudoId antecipado para path do Storage:', conteudoId); }
+      if (!conteudoId) { const ref = db.collection('conhecimento_conteudos').doc(); conteudoId = ref.id; console.log('[CN] gerado novo conteudoId antecipado para path do R2:', conteudoId); }
       const progWrap = document.getElementById('cn-f-arquivo-progresso'); if (progWrap) progWrap.style.display = 'block';
-      const path = `central-conhecimento/${operacaoId}/conteudos/${conteudoId}/arquivo_${Date.now()}_${_cnSanitizarNomeArquivo(_cnArquivoSelecionado.name)}`;
-      console.log('[CN] iniciando upload do arquivo principal para path:', path);
-      const up = await _cnUploadArquivoGenerico(_cnArquivoSelecionado, path, pct => { const b = document.getElementById('cn-f-arquivo-progresso-bar'); if (b) b.style.width = pct+'%'; });
-      console.log('[CN] upload do arquivo principal concluído:', up);
+      console.log('[CN] iniciando upload do arquivo principal para o R2 (modulo=central-conhecimento, categoria=' + dados.tipo + ', referenciaId=' + conteudoId + ')');
+      const arquivoInfo = await uploadArquivoR2(_cnArquivoSelecionado, {
+        modulo: 'central-conhecimento', categoria: dados.tipo, operacaoId, referenciaId: conteudoId
+      });
+      console.log('[CN] upload do arquivo principal para o R2 concluído:', arquivoInfo);
       uploadConcluido = true;
-      if (conteudoAtual?.arquivoStoragePath) { console.log('[CN] excluindo arquivo anterior do Storage:', conteudoAtual.arquivoStoragePath); await _cnExcluirArquivoStorage(conteudoAtual.arquivoStoragePath); }
-      dadosArquivo = { arquivoUrl: up.url, arquivoStoragePath: up.path, arquivoNome: _cnArquivoSelecionado.name, arquivoTamanho: _cnArquivoSelecionado.size, arquivoTipo: _cnArquivoSelecionado.type };
+      arquivoR2RecemEnviado = { path: arquivoInfo.path, operacaoId };
+      // Arquivo anterior (se existir) só é excluído DEPOIS do novo já estar
+      // confirmado no R2 — nunca antes. Cobre tanto o caso de um arquivo
+      // anterior já em R2 quanto um conteúdo antigo pré-R2 (Firebase Storage).
+      if (conteudoAtual?.arquivo?.storage === 'r2' && conteudoAtual.arquivo.path) {
+        excluirArquivoR2(conteudoAtual.arquivo.path, operacaoId).catch(()=>{});
+      } else if (conteudoAtual?.arquivoStoragePath) {
+        await _cnExcluirArquivoStorage(conteudoAtual.arquivoStoragePath);
+      }
+      dadosArquivo = {
+        arquivo: {
+          storage: 'r2', id: arquivoInfo.id, path: arquivoInfo.path, nomeOriginal: arquivoInfo.nomeOriginal,
+          mimeType: arquivoInfo.mimeType, tamanho: arquivoInfo.tamanho, criadoEm: arquivoInfo.criadoEm, criadoPor: arquivoInfo.criadoPor
+        },
+        // Campos legados zerados quando um arquivo novo (R2) substitui um
+        // arquivo antigo (Firebase Storage) — evita doc com os dois
+        // conjuntos de campo coexistindo de forma ambígua.
+        arquivoUrl: null, arquivoStoragePath: null, arquivoNome: null, arquivoTamanho: null, arquivoTipo: null
+      };
     } else {
       console.log('[CN] nenhum arquivo principal novo selecionado — pulando upload de arquivo.');
     }
 
-    // Upload da capa, se uma nova foi selecionada
+    // Upload da capa, se uma nova foi selecionada — vai pro R2 via Worker
+    // (categoria "capas"), assim como o arquivo principal. capaR2RecemEnviada
+    // guarda o path só deste upload, pra permitir compensação (excluir) caso
+    // o Firestore falhe logo abaixo — nunca aponta pra outro arquivo.
     let dadosCapa = {};
     if (_cnCapaSelecionada) {
       console.log('[CN] capa selecionada:', _cnCapaSelecionada.name, _cnCapaSelecionada.size, _cnCapaSelecionada.type);
       if (!conteudoId) { const ref = db.collection('conhecimento_conteudos').doc(); conteudoId = ref.id; console.log('[CN] gerado novo conteudoId antecipado (capa):', conteudoId); }
       const progWrap = document.getElementById('cn-f-capa-progresso'); if (progWrap) progWrap.style.display = 'block';
-      const path = `central-conhecimento/${operacaoId}/conteudos/${conteudoId}/capa_${Date.now()}_${_cnSanitizarNomeArquivo(_cnCapaSelecionada.name)}`;
-      console.log('[CN] iniciando upload da capa para path:', path);
-      const up = await _cnUploadArquivoGenerico(_cnCapaSelecionada, path, pct => { const b = document.getElementById('cn-f-capa-progresso-bar'); if (b) b.style.width = pct+'%'; });
-      console.log('[CN] upload da capa concluído:', up);
+      console.log('[CN] iniciando upload da capa para o R2 (categoria=capas, referenciaId=' + conteudoId + ')');
+      const capaInfo = await uploadArquivoR2(_cnCapaSelecionada, {
+        modulo: 'central-conhecimento', categoria: 'capas', operacaoId, referenciaId: conteudoId
+      });
+      console.log('[CN] upload da capa para o R2 concluído:', capaInfo);
       uploadConcluido = true;
-      if (conteudoAtual?.imagemCapaStoragePath) { console.log('[CN] excluindo capa anterior do Storage:', conteudoAtual.imagemCapaStoragePath); await _cnExcluirArquivoStorage(conteudoAtual.imagemCapaStoragePath); }
-      dadosCapa = { imagemCapaUrl: up.url, imagemCapaStoragePath: up.path };
+      capaR2RecemEnviada = { path: capaInfo.path, operacaoId };
+      // Capa anterior (se existir) só é excluída DEPOIS da nova já estar
+      // confirmada no R2 — nunca antes. Cobre tanto capa anterior já em R2
+      // quanto conteúdo antigo pré-R2 (Firebase Storage, só leitura/limpeza
+      // de compatibilidade — nenhum upload novo depende dele).
+      if (conteudoAtual?.imagemCapa?.storage === 'r2' && conteudoAtual.imagemCapa.path) {
+        excluirArquivoR2(conteudoAtual.imagemCapa.path, operacaoId).catch(()=>{});
+      } else if (conteudoAtual?.imagemCapaStoragePath) {
+        await _cnExcluirArquivoStorage(conteudoAtual.imagemCapaStoragePath);
+      }
+      dadosCapa = {
+        imagemCapa: {
+          storage: 'r2', id: capaInfo.id, path: capaInfo.path, nomeOriginal: capaInfo.nomeOriginal,
+          mimeType: capaInfo.mimeType, tamanho: capaInfo.tamanho, criadoEm: capaInfo.criadoEm, criadoPor: capaInfo.criadoPor
+        },
+        // Campos legados zerados quando uma capa nova (R2) substitui uma
+        // capa antiga (Firebase Storage) — evita os dois conjuntos
+        // coexistindo de forma ambígua no mesmo documento.
+        imagemCapaUrl: null, imagemCapaStoragePath: null
+      };
     } else {
       console.log('[CN] nenhuma capa nova selecionada — pulando upload de capa.');
     }
 
     const payload = { ...dados, ...dadosArquivo, ...dadosCapa, operacaoId, atualizadoEm: firebase.firestore.FieldValue.serverTimestamp() };
     console.log('[CN] payload montado, prestes a gravar no Firestore:', payload);
+    if (btn) btn.textContent = '⏳ Salvando conteúdo...';
 
     // A partir daqui só restam operações no Firestore — Storage e Firestore
     // NÃO fazem parte da mesma operação atômica (não existe transação entre
@@ -10030,7 +10226,24 @@ async function conhecimentoSalvarRascunho() {
     console.error('[CN] stack do erro:', e && e.stack);
     console.error('[CN] uploadConcluido no momento do erro:', uploadConcluido);
     if (uploadConcluido) {
-      toast('Erro ao salvar o rascunho no banco após o envio do arquivo — o arquivo já enviado pode ter ficado órfão no Storage e pode precisar de limpeza manual. Detalhe: ' + e.message, 'err');
+      // Compensação: o arquivo já foi enviado ao R2, mas o Firestore falhou
+      // depois — tenta excluir SÓ esse arquivo recém-enviado (nunca outro),
+      // pra não deixar um arquivo órfão sem nenhum documento referenciando.
+      if (arquivoR2RecemEnviado) {
+        try {
+          const excluiu = await excluirArquivoR2(arquivoR2RecemEnviado.path, arquivoR2RecemEnviado.operacaoId);
+          if (excluiu) console.warn('[CN] Compensação: arquivo recém-enviado ao R2 foi removido após falha no Firestore. path=', arquivoR2RecemEnviado.path);
+          else console.warn('[CN] Compensação FALHOU: não foi possível remover do R2 o arquivo recém-enviado — pode ter ficado órfão, limpeza manual pode ser necessária. path=', arquivoR2RecemEnviado.path);
+        } catch(eComp) { console.warn('[CN] Compensação FALHOU (exceção):', eComp && eComp.message); }
+      }
+      if (capaR2RecemEnviada) {
+        try {
+          const excluiu = await excluirArquivoR2(capaR2RecemEnviada.path, capaR2RecemEnviada.operacaoId);
+          if (excluiu) console.warn('[CN] Compensação: capa recém-enviada ao R2 foi removida após falha no Firestore. path=', capaR2RecemEnviada.path);
+          else console.warn('[CN] Compensação FALHOU: não foi possível remover do R2 a capa recém-enviada — pode ter ficado órfã, limpeza manual pode ser necessária. path=', capaR2RecemEnviada.path);
+        } catch(eComp) { console.warn('[CN] Compensação FALHOU (exceção, capa):', eComp && eComp.message); }
+      }
+      toast('Erro ao salvar o rascunho no banco após o envio do arquivo — o arquivo já enviado pode ter ficado órfão e pode precisar de limpeza manual. Detalhe: ' + e.message, 'err');
     } else {
       toast('Erro ao salvar rascunho: ' + e.message, 'err');
     }
@@ -10093,12 +10306,23 @@ async function conhecimentoExcluirRascunho(id) {
     snapPublicos.docs.forEach(d => batch.delete(d.ref));
     snapPerguntas.docs.forEach(d => batch.delete(d.ref));
     batch.delete(db.collection('conhecimento_conteudos').doc(id));
-    // Firestore primeiro, Storage depois: se o Firestore falhar, nenhum
+    // Firestore primeiro, arquivo depois: se o Firestore falhar, nenhum
     // arquivo é tocado (nunca fica doc apontando pra arquivo já excluído).
-    // Se o Storage falhar depois do Firestore ter sido excluído com sucesso,
-    // o pior caso é um arquivo órfão no bucket — sem doc pra referenciá-lo,
-    // sem risco de inconsistência de dado, só custo de armazenamento a mais.
+    // Se a exclusão do arquivo falhar depois do Firestore ter sido excluído
+    // com sucesso, o pior caso é um arquivo órfão (R2 ou Storage) — sem doc
+    // pra referenciá-lo, sem risco de inconsistência de dado, só custo de
+    // armazenamento a mais. Mantida a ordem já validada deste módulo
+    // (diferente da ordem sugerida genericamente para o Bloco 3) porque é a
+    // mais segura contra documento-fantasma apontando pra arquivo inexistente.
     await batch.commit();
+    if (docAtual.data().arquivo?.storage === 'r2' && docAtual.data().arquivo.path) {
+      const excluiu = await excluirArquivoR2(docAtual.data().arquivo.path, operacaoId);
+      if (!excluiu) console.warn('[CN] Falha ao excluir arquivo R2 do rascunho removido — pode ficar órfão. path=', docAtual.data().arquivo.path);
+    }
+    if (docAtual.data().imagemCapa?.storage === 'r2' && docAtual.data().imagemCapa.path) {
+      const excluiu = await excluirArquivoR2(docAtual.data().imagemCapa.path, operacaoId);
+      if (!excluiu) console.warn('[CN] Falha ao excluir capa R2 do rascunho removido — pode ficar órfã. path=', docAtual.data().imagemCapa.path);
+    }
     if (docAtual.data().arquivoStoragePath) await _cnExcluirArquivoStorage(docAtual.data().arquivoStoragePath);
     if (docAtual.data().imagemCapaStoragePath) await _cnExcluirArquivoStorage(docAtual.data().imagemCapaStoragePath);
     toast('🗑 Rascunho excluído.', 'ok');
@@ -10112,7 +10336,7 @@ async function _cnValidarParaPublicacao(c) {
   if (!c.tipo) erros.push('Tipo é obrigatório.');
   if (!c.titulo) erros.push('Título é obrigatório.');
   if (!c.formatoPrincipal) erros.push('Formato principal é obrigatório.');
-  if (c.formatoPrincipal === 'arquivo' && !c.arquivoUrl) erros.push('Envie o arquivo principal antes de publicar.');
+  if (c.formatoPrincipal === 'arquivo' && !(c.arquivo?.path || c.arquivoUrl)) erros.push('Envie o arquivo principal antes de publicar.');
   if (c.formatoPrincipal === 'link' && !c.linkUrl) erros.push('Informe o link externo antes de publicar.');
   if (c.formatoPrincipal === 'video' && !c.videoUrl) erros.push('Informe a URL do vídeo antes de publicar.');
   if (c.formatoPrincipal === 'texto' && !c.conteudoTexto) erros.push('Preencha o conteúdo textual antes de publicar.');
@@ -10377,6 +10601,8 @@ function _cnGarantirModalVisualizar() {
 function conhecimentoFecharVisualizacao() {
   closeModal('modal-cn-visualizar');
   _cnConteudoVisualizandoId = null;
+  _cnRevogarBlobArquivoR2();
+  if (_cnUltimaBlobUrlCapa) { URL.revokeObjectURL(_cnUltimaBlobUrlCapa); _cnUltimaBlobUrlCapa = null; }
 }
 
 // Chamada tanto pela Gestão (visualizar sem contar progresso) quanto pelas
@@ -10400,6 +10626,8 @@ async function conhecimentoAbrirConteudo(id, somenteVisualizacaoGestao) {
   if (!c) { toast('Conteúdo não encontrado.', 'err'); return; }
 
   _cnConteudoVisualizandoId = id;
+  _cnRevogarBlobArquivoR2(); // fecha qualquer blob de uma visualização anterior antes de abrir esta
+  if (_cnUltimaBlobUrlCapa) { URL.revokeObjectURL(_cnUltimaBlobUrlCapa); _cnUltimaBlobUrlCapa = null; }
   _cnGarantirModalVisualizar();
   document.getElementById('cn-vis-titulo').textContent = c.titulo;
 
@@ -10411,25 +10639,67 @@ async function conhecimentoAbrirConteudo(id, somenteVisualizacaoGestao) {
   const corpoEl = document.getElementById('cn-vis-corpo');
   const jaConcluido = progresso?.status === 'concluido';
   corpoEl.innerHTML = `
-    ${c.imagemCapaUrl?`<img src="${c.imagemCapaUrl}" style="width:100%;max-height:200px;object-fit:cover;border-radius:10px;margin-bottom:14px">`:''}
+    <div id="cn-vis-capa-wrap">${(!(c.imagemCapa?.storage==='r2') && c.imagemCapaUrl) ? `<img src="${c.imagemCapaUrl}" style="width:100%;max-height:200px;object-fit:cover;border-radius:10px;margin-bottom:14px">` : ''}</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;font-size:12px;color:var(--text3)">
       <span>${_cnIconeTipo(c.tipo)} ${CN_TIPO_LABEL[c.tipo]||c.tipo}</span>
       ${c.tempoEstimadoMinutos?`<span>⏱ ${c.tempoEstimadoMinutos} min</span>`:''}
       <span>${c.obrigatorio?'🔴 Obrigatório':'Opcional'}</span>
     </div>
     ${c.descricao?`<p style="font-size:13px;color:var(--text2);margin-bottom:16px">${c.descricao}</p>`:''}
-    <div id="cn-vis-conteudo-principal" style="margin-bottom:16px"></div>
+    <div id="cn-vis-conteudo-principal" style="margin-bottom:16px"><div style="text-align:center;padding:20px;color:var(--text3)">⏳ Carregando...</div></div>
     ${!somenteVisualizacaoGestao ? `<div id="cn-vis-acoes" style="display:flex;gap:10px;flex-wrap:wrap"></div>` : ''}
   `;
 
+  // Capa R2: busca autenticada só quando este conteúdo específico é aberto
+  // (nunca na listagem). Blob URL própria (_cnUltimaBlobUrlCapa), separada
+  // da usada pelo arquivo/vídeo principal, pra uma não revogar a outra.
+  if (c.imagemCapa?.storage === 'r2' && c.imagemCapa.path) {
+    _cnBuscarBlobR2(c.imagemCapa.path).then(blob => {
+      if (!blob) return;
+      if (_cnUltimaBlobUrlCapa) URL.revokeObjectURL(_cnUltimaBlobUrlCapa);
+      _cnUltimaBlobUrlCapa = URL.createObjectURL(blob);
+      const wrap = document.getElementById('cn-vis-capa-wrap');
+      if (wrap) wrap.innerHTML = `<img src="${_cnUltimaBlobUrlCapa}" style="width:100%;max-height:200px;object-fit:cover;border-radius:10px;margin-bottom:14px">`;
+    });
+  }
+
   const principalEl = document.getElementById('cn-vis-conteudo-principal');
-  if (c.formatoPrincipal === 'arquivo' && c.arquivoUrl) {
-    if ((c.arquivoTipo||'').includes('pdf')) {
+  const ehArquivoR2 = c.arquivo && c.arquivo.storage === 'r2';
+  const mimeAtual = ehArquivoR2 ? (c.arquivo.mimeType || '') : (c.arquivoTipo || '');
+
+  if (c.formatoPrincipal === 'arquivo' && ehArquivoR2) {
+    // Arquivo novo (R2): <iframe>/<img> não enviam Authorization — busca
+    // autenticada primeiro (Blob), só depois vira blob URL no visualizador.
+    const blobUrl = await abrirArquivoR2(c.arquivo.path);
+    if (!blobUrl) {
+      principalEl.innerHTML = `<div class="empty"><p>Não foi possível carregar o arquivo. Tente novamente.</p></div>`;
+    } else if (mimeAtual.includes('pdf')) {
+      principalEl.innerHTML = `<iframe src="${blobUrl}" style="width:100%;height:60vh;border:1px solid var(--border);border-radius:8px" onload="_cnMarcarPdfVisualizado()"></iframe>`;
+    } else if (mimeAtual.startsWith('image/')) {
+      principalEl.innerHTML = `<img src="${blobUrl}" style="max-width:100%;border-radius:8px" onload="_cnMarcarPdfVisualizado()">`;
+    } else {
+      principalEl.innerHTML = `<div class="empty"><p>Este formato não pode ser visualizado diretamente aqui — use o botão de download.</p></div>`;
+    }
+    if (c.downloadPermitido !== false) {
+      principalEl.innerHTML += `<button class="btn btn-sm btn-secondary" style="margin-top:8px" onclick="downloadArquivoR2('${c.arquivo.path}','${_cnEsc(c.arquivo.nomeOriginal||'arquivo')}')">⬇ Baixar arquivo</button>`;
+    }
+  } else if (c.formatoPrincipal === 'arquivo' && c.arquivoUrl) {
+    // Conteúdo antigo (pré-R2, Firebase Storage) — preservado exatamente
+    // como funcionava antes desta integração, sem nenhuma mudança.
+    if (mimeAtual.includes('pdf')) {
       principalEl.innerHTML = `<iframe src="${c.arquivoUrl}" style="width:100%;height:60vh;border:1px solid var(--border);border-radius:8px" onload="_cnMarcarPdfVisualizado()"></iframe>`;
     } else {
       principalEl.innerHTML = `<div class="empty"><p>Este formato não pode ser visualizado diretamente aqui.</p></div>`;
     }
     if (c.downloadPermitido !== false) principalEl.innerHTML += `<a href="${c.arquivoUrl}" target="_blank" rel="noopener" class="btn btn-sm btn-secondary" style="margin-top:8px;display:inline-block;text-decoration:none">⬇ Baixar / Abrir arquivo</a>`;
+  } else if (c.formatoPrincipal === 'video' && ehArquivoR2) {
+    // MP4 no R2 — também via Blob (ver PENDÊNCIA no relatório da entrega:
+    // sem Range aqui, o navegador baixa o vídeo inteiro antes de conseguir
+    // tocar, perdendo o benefício de streaming que o Worker já suporta).
+    const blobUrl = await abrirArquivoR2(c.arquivo.path);
+    principalEl.innerHTML = blobUrl
+      ? `<video controls style="width:100%;max-height:400px;border-radius:8px" onloadeddata="_cnMarcarPdfVisualizado()" src="${blobUrl}"></video>`
+      : `<div class="empty"><p>Não foi possível carregar o vídeo. Tente novamente.</p></div>`;
   } else if (c.formatoPrincipal === 'video' && c.videoUrl) {
     if (/youtube\.com|youtu\.be|vimeo\.com/.test(c.videoUrl)) {
       const embedUrl = _cnUrlEmbedVideo(c.videoUrl);
@@ -10449,13 +10719,17 @@ async function conhecimentoAbrirConteudo(id, somenteVisualizacaoGestao) {
     const acoesEl = document.getElementById('cn-vis-acoes');
     const temValidacao = c.validacao && c.validacao !== 'nenhuma';
     const rotuloBtn = temValidacao ? 'Responder e concluir' : '✓ Concluir';
+    const ehVisualizavelComGate = c.formatoPrincipal === 'arquivo' && (mimeAtual.includes('pdf') || mimeAtual.startsWith('image/'));
+    const ehVideoR2 = c.formatoPrincipal === 'video' && ehArquivoR2;
     if (jaConcluido) {
       acoesEl.innerHTML = `<span style="color:var(--green);font-weight:600;font-size:13px">✅ Concluído</span>`;
     } else if (c.formatoPrincipal === 'texto') {
       acoesEl.innerHTML = `<button class="btn btn-primary btn-sm" id="cn-vis-btn-concluir" onclick="_cnLiberarConclusaoOuQuestionario('${c.id}')" disabled>${temValidacao?rotuloBtn+' (role até o final)':rotuloBtn}</button>`;
       _cnAtivarGateScrollTexto();
-    } else if ((c.arquivoTipo||'').includes('pdf')) {
-      acoesEl.innerHTML = `<button class="btn btn-primary btn-sm" id="cn-vis-btn-concluir" onclick="_cnLiberarConclusaoOuQuestionario('${c.id}')" disabled>${rotuloBtn} (role até o final do PDF)</button>`;
+    } else if (ehVisualizavelComGate) {
+      acoesEl.innerHTML = `<button class="btn btn-primary btn-sm" id="cn-vis-btn-concluir" onclick="_cnLiberarConclusaoOuQuestionario('${c.id}')" disabled>${rotuloBtn} (role/veja até o final)</button>`;
+    } else if (ehVideoR2) {
+      acoesEl.innerHTML = `<button class="btn btn-primary btn-sm" id="cn-vis-btn-concluir" onclick="_cnLiberarConclusaoOuQuestionario('${c.id}')" disabled>${rotuloBtn} (aguarde o carregamento)</button>`;
     } else {
       acoesEl.innerHTML = `<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;width:100%">
         <input type="checkbox" id="cn-vis-confirmo" onchange="document.getElementById('cn-vis-btn-concluir').disabled=!this.checked">
@@ -10496,8 +10770,10 @@ function _cnAtivarGateScrollTexto() {
 }
 
 function _cnMarcarPdfVisualizado() {
-  // Sem API confiável de "página atual" num iframe de PDF nativo do navegador —
-  // regra explícita e simples: liberar "Concluir" quando o PDF terminar de carregar.
+  // Sem API confiável de "página atual"/"progresso real" num iframe de PDF
+  // nativo do navegador, numa imagem ou num vídeo — regra explícita e
+  // simples: liberar "Concluir" quando o elemento terminar de carregar
+  // (onload do iframe/img, onloadeddata do vídeo).
   const btn = document.getElementById('cn-vis-btn-concluir');
   if (btn) btn.disabled = false;
 }
