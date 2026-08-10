@@ -3884,6 +3884,119 @@ function showPage(name) {
 // ══════════════════════════════════════
 // AUTH
 // ══════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════
+// MIGRAÇÃO HÍBRIDA DE AUTENTICAÇÃO — Bloco 1 (arquitetura aprovada)
+// Firestore continua sendo a ÚNICA fonte que aprova ou recusa um login.
+// Tudo abaixo roda DEPOIS do Firestore já ter aprovado, nunca antes, e
+// nunca pode fazer um login que já foi aprovado falhar por causa do
+// Firebase Auth. Qualquer erro aqui é absorvido e registrado, nunca
+// propagado pra quem chamou.
+// ══════════════════════════════════════════════════════════════════════════
+
+// Auditoria: 1 documento por usuário (ID = e-mail normalizado), nunca 1 por
+// login. Só grava quando o status muda, ou quando é falha/dessincronizado
+// (sempre relevante acompanhar esses dois). Nunca grava senha, token ou
+// stack trace — só o código de erro seguro (e.code do Firebase).
+async function _registrarAuditoriaMigracaoAuth(emailNorm, origem, docId, uid, status, detalhe) {
+  try {
+    const operacaoId = await getOperacaoId().catch(() => null);
+    const ref = db.collection('auth_migration_logs').doc(emailNorm);
+    const snap = await ref.get();
+    const anterior = snap.exists ? snap.data() : null;
+
+    if (anterior && anterior.status === status && status !== 'falha' && status !== 'dessincronizado') {
+      return; // mesmo status de sucesso de antes — nada relevante mudou, não grava de novo
+    }
+
+    const payload = {
+      operacaoId, email: emailNorm, colecaoOrigem: origem, userId: docId || null,
+      uid: uid || (anterior && anterior.uid) || null,
+      status,
+      ultimaTentativaEm: firebase.firestore.FieldValue.serverTimestamp(),
+      ultimoDetalhe: String(detalhe || '').slice(0, 120),
+      tentativas: firebase.firestore.FieldValue.increment(1)
+    };
+    if (!anterior) payload.criadoEm = firebase.firestore.FieldValue.serverTimestamp();
+    await ref.set(payload, { merge: true });
+  } catch (e) {
+    console.warn('[Auth] Falha ao gravar auth_migration_logs (não impede o login):', e && e.code);
+  }
+}
+
+// Sincroniza a conta do Firestore com o Firebase Authentication. Nunca
+// lança erro pra quem chamou — qualquer falha é absorvida aqui, registrada
+// de forma segura, e o login pelo Firestore continua normalmente.
+async function sincronizarFirebaseAuth(email, senha, origem, docId) {
+  const emailNorm = (email || '').toLowerCase().trim();
+  if (!auth || !emailNorm) return;
+
+  let status = 'falha', detalhe = 'nao_executado', uid = null;
+  try {
+    await auth.setPersistence(firebase.auth.Auth.Persistence.NONE);
+
+    try {
+      const cred = await auth.signInWithEmailAndPassword(emailNorm, senha);
+      uid = cred.user.uid; status = 'migrado_login'; detalhe = 'signin_ok';
+    } catch (e1) {
+      if (e1 && e1.code === 'auth/user-not-found') {
+        try {
+          const cred = await auth.createUserWithEmailAndPassword(emailNorm, senha);
+          uid = cred.user.uid; status = 'migrado_criado'; detalhe = 'created_ok';
+        } catch (e2) {
+          if (e2 && e2.code === 'auth/email-already-in-use') {
+            // Corrida (outra aba/clique já criou entre o signIn falhar e o
+            // create ser chamado) — tenta logar de novo, uma única vez.
+            try {
+              const cred = await auth.signInWithEmailAndPassword(emailNorm, senha);
+              uid = cred.user.uid; status = 'migrado_login'; detalhe = 'signin_after_race_ok';
+            } catch (e3) {
+              status = 'falha'; detalhe = (e3 && e3.code) || 'erro_desconhecido';
+            }
+          } else if (e2 && e2.code === 'auth/weak-password') {
+            // Senha atual do usuário não atende ao mínimo do Firebase Auth —
+            // login pelo Firestore continua autorizado normalmente; não se
+            // altera a senha automaticamente, não se obriga troca aqui.
+            status = 'falha'; detalhe = 'weak_password';
+          } else {
+            status = 'falha'; detalhe = (e2 && e2.code) || 'erro_desconhecido';
+          }
+        }
+      } else if (e1 && e1.code === 'auth/wrong-password') {
+        // Firestore e Auth com senhas diferentes (ex.: reset administrativo
+        // no Firestore sem replicar no Auth) — dessincronia conhecida, será
+        // corrigida por rotina administrativa futura, não é falha de sistema.
+        status = 'dessincronizado'; detalhe = 'wrong_password';
+      } else {
+        status = 'falha'; detalhe = (e1 && e1.code) || 'erro_desconhecido';
+      }
+    }
+
+    // Grava o uid no documento de origem só quando a sincronização deu certo.
+    if (uid && docId) {
+      try { await db.collection(origem).doc(docId).update({ uid }); }
+      catch (eUid) { console.warn('[Auth] Falha ao gravar uid em', origem, docId, '— login não é afetado:', eUid && eUid.code); }
+    }
+  } catch (eGeral) {
+    status = 'falha'; detalhe = (eGeral && eGeral.code) || 'erro_inesperado';
+    console.warn('[Auth] Falha geral na sincronização com o Firebase Auth (login não é afetado):', detalhe);
+  }
+
+  await _registrarAuditoriaMigracaoAuth(emailNorm, origem, docId, uid, status, detalhe);
+}
+
+// Único ponto que decide SE a sincronização deve rodar — mantém doLogin()
+// enxuto e garante que ler a flag errada nunca derruba o login já aprovado.
+async function _sincronizarAuthSeAtivado(email, senha, origem, docId) {
+  try {
+    const configAuth = await getConfigMigracaoAuth();
+    if (configAuth.modoHibridoAtivo === true) {
+      await sincronizarFirebaseAuth(email, senha, origem, docId);
+    }
+  } catch (e) {
+    console.warn('[Auth] Falha ao checar/sincronizar modo híbrido (login não é afetado):', e && e.code);
+  }
+}
+
 async function doLogin() {
   const email = document.getElementById('login-email').value.trim();
   const pass = document.getElementById('login-pass').value;
@@ -3899,6 +4012,7 @@ async function doLogin() {
         currentUser = null;
         return;
       }
+      await _sincronizarAuthSeAtivado(email, pass, 'users', snap.docs[0].id);
       if (currentUser.mustChangePassword) { showPage('change-password'); return; }
       startApp(); return;
     }
@@ -3906,6 +4020,7 @@ async function doLogin() {
     const postoSnap = await db.collection('postos').where('email','==',email).where('password','==',pass).get();
     if (!postoSnap.empty) {
       currentUser = { id: postoSnap.docs[0].id, ...postoSnap.docs[0].data() };
+      await _sincronizarAuthSeAtivado(email, pass, 'postos', postoSnap.docs[0].id);
       startApp(); return;
     }
     document.getElementById('login-error').style.display = 'block';
@@ -3922,11 +4037,32 @@ async function doChangePassword() {
   if (valErr) { err.textContent = valErr; err.style.display = 'block'; return; }
   if (nova !== conf) { err.textContent = 'As senhas não coincidem.'; err.style.display = 'block'; return; }
   try {
+    const senhaAntiga = currentUser.password;
     await db.collection('users').doc(currentUser.id).update({ password: nova, mustChangePassword: false });
     currentUser.password = nova; currentUser.mustChangePassword = false;
+    await _sincronizarTrocaSenhaAuth(currentUser.email, senhaAntiga, nova, currentUser.id);
     toast('Senha alterada com sucesso!', 'ok');
     startApp();
   } catch(e) { err.textContent = 'Erro ao salvar. Tente novamente.'; err.style.display = 'block'; }
+}
+
+// Replica a troca de senha no Firebase Auth quando já existir sessão lá.
+// Firestore é sempre a fonte de verdade e já foi atualizado antes desta
+// função ser chamada — se isto falhar, a alteração do Firestore NÃO é
+// desfeita, o usuário continua vendo o mesmo sucesso de sempre, e a
+// dessincronização fica registrada pra correção administrativa futura.
+async function _sincronizarTrocaSenhaAuth(email, senhaAntiga, senhaNova, docId) {
+  if (!auth || !auth.currentUser) return;
+  const emailNorm = (email || '').toLowerCase().trim();
+  try {
+    const cred = firebase.auth.EmailAuthProvider.credential(emailNorm, senhaAntiga);
+    await auth.currentUser.reauthenticateWithCredential(cred);
+    await auth.currentUser.updatePassword(senhaNova);
+    await _registrarAuditoriaMigracaoAuth(emailNorm, 'users', docId, auth.currentUser.uid, 'migrado_login', 'password_synced');
+  } catch (e) {
+    console.warn('[Auth] Falha ao sincronizar troca de senha com o Firebase Auth (Firestore já atualizado; usuário não é afetado):', e && e.code);
+    await _registrarAuditoriaMigracaoAuth(emailNorm, 'users', docId, auth.currentUser ? auth.currentUser.uid : null, 'dessincronizado', (e && e.code) || 'password_sync_failed');
+  }
 }
 
 async function doEsqueciSenha() {
@@ -3958,7 +4094,14 @@ async function resetarSenha(userId, reqId) {
   } catch(e) { toast('Erro ao resetar senha', 'err'); }
 }
 
-function doLogout() {
+async function doLogout() {
+  try {
+    if (auth && auth.currentUser) {
+      await auth.signOut();
+    }
+  } catch (e) {
+    console.warn('[Auth] Falha ao encerrar sessão do Firebase Auth (logout do sistema não é afetado):', e && e.code);
+  }
   if (unsubUsers) unsubUsers();
   if (unsubTasks) unsubTasks();
   if (unsubPontos) unsubPontos();
