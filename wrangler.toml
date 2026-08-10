@@ -9,3 +9,6 @@ binding = "ATIVOS"
 [[r2_buckets]]
 binding = "ARQUIVOS_BUCKET"
 bucket_name = "gestaorgrio-arquivos"
+
+[vars]
+FIREBASE_API_KEY = "AIzaSyC3F8aY20GsNGSUOtISVhZiyTL08MSarnE"
