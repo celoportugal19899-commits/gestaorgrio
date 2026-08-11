@@ -9398,6 +9398,7 @@ function _cnBadgeStatus(status) {
 function _cnAcoesConteudo(c) {
   if (c.status === 'rascunho') return `
     <button class="btn btn-sm btn-secondary" onclick="conhecimentoEditarRascunho('${c.id}')">✏️ Editar</button>
+    <button class="btn btn-sm btn-secondary" onclick="conhecimentoVisualizarConteudo('${c.id}')">👁 Visualizar</button>
     <button class="btn btn-sm btn-primary" onclick="conhecimentoPublicarConteudo('${c.id}')">📢 Publicar</button>
     <button class="btn btn-sm btn-danger" onclick="conhecimentoExcluirRascunho('${c.id}')">🗑 Excluir</button>`;
   if (c.status === 'publicado') return `
