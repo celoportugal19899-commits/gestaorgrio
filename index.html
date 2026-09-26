@@ -782,6 +782,7 @@ const PosCanalLabels = {
           <div class="sidebar-item sidebar-sub" id="nav-postos-adm" onclick="showView('adm-postos',this)"><span class="icon">📡</span> Horários Postos</div>
           <div class="sidebar-item sidebar-sub" id="nav-indicadores-adm" onclick="showView('adm-indicadores',this)"><span class="icon">📊</span> Indicadores</div>
           <div class="sidebar-item sidebar-sub" id="nav-csat-adm" onclick="showView('adm-csat',this)"><span class="icon">⭐</span> Pesquisa CSAT</div>
+          <div class="sidebar-item sidebar-sub" id="nav-ligacaonova-adm" onclick="showView('adm-ligacaonova',this)"><span class="icon">📧</span> Email Ligação Nova</div>
           <div class="sidebar-item sidebar-sub" id="nav-pos-adm" onclick="showView('adm-pos',this)"><span class="icon">💳</span> Máquina Cartão POS</div>
         </div>
         <div class="sidebar-item sidebar-group-toggle" id="nav-qualidade-group" onclick="toggleSidebarGroup('qualidade-group',this)"><span class="icon">📊</span> Qualidade <span class="group-arrow" id="arrow-qualidade-group">▸</span></div>
@@ -859,6 +860,7 @@ const PosCanalLabels = {
           <div class="sidebar-item sidebar-sub" id="nav-op-dash-sup" onclick="showView('adm-operacao-dashboard',this)"><span class="icon">📊</span> Dashboard Operacional</div>
           <div class="sidebar-item sidebar-sub" id="nav-indicadores-sup" onclick="showView('adm-indicadores',this)"><span class="icon">📊</span> Indicadores</div>
           <div class="sidebar-item sidebar-sub" id="nav-csat-sup" onclick="showView('adm-csat',this)"><span class="icon">⭐</span> Pesquisa CSAT</div>
+          <div class="sidebar-item sidebar-sub" id="nav-ligacaonova-sup" onclick="showView('adm-ligacaonova',this)"><span class="icon">📧</span> Email Ligação Nova</div>
           <div class="sidebar-item sidebar-sub" id="nav-pos-sup" onclick="showView('adm-pos',this)"><span class="icon">💳</span> Máquina Cartão POS</div>
         </div>
       </div>
@@ -1314,7 +1316,32 @@ const PosCanalLabels = {
       </div>
     </div>
 
-    <!-- MÁQUINA CARTÃO POS -->
+    <!-- EMAIL LIGAÇÃO NOVA -->
+    <div id="view-adm-ligacaonova" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Email Ligação Nova</h1><p>Captação de e-mail nos ingressos oficiais e aderência ao controle interno</p></div>
+        <div class="topbar-actions">
+          <button class="btn btn-secondary" onclick="lnExportar()">⬇ Exportar</button>
+        </div>
+      </div>
+
+      <div id="ln-status-bases" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:18px"></div>
+
+      <div id="ln-filtros" class="card" style="padding:14px 16px;margin-bottom:18px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end"></div>
+
+      <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+        <button class="btn btn-sm" id="ln-tab-btn-resultado" onclick="lnMudarAba('resultado')">Resultado Oficial</button>
+        <button class="btn btn-sm btn-secondary" id="ln-tab-btn-conferencia" onclick="lnMudarAba('conferencia')">Conferência do Controle</button>
+        <button class="btn btn-sm btn-secondary" id="ln-tab-btn-detalhamento" onclick="lnMudarAba('detalhamento')">Detalhamento</button>
+        <button class="btn btn-sm btn-secondary" id="ln-tab-btn-importar" onclick="lnMudarAba('importar')">Importar</button>
+      </div>
+
+      <div id="ln-aba-resultado" class="ln-aba"></div>
+      <div id="ln-aba-conferencia" class="ln-aba" style="display:none"></div>
+      <div id="ln-aba-detalhamento" class="ln-aba" style="display:none"></div>
+      <div id="ln-aba-importar" class="ln-aba" style="display:none"></div>
+    </div>
+
     <div id="view-adm-pos" class="view">
       <div class="topbar" style="flex-wrap:wrap;gap:10px;align-items:flex-start">
         <div>
@@ -1951,6 +1978,7 @@ const PosCanalLabels = {
     <div class="form-group"><label class="form-label">E-mail</label><input class="form-input" id="nc-email" type="email" placeholder="joao@empresa.com"></div>
     <div class="form-group"><label class="form-label">🔑 Redefinir Senha <span style="font-weight:400;color:var(--text3)">(deixe em branco para manter a atual)</span></label><input class="form-input" id="nc-pass" type="password" placeholder="Mínimo 4 caracteres"></div>
     <div class="form-group"><label class="form-label">Cargo / Função</label><input class="form-input" id="nc-role" placeholder="Ex: Designer, Analista..."></div>
+    <div class="form-group"><label class="form-label">Matrícula BR <span style="color:var(--text3);font-weight:400">(opcional — usada pelo Email Ligação Nova)</span></label><input class="form-input" id="nc-matricula-br" placeholder="Ex: BR0158034987"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <div class="form-group"><label class="form-label">Horário Início</label><input class="form-input" id="nc-horario-inicio" type="time" value="08:00"></div>
       <div class="form-group"><label class="form-label">Horário Fim</label><input class="form-input" id="nc-horario-fim" type="time" value="17:00"></div>
@@ -4455,7 +4483,7 @@ function showView(name, el) {
   document.getElementById('view-' + name).classList.add('active');
   document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
   if (el) el.classList.add('active');
-  if (name === 'adm-postos' || name === 'adm-indicadores' || name === 'adm-csat' || name === 'adm-pos' || name === 'adm-indevidos') {
+  if (name === 'adm-postos' || name === 'adm-indicadores' || name === 'adm-csat' || name === 'adm-pos' || name === 'adm-indevidos' || name === 'adm-ligacaonova') {
     const grp = document.getElementById('postos-group');
     const arr = document.getElementById('arrow-postos-group');
     if (grp) grp.style.display = 'block';
@@ -4467,6 +4495,7 @@ function showView(name, el) {
     if (arrSup) arrSup.classList.add('open');
   }
   if (name === 'adm-csat') { (async()=>{ await initCsatMesFiltro(); await renderCSAT(); })(); }
+  if (name === 'adm-ligacaonova') { (async()=>{ await lnAbrirModulo(); })(); }
   if (name === 'adm-pos') { (async()=>{ await initPOS(); })(); }
   if (name === 'supervisor-postos') renderSupervisorPostos();
   if (name === 'sup-caixa') renderSupCaixa();
@@ -4539,6 +4568,7 @@ function openCreateCollab() {
   document.getElementById('nc-horario-inicio').value = '08:00';
   document.getElementById('nc-horario-fim').value = '17:00';
   document.getElementById('nc-user-id').value = '';
+  if (document.getElementById('nc-matricula-br')) document.getElementById('nc-matricula-br').value = '';
   document.getElementById('modal-collab').querySelector('.modal-title').textContent = 'Novo Colaborador';
   document.getElementById('modal-collab').classList.add('open');
 }
@@ -4553,6 +4583,7 @@ function openEditCollab(userId) {
   document.getElementById('nc-horario-inicio').value = c.horarioInicio || '08:00';
   document.getElementById('nc-horario-fim').value = c.horarioFim || '17:00';
   document.getElementById('nc-user-id').value = userId;
+  if (document.getElementById('nc-matricula-br')) document.getElementById('nc-matricula-br').value = c.matriculaBR || '';
   document.getElementById('modal-collab').querySelector('.modal-title').textContent = 'Editar Colaborador';
   document.getElementById('modal-collab').classList.add('open');
 }
@@ -4565,6 +4596,10 @@ async function saveCollab() {
   const cargo = document.getElementById('nc-role').value.trim();
   const horarioInicio = document.getElementById('nc-horario-inicio').value;
   const horarioFim = document.getElementById('nc-horario-fim').value;
+  // Campo opcional, aditivo — não bloqueia salvar sem ele. Usado pelo
+  // submódulo Email Ligação Nova para resolver matrícula->posto.
+  const matriculaBRRaw = document.getElementById('nc-matricula-br') ? document.getElementById('nc-matricula-br').value.trim() : '';
+  const matriculaBR = matriculaBRRaw ? matriculaBRRaw.toUpperCase() : null;
   if (!name || !email) { toast('Preencha nome e e-mail', 'err'); return; }
   try {
     if (userId) {
@@ -4580,7 +4615,7 @@ async function saveCollab() {
           });
         } catch(e) { console.error('Falha ao registrar auditoria de redefinição de senha', e); }
       }
-      const dados = { name, email, cargo, horarioInicio: horarioInicio||'08:00', horarioFim: horarioFim||'17:00' };
+      const dados = { name, email, cargo, horarioInicio: horarioInicio||'08:00', horarioFim: horarioFim||'17:00', matriculaBR };
       if (pass) dados.password = pass;
       await db.collection('users').doc(userId).update(dados);
       closeModal('modal-collab');
@@ -4591,7 +4626,7 @@ async function saveCollab() {
       const ref = db.collection('users').doc();
       await ref.set({
         id: ref.id, name, email, password: pass, role: 'collaborator', cargo,
-        horarioInicio: horarioInicio||'08:00', horarioFim: horarioFim||'17:00',
+        horarioInicio: horarioInicio||'08:00', horarioFim: horarioFim||'17:00', matriculaBR,
         emCurso: false, ativo: true, createdAt: new Date().toISOString()
       });
       closeModal('modal-collab');
@@ -25939,6 +25974,982 @@ window.verificarPosLimpeza = async function() {
   }
   console.log('═══════════════════════════════════════════');
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EMAIL LIGAÇÃO NOVA — submódulo do domínio Operação (arquitetura aprovada
+// em Etapas 1 e 2). Todas as funções usam o prefixo "ln" pra evitar colisão
+// com qualquer outro módulo já existente.
+// ═══════════════════════════════════════════════════════════════════════════
+
+let _lnConfig = null;
+let _lnFiltros = { competencia: null, supervisor: '', posto: '', dataInicio: null, dataFim: null };
+let _lnAbaAtiva = 'resultado';
+let _lnPreviaBaseAtual = null;
+let _lnPreviaControleAtual = null;
+let _lnImportandoBase = false;
+let _lnImportandoControle = false;
+let _lnCharts = {};
+let _lnUltimaConferencia = null;
+
+async function lnAbrirModulo() {
+  await lnCarregarConfig();
+  lnRenderStatusBases();
+  lnRenderFiltros();
+  lnMudarAba(_lnAbaAtiva);
+}
+
+async function lnCarregarConfig() {
+  try {
+    const snap = await db.collection('ligacaonova_config').doc('geral').get();
+    _lnConfig = snap.exists ? snap.data() : { baseOficial: null, controle: null, competenciasBase: [] };
+  } catch(e) {
+    console.error('[LigNova] erro ao carregar config:', e);
+    _lnConfig = { baseOficial: null, controle: null, competenciasBase: [] };
+  }
+}
+
+// ── Normalização de posto reaproveitando o mesmo mecanismo já usado no
+// Pesquisa CSAT (csatNorm + CSAT_NOME_MAP) — evita recriar uma segunda
+// lista de variações de grafia de posto só pra este módulo.
+function lnResolverNomePosto(nomeBruto) {
+  if (!nomeBruto) return null;
+  const alvo = csatNorm(nomeBruto);
+  let achou = TODOS_POSTOS_RG.find(p => csatNorm(p) === alvo);
+  if (achou) return achou;
+  const viaMapa = CSAT_NOME_MAP[String(nomeBruto).trim().toUpperCase()];
+  if (viaMapa) { achou = TODOS_POSTOS_RG.find(p => csatNorm(p) === csatNorm(viaMapa)); if (achou) return achou; }
+  return null;
+}
+
+function lnFmtData(iso) {
+  if (!iso) return '—';
+  const partes = String(iso).slice(0,10).split('-');
+  return partes.length===3 ? `${partes[2]}/${partes[1]}/${partes[0]}` : iso;
+}
+function lnFmtDataCurta(iso) {
+  if (!iso) return '';
+  const p = String(iso).split('-');
+  return p.length===3 ? `${p[2]}/${p[1]}` : iso;
+}
+function lnFmtDataHora(iso) {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
+  catch(e) { return String(iso); }
+}
+function lnMenorData(casos) { const d = casos.map(c=>c.dataAbertura).filter(Boolean).sort(); return d[0]||null; }
+function lnMaiorData(casos) { const d = casos.map(c=>c.dataAbertura).filter(Boolean).sort(); return d[d.length-1]||null; }
+function lnDistanciaUmDigito(a,b) {
+  if (a.length !== b.length) return false;
+  let dif = 0; for (let i=0;i<a.length;i++) if (a[i]!==b[i]) dif++;
+  return dif === 1;
+}
+
+// ── Navegação entre abas internas ──
+function lnMudarAba(aba) {
+  _lnAbaAtiva = aba;
+  ['resultado','conferencia','detalhamento','importar'].forEach(a => {
+    const painel = document.getElementById('ln-aba-'+a);
+    if (painel) painel.style.display = (a===aba) ? 'block' : 'none';
+    const btn = document.getElementById('ln-tab-btn-'+a);
+    if (btn) btn.className = 'btn btn-sm' + (a===aba ? '' : ' btn-secondary');
+  });
+  if (aba === 'resultado') lnRenderResultadoOficial();
+  else if (aba === 'conferencia') lnRenderConferenciaAba();
+  else if (aba === 'detalhamento') lnRenderDetalhamentoAba();
+  else if (aba === 'importar') lnRenderImportarAba();
+}
+
+function lnAplicarFiltros() {
+  _lnFiltros.competencia = document.getElementById('ln-f-mes').value;
+  _lnFiltros.supervisor = document.getElementById('ln-f-supervisor').value;
+  _lnFiltros.posto = document.getElementById('ln-f-posto').value;
+  _lnFiltros.dataInicio = document.getElementById('ln-f-data-inicio').value || null;
+  _lnFiltros.dataFim = document.getElementById('ln-f-data-fim').value || null;
+  _lnUltimaConferencia = null; // filtro mudou — o que estava calculado não vale mais
+  lnMudarAba(_lnAbaAtiva);
+}
+
+// ── Status das bases (topo, sempre visível) ──
+function lnRenderStatusBases() {
+  const el = document.getElementById('ln-status-bases');
+  if (!el) return;
+  const b = _lnConfig && _lnConfig.baseOficial;
+  const c = _lnConfig && _lnConfig.controle;
+  let aviso = '';
+  if (b && c && b.periodoFim && c.periodoFim && b.periodoFim.slice(0,7) !== c.periodoFim.slice(0,7)) {
+    aviso = `<div class="card" style="padding:12px 16px;border-left:4px solid #f59e0b;grid-column:1/-1;font-size:12px">
+      ⚠️ O período mais recente da Base Oficial (${lnFmtData(b.periodoFim)}) e do Controle (${lnFmtData(c.periodoFim)}) não coincidem — a Conferência usa só a interseção real entre as duas datas, nunca projeta um sobre o outro.
+    </div>`;
+  }
+  el.innerHTML = `
+    <div class="card" style="padding:16px 20px;border-left:4px solid var(--primary)">
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:6px">Base Oficial</div>
+      ${b ? `<div style="font-size:13px;line-height:1.7">
+        Atualizada em (extração): <strong>${lnFmtData(b.dataExtracaoReal)}</strong><br>
+        Importada em: ${lnFmtDataHora(b.importadoEm)}<br>
+        Período: ${lnFmtData(b.periodoInicio)} a ${lnFmtData(b.periodoFim)}
+      </div>` : `<div style="font-size:13px;color:var(--text3)">Nenhuma importação ainda.</div>`}
+    </div>
+    <div class="card" style="padding:16px 20px;border-left:4px solid #6366f1">
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:6px">Controle</div>
+      ${c ? `<div style="font-size:13px;line-height:1.7">
+        Importado em: ${lnFmtDataHora(c.importadoEm)}<br>
+        Período: ${lnFmtData(c.periodoInicio)} a ${lnFmtData(c.periodoFim)}
+      </div>` : `<div style="font-size:13px;color:var(--text3)">Nenhuma importação ainda.</div>`}
+    </div>
+    ${aviso}
+  `;
+}
+
+function lnRenderFiltros() {
+  const el = document.getElementById('ln-filtros');
+  if (!el) return;
+  const competencias = (_lnConfig && _lnConfig.competenciasBase) || [];
+  if (!_lnFiltros.competencia && competencias.length) _lnFiltros.competencia = competencias[competencias.length-1];
+  const supervisores = Array.from(new Set((allPostos||[]).map(p=>p.supervisor).filter(Boolean))).sort();
+  el.innerHTML = `
+    <div class="form-group" style="margin:0"><label class="form-label">Mês</label>
+      <select class="form-input" id="ln-f-mes" onchange="lnAplicarFiltros()">
+        ${competencias.map(c=>`<option value="${c}" ${c===_lnFiltros.competencia?'selected':''}>${c}</option>`).join('') || '<option value="">—</option>'}
+      </select></div>
+    <div class="form-group" style="margin:0"><label class="form-label">Supervisor</label>
+      <select class="form-input" id="ln-f-supervisor" onchange="lnAplicarFiltros()">
+        <option value="">Todos</option>
+        ${supervisores.map(s=>`<option value="${s}" ${s===_lnFiltros.supervisor?'selected':''}>${s}</option>`).join('')}
+      </select></div>
+    <div class="form-group" style="margin:0"><label class="form-label">Posto</label>
+      <select class="form-input" id="ln-f-posto" onchange="lnAplicarFiltros()">
+        <option value="">Todos</option>
+        ${TODOS_POSTOS_RG.map(p=>`<option value="${p}" ${p===_lnFiltros.posto?'selected':''}>${p}</option>`).join('')}
+      </select></div>
+    <div class="form-group" style="margin:0"><label class="form-label">Data inicial</label>
+      <input type="date" class="form-input" id="ln-f-data-inicio" value="${_lnFiltros.dataInicio||''}" onchange="lnAplicarFiltros()"></div>
+    <div class="form-group" style="margin:0"><label class="form-label">Data final</label>
+      <input type="date" class="form-input" id="ln-f-data-fim" value="${_lnFiltros.dataFim||''}" onchange="lnAplicarFiltros()"></div>
+  `;
+}
+
+function lnFiltrarAgregados(agregados) {
+  let f = agregados;
+  if (_lnFiltros.posto) f = f.filter(a=>a.posto===_lnFiltros.posto);
+  else if (_lnFiltros.supervisor) {
+    const postosSup = new Set(allPostos.filter(p=>p.supervisor===_lnFiltros.supervisor).map(p=>p.nome));
+    f = f.filter(a=>postosSup.has(a.posto));
+  }
+  if (_lnFiltros.dataInicio) f = f.filter(a=>a.data>=_lnFiltros.dataInicio);
+  if (_lnFiltros.dataFim) f = f.filter(a=>a.data<=_lnFiltros.dataFim);
+  return f;
+}
+
+// ── Aba Resultado Oficial — dashboard principal, sempre sobre agregados ──
+async function lnRenderResultadoOficial() {
+  const el = document.getElementById('ln-aba-resultado');
+  if (!el) return;
+  if (!_lnConfig || !_lnConfig.baseOficial || !_lnConfig.baseOficial.snapshotVigenteId) {
+    el.innerHTML = `<div class="empty"><p>Nenhuma Base Oficial importada ainda.<br>Vá na aba <strong>Importar</strong> pra começar.</p></div>`;
+    return;
+  }
+  el.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text3)">⏳ Carregando...</div>`;
+  const snapshotId = _lnConfig.baseOficial.snapshotVigenteId;
+  let agregados;
+  try {
+    const snap = await db.collection('ligacaonova_base_agregados_dia').where('snapshotId','==',snapshotId).get();
+    agregados = snap.docs.map(d=>d.data());
+  } catch(e) {
+    console.error('[LigNova] erro ao carregar agregados:', e);
+    el.innerHTML = `<div class="empty"><p>Erro ao carregar os dados. Tente novamente.</p></div>`;
+    return;
+  }
+
+  const filtrados = lnFiltrarAgregados(agregados);
+  if (!filtrados.length) {
+    el.innerHTML = `<div class="empty"><p>Nenhum ingresso para os filtros selecionados.</p></div>`;
+    return;
+  }
+
+  const totalComEmail = filtrados.reduce((s,a)=>s+(a.comEmail||0),0);
+  const totalSemEmail = filtrados.reduce((s,a)=>s+(a.semEmail||0),0);
+  const total = totalComEmail + totalSemEmail;
+  const pctSemEmail = total>0 ? (totalSemEmail/total*100) : 0;
+  const pctComEmail = total>0 ? (totalComEmail/total*100) : 0;
+
+  const porPosto = {};
+  filtrados.forEach(a=>{
+    if (!porPosto[a.posto]) porPosto[a.posto]={comEmail:0,semEmail:0,total:0};
+    porPosto[a.posto].comEmail += a.comEmail||0; porPosto[a.posto].semEmail += a.semEmail||0; porPosto[a.posto].total += a.total||0;
+  });
+  const postosEmEscopo = _lnFiltros.posto ? [_lnFiltros.posto]
+    : (_lnFiltros.supervisor ? allPostos.filter(p=>p.supervisor===_lnFiltros.supervisor).map(p=>p.nome) : TODOS_POSTOS_RG);
+  const ranking = postosEmEscopo.map(nome => {
+    const d = porPosto[nome] || {comEmail:0,semEmail:0,total:0};
+    const pct = d.total>0 ? (d.semEmail/d.total*100) : null;
+    return { nome, ...d, pctSemEmail: pct, situacao: d.total===0?'SEM_INGRESSOS':(pct<=10?'DENTRO_DA_META':'ACIMA_DA_META') };
+  }).sort((a,b)=>{
+    if (a.situacao==='SEM_INGRESSOS' && b.situacao!=='SEM_INGRESSOS') return 1;
+    if (b.situacao==='SEM_INGRESSOS' && a.situacao!=='SEM_INGRESSOS') return -1;
+    if (a.situacao==='SEM_INGRESSOS') return 0;
+    if (Math.abs(b.pctSemEmail-a.pctSemEmail)>0.001) return b.pctSemEmail-a.pctSemEmail;
+    return b.total-a.total;
+  });
+  const postosAcimaMeta = ranking.filter(r=>r.situacao==='ACIMA_DA_META').length;
+  const pendenciaMatricula = (_lnConfig.baseOficial.totaisResumo && _lnConfig.baseOficial.totaisResumo.pendenciaMatricula) || 0;
+
+  const diasOrdenados = Array.from(new Set(filtrados.map(a=>a.data))).sort();
+  let accCom=0, accSem=0;
+  const evoLabels=[], evoComPct=[], evoSemPct=[], volCom=[], volSem=[];
+  diasOrdenados.forEach(dia => {
+    const doDia = filtrados.filter(a=>a.data===dia);
+    const cDia = doDia.reduce((s,a)=>s+(a.comEmail||0),0), sDia = doDia.reduce((s,a)=>s+(a.semEmail||0),0);
+    accCom+=cDia; accSem+=sDia;
+    const totalAcc = accCom+accSem;
+    evoLabels.push(lnFmtDataCurta(dia));
+    evoComPct.push(totalAcc>0?+(accCom/totalAcc*100).toFixed(1):null);
+    evoSemPct.push(totalAcc>0?+(accSem/totalAcc*100).toFixed(1):null);
+    volCom.push(cDia); volSem.push(sDia);
+  });
+
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px;margin-bottom:20px">
+      <div class="card" style="padding:16px 20px;border-left:4px solid var(--primary)">
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">Total de Ingressos</div>
+        <div style="font-size:28px;font-weight:700;color:var(--text1)">${total}</div>
+      </div>
+      <div class="card" style="padding:16px 20px;border-left:4px solid #22c55e">
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">Com E-mail</div>
+        <div style="font-size:28px;font-weight:700;color:#22c55e">${totalComEmail}</div>
+        <div style="font-size:11px;color:var(--text3)">${pctComEmail.toFixed(1)}%</div>
+      </div>
+      <div class="card" style="padding:16px 20px;border-left:4px solid ${pctSemEmail<=10?'#22c55e':'#ef4444'}">
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">Sem E-mail</div>
+        <div style="font-size:28px;font-weight:700;color:${pctSemEmail<=10?'#22c55e':'#ef4444'}">${totalSemEmail}</div>
+        <div style="font-size:11px;color:var(--text3)">${pctSemEmail.toFixed(1)}% ${pctSemEmail<=10?'✅':'⚠️'} (meta: ≤10%)</div>
+      </div>
+      <div class="card" style="padding:16px 20px;border-left:4px solid var(--border)">
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">Postos Acima da Meta</div>
+        <div style="font-size:28px;font-weight:700;color:var(--text1)">${postosAcimaMeta}</div>
+      </div>
+      <div class="card" style="padding:16px 20px;border-left:4px solid var(--border)">
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">Pendências</div>
+        <div style="font-size:28px;font-weight:700;color:var(--text1)">${pendenciaMatricula}</div>
+        <div style="font-size:11px;color:var(--text3)">matrícula/posto não identificado (total do snapshot)</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+      <div class="card" style="padding:16px"><canvas id="ln-chart-evolucao" height="220"></canvas></div>
+      <div class="card" style="padding:16px"><canvas id="ln-chart-volume" height="220"></canvas></div>
+    </div>
+    ${!_lnFiltros.posto ? `<div class="card" style="padding:16px;margin-bottom:20px"><canvas id="ln-chart-comparativo" height="200"></canvas></div>` : ''}
+    <div class="card" style="padding:0;overflow:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="background:var(--surface2)">
+          <th style="padding:10px 12px;text-align:left">Posto</th><th style="padding:10px 12px;text-align:left">Supervisor</th>
+          <th style="padding:10px 12px;text-align:right">Com E-mail</th><th style="padding:10px 12px;text-align:right">Sem E-mail</th>
+          <th style="padding:10px 12px;text-align:right">Total</th><th style="padding:10px 12px;text-align:right">% Sem E-mail</th><th style="padding:10px 12px;text-align:left">Situação</th>
+        </tr></thead>
+        <tbody>${ranking.map(r => `<tr style="border-top:1px solid var(--border)">
+            <td style="padding:8px 12px">${r.nome}</td>
+            <td style="padding:8px 12px;color:var(--text3)">${(allPostos.find(p=>p.nome===r.nome)||{}).supervisor||'—'}</td>
+            <td style="padding:8px 12px;text-align:right">${r.comEmail}</td>
+            <td style="padding:8px 12px;text-align:right">${r.semEmail}</td>
+            <td style="padding:8px 12px;text-align:right">${r.total}</td>
+            <td style="padding:8px 12px;text-align:right">${r.pctSemEmail!==null?r.pctSemEmail.toFixed(1)+'%':'—'}</td>
+            <td style="padding:8px 12px">${r.situacao==='SEM_INGRESSOS'?'<span style="color:var(--text3)">Sem ingressos</span>':r.situacao==='DENTRO_DA_META'?'<span style="color:#22c55e">✅ Dentro da meta</span>':'<span style="color:#ef4444">⚠️ Acima da meta</span>'}</td>
+          </tr>`).join('')}</tbody>
+      </table>
+    </div>
+  `;
+  lnDesenharGraficosResultado(evoLabels, evoComPct, evoSemPct, volCom, volSem, ranking);
+}
+
+function lnDesenharGraficosResultado(labels, comPct, semPct, volCom, volSem, ranking) {
+  if (_lnCharts.evolucao) { _lnCharts.evolucao.destroy(); _lnCharts.evolucao=null; }
+  if (_lnCharts.volume) { _lnCharts.volume.destroy(); _lnCharts.volume=null; }
+  if (_lnCharts.comparativo) { _lnCharts.comparativo.destroy(); _lnCharts.comparativo=null; }
+
+  const ce = document.getElementById('ln-chart-evolucao');
+  if (ce) _lnCharts.evolucao = new Chart(ce.getContext('2d'), {
+    type:'line',
+    data:{ labels, datasets:[
+      { label:'% Com E-mail', data:comPct, borderColor:'#22c55e', backgroundColor:'transparent', tension:.2 },
+      { label:'% Sem E-mail', data:semPct, borderColor:'#ef4444', backgroundColor:'transparent', tension:.2 },
+      { label:'Meta (10%)', data:labels.map(()=>10), borderColor:'#f59e0b', borderDash:[6,4], pointRadius:0 }
+    ]},
+    options:{ responsive:true, plugins:{title:{display:true,text:'Evolução acumulada no período'}}, scales:{y:{min:0,max:100}} }
+  });
+
+  const cv = document.getElementById('ln-chart-volume');
+  if (cv) _lnCharts.volume = new Chart(cv.getContext('2d'), {
+    type:'bar',
+    data:{ labels, datasets:[
+      { label:'Com E-mail', data:volCom, backgroundColor:'#22c55e' },
+      { label:'Sem E-mail', data:volSem, backgroundColor:'#ef4444' }
+    ]},
+    options:{ responsive:true, plugins:{title:{display:true,text:'Volume diário'}}, scales:{x:{stacked:true},y:{stacked:true}} }
+  });
+
+  const cc = document.getElementById('ln-chart-comparativo');
+  if (cc) {
+    const comIngresso = ranking.filter(r=>r.total>0).sort((a,b)=>b.pctSemEmail-a.pctSemEmail).slice(0,15);
+    _lnCharts.comparativo = new Chart(cc.getContext('2d'), {
+      type:'bar',
+      data:{ labels:comIngresso.map(r=>r.nome), datasets:[{ label:'% Sem E-mail', data:comIngresso.map(r=>r.pctSemEmail), backgroundColor:comIngresso.map(r=>r.pctSemEmail<=10?'#22c55e':'#ef4444') }] },
+      options:{ indexAxis:'y', responsive:true, plugins:{title:{display:true,text:'Comparativo por posto (piores primeiro)'},legend:{display:false}} }
+    });
+  }
+}
+
+// ── Aba Importar ──
+function lnRenderImportarAba() {
+  const el = document.getElementById('ln-aba-importar');
+  if (!el) return;
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px">
+      <div class="card" style="padding:18px">
+        <h3 style="margin:0 0 6px;font-size:15px">Base Oficial</h3>
+        <p style="font-size:12px;color:var(--text3);margin:0 0 12px">Selecione o arquivo original (.xlsx), sem nenhum tratamento manual.</p>
+        <input type="file" id="ln-input-base" accept=".xlsx" style="display:none" onchange="lnSelecionarArquivoBaseOficial(this)">
+        <button class="btn btn-primary" id="ln-btn-importar-base" onclick="document.getElementById('ln-input-base').click()">📁 Importar Base Oficial</button>
+        <div id="ln-import-base-status" style="margin-top:10px;font-size:13px;color:var(--text2)"></div>
+        <div id="ln-preview-base" style="margin-top:14px"></div>
+      </div>
+      <div class="card" style="padding:18px">
+        <h3 style="margin:0 0 6px;font-size:15px">Controle Interno</h3>
+        <p style="font-size:12px;color:var(--text3);margin:0 0 12px">Selecione a planilha de controle preenchida pelos atendentes.</p>
+        <input type="file" id="ln-input-controle" accept=".xlsx" style="display:none" onchange="lnSelecionarArquivoControle(this)">
+        <button class="btn btn-primary" id="ln-btn-importar-controle" onclick="document.getElementById('ln-input-controle').click()">📁 Importar Controle</button>
+        <div id="ln-import-controle-status" style="margin-top:10px;font-size:13px;color:var(--text2)"></div>
+        <div id="ln-preview-controle" style="margin-top:14px"></div>
+      </div>
+    </div>
+    <div class="card" style="padding:18px;margin-top:16px">
+      <h3 style="margin:0 0 6px;font-size:15px">Sincronização ATIVOS/DESLIG <span style="font-size:11px;color:var(--text3);font-weight:400">(ferramenta administrativa — não é obrigatória no fluxo diário)</span></h3>
+      <p style="font-size:12px;color:var(--text3);margin:0 0 12px">Atualiza o fallback de matrícula→posto e sugere preencher a Matrícula BR de colaboradores já cadastrados no Time (nunca sobrescreve sozinha).</p>
+      <input type="file" id="ln-input-ativos" accept=".xls,.xlsx" style="display:none" onchange="lnSincronizarAtivosDeslig(this)">
+      <button class="btn btn-secondary" onclick="document.getElementById('ln-input-ativos').click()">📁 Sincronizar cadastro de colaboradores</button>
+      <div id="ln-sync-ativos-status" style="margin-top:10px;font-size:13px;color:var(--text2)"></div>
+    </div>
+  `;
+}
+
+// ── Importação Base Oficial — Worker + resolução de matrícula + prévia ──
+function lnSelecionarArquivoBaseOficial(input) {
+  const file = input.files[0];
+  if (!file) return;
+  lnProcessarBaseOficial(file);
+  input.value = '';
+}
+
+async function lnProcessarBaseOficial(file) {
+  if (_lnImportandoBase) return;
+  _lnImportandoBase = true;
+  const btn = document.getElementById('ln-btn-importar-base');
+  if (btn) btn.disabled = true;
+  const statusEl = document.getElementById('ln-import-base-status');
+  const setStatus = (msg) => { if (statusEl) statusEl.textContent = msg; };
+  setStatus('⏳ Lendo planilha (processamento em segundo plano, a tela continua respondendo)...');
+
+  try {
+    const buffer = await file.arrayBuffer();
+    const resultadoWorker = await new Promise((resolve, reject) => {
+      let worker;
+      try { worker = new Worker('ligacaonova-worker.js'); }
+      catch(eWorker) { reject(new Error('Não foi possível iniciar o processamento em segundo plano: ' + eWorker.message)); return; }
+
+      worker.onmessage = (e) => {
+        const msg = e.data;
+        if (msg.etapa === 'erro') { worker.terminate(); reject(new Error(msg.mensagem)); return; }
+        if (msg.etapa === 'concluido') { worker.terminate(); resolve(msg.resultado); return; }
+        if (msg.etapa === 'lendo_planilha') setStatus(msg.tentativaAmpliada ? `⏳ Base grande — ampliando leitura (até ${msg.novoTeto.toLocaleString('pt-BR')} linhas)...` : '⏳ Lendo planilha...');
+        else if (msg.etapa === 'aba_localizada') setStatus(`✅ Aba "${msg.abaEncontrada}" localizada. Buscando a extração mais recente...`);
+        else if (msg.etapa === 'extraindo_extracao_mais_recente') setStatus(`📅 Extração mais recente: ${lnFmtData(msg.dataExtracao)} (${msg.linhasRealEncontradas} linhas reais encontradas na planilha)`);
+        else if (msg.etapa === 'aplicando_elegibilidade') setStatus(`⏳ Aplicando elegibilidade (${msg.linhasAnalisadas} casos distintos na extração)...`);
+        else if (msg.etapa === 'duplicidades_avaliadas') setStatus('⏳ Duplicidades avaliadas, montando resultado...');
+      };
+      worker.onerror = (err) => { worker.terminate(); reject(new Error(err.message || 'Erro inesperado no processamento em segundo plano.')); };
+      worker.postMessage({ tipo:'processar_base_oficial', buffer }, [buffer]);
+    });
+
+    setStatus('⏳ Resolvendo matrícula → posto...');
+    await lnResolverMatriculaPostoEmLote(resultadoWorker.casos);
+    resultadoWorker.totais.pendenciaMatricula = resultadoWorker.casos.filter(c=>c.situacao==='pendencia_matricula').length;
+    resultadoWorker.totais.sede = resultadoWorker.casos.filter(c=>c.situacao==='sede').length;
+    resultadoWorker.arquivoNome = file.name;
+
+    setStatus('✅ Processamento concluído — revise a prévia abaixo antes de confirmar.');
+    _lnPreviaBaseAtual = resultadoWorker;
+    lnRenderPreviaBaseOficial(resultadoWorker);
+  } catch (e) {
+    console.error('[LigNova] erro ao processar Base Oficial:', e);
+    setStatus('❌ Erro: ' + e.message);
+    toast('Erro ao processar a Base Oficial: ' + e.message, 'err');
+  } finally {
+    _lnImportandoBase = false;
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function lnResolverMatriculaPostoEmLote(casos) {
+  const mapaUsers = {};
+  (allUsers||[]).forEach(u => { if (u.matriculaBR) mapaUsers[String(u.matriculaBR).trim().toUpperCase()] = u.local || null; });
+
+  let mapaFallback = {};
+  try {
+    const snap = await db.collection('ligacaonova_matricula_fallback').get();
+    snap.forEach(d => { mapaFallback[d.id] = (d.data()||{}).posto; });
+  } catch(e) { console.error('[LigNova] erro ao ler fallback de matrícula (segue sem ele):', e); }
+
+  casos.forEach(c => {
+    if (c.situacao !== 'elegivel') return; // conflito já resolvido pelo Worker, fica como está
+    const m = c.matricula;
+    if (!m) { c.situacao = 'pendencia_matricula'; return; }
+    let postoBruto = mapaUsers[m];
+    if (postoBruto === undefined) postoBruto = mapaFallback[m];
+    if (postoBruto === undefined || postoBruto === null || postoBruto === '') { c.situacao = 'pendencia_matricula'; return; }
+    if (String(postoBruto).trim().toLowerCase() === 'sede') { c.situacao = 'sede'; c.posto = 'Sede'; return; }
+    const postoResolvido = lnResolverNomePosto(postoBruto);
+    if (!postoResolvido) { c.situacao = 'pendencia_matricula'; return; }
+    c.posto = postoResolvido;
+  });
+}
+
+function lnRenderPreviaBaseOficial(resultado) {
+  const el = document.getElementById('ln-preview-base');
+  if (!el) return;
+  const t = resultado.totais;
+  el.innerHTML = `
+    <div style="background:var(--surface2);border-radius:8px;padding:12px;font-size:13px;line-height:1.8">
+      <strong>Prévia — nada foi gravado ainda</strong><br>
+      Arquivo reconhecido: ${resultado.arquivoNome}<br>
+      Aba reconhecida: base<br>
+      Data de extração encontrada / extração selecionada: ${lnFmtData(resultado.dataExtracao)}<br>
+      Linhas reais encontradas: ${t.linhasRealEncontradas}<br>
+      Casos elegíveis: <strong>${t.elegiveis}</strong> &nbsp; Não elegíveis: ${t.naoElegiveis}<br>
+      Com E-mail: ${t.comEmail} &nbsp; Sem E-mail: ${t.semEmail} &nbsp; Pendência de classificação: ${t.pendenciaClassificacao}<br>
+      Duplicidade idêntica (deduplicada): ${t.duplicidadeIdentica} &nbsp; Duplicidade/conflito (fora do resultado): ${t.duplicidadeConflito}<br>
+      Pendência de matrícula/posto: ${t.pendenciaMatricula} &nbsp; Casos da Sede: ${t.sede}<br>
+      Quantidade que será gravada/substituída: <strong>${t.elegiveis + t.pendenciaMatricula + t.sede + t.duplicidadeConflito}</strong>
+    </div>
+    <button class="btn btn-primary btn-sm" id="ln-btn-confirmar-base" style="margin-top:10px" onclick="lnConfirmarImportacaoBaseOficial()">✅ Confirmar Importação</button>
+    <button class="btn btn-secondary btn-sm" style="margin-top:10px" onclick="_lnPreviaBaseAtual=null;document.getElementById('ln-preview-base').innerHTML='';document.getElementById('ln-import-base-status').textContent='';">Cancelar</button>
+  `;
+}
+
+async function lnConfirmarImportacaoBaseOficial() {
+  if (!_lnPreviaBaseAtual) return;
+  const resultado = _lnPreviaBaseAtual;
+  const btn = document.getElementById('ln-btn-confirmar-base');
+  if (btn) btn.disabled = true;
+  try {
+    const operacaoId = await getOperacaoId();
+    const competencia = resultado.dataExtracao.slice(0,7);
+    const mesCorrente = new Date().toISOString().slice(0,7);
+    if (competencia !== mesCorrente) {
+      if (!confirm(`Você está importando uma competência histórica (${competencia}), diferente do mês corrente (${mesCorrente}). Confirma que é intencional?`)) {
+        if (btn) btn.disabled = false;
+        return;
+      }
+    }
+
+    const snapshotId = `basecomp_${competencia}_${Date.now()}`;
+    const casosValidos = resultado.casos.filter(c => ['elegivel','sede','pendencia_matricula','conflito'].includes(c.situacao));
+
+    await db.collection('ligacaonova_base_snapshots').doc(snapshotId).set({
+      id: snapshotId, competencia, status: 'gravando', dataExtracao: resultado.dataExtracao,
+      totais: resultado.totais, importadoEm: firebase.firestore.FieldValue.serverTimestamp(),
+      importadoPor: currentUser.email, quantidadeGravadaConfirmada: 0
+    });
+
+    const agregados = {};
+    resultado.casos.filter(c=>c.situacao==='elegivel' && c.posto && c.dataAbertura).forEach(c => {
+      const chave = `${c.posto}|${c.dataAbertura}`;
+      if (!agregados[chave]) agregados[chave] = { posto:c.posto, data:c.dataAbertura, comEmail:0, semEmail:0, total:0 };
+      agregados[chave].total++;
+      if (c.classificacao==='COM_EMAIL') agregados[chave].comEmail++;
+      else if (c.classificacao==='SEM_EMAIL') agregados[chave].semEmail++;
+    });
+    const agregadosArr = Object.values(agregados);
+    for (let i=0;i<agregadosArr.length;i+=400) {
+      const batch = db.batch();
+      agregadosArr.slice(i,i+400).forEach(a => {
+        batch.set(db.collection('ligacaonova_base_agregados_dia').doc(`${snapshotId}_${a.posto}_${a.data}`), { snapshotId, operacaoId, ...a });
+      });
+      await batch.commit();
+    }
+
+    let gravados = 0;
+    for (let i=0;i<casosValidos.length;i+=400) {
+      const lote = casosValidos.slice(i,i+400);
+      const batch = db.batch();
+      lote.forEach(c => {
+        batch.set(db.collection('ligacaonova_base_casos').doc(`${snapshotId}_${c.numeroCaso}`), { snapshotId, operacaoId, ...c });
+      });
+      await batch.commit();
+      gravados += lote.length;
+    }
+
+    if (gravados !== casosValidos.length) throw new Error('Divergência na contagem de gravação — importação abortada, o snapshot anterior continua vigente.');
+
+    await db.collection('ligacaonova_base_snapshots').doc(snapshotId).update({ status:'vigente', quantidadeGravadaConfirmada: gravados });
+
+    const configRef = db.collection('ligacaonova_config').doc('geral');
+    const configSnap = await configRef.get();
+    const configAtual = configSnap.exists ? configSnap.data() : {};
+    const snapshotAnteriorId = configAtual.baseOficial ? configAtual.baseOficial.snapshotVigenteId : null;
+    if (snapshotAnteriorId && snapshotAnteriorId !== snapshotId) {
+      await db.collection('ligacaonova_base_snapshots').doc(snapshotAnteriorId).update({ status:'substituido' }).catch(()=>{});
+    }
+    const competenciasDisponiveis = new Set(configAtual.competenciasBase || []);
+    competenciasDisponiveis.add(competencia);
+
+    await configRef.set({
+      baseOficial: {
+        snapshotVigenteId: snapshotId, competenciaVigente: competencia, dataExtracaoReal: resultado.dataExtracao,
+        importadoEm: new Date().toISOString(), importadoPor: currentUser.email,
+        periodoInicio: lnMenorData(casosValidos), periodoFim: lnMaiorData(casosValidos),
+        totaisResumo: { pendenciaMatricula: resultado.totais.pendenciaMatricula||0, sede: resultado.totais.sede||0 }
+      },
+      competenciasBase: Array.from(competenciasDisponiveis)
+    }, { merge:true });
+
+    await db.collection('ligacaonova_importacoes').add({
+      tipo:'base_oficial', arquivo: resultado.arquivoNome, usuario: currentUser.email,
+      dataHora: firebase.firestore.FieldValue.serverTimestamp(), dataExtracao: resultado.dataExtracao, competencia,
+      linhasAnalisadas: resultado.totais.linhasRealEncontradas, validos: resultado.totais.elegiveis, ignorados: resultado.totais.naoElegiveis,
+      duplicados: resultado.totais.duplicidadeIdentica + resultado.totais.duplicidadeConflito,
+      pendencias: resultado.totais.pendenciaMatricula, resultado:'sucesso', erro:null
+    }).catch(e=>console.error('[LigNova] falha ao registrar diagnóstico (não afeta a importação):', e));
+
+    toast('✅ Base Oficial importada com sucesso!', 'ok');
+    _lnPreviaBaseAtual = null;
+    await lnCarregarConfig();
+    lnRenderStatusBases();
+    lnRenderFiltros();
+    const prevEl = document.getElementById('ln-preview-base'); if (prevEl) prevEl.innerHTML = '';
+    lnMudarAba('resultado');
+  } catch (e) {
+    console.error('[LigNova] erro ao confirmar importação da Base Oficial:', e);
+    toast('Erro ao gravar a importação — o snapshot anterior continua vigente. ' + e.message, 'err');
+    db.collection('ligacaonova_importacoes').add({
+      tipo:'base_oficial', usuario: currentUser.email, dataHora: firebase.firestore.FieldValue.serverTimestamp(),
+      resultado:'falha', erro: String(e.message||e)
+    }).catch(e2=>console.error('[LigNova] falha ao registrar erro no diagnóstico:', e2));
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ── Importação Controle — independente, sem Worker (arquivo pequeno) ──
+function lnSelecionarArquivoControle(input) {
+  const file = input.files[0];
+  if (!file) return;
+  lnProcessarControle(file);
+  input.value = '';
+}
+
+async function lnProcessarControle(file) {
+  if (_lnImportandoControle) return;
+  _lnImportandoControle = true;
+  const btn = document.getElementById('ln-btn-importar-controle');
+  if (btn) btn.disabled = true;
+  const statusEl = document.getElementById('ln-import-controle-status');
+  const setStatus = (m)=>{ if(statusEl) statusEl.textContent = m; };
+  setStatus('⏳ Lendo planilha do Controle...');
+  try {
+    const buffer = await file.arrayBuffer();
+    const wb = XLSX.read(buffer, { type:'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    const headerRow = [];
+    for (let c=range.s.c;c<=range.e.c;c++){ const cell = ws[XLSX.utils.encode_cell({r:1,c})]; headerRow.push(cell?cell.v:undefined); }
+    const norm = h => String(h||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase();
+    const mapa = {};
+    headerRow.forEach((h,idx)=>{ const n = norm(h); if (['DATA','CIDADE','BR','CASO','ORDEM DE SERVICO','NOME DO CLIENTE','TEL','EMAIL'].includes(n) && mapa[n]===undefined) mapa[n]=idx; });
+    const faltando = ['DATA','CIDADE','BR','CASO','EMAIL'].filter(k=>mapa[k]===undefined);
+    if (faltando.length) throw new Error('Coluna(s) obrigatória(s) não encontrada(s) no Controle: '+faltando.join(', '));
+
+    const registrosPorCaso = {};
+    for (let r=2; r<=range.e.r; r++) {
+      const get = idx => { if(idx===undefined) return undefined; const c = ws[XLSX.utils.encode_cell({r,c:idx})]; return c?c.v:undefined; };
+      const casoRaw = get(mapa['CASO']);
+      if (casoRaw===undefined || casoRaw==='') continue;
+      const caso = String(casoRaw).trim();
+      const dataRaw = get(mapa['DATA']);
+      const data = dataRaw instanceof Date ? dataRaw.toISOString().slice(0,10) : String(dataRaw||'').slice(0,10);
+      const registro = {
+        caso, data, cidade: String(get(mapa['CIDADE'])||'').trim(),
+        br: String(get(mapa['BR'])||'').trim().toUpperCase(),
+        ordemServico: String(get(mapa['ORDEM DE SERVICO'])||'').trim(),
+        cliente: String(get(mapa['NOME DO CLIENTE'])||'').trim(),
+        temEmail: !!String(get(mapa['EMAIL'])||'').trim()
+      };
+      (registrosPorCaso[caso] || (registrosPorCaso[caso]=[])).push(registro);
+    }
+
+    const registros = []; let duplicados = 0;
+    for (const caso in registrosPorCaso) {
+      const linhas = registrosPorCaso[caso];
+      if (linhas.length > 1) duplicados++;
+      registros.push({ ...linhas[0], duplicado: linhas.length>1, ocorrencias: linhas.length });
+    }
+
+    setStatus(`✅ ${registros.length} registro(s) lido(s) (${duplicados} duplicidade(s) de CASO).`);
+    _lnPreviaControleAtual = { arquivoNome:file.name, registros, totais:{ total:registros.length, duplicados } };
+    lnRenderPreviaControle(_lnPreviaControleAtual);
+  } catch(e) {
+    console.error('[LigNova] erro ao processar Controle:', e);
+    setStatus('❌ Erro: '+e.message);
+    toast('Erro ao processar o Controle: '+e.message, 'err');
+  } finally {
+    _lnImportandoControle = false;
+    if (btn) btn.disabled = false;
+  }
+}
+
+function lnRenderPreviaControle(previa) {
+  const el = document.getElementById('ln-preview-controle');
+  if (!el) return;
+  el.innerHTML = `
+    <div style="background:var(--surface2);border-radius:8px;padding:12px;font-size:13px;line-height:1.8">
+      <strong>Prévia — nada foi gravado ainda</strong><br>
+      Arquivo reconhecido: ${previa.arquivoNome}<br>
+      Registros: ${previa.totais.total} &nbsp; Duplicidades de CASO: ${previa.totais.duplicados}
+    </div>
+    <button class="btn btn-primary btn-sm" id="ln-btn-confirmar-controle" style="margin-top:10px" onclick="lnConfirmarImportacaoControle()">✅ Confirmar Importação</button>
+    <button class="btn btn-secondary btn-sm" style="margin-top:10px" onclick="_lnPreviaControleAtual=null;document.getElementById('ln-preview-controle').innerHTML='';document.getElementById('ln-import-controle-status').textContent='';">Cancelar</button>
+  `;
+}
+
+async function lnConfirmarImportacaoControle() {
+  if (!_lnPreviaControleAtual) return;
+  const btn = document.getElementById('ln-btn-confirmar-controle');
+  if (btn) btn.disabled = true;
+  try {
+    const operacaoId = await getOperacaoId();
+    const registros = _lnPreviaControleAtual.registros;
+    const datas = registros.map(r=>r.data).filter(Boolean).sort();
+    const snapshotId = `controle_${Date.now()}`;
+
+    await db.collection('ligacaonova_controle_snapshots').doc(snapshotId).set({
+      id: snapshotId, status:'gravando', totais: _lnPreviaControleAtual.totais,
+      importadoEm: firebase.firestore.FieldValue.serverTimestamp(), importadoPor: currentUser.email
+    });
+
+    let gravados = 0;
+    for (let i=0;i<registros.length;i+=400) {
+      const lote = registros.slice(i,i+400);
+      const batch = db.batch();
+      lote.forEach((r,idx) => batch.set(db.collection('ligacaonova_controle_registros').doc(`${snapshotId}_${i+idx}`), { snapshotId, operacaoId, ...r }));
+      await batch.commit();
+      gravados += lote.length;
+    }
+    if (gravados !== registros.length) throw new Error('Divergência na contagem de gravação do Controle — importação abortada.');
+
+    await db.collection('ligacaonova_controle_snapshots').doc(snapshotId).update({ status:'vigente' });
+
+    const configRef = db.collection('ligacaonova_config').doc('geral');
+    const configSnap = await configRef.get();
+    const configAtual = configSnap.exists ? configSnap.data() : {};
+    const anteriorId = configAtual.controle ? configAtual.controle.snapshotVigenteId : null;
+    if (anteriorId && anteriorId !== snapshotId) await db.collection('ligacaonova_controle_snapshots').doc(anteriorId).update({status:'substituido'}).catch(()=>{});
+
+    await configRef.set({
+      controle: { snapshotVigenteId: snapshotId, importadoEm: new Date().toISOString(), importadoPor: currentUser.email, periodoInicio: datas[0]||null, periodoFim: datas[datas.length-1]||null }
+    }, { merge:true });
+
+    await db.collection('ligacaonova_importacoes').add({
+      tipo:'controle', arquivo: _lnPreviaControleAtual.arquivoNome, usuario: currentUser.email,
+      dataHora: firebase.firestore.FieldValue.serverTimestamp(), linhasAnalisadas: registros.length, validos: registros.length,
+      ignorados:0, duplicados: _lnPreviaControleAtual.totais.duplicados, pendencias:0, resultado:'sucesso', erro:null
+    }).catch(()=>{});
+
+    toast('✅ Controle importado com sucesso!', 'ok');
+    _lnPreviaControleAtual = null;
+    await lnCarregarConfig();
+    lnRenderStatusBases();
+    const prevEl = document.getElementById('ln-preview-controle'); if (prevEl) prevEl.innerHTML = '';
+  } catch(e) {
+    console.error('[LigNova] erro ao confirmar importação do Controle:', e);
+    toast('Erro ao gravar o Controle — o snapshot anterior continua vigente. '+e.message, 'err');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ── Conferência do Controle — cruzamento Número do Caso × CASO ──
+async function lnCarregarConferencia() {
+  if (!_lnConfig || !_lnConfig.baseOficial || !_lnConfig.controle) return null;
+  const snapBase = _lnConfig.baseOficial.snapshotVigenteId;
+  const snapControle = _lnConfig.controle.snapshotVigenteId;
+  if (!snapBase || !snapControle) return null;
+
+  const inicioDisponivel = [_lnConfig.baseOficial.periodoInicio, _lnConfig.controle.periodoInicio].filter(Boolean).sort().pop();
+  const fimDisponivel = [_lnConfig.baseOficial.periodoFim, _lnConfig.controle.periodoFim].filter(Boolean).sort().shift();
+  if (!inicioDisponivel || !fimDisponivel || inicioDisponivel > fimDisponivel) return { semIntersecao:true };
+
+  // Período EFETIVO = interseção disponível recortada pelo filtro de Data
+  // Inicial/Final escolhido pelo usuário — nunca mais amplo que a
+  // interseção (não cobra do Controle período que ele não cobre), mas
+  // também nunca ignora o filtro selecionado.
+  let inicioComum = inicioDisponivel, fimComum = fimDisponivel;
+  if (_lnFiltros.dataInicio && _lnFiltros.dataInicio > inicioComum) inicioComum = _lnFiltros.dataInicio;
+  if (_lnFiltros.dataFim && _lnFiltros.dataFim < fimComum) fimComum = _lnFiltros.dataFim;
+  if (inicioComum > fimComum) return { semIntersecao:true, periodoDisponivel:{inicio:inicioDisponivel,fim:fimDisponivel} };
+
+  const casosSnap = await db.collection('ligacaonova_base_casos').where('snapshotId','==',snapBase).get();
+  let casos = casosSnap.docs.map(d=>d.data()).filter(c=>c.situacao==='elegivel' && c.dataAbertura>=inicioComum && c.dataAbertura<=fimComum);
+  if (_lnFiltros.posto) casos = casos.filter(c=>c.posto===_lnFiltros.posto);
+  else if (_lnFiltros.supervisor) {
+    const postosSup = new Set(allPostos.filter(p=>p.supervisor===_lnFiltros.supervisor).map(p=>p.nome));
+    casos = casos.filter(c=>postosSup.has(c.posto));
+  }
+
+  const controleSnap = await db.collection('ligacaonova_controle_registros').where('snapshotId','==',snapControle).get();
+  const controle = controleSnap.docs.map(d=>d.data()).filter(r=>r.data>=inicioComum && r.data<=fimComum);
+
+  const mapaControlePorCaso = {}; controle.forEach(r => { mapaControlePorCaso[r.caso] = r; });
+  const encontrados = [], ausentes = [];
+  casos.forEach(c => (mapaControlePorCaso[c.numeroCaso] ? encontrados : ausentes).push(c));
+
+  const casosPorNumero = {}; casos.forEach(c=>casosPorNumero[c.numeroCaso]=c);
+  const semCorrespondencia = [];
+  controle.forEach(r => {
+    if (casosPorNumero[r.caso]) return;
+    let motivo = 'nao_consta_na_base', casoSugerido = null;
+    const proximo = casos.find(c => lnDistanciaUmDigito(c.numeroCaso, r.caso));
+    if (proximo) { motivo = 'possivel_digito_errado'; casoSugerido = proximo.numeroCaso; }
+    else if (!r.caso) motivo = 'caso_invalido_vazio';
+    semCorrespondencia.push({ ...r, motivo, casoSugerido });
+  });
+
+  const divergencias = [];
+  encontrados.forEach(c => {
+    const reg = mapaControlePorCaso[c.numeroCaso];
+    if (reg.br && c.matricula && reg.br !== c.matricula) divergencias.push({ tipo:'BR_DIVERGENTE', numeroCaso:c.numeroCaso, brControle:reg.br, matriculaBase:c.matricula });
+    if (reg.data && c.dataAbertura && reg.data !== c.dataAbertura) divergencias.push({ tipo:'DATA_DIVERGENTE', numeroCaso:c.numeroCaso, dataControle:reg.data, dataBase:c.dataAbertura });
+    const cidadeNorm = csatNorm(reg.cidade), postoNorm = csatNorm(c.posto||'');
+    if (reg.cidade && postoNorm && !postoNorm.includes(cidadeNorm) && !cidadeNorm.includes(postoNorm)) {
+      divergencias.push({ tipo:'CIDADE_DIVERGENTE', numeroCaso:c.numeroCaso, cidadeControle:reg.cidade, postoBase:c.posto });
+    }
+  });
+
+  return {
+    periodoComum:{ inicio:inicioComum, fim:fimComum }, totalOficialElegivel: casos.length,
+    encontrados, ausentes, semCorrespondencia, divergencias,
+    duplicidadesControle: controle.filter(r=>r.duplicado)
+  };
+}
+
+async function lnRenderConferenciaAba() {
+  const el = document.getElementById('ln-aba-conferencia');
+  if (!el) return;
+  if (!_lnConfig || !_lnConfig.baseOficial || !_lnConfig.controle) {
+    el.innerHTML = `<div class="empty"><p>Importe a Base Oficial e o Controle pra ver a conferência.</p></div>`;
+    return;
+  }
+  el.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text3)">⏳ Carregando...</div>`;
+  let resultado;
+  try { resultado = await lnCarregarConferencia(); }
+  catch(e) { console.error('[LigNova] erro ao calcular conferência:', e); el.innerHTML = `<div class="empty"><p>Erro ao calcular a conferência.</p></div>`; return; }
+  _lnUltimaConferencia = resultado;
+
+  if (!resultado || resultado.semIntersecao) {
+    el.innerHTML = `<div class="empty"><p>Não há período em comum entre a Base Oficial e o Controle vigentes.</p></div>`;
+    return;
+  }
+
+  const pctPreenchimento = resultado.totalOficialElegivel>0 ? (resultado.encontrados.length/resultado.totalOficialElegivel*100) : 0;
+  el.innerHTML = `
+    <div style="font-size:13px;color:var(--text3);margin-bottom:14px">Período comparável: <strong>${lnFmtData(resultado.periodoComum.inicio)} a ${lnFmtData(resultado.periodoComum.fim)}</strong></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px;margin-bottom:20px">
+      <div class="card" style="padding:16px 20px"><div style="font-size:11px;color:var(--text3);text-transform:uppercase">Casos Oficiais no Período</div><div style="font-size:26px;font-weight:700">${resultado.totalOficialElegivel}</div></div>
+      <div class="card" style="padding:16px 20px;border-left:4px solid #22c55e"><div style="font-size:11px;color:var(--text3);text-transform:uppercase">Encontrados no Controle</div><div style="font-size:26px;font-weight:700;color:#22c55e">${resultado.encontrados.length}</div></div>
+      <div class="card" style="padding:16px 20px;border-left:4px solid #ef4444"><div style="font-size:11px;color:var(--text3);text-transform:uppercase">Ausentes do Controle</div><div style="font-size:26px;font-weight:700;color:#ef4444">${resultado.ausentes.length}</div></div>
+      <div class="card" style="padding:16px 20px"><div style="font-size:11px;color:var(--text3);text-transform:uppercase">% de Preenchimento</div><div style="font-size:26px;font-weight:700">${pctPreenchimento.toFixed(1)}%</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px">
+      <div class="card" style="padding:14px"><div style="font-size:11px;color:var(--text3)">Sem correspondência no Controle</div><div style="font-size:20px;font-weight:700">${resultado.semCorrespondencia.length}</div></div>
+      <div class="card" style="padding:14px"><div style="font-size:11px;color:var(--text3)">Duplicidades no Controle</div><div style="font-size:20px;font-weight:700">${resultado.duplicidadesControle.length}</div></div>
+      <div class="card" style="padding:14px"><div style="font-size:11px;color:var(--text3)">Divergências</div><div style="font-size:20px;font-weight:700">${resultado.divergencias.length}</div></div>
+    </div>
+    <p style="font-size:12px;color:var(--text3)">Listas completas (ausentes, sem correspondência, duplicidades, divergências) disponíveis na aba <strong>Detalhamento</strong> e na exportação.</p>
+  `;
+}
+
+// ── Detalhamento — renderização controlada, nunca milhares de linhas de uma vez ──
+function lnRenderDetalhamentoAba() {
+  const el = document.getElementById('ln-aba-detalhamento');
+  if (!el) return;
+  el.innerHTML = `
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+      <button class="btn btn-sm" onclick="lnDetalharSecao('ausentes')">Ausentes do Controle</button>
+      <button class="btn btn-sm btn-secondary" onclick="lnDetalharSecao('sem_correspondencia')">Sem Correspondência</button>
+      <button class="btn btn-sm btn-secondary" onclick="lnDetalharSecao('duplicidades')">Duplicidades</button>
+      <button class="btn btn-sm btn-secondary" onclick="lnDetalharSecao('divergencias')">Divergências</button>
+      <button class="btn btn-sm btn-secondary" onclick="lnDetalharSecao('pendencias')">Pendências</button>
+    </div>
+    <div id="ln-detalhamento-corpo"><div class="empty"><p>Selecione uma seção acima.</p></div></div>
+  `;
+}
+
+async function lnDetalharSecao(secao) {
+  const corpo = document.getElementById('ln-detalhamento-corpo');
+  if (!corpo) return;
+  corpo.innerHTML = `<div style="text-align:center;padding:30px;color:var(--text3)">⏳ Carregando...</div>`;
+  if (!_lnUltimaConferencia && ['ausentes','sem_correspondencia','duplicidades','divergencias'].includes(secao)) {
+    try { _lnUltimaConferencia = await lnCarregarConferencia(); } catch(e) { console.error('[LigNova] erro ao calcular conferência para detalhamento:', e); }
+  }
+  const c = _lnUltimaConferencia;
+  let linhas = [], colunas = [];
+  if (secao==='ausentes' && c && !c.semIntersecao) { linhas = c.ausentes; colunas = ['posto','numeroCaso','dataAbertura','matricula','classificacao']; }
+  else if (secao==='sem_correspondencia' && c && !c.semIntersecao) { linhas = c.semCorrespondencia; colunas = ['caso','data','cidade','br','motivo','casoSugerido']; }
+  else if (secao==='duplicidades' && c && !c.semIntersecao) { linhas = c.duplicidadesControle; colunas = ['caso','ocorrencias','cidade','br']; }
+  else if (secao==='divergencias' && c && !c.semIntersecao) { linhas = c.divergencias; colunas = ['tipo','numeroCaso']; }
+  else if (secao==='pendencias' && _lnConfig && _lnConfig.baseOficial && _lnConfig.baseOficial.snapshotVigenteId) {
+    try {
+      const snap = await db.collection('ligacaonova_base_casos').where('snapshotId','==',_lnConfig.baseOficial.snapshotVigenteId).where('situacao','in',['pendencia_matricula','conflito']).get();
+      linhas = snap.docs.map(d=>d.data()); colunas = ['numeroCaso','situacao','matricula','dataAbertura'];
+    } catch(e) { console.error('[LigNova] erro ao carregar pendências:', e); }
+  }
+
+  if (!linhas || !linhas.length) { corpo.innerHTML = `<div class="empty"><p>Nada nesta seção para os dados atuais.</p></div>`; return; }
+  const linhasPagina = linhas.slice(0, 200);
+  corpo.innerHTML = `
+    ${linhas.length>200 ? `<p style="font-size:12px;color:var(--text3)">Mostrando as primeiras 200 de ${linhas.length} — use a Exportação para ver a lista completa.</p>` : ''}
+    <div class="card" style="padding:0;overflow:auto;max-height:480px">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:var(--surface2)">${colunas.map(c=>`<th style="padding:8px 10px;text-align:left;white-space:nowrap">${c}</th>`).join('')}</tr></thead>
+        <tbody>${linhasPagina.map(l=>`<tr style="border-top:1px solid var(--border)">${colunas.map(c=>`<td style="padding:6px 10px">${l[c]!=null && l[c]!==''?l[c]:'—'}</td>`).join('')}</tr>`).join('')}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+// ── Exportação — respeita os filtros ativos ──
+async function lnExportar() {
+  if (!_lnConfig || !_lnConfig.baseOficial || !_lnConfig.baseOficial.snapshotVigenteId) { toast('Nenhuma Base Oficial importada ainda.', 'err'); return; }
+  toast('Preparando exportação...', 'ok');
+  try {
+    const snapshotId = _lnConfig.baseOficial.snapshotVigenteId;
+    const agregSnap = await db.collection('ligacaonova_base_agregados_dia').where('snapshotId','==',snapshotId).get();
+    const agregados = lnFiltrarAgregados(agregSnap.docs.map(d=>d.data()));
+
+    const casosSnap = await db.collection('ligacaonova_base_casos').where('snapshotId','==',snapshotId).get();
+    let casos = casosSnap.docs.map(d=>d.data());
+    if (_lnFiltros.posto) casos = casos.filter(c=>c.posto===_lnFiltros.posto);
+    if (_lnFiltros.dataInicio) casos = casos.filter(c=>!c.dataAbertura || c.dataAbertura>=_lnFiltros.dataInicio);
+    if (_lnFiltros.dataFim) casos = casos.filter(c=>!c.dataAbertura || c.dataAbertura<=_lnFiltros.dataFim);
+
+    const wb = XLSX.utils.book_new();
+    const totalCom = agregados.reduce((s,a)=>s+(a.comEmail||0),0), totalSem = agregados.reduce((s,a)=>s+(a.semEmail||0),0);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+      ['Resumo — Email Ligação Nova'], [],
+      ['Total Com E-mail', totalCom], ['Total Sem E-mail', totalSem],
+      ['% Sem E-mail', totalCom+totalSem>0 ? (totalSem/(totalCom+totalSem)*100).toFixed(1)+'%' : '—']
+    ]), 'Resumo');
+
+    const porPosto = {};
+    agregados.forEach(a=>{ if(!porPosto[a.posto]) porPosto[a.posto]={comEmail:0,semEmail:0}; porPosto[a.posto].comEmail+=a.comEmail||0; porPosto[a.posto].semEmail+=a.semEmail||0; });
+    const linhasPosto = [['Posto','Com E-mail','Sem E-mail','Total','% Sem E-mail']];
+    Object.entries(porPosto).forEach(([posto,d])=>{ const t=d.comEmail+d.semEmail; linhasPosto.push([posto,d.comEmail,d.semEmail,t,t>0?(d.semEmail/t*100).toFixed(1)+'%':'—']); });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(linhasPosto), 'Resultado por Posto');
+
+    const linhasCasos = [['Número do Caso','Posto','Data Abertura','Classificação','Situação']];
+    casos.forEach(c=>linhasCasos.push([c.numeroCaso,c.posto||'—',c.dataAbertura||'—',c.classificacao||'—',c.situacao]));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(linhasCasos), 'Base Oficial Filtrada');
+
+    let conferencia = _lnUltimaConferencia;
+    if (_lnConfig.controle && _lnConfig.controle.snapshotVigenteId) {
+      if (!conferencia) { try { conferencia = await lnCarregarConferencia(); } catch(e) { console.error(e); } }
+      if (conferencia && !conferencia.semIntersecao) {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+          ['Período comparável', lnFmtData(conferencia.periodoComum.inicio)+' a '+lnFmtData(conferencia.periodoComum.fim)],
+          ['Casos oficiais no período', conferencia.totalOficialElegivel],
+          ['Encontrados no Controle', conferencia.encontrados.length],
+          ['Ausentes do Controle', conferencia.ausentes.length]
+        ]), 'Conferência');
+
+        const ausentesLinhas = [['Posto','Número do Caso','Data Abertura','Matrícula','Classificação']];
+        conferencia.ausentes.forEach(c=>ausentesLinhas.push([c.posto,c.numeroCaso,c.dataAbertura,c.matricula,c.classificacao]));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ausentesLinhas), 'Ausentes do Controle');
+
+        const semCorrLinhas = [['Caso','Data','Cidade','BR','Motivo','Caso Sugerido']];
+        conferencia.semCorrespondencia.forEach(r=>semCorrLinhas.push([r.caso,r.data,r.cidade,r.br,r.motivo,r.casoSugerido||'—']));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(semCorrLinhas), 'Sem Correspondência');
+
+        const dupLinhas = [['Caso','Ocorrências','Cidade','BR']];
+        conferencia.duplicidadesControle.forEach(r=>dupLinhas.push([r.caso,r.ocorrencias,r.cidade,r.br]));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dupLinhas), 'Duplicidades');
+
+        const divLinhas = [['Tipo','Número do Caso','Detalhe']];
+        conferencia.divergencias.forEach(d=>divLinhas.push([d.tipo,d.numeroCaso,JSON.stringify(d)]));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(divLinhas), 'Divergências');
+      }
+    }
+
+    const pendLinhas = [['Número do Caso','Situação','Matrícula','Data Abertura']];
+    casos.filter(c=>c.situacao==='pendencia_matricula'||c.situacao==='conflito').forEach(c=>pendLinhas.push([c.numeroCaso,c.situacao,c.matricula||'—',c.dataAbertura||'—']));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(pendLinhas), 'Pendências');
+
+    XLSX.writeFile(wb, `email-ligacao-nova_${_lnFiltros.competencia||'geral'}.xlsx`);
+  } catch(e) { console.error('[LigNova] erro ao exportar:', e); toast('Erro ao exportar: '+e.message, 'err'); }
+}
+
+// ── Sincronização ATIVOS/DESLIG — administrativa, nunca sobrescreve users sozinha ──
+async function lnSincronizarAtivosDeslig(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+  const statusEl = document.getElementById('ln-sync-ativos-status');
+  const setStatus = m => { if(statusEl) statusEl.textContent = m; };
+  setStatus('⏳ Lendo planilha...');
+  try {
+    const buffer = await file.arrayBuffer();
+    const wb = XLSX.read(buffer, { type:'array' });
+    if (!wb.SheetNames.includes('ATIVOS')) throw new Error('Aba "ATIVOS" não encontrada no arquivo.');
+    const linhas = XLSX.utils.sheet_to_json(wb.Sheets['ATIVOS'], { defval:'' }); // arquivo pequeno (dezenas de linhas) — seguro usar sheet_to_json aqui
+
+    let sugeridos = 0, fallbackAtualizado = 0, semAcao = 0, opsNoBatch = 0;
+    let batch = db.batch();
+
+    for (const linha of linhas) {
+      const br = String(linha['BR']||'').trim().toUpperCase();
+      const local = String(linha['Local']||'').trim();
+      if (!br || !local) { semAcao++; continue; }
+      if ((allUsers||[]).find(u => u.matriculaBR && String(u.matriculaBR).trim().toUpperCase()===br)) continue; // já sincronizado
+
+      const nome = String(linha['Nome do Funcionário']||'').trim().toLowerCase();
+      const candidato = (allUsers||[]).find(u => (u.name||'').trim().toLowerCase()===nome && !u.matriculaBR);
+      if (candidato) {
+        batch.set(db.collection('ligacaonova_sugestoes_matricula').doc(candidato.id), { userId:candidato.id, userName:candidato.name, matriculaBRSugerida: br, posto: local, criadoEm: new Date().toISOString() });
+        sugeridos++; opsNoBatch++;
+      } else {
+        const postoResolvido = local.toLowerCase()==='sede' ? 'Sede' : (lnResolverNomePosto(local) || local);
+        batch.set(db.collection('ligacaonova_matricula_fallback').doc(br), { matriculaBR: br, posto: postoResolvido, origem:'ativos_deslig_sync', atualizadoEm: new Date().toISOString() });
+        fallbackAtualizado++; opsNoBatch++;
+      }
+      if (opsNoBatch >= 400) { await batch.commit(); batch = db.batch(); opsNoBatch = 0; }
+    }
+    if (opsNoBatch > 0) await batch.commit();
+
+    setStatus(`✅ Sincronização concluída — ${fallbackAtualizado} matrícula(s) no fallback, ${sugeridos} sugestão(ões) de Matrícula BR pra colaborador já cadastrado (revise no Time), ${semAcao} linha(s) sem BR/Local.`);
+    toast('Sincronização ATIVOS/DESLIG concluída.', 'ok');
+  } catch(e) {
+    console.error('[LigNova] erro na sincronização ATIVOS/DESLIG:', e);
+    setStatus('❌ Erro: '+e.message);
+    toast('Erro na sincronização: '+e.message, 'err');
+  }
+}
+
+// ── Registro no Diagnóstico existente — só dado declarativo, nenhuma lógica nova ──
+if (typeof DIAGNOSTICO_MODULOS !== 'undefined') {
+  DIAGNOSTICO_MODULOS.ligacaonova_base = {
+    label: 'Email Ligação Nova — Base Oficial',
+    collection: 'ligacaonova_base_casos',
+    campos: { mes: 'dataAbertura', posto: 'posto', atendente: 'matricula', importadoPor: null, importadoEm: null },
+    postosValidos: TODOS_POSTOS_RG,
+    ativo: true
+  };
+}
 
 initSystem();
 </script>
