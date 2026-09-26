@@ -13,6 +13,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
@@ -26037,6 +26038,42 @@ function lnFmtDataHora(iso) {
   catch(e) { return String(iso); }
 }
 function lnMenorData(casos) { const d = casos.map(c=>c.dataAbertura).filter(Boolean).sort(); return d[0]||null; }
+
+// Mesma função canônica usada no Worker (lnNormalizarNumeroCaso) — duplicada
+// porque Worker e index.html são arquivos diferentes, mas com lógica
+// idêntica: sempre string, trim, e sem ".0" à direita (1048373462.0,
+// 1048373462 e "1048373462" precisam virar exatamente a mesma chave).
+function lnNormalizarNumeroCaso(v) {
+  if (v === null || v === undefined) return '';
+  let s = String(v).trim();
+  s = s.replace(/\.0+$/, '');
+  return s;
+}
+
+// Data do Controle — robusta a Date (com cellDates:true), serial numérico
+// do Excel (fallback via XLSX.SSF) e string "dd/mm/aaaa". Cobre também um
+// erro de digitação real encontrado no arquivo de homologação: ano com 3
+// dígitos ("10/09/026") — assume o mesmo padrão de século dos demais
+// registros da planilha em vez de descartar a linha inteira.
+function lnNormalizarDataControle(v) {
+  if (v == null || v === '') return null;
+  if (v instanceof Date) {
+    if (isNaN(v.getTime())) return null;
+    const y=v.getFullYear(), m=String(v.getMonth()+1).padStart(2,'0'), d=String(v.getDate()).padStart(2,'0');
+    return `${y}-${m}-${d}`;
+  }
+  if (typeof v === 'number') {
+    try { const dc = XLSX.SSF.parse_date_code(v); if (dc && dc.y) return `${String(dc.y).padStart(4,'0')}-${String(dc.m).padStart(2,'0')}-${String(dc.d).padStart(2,'0')}`; } catch(e) {}
+    return null;
+  }
+  const s = String(v).trim();
+  let m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  m = /^(\d{2})\/(\d{2})\/(\d{3})$/.exec(s);
+  if (m) return `2${m[3]}-${m[2]}-${m[1]}`; // "026" -> "2026"
+  return null;
+}
+
 function lnMaiorData(casos) { const d = casos.map(c=>c.dataAbertura).filter(Boolean).sort(); return d[d.length-1]||null; }
 function lnDistanciaUmDigito(a,b) {
   if (a.length !== b.length) return false;
@@ -26101,6 +26138,14 @@ function lnRenderStatusBases() {
   `;
 }
 
+const LN_MESES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+function lnFmtCompetencia(comp) {
+  if (!comp) return '—';
+  const partes = String(comp).split('-');
+  const idx = parseInt(partes[1],10)-1;
+  return (LN_MESES_PT[idx] || partes[1]) + '/' + partes[0];
+}
+
 function lnRenderFiltros() {
   const el = document.getElementById('ln-filtros');
   if (!el) return;
@@ -26110,7 +26155,7 @@ function lnRenderFiltros() {
   el.innerHTML = `
     <div class="form-group" style="margin:0"><label class="form-label">Mês</label>
       <select class="form-input" id="ln-f-mes" onchange="lnAplicarFiltros()">
-        ${competencias.map(c=>`<option value="${c}" ${c===_lnFiltros.competencia?'selected':''}>${c}</option>`).join('') || '<option value="">—</option>'}
+        ${competencias.map(c=>`<option value="${c}" ${c===_lnFiltros.competencia?'selected':''}>${lnFmtCompetencia(c)}</option>`).join('') || '<option value="">—</option>'}
       </select></div>
     <div class="form-group" style="margin:0"><label class="form-label">Supervisor</label>
       <select class="form-input" id="ln-f-supervisor" onchange="lnAplicarFiltros()">
@@ -26129,12 +26174,21 @@ function lnRenderFiltros() {
   `;
 }
 
+// Conjunto de postos (grafia canônica de TODOS_POSTOS_RG) vinculados a um
+// supervisor — usa csatNorm dos dois lados porque allPostos.nome vem em
+// caixa/acentuação mista (ex.: "Aperibé") e a.posto sempre vem canônico
+// maiúsculo sem acento (ex.: "APERIBE"); comparar direto (===) nunca batia,
+// e era exatamente por isso que o filtro de Supervisor não funcionava.
+function lnPostosDoSupervisorNorm(supervisor) {
+  return new Set((allPostos||[]).filter(p=>p.supervisor===supervisor).map(p=>csatNorm(p.nome)));
+}
+
 function lnFiltrarAgregados(agregados) {
   let f = agregados;
   if (_lnFiltros.posto) f = f.filter(a=>a.posto===_lnFiltros.posto);
   else if (_lnFiltros.supervisor) {
-    const postosSup = new Set(allPostos.filter(p=>p.supervisor===_lnFiltros.supervisor).map(p=>p.nome));
-    f = f.filter(a=>postosSup.has(a.posto));
+    const postosSup = lnPostosDoSupervisorNorm(_lnFiltros.supervisor);
+    f = f.filter(a=>postosSup.has(csatNorm(a.posto)));
   }
   if (_lnFiltros.dataInicio) f = f.filter(a=>a.data>=_lnFiltros.dataInicio);
   if (_lnFiltros.dataFim) f = f.filter(a=>a.data<=_lnFiltros.dataFim);
@@ -26179,7 +26233,9 @@ async function lnRenderResultadoOficial() {
     porPosto[a.posto].comEmail += a.comEmail||0; porPosto[a.posto].semEmail += a.semEmail||0; porPosto[a.posto].total += a.total||0;
   });
   const postosEmEscopo = _lnFiltros.posto ? [_lnFiltros.posto]
-    : (_lnFiltros.supervisor ? allPostos.filter(p=>p.supervisor===_lnFiltros.supervisor).map(p=>p.nome) : TODOS_POSTOS_RG);
+    : (_lnFiltros.supervisor
+        ? TODOS_POSTOS_RG.filter(pCanon => lnPostosDoSupervisorNorm(_lnFiltros.supervisor).has(csatNorm(pCanon)))
+        : TODOS_POSTOS_RG);
   const ranking = postosEmEscopo.map(nome => {
     const d = porPosto[nome] || {comEmail:0,semEmail:0,total:0};
     const pct = d.total>0 ? (d.semEmail/d.total*100) : null;
@@ -26192,7 +26248,6 @@ async function lnRenderResultadoOficial() {
     return b.total-a.total;
   });
   const postosAcimaMeta = ranking.filter(r=>r.situacao==='ACIMA_DA_META').length;
-  const pendenciaMatricula = (_lnConfig.baseOficial.totaisResumo && _lnConfig.baseOficial.totaisResumo.pendenciaMatricula) || 0;
 
   const diasOrdenados = Array.from(new Set(filtrados.map(a=>a.data))).sort();
   let accCom=0, accSem=0;
@@ -26222,16 +26277,15 @@ async function lnRenderResultadoOficial() {
       <div class="card" style="padding:16px 20px;border-left:4px solid ${pctSemEmail<=10?'#22c55e':'#ef4444'}">
         <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">Sem E-mail</div>
         <div style="font-size:28px;font-weight:700;color:${pctSemEmail<=10?'#22c55e':'#ef4444'}">${totalSemEmail}</div>
-        <div style="font-size:11px;color:var(--text3)">${pctSemEmail.toFixed(1)}% ${pctSemEmail<=10?'✅':'⚠️'} (meta: ≤10%)</div>
+      </div>
+      <div class="card" style="padding:16px 20px;border-left:4px solid ${pctSemEmail<=10?'#22c55e':'#ef4444'}">
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">% Sem E-mail</div>
+        <div style="font-size:28px;font-weight:700;color:${pctSemEmail<=10?'#22c55e':'#ef4444'}">${pctSemEmail.toFixed(2)}%</div>
+        <div style="font-size:11px;color:var(--text3)">${pctSemEmail<=10?'✅ dentro da meta':'⚠️ acima da meta'} (meta: ≤10%)</div>
       </div>
       <div class="card" style="padding:16px 20px;border-left:4px solid var(--border)">
         <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">Postos Acima da Meta</div>
         <div style="font-size:28px;font-weight:700;color:var(--text1)">${postosAcimaMeta}</div>
-      </div>
-      <div class="card" style="padding:16px 20px;border-left:4px solid var(--border)">
-        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">Pendências</div>
-        <div style="font-size:28px;font-weight:700;color:var(--text1)">${pendenciaMatricula}</div>
-        <div style="font-size:11px;color:var(--text3)">matrícula/posto não identificado (total do snapshot)</div>
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
@@ -26248,7 +26302,7 @@ async function lnRenderResultadoOficial() {
         </tr></thead>
         <tbody>${ranking.map(r => `<tr style="border-top:1px solid var(--border)">
             <td style="padding:8px 12px">${r.nome}</td>
-            <td style="padding:8px 12px;color:var(--text3)">${(allPostos.find(p=>p.nome===r.nome)||{}).supervisor||'—'}</td>
+            <td style="padding:8px 12px;color:var(--text3)">${(allPostos.find(p=>csatNorm(p.nome)===csatNorm(r.nome))||{}).supervisor||'—'}</td>
             <td style="padding:8px 12px;text-align:right">${r.comEmail}</td>
             <td style="padding:8px 12px;text-align:right">${r.semEmail}</td>
             <td style="padding:8px 12px;text-align:right">${r.total}</td>
@@ -26266,15 +26320,34 @@ function lnDesenharGraficosResultado(labels, comPct, semPct, volCom, volSem, ran
   if (_lnCharts.volume) { _lnCharts.volume.destroy(); _lnCharts.volume=null; }
   if (_lnCharts.comparativo) { _lnCharts.comparativo.destroy(); _lnCharts.comparativo=null; }
 
+  // Estratégia pra não poluir a evolução quando há muitos dias: mostra 1
+  // rótulo a cada N pontos, sempre incluindo o primeiro e o último (o valor
+  // mais recente é o que mais importa bater o olho).
+  const passoEvo = labels.length > 12 ? Math.ceil(labels.length/8) : 1;
+  const mostrarPontoEvo = (ctx) => ctx.dataIndex===0 || ctx.dataIndex===labels.length-1 || ctx.dataIndex%passoEvo===0;
+
   const ce = document.getElementById('ln-chart-evolucao');
   if (ce) _lnCharts.evolucao = new Chart(ce.getContext('2d'), {
     type:'line',
     data:{ labels, datasets:[
       { label:'% Com E-mail', data:comPct, borderColor:'#22c55e', backgroundColor:'transparent', tension:.2 },
       { label:'% Sem E-mail', data:semPct, borderColor:'#ef4444', backgroundColor:'transparent', tension:.2 },
-      { label:'Meta (10%)', data:labels.map(()=>10), borderColor:'#f59e0b', borderDash:[6,4], pointRadius:0 }
+      { label:'Meta (10%)', data:labels.map(()=>10), borderColor:'#f59e0b', borderDash:[6,4], pointRadius:0, datalabels:{display:false} }
     ]},
-    options:{ responsive:true, plugins:{title:{display:true,text:'Evolução acumulada no período'}}, scales:{y:{min:0,max:100}} }
+    plugins:[ChartDataLabels],
+    options:{
+      responsive:true,
+      plugins:{
+        title:{display:true,text:'Evolução acumulada no período'},
+        datalabels:{
+          display: (ctx) => mostrarPontoEvo(ctx),
+          formatter: (v) => v==null?'':v.toFixed(1)+'%',
+          align:'top', anchor:'end', font:{size:10,weight:'600'},
+          color: (ctx) => ctx.dataset.borderColor
+        }
+      },
+      scales:{y:{min:0,max:100}}
+    }
   });
 
   const cv = document.getElementById('ln-chart-volume');
@@ -26284,7 +26357,18 @@ function lnDesenharGraficosResultado(labels, comPct, semPct, volCom, volSem, ran
       { label:'Com E-mail', data:volCom, backgroundColor:'#22c55e' },
       { label:'Sem E-mail', data:volSem, backgroundColor:'#ef4444' }
     ]},
-    options:{ responsive:true, plugins:{title:{display:true,text:'Volume diário'}}, scales:{x:{stacked:true},y:{stacked:true}} }
+    plugins:[ChartDataLabels],
+    options:{
+      responsive:true,
+      plugins:{
+        title:{display:true,text:'Volume diário'},
+        datalabels:{
+          display: (ctx) => (ctx.dataset.data[ctx.dataIndex]||0) > 0,
+          color:'#fff', font:{size:10,weight:'600'}, anchor:'center', align:'center'
+        }
+      },
+      scales:{x:{stacked:true},y:{stacked:true}}
+    }
   });
 
   const cc = document.getElementById('ln-chart-comparativo');
@@ -26293,7 +26377,18 @@ function lnDesenharGraficosResultado(labels, comPct, semPct, volCom, volSem, ran
     _lnCharts.comparativo = new Chart(cc.getContext('2d'), {
       type:'bar',
       data:{ labels:comIngresso.map(r=>r.nome), datasets:[{ label:'% Sem E-mail', data:comIngresso.map(r=>r.pctSemEmail), backgroundColor:comIngresso.map(r=>r.pctSemEmail<=10?'#22c55e':'#ef4444') }] },
-      options:{ indexAxis:'y', responsive:true, plugins:{title:{display:true,text:'Comparativo por posto (piores primeiro)'},legend:{display:false}} }
+      plugins:[ChartDataLabels],
+      options:{
+        indexAxis:'y', responsive:true,
+        plugins:{
+          title:{display:true,text:'Comparativo por posto (piores primeiro)'}, legend:{display:false},
+          datalabels:{
+            formatter:(v)=>v.toFixed(1)+'%', anchor:'end', align:'end',
+            color:'#374151', font:{size:10,weight:'600'}
+          }
+        },
+        scales:{ x:{ max:100 } }
+      }
     });
   }
 }
@@ -26369,8 +26464,14 @@ async function lnProcessarBaseOficial(file) {
       worker.postMessage({ tipo:'processar_base_oficial', buffer }, [buffer]);
     });
 
-    setStatus('⏳ Resolvendo matrícula → posto...');
-    await lnResolverMatriculaPostoEmLote(resultadoWorker.casos);
+    setStatus('⏳ Delimitando universo (GERENTE/Sede) e resolvendo matrícula → posto...');
+    resultadoWorker.casos = await lnResolverMatriculaPostoEmLote(resultadoWorker.casos);
+    // Recalcula os totais sobre o universo FINAL (depois de excluir outras
+    // gerências) — os totais que o Worker devolveu ainda incluíam qualquer
+    // linha "ambígua" (GERENTE vazio/0/"-") que não era Sede de verdade.
+    resultadoWorker.totais.elegiveis = resultadoWorker.casos.filter(c=>c.situacao==='elegivel').length;
+    resultadoWorker.totais.comEmail = resultadoWorker.casos.filter(c=>c.classificacao==='COM_EMAIL' && (c.situacao==='elegivel'||c.situacao==='pendencia_matricula')).length;
+    resultadoWorker.totais.semEmail = resultadoWorker.casos.filter(c=>c.classificacao==='SEM_EMAIL' && (c.situacao==='elegivel'||c.situacao==='pendencia_matricula')).length;
     resultadoWorker.totais.pendenciaMatricula = resultadoWorker.casos.filter(c=>c.situacao==='pendencia_matricula').length;
     resultadoWorker.totais.sede = resultadoWorker.casos.filter(c=>c.situacao==='sede').length;
     resultadoWorker.arquivoNome = file.name;
@@ -26388,6 +26489,13 @@ async function lnProcessarBaseOficial(file) {
   }
 }
 
+// Delimita o universo operacional (GERENTE=MARCELO PORTUGAL OU matrícula
+// reconhecida como colaborador da SEDE) e resolve posto pra quem está
+// dentro dele. O Worker já descartou linhas de OUTRAS gerências nomeadas;
+// aqui só sobram "MARCELO PORTUGAL" e casos ambíguos (GERENTE vazio/0/"-")
+// que precisam da matrícula pra decidir se são Sede ou devem ser excluídos.
+// Retorna um NOVO array — casos fora do universo são removidos aqui, nunca
+// viram pendência (pendência é só problema real DENTRO do universo).
 async function lnResolverMatriculaPostoEmLote(casos) {
   const mapaUsers = {};
   (allUsers||[]).forEach(u => { if (u.matriculaBR) mapaUsers[String(u.matriculaBR).trim().toUpperCase()] = u.local || null; });
@@ -26398,19 +26506,32 @@ async function lnResolverMatriculaPostoEmLote(casos) {
     snap.forEach(d => { mapaFallback[d.id] = (d.data()||{}).posto; });
   } catch(e) { console.error('[LigNova] erro ao ler fallback de matrícula (segue sem ele):', e); }
 
+  const resultadoFinal = [];
   casos.forEach(c => {
-    if (c.situacao !== 'elegivel') return; // conflito já resolvido pelo Worker, fica como está
+    if (c.situacao !== 'elegivel') { resultadoFinal.push(c); return; } // conflito etc. já resolvido pelo Worker, mantém como está
+
+    const gerenteNorm = String(c.gerente==null?'':c.gerente).trim().toUpperCase();
+    const dentroDoUniversoPorGerente = gerenteNorm === 'MARCELO PORTUGAL';
+
     const m = c.matricula;
-    if (!m) { c.situacao = 'pendencia_matricula'; return; }
-    let postoBruto = mapaUsers[m];
-    if (postoBruto === undefined) postoBruto = mapaFallback[m];
-    if (postoBruto === undefined || postoBruto === null || postoBruto === '') { c.situacao = 'pendencia_matricula'; return; }
-    if (String(postoBruto).trim().toLowerCase() === 'sede') { c.situacao = 'sede'; c.posto = 'Sede'; return; }
+    let postoBruto = m ? mapaUsers[m] : undefined;
+    if (postoBruto === undefined && m) postoBruto = mapaFallback[m];
+    const ehSede = postoBruto !== undefined && postoBruto !== null && String(postoBruto).trim().toLowerCase() === 'sede';
+
+    if (ehSede) { c.situacao = 'sede'; c.posto = 'Sede'; resultadoFinal.push(c); return; }
+
+    if (!dentroDoUniversoPorGerente) return; // outra gerência e matrícula não é Sede -> fora do universo, descartado (NUNCA vira pendência)
+
+    // Dentro do universo por GERENTE, mas sem posto resolvido -> pendência real
+    if (!m || postoBruto === undefined || postoBruto === null || postoBruto === '') { c.situacao = 'pendencia_matricula'; resultadoFinal.push(c); return; }
     const postoResolvido = lnResolverNomePosto(postoBruto);
-    if (!postoResolvido) { c.situacao = 'pendencia_matricula'; return; }
+    if (!postoResolvido) { c.situacao = 'pendencia_matricula'; resultadoFinal.push(c); return; }
     c.posto = postoResolvido;
+    resultadoFinal.push(c);
   });
+  return resultadoFinal;
 }
+
 
 function lnRenderPreviaBaseOficial(resultado) {
   const el = document.getElementById('ln-preview-base');
@@ -26460,9 +26581,16 @@ async function lnConfirmarImportacaoBaseOficial() {
     });
 
     const agregados = {};
-    resultado.casos.filter(c=>c.situacao==='elegivel' && c.posto && c.dataAbertura).forEach(c => {
-      const chave = `${c.posto}|${c.dataAbertura}`;
-      if (!agregados[chave]) agregados[chave] = { posto:c.posto, data:c.dataAbertura, comEmail:0, semEmail:0, total:0 };
+    // Elegível com posto resolvido -> posto real. Pendência de matrícula
+    // (dentro do universo, mas sem posto) -> bucket sintético "(Pendente)":
+    // continua contando no Total/Com/Sem E-mail da visão Geral (nunca
+    // "some" do resultado), mas nunca aparece no ranking por posto nem
+    // quando um Posto/Supervisor específico é filtrado — porque nenhum
+    // posto real nem supervisor bate com esse valor.
+    resultado.casos.filter(c=>(c.situacao==='elegivel'||c.situacao==='pendencia_matricula') && c.dataAbertura).forEach(c => {
+      const postoChave = c.situacao==='elegivel' ? c.posto : '(Pendente)';
+      const chave = `${postoChave}|${c.dataAbertura}`;
+      if (!agregados[chave]) agregados[chave] = { posto:postoChave, data:c.dataAbertura, comEmail:0, semEmail:0, total:0 };
       agregados[chave].total++;
       if (c.classificacao==='COM_EMAIL') agregados[chave].comEmail++;
       else if (c.classificacao==='SEM_EMAIL') agregados[chave].semEmail++;
@@ -26556,7 +26684,7 @@ async function lnProcessarControle(file) {
   setStatus('⏳ Lendo planilha do Controle...');
   try {
     const buffer = await file.arrayBuffer();
-    const wb = XLSX.read(buffer, { type:'array' });
+    const wb = XLSX.read(buffer, { type:'array', cellDates:true });
     const ws = wb.Sheets[wb.SheetNames[0]];
     const range = XLSX.utils.decode_range(ws['!ref']);
     const headerRow = [];
@@ -26572,9 +26700,8 @@ async function lnProcessarControle(file) {
       const get = idx => { if(idx===undefined) return undefined; const c = ws[XLSX.utils.encode_cell({r,c:idx})]; return c?c.v:undefined; };
       const casoRaw = get(mapa['CASO']);
       if (casoRaw===undefined || casoRaw==='') continue;
-      const caso = String(casoRaw).trim();
-      const dataRaw = get(mapa['DATA']);
-      const data = dataRaw instanceof Date ? dataRaw.toISOString().slice(0,10) : String(dataRaw||'').slice(0,10);
+      const caso = lnNormalizarNumeroCaso(casoRaw);
+      const data = lnNormalizarDataControle(get(mapa['DATA']));
       const registro = {
         caso, data, cidade: String(get(mapa['CIDADE'])||'').trim(),
         br: String(get(mapa['BR'])||'').trim().toUpperCase(),
@@ -26696,11 +26823,15 @@ async function lnCarregarConferencia() {
   if (inicioComum > fimComum) return { semIntersecao:true, periodoDisponivel:{inicio:inicioDisponivel,fim:fimDisponivel} };
 
   const casosSnap = await db.collection('ligacaonova_base_casos').where('snapshotId','==',snapBase).get();
-  let casos = casosSnap.docs.map(d=>d.data()).filter(c=>c.situacao==='elegivel' && c.dataAbertura>=inicioComum && c.dataAbertura<=fimComum);
+  // Universo da Conferência: elegível (com posto) OU pendência de matrícula
+  // (dentro do universo GERENTE, só sem posto resolvido) — o cruzamento por
+  // Número do caso não depende do posto estar resolvido. Sede e conflito
+  // ficam de fora, conforme já definido.
+  let casos = casosSnap.docs.map(d=>d.data()).filter(c=>(c.situacao==='elegivel'||c.situacao==='pendencia_matricula') && c.dataAbertura>=inicioComum && c.dataAbertura<=fimComum);
   if (_lnFiltros.posto) casos = casos.filter(c=>c.posto===_lnFiltros.posto);
   else if (_lnFiltros.supervisor) {
-    const postosSup = new Set(allPostos.filter(p=>p.supervisor===_lnFiltros.supervisor).map(p=>p.nome));
-    casos = casos.filter(c=>postosSup.has(c.posto));
+    const postosSup = lnPostosDoSupervisorNorm(_lnFiltros.supervisor);
+    casos = casos.filter(c=>c.posto && postosSup.has(csatNorm(c.posto)));
   }
 
   const controleSnap = await db.collection('ligacaonova_controle_registros').where('snapshotId','==',snapControle).get();
@@ -26836,6 +26967,10 @@ async function lnExportar() {
     const casosSnap = await db.collection('ligacaonova_base_casos').where('snapshotId','==',snapshotId).get();
     let casos = casosSnap.docs.map(d=>d.data());
     if (_lnFiltros.posto) casos = casos.filter(c=>c.posto===_lnFiltros.posto);
+    else if (_lnFiltros.supervisor) {
+      const postosSup = lnPostosDoSupervisorNorm(_lnFiltros.supervisor);
+      casos = casos.filter(c=>c.posto && postosSup.has(csatNorm(c.posto)));
+    }
     if (_lnFiltros.dataInicio) casos = casos.filter(c=>!c.dataAbertura || c.dataAbertura>=_lnFiltros.dataInicio);
     if (_lnFiltros.dataFim) casos = casos.filter(c=>!c.dataAbertura || c.dataAbertura<=_lnFiltros.dataFim);
 

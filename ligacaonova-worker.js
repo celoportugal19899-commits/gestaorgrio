@@ -4,14 +4,15 @@
 // parse do SheetJS 0.18.5 bloqueia quem o chama por vários segundos (6-14s
 // no arquivo real de 24MB), então esse trabalho só pode rodar aqui.
 //
-// Este Worker NÃO resolve matrícula→posto (não tem acesso ao Firestore/cache
-// de usuários da thread principal) — ele devolve os casos com a matrícula já
-// normalizada, e a resolução matrícula→posto acontece na thread principal,
-// que já mantém allUsers em memória.
+// Este Worker NÃO resolve matrícula→posto nem Sede (não tem acesso ao
+// Firestore/cache de usuários da thread principal) — ele devolve os casos já
+// com GERENTE e matrícula normalizados, e a resolução final (posto, Sede,
+// exclusão de outras gerências) acontece na thread principal.
 
 importScripts('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');
 
 const LN_ABA_BASE = 'base';
+const LN_GERENTE_OPERACAO = 'MARCELO PORTUGAL';
 
 // Cabeçalhos obrigatórios e variações aceitas, já normalizadas (ver
 // lnNormalizarCabecalho). A normalização cobre o caso real encontrado no
@@ -23,7 +24,8 @@ const LN_CAMPOS_OBRIGATORIOS = {
   'DATA/HORA DE ABERTURA': ['DATA/HORA DE ABERTURA'],
   'CRIADO POR: N DO FUNCIONARIO': ['CRIADO POR: N DO FUNCIONARIO', 'CRIADO POR: NO DO FUNCIONARIO'],
   'VALIDACAO EMAIL': ['VALIDACAO EMAIL'],
-  'DATA DE EXTRACAO': ['DATA DE EXTRACAO']
+  'DATA DE EXTRACAO': ['DATA DE EXTRACAO'],
+  'GERENTE': ['GERENTE']
 };
 
 function lnNormalizarCabecalho(h) {
@@ -47,29 +49,60 @@ function lnResolverCabecalhos(headerRow) {
   return mapa;
 }
 
-function lnParseDataAbertura(str) {
-  // Formato real observado: "dd/mm/aaaa hh:mm" (string, não objeto data).
-  const m = /^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/.exec(String(str || '').trim());
-  if (!m) return null;
-  const [, d, mo, y] = m;
-  return `${y}-${mo}-${d}`; // AAAA-MM-DD, base da agregação por dia
-}
-
-function lnDataCelulaParaISO(v) {
+// Converte um valor de célula de data (Date, serial numérico do Excel, ou
+// string) pra "AAAA-MM-DD", sem nunca deixar passar um serial numérico cru
+// pra frente. Com {cellDates:true} no XLSX.read, o caso normal já vem como
+// Date — o ramo numérico aqui é só defesa extra caso alguma célula específica
+// escape dessa conversão automática do SheetJS.
+function lnDataParaISO(v) {
   if (v == null || v === '') return null;
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  if (v instanceof Date) {
+    if (isNaN(v.getTime())) return null;
+    const y = v.getFullYear(), m = String(v.getMonth() + 1).padStart(2, '0'), d = String(v.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  if (typeof v === 'number') {
+    try {
+      const dc = XLSX.SSF.parse_date_code(v);
+      if (dc && dc.y) return `${String(dc.y).padStart(4, '0')}-${String(dc.m).padStart(2, '0')}-${String(dc.d).padStart(2, '0')}`;
+    } catch (e) { /* segue pro fallback de string abaixo */ }
+    return null;
+  }
   const s = String(v).trim();
-  // Alguns exports trazem "Data de extração" como texto dd/mm/aaaa também.
-  const m = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(s);
+  let m = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(s);
   if (m) return `${m[3]}-${m[2]}-${m[1]}`;
-  return s.slice(0, 10);
+  return null;
 }
 
 function lnNormalizarMatricula(v) {
   return String(v || '').trim().toUpperCase();
 }
-function lnNormalizarCaso(v) {
-  return String(v == null ? '' : v).trim();
+
+// Chave canônica do "Número do caso" — SEMPRE string, trim, e sem ".0" à
+// direita (o Excel/SheetJS pode representar um inteiro como decimal
+// dependendo do formato da célula: 1048373462.0 e 1048373462 precisam virar
+// exatamente a mesma chave "1048373462"). Usada igual no Controle
+// (index.html) — mesma lógica, arquivos diferentes por causa do Worker.
+function lnNormalizarNumeroCaso(v) {
+  if (v === null || v === undefined) return '';
+  let s = String(v).trim();
+  s = s.replace(/\.0+$/, '');
+  return s;
+}
+
+// Universo pré-filtrado ainda dentro do Worker (só o que é seguro decidir
+// sem Firestore): mantém linhas cujo GERENTE já é literalmente a operação,
+// e mantém também linhas com GERENTE ambíguo/vazio (0, "-", vazio) — essas
+// PODEM ser Sede (casos reais confirmados: Plicila e Danielly chegam com
+// GERENTE=0) e são decididas de verdade só na thread principal, por
+// matrícula. Qualquer outro nome de gerente real é descartado aqui mesmo,
+// pra não carregar linhas de outras gerências até a thread principal.
+function lnGerentePodeSerDoUniverso(gerenteRaw) {
+  const g = gerenteRaw;
+  if (g === undefined || g === null) return true;
+  const s = String(g).trim();
+  if (s === '' || s === '0' || s === '-') return true;
+  return s.toUpperCase() === LN_GERENTE_OPERACAO;
 }
 
 self.onmessage = function (e) {
@@ -82,13 +115,16 @@ self.onmessage = function (e) {
     // Escalada de teto sem suposição silenciosa: se o resultado bater
     // exatamente no teto pedido, pode haver mais linha abaixo — tenta de
     // novo com um teto maior antes de aceitar como completo.
+    // cellDates:true faz o SheetJS já entregar células de data como objeto
+    // Date (em vez de serial numérico) — é a causa raiz corrigida do "mês
+    // aparecendo como 46290" na interface.
     const tetos = [100000, 300000, 1000000];
     let workbook = null, truncado = true;
 
     for (let i = 0; i < tetos.length; i++) {
       const teto = tetos[i];
       if (i > 0) self.postMessage({ etapa: 'lendo_planilha', tentativaAmpliada: true, novoTeto: teto });
-      workbook = XLSX.read(buffer, { type: 'array', sheets: [LN_ABA_BASE], sheetRows: teto });
+      workbook = XLSX.read(buffer, { type: 'array', sheets: [LN_ABA_BASE], sheetRows: teto, cellDates: true });
       const ws = workbook.Sheets[LN_ABA_BASE];
       if (!ws) break; // aba não existe — teto maior não resolve isso
       const range = XLSX.utils.decode_range(ws['!ref']);
@@ -129,6 +165,7 @@ self.onmessage = function (e) {
     const idxDataAbertura = mapa['DATA/HORA DE ABERTURA'];
     const idxMatricula = mapa['CRIADO POR: N DO FUNCIONARIO'];
     const idxValidacao = mapa['VALIDACAO EMAIL'];
+    const idxGerente = mapa['GERENTE'];
 
     // Passo 1: varre só "Número do caso" + "Data de extração" pra achar a
     // extração mais recente, sem montar o objeto completo de cada linha.
@@ -139,7 +176,7 @@ self.onmessage = function (e) {
       if (!cellCaso || cellCaso.v === undefined || cellCaso.v === '') continue;
       linhasComCaso++;
       const cellExt = ws[XLSX.utils.encode_cell({ r, c: idxExtracao })];
-      const dataExt = cellExt ? lnDataCelulaParaISO(cellExt.v) : null;
+      const dataExt = cellExt ? lnDataParaISO(cellExt.v) : null;
       if (dataExt && (!extracaoMaisRecente || dataExt > extracaoMaisRecente)) extracaoMaisRecente = dataExt;
       if (r % 5000 === 0) self.postMessage({ etapa: 'lendo_planilha', linhaAtual: r });
     }
@@ -151,24 +188,30 @@ self.onmessage = function (e) {
 
     self.postMessage({ etapa: 'extraindo_extracao_mais_recente', dataExtracao: extracaoMaisRecente, linhasRealEncontradas: linhasComCaso });
 
-    // Passo 2: lê por completo só as linhas da extração mais recente,
-    // agrupando por Número do caso (pra detectar duplicidade/conflito).
+    // Passo 2: lê por completo só as linhas da extração mais recente E cujo
+    // GERENTE pode pertencer ao universo (operação ou ambíguo/Sede) —
+    // descarta aqui mesmo qualquer outra gerência, sem levar isso pra
+    // thread principal. Agrupa por Número do caso (pra duplicidade/conflito).
     const casosPorNumero = {};
     for (let r = 1; r <= range.e.r; r++) {
       const cellCaso = ws[XLSX.utils.encode_cell({ r, c: idxCaso })];
       if (!cellCaso || cellCaso.v === undefined || cellCaso.v === '') continue;
       const cellExt = ws[XLSX.utils.encode_cell({ r, c: idxExtracao })];
-      const dataExt = cellExt ? lnDataCelulaParaISO(cellExt.v) : null;
+      const dataExt = cellExt ? lnDataParaISO(cellExt.v) : null;
       if (dataExt !== extracaoMaisRecente) continue;
 
-      const numeroCaso = lnNormalizarCaso(cellCaso.v);
       const get = (idx) => { const c = ws[XLSX.utils.encode_cell({ r, c: idx })]; return c ? c.v : undefined; };
+      const gerenteRaw = get(idxGerente);
+      if (!lnGerentePodeSerDoUniverso(gerenteRaw)) continue;
+
+      const numeroCaso = lnNormalizarNumeroCaso(cellCaso.v);
       const linha = {
         subStatus: String(get(idxSubStatus) || '').trim(),
         pf: String(get(idxPF) || '').trim(),
         dataAberturaRaw: get(idxDataAbertura),
         matricula: lnNormalizarMatricula(get(idxMatricula)),
-        validacaoEmail: String(get(idxValidacao) || '').trim().toUpperCase()
+        validacaoEmail: String(get(idxValidacao) || '').trim().toUpperCase(),
+        gerente: gerenteRaw
       };
       (casosPorNumero[numeroCaso] || (casosPorNumero[numeroCaso] = [])).push(linha);
     }
@@ -188,7 +231,7 @@ self.onmessage = function (e) {
       let conflito = false;
 
       if (linhas.length > 1) {
-        const assinatura = l => `${l.subStatus}|${l.pf}|${l.matricula}|${l.validacaoEmail}`;
+        const assinatura = l => `${l.subStatus}|${l.pf}|${l.matricula}|${l.validacaoEmail}|${l.gerente}`;
         const distintos = new Set(linhas.map(assinatura));
         if (distintos.size > 1) { conflito = true; duplicidadeConflito++; }
         else duplicidadeIdentica++;
@@ -202,7 +245,7 @@ self.onmessage = function (e) {
       const elegivel = base.subStatus === 'Contrato Ativo' && base.pf !== '';
       if (!elegivel) { naoElegiveis++; continue; }
 
-      const dataAbertura = lnParseDataAbertura(base.dataAberturaRaw);
+      const dataAbertura = lnDataParaISO(base.dataAberturaRaw);
       let classificacao = 'PENDENTE_CLASSIFICACAO';
       if (base.validacaoEmail === 'COM EMAIL') { classificacao = 'COM_EMAIL'; comEmail++; }
       else if (base.validacaoEmail === 'SEM EMAIL') { classificacao = 'SEM_EMAIL'; semEmail++; }
@@ -210,7 +253,8 @@ self.onmessage = function (e) {
 
       resultado.push({
         numeroCaso, matricula: base.matricula, dataAbertura, classificacao,
-        situacao: 'elegivel' // matrícula->posto ainda não resolvida aqui
+        gerente: base.gerente, // usado na thread principal pra decidir universo/Sede
+        situacao: 'elegivel' // gerente/matrícula->posto/Sede ainda não resolvidos aqui
       });
     }
 
@@ -230,9 +274,6 @@ self.onmessage = function (e) {
       }
     });
 
-    // Libera a referência do workbook parseado — não fica retido depois do
-    // postMessage; o Worker também será finalizado (terminate()) pela
-    // thread principal assim que a mensagem for processada.
     workbook = null;
   } catch (err) {
     self.postMessage({ etapa: 'erro', codigo: 'ERRO_INESPERADO', mensagem: String((err && err.message) || err) });
