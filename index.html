@@ -26320,33 +26320,41 @@ function lnDesenharGraficosResultado(labels, comPct, semPct, volCom, volSem, ran
   if (_lnCharts.volume) { _lnCharts.volume.destroy(); _lnCharts.volume=null; }
   if (_lnCharts.comparativo) { _lnCharts.comparativo.destroy(); _lnCharts.comparativo=null; }
 
-  // Estratégia pra não poluir a evolução quando há muitos dias: mostra 1
-  // rótulo a cada N pontos, sempre incluindo o primeiro e o último (o valor
-  // mais recente é o que mais importa bater o olho).
-  const passoEvo = labels.length > 12 ? Math.ceil(labels.length/8) : 1;
-  const mostrarPontoEvo = (ctx) => ctx.dataIndex===0 || ctx.dataIndex===labels.length-1 || ctx.dataIndex%passoEvo===0;
-
+  // TODOS os pontos precisam ter rótulo visível — nunca suprimir. Pra manter
+  // legível mesmo com muitos dias no período: fonte pequena, rótulo "Com
+  // E-mail" acima do ponto e "Sem E-mail" abaixo (evita as duas linhas
+  // colidirem no mesmo espaço), e o eixo X roda o texto quando há muitos dias.
   const ce = document.getElementById('ln-chart-evolucao');
+  if (ce) {
+    ce.parentElement.style.paddingBottom = '8px';
+    ce.height = labels.length > 15 ? 320 : 240;
+  }
   if (ce) _lnCharts.evolucao = new Chart(ce.getContext('2d'), {
     type:'line',
     data:{ labels, datasets:[
-      { label:'% Com E-mail', data:comPct, borderColor:'#22c55e', backgroundColor:'transparent', tension:.2 },
-      { label:'% Sem E-mail', data:semPct, borderColor:'#ef4444', backgroundColor:'transparent', tension:.2 },
+      { label:'% Com E-mail', data:comPct, borderColor:'#22c55e', backgroundColor:'transparent', tension:.2,
+        datalabels:{ align:'top', anchor:'end', color:'#16a34a' } },
+      { label:'% Sem E-mail', data:semPct, borderColor:'#ef4444', backgroundColor:'transparent', tension:.2,
+        datalabels:{ align:'bottom', anchor:'start', color:'#dc2626' } },
       { label:'Meta (10%)', data:labels.map(()=>10), borderColor:'#f59e0b', borderDash:[6,4], pointRadius:0, datalabels:{display:false} }
     ]},
     plugins:[ChartDataLabels],
     options:{
       responsive:true,
+      layout:{ padding:{ top:16, bottom:4 } },
       plugins:{
         title:{display:true,text:'Evolução acumulada no período'},
         datalabels:{
-          display: (ctx) => mostrarPontoEvo(ctx),
+          display: true, // sempre — nenhum ponto pode ficar sem rótulo
           formatter: (v) => v==null?'':v.toFixed(1)+'%',
-          align:'top', anchor:'end', font:{size:10,weight:'600'},
-          color: (ctx) => ctx.dataset.borderColor
+          font:{size: labels.length>20?8:(labels.length>10?9:10), weight:'600'},
+          offset:2
         }
       },
-      scales:{y:{min:0,max:100}}
+      scales:{
+        y:{min:0,max:100},
+        x:{ ticks:{ autoSkip:false, maxRotation: labels.length>10?60:0, minRotation: labels.length>10?60:0, font:{size:10} } }
+      }
     }
   });
 
@@ -26870,6 +26878,58 @@ async function lnCarregarConferencia() {
   };
 }
 
+// Estado da tabela de detalhamento dentro da Conferência (sub-aba, busca,
+// ordenação, paginação) — sempre recalculado quando a Conferência é aberta
+// ou os filtros gerais mudam.
+let _lnDetTab = 'ausentes';
+let _lnDetBusca = '';
+let _lnDetOrdenacao = { coluna: null, direcao: 'asc' };
+let _lnDetPagina = 1;
+let _lnDetPorPagina = 25;
+
+const LN_DET_COLUNAS = {
+  ausentes: [
+    {chave:'dataAbertura', label:'Data/Hora de Abertura', tipo:'data'},
+    {chave:'posto', label:'Posto', tipo:'texto'},
+    {chave:'atendenteNome', label:'Atendente', tipo:'texto'},
+    {chave:'matricula', label:'Matrícula', tipo:'texto'},
+    {chave:'numeroCaso', label:'Número do Caso', tipo:'numero'},
+    {chave:'classificacao', label:'Classificação', tipo:'texto'},
+    {chave:'supervisor', label:'Supervisor', tipo:'texto'}
+  ],
+  sem_correspondencia: [
+    {chave:'data', label:'Data', tipo:'data'}, {chave:'cidade', label:'Cidade', tipo:'texto'},
+    {chave:'br', label:'BR', tipo:'texto'}, {chave:'caso', label:'Caso', tipo:'numero'},
+    {chave:'motivo', label:'Motivo', tipo:'texto'}, {chave:'casoSugerido', label:'Caso Sugerido', tipo:'texto'}
+  ],
+  duplicidades: [
+    {chave:'caso', label:'Caso', tipo:'numero'}, {chave:'ocorrencias', label:'Ocorrências', tipo:'numero'},
+    {chave:'cidade', label:'Cidade', tipo:'texto'}, {chave:'br', label:'BR', tipo:'texto'}
+  ],
+  divergencias: [
+    {chave:'tipo', label:'Tipo', tipo:'texto'}, {chave:'numeroCaso', label:'Número do Caso', tipo:'numero'}
+  ]
+};
+
+function lnMontarRankingConferencia(resultado) {
+  const porPosto = {};
+  const touch = (posto) => { if(!porPosto[posto]) porPosto[posto] = {oficiais:0,encontrados:0,ausentes:0}; return porPosto[posto]; };
+  resultado.encontrados.forEach(c => { if(!c.posto) return; const p = touch(c.posto); p.oficiais++; p.encontrados++; });
+  resultado.ausentes.forEach(c => { if(!c.posto) return; const p = touch(c.posto); p.oficiais++; p.ausentes++; });
+  const postosEmEscopo = _lnFiltros.posto ? [_lnFiltros.posto]
+    : (_lnFiltros.supervisor ? TODOS_POSTOS_RG.filter(pCanon => lnPostosDoSupervisorNorm(_lnFiltros.supervisor).has(csatNorm(pCanon))) : TODOS_POSTOS_RG);
+  return postosEmEscopo.map(nome => {
+    const d = porPosto[nome] || {oficiais:0,encontrados:0,ausentes:0};
+    const pct = d.oficiais>0 ? (d.encontrados/d.oficiais*100) : 0;
+    return { nome, ...d, pct, supervisor: (allPostos.find(p=>csatNorm(p.nome)===csatNorm(nome))||{}).supervisor||'—' };
+  }).sort((a,b) => {
+    if (a.oficiais===0 && b.oficiais!==0) return 1;
+    if (b.oficiais===0 && a.oficiais!==0) return -1;
+    if (a.oficiais===0) return 0;
+    return b.pct - a.pct;
+  });
+}
+
 async function lnRenderConferenciaAba() {
   const el = document.getElementById('ln-aba-conferencia');
   if (!el) return;
@@ -26884,58 +26944,192 @@ async function lnRenderConferenciaAba() {
   _lnUltimaConferencia = resultado;
 
   if (!resultado || resultado.semIntersecao) {
-    el.innerHTML = `<div class="empty"><p>Não há período em comum entre a Base Oficial e o Controle vigentes.</p></div>`;
+    el.innerHTML = `<div class="empty"><p>Não há período em comum entre a Base Oficial e o Controle vigentes (dentro do filtro de data selecionado).</p></div>`;
     return;
   }
 
-  const pctPreenchimento = resultado.totalOficialElegivel>0 ? (resultado.encontrados.length/resultado.totalOficialElegivel*100) : 0;
+  const pct = resultado.totalOficialElegivel>0 ? (resultado.encontrados.length/resultado.totalOficialElegivel*100) : 0;
+  const corPct = pct>=70 ? '#22c55e' : (pct>=40 ? '#f59e0b' : '#ef4444');
+  const rankingPostos = lnMontarRankingConferencia(resultado);
+  _lnDetTab = 'ausentes'; _lnDetBusca=''; _lnDetOrdenacao={coluna:null,direcao:'asc'}; _lnDetPagina=1;
+
   el.innerHTML = `
-    <div style="font-size:13px;color:var(--text3);margin-bottom:14px">Período comparável: <strong>${lnFmtData(resultado.periodoComum.inicio)} a ${lnFmtData(resultado.periodoComum.fim)}</strong></div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px;margin-bottom:20px">
-      <div class="card" style="padding:16px 20px"><div style="font-size:11px;color:var(--text3);text-transform:uppercase">Casos Oficiais no Período</div><div style="font-size:26px;font-weight:700">${resultado.totalOficialElegivel}</div></div>
-      <div class="card" style="padding:16px 20px;border-left:4px solid #22c55e"><div style="font-size:11px;color:var(--text3);text-transform:uppercase">Encontrados no Controle</div><div style="font-size:26px;font-weight:700;color:#22c55e">${resultado.encontrados.length}</div></div>
-      <div class="card" style="padding:16px 20px;border-left:4px solid #ef4444"><div style="font-size:11px;color:var(--text3);text-transform:uppercase">Ausentes do Controle</div><div style="font-size:26px;font-weight:700;color:#ef4444">${resultado.ausentes.length}</div></div>
-      <div class="card" style="padding:16px 20px"><div style="font-size:11px;color:var(--text3);text-transform:uppercase">% de Preenchimento</div><div style="font-size:26px;font-weight:700">${pctPreenchimento.toFixed(1)}%</div></div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:14px">Período comparável: <strong>${lnFmtData(resultado.periodoComum.inicio)} a ${lnFmtData(resultado.periodoComum.fim)}</strong></div>
+
+    <div class="card" style="padding:22px 24px;margin-bottom:20px;border-left:5px solid ${corPct};display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:18px">
+      <div>
+        <div style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:6px">% de Preenchimento do Controle</div>
+        <div style="font-size:44px;font-weight:800;color:${corPct};line-height:1">${pct.toFixed(2)}%</div>
+      </div>
+      <div style="display:flex;gap:26px;flex-wrap:wrap">
+        <div><div style="font-size:11px;color:var(--text3);text-transform:uppercase">Casos Oficiais</div><div style="font-size:22px;font-weight:700">${resultado.totalOficialElegivel}</div></div>
+        <div><div style="font-size:11px;color:var(--text3);text-transform:uppercase">Encontrados</div><div style="font-size:22px;font-weight:700;color:#22c55e">${resultado.encontrados.length}</div></div>
+        <div><div style="font-size:11px;color:var(--text3);text-transform:uppercase">Ausentes</div><div style="font-size:22px;font-weight:700;color:#ef4444">${resultado.ausentes.length}</div></div>
+      </div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px">
-      <div class="card" style="padding:14px"><div style="font-size:11px;color:var(--text3)">Sem correspondência no Controle</div><div style="font-size:20px;font-weight:700">${resultado.semCorrespondencia.length}</div></div>
-      <div class="card" style="padding:14px"><div style="font-size:11px;color:var(--text3)">Duplicidades no Controle</div><div style="font-size:20px;font-weight:700">${resultado.duplicidadesControle.length}</div></div>
-      <div class="card" style="padding:14px"><div style="font-size:11px;color:var(--text3)">Divergências</div><div style="font-size:20px;font-weight:700">${resultado.divergencias.length}</div></div>
+
+    <h3 style="font-size:14px;margin:0 0 10px;color:var(--text2)">Resultado por Posto</h3>
+    <div class="card" style="padding:0;overflow:auto;margin-bottom:24px">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="background:var(--surface2)">
+          <th style="padding:9px 12px;text-align:left">Posto</th><th style="padding:9px 12px;text-align:left">Supervisor</th>
+          <th style="padding:9px 12px;text-align:right">Oficiais</th><th style="padding:9px 12px;text-align:right">Encontrados</th>
+          <th style="padding:9px 12px;text-align:right">Ausentes</th><th style="padding:9px 12px;text-align:left">Preenchimento</th>
+        </tr></thead>
+        <tbody>${rankingPostos.map(r => `<tr style="border-top:1px solid var(--border)">
+            <td style="padding:7px 12px">${r.nome}</td>
+            <td style="padding:7px 12px;color:var(--text3)">${r.supervisor}</td>
+            <td style="padding:7px 12px;text-align:right">${r.oficiais}</td>
+            <td style="padding:7px 12px;text-align:right">${r.encontrados}</td>
+            <td style="padding:7px 12px;text-align:right">${r.ausentes}</td>
+            <td style="padding:7px 12px">${r.oficiais===0 ? '<span style="color:var(--text3)">Sem casos</span>' : `
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="width:70px;height:6px;background:var(--surface2);border-radius:3px;overflow:hidden">
+                  <div style="height:100%;width:${r.pct.toFixed(0)}%;background:${r.pct>=70?'#22c55e':r.pct>=40?'#f59e0b':'#ef4444'}"></div>
+                </div>
+                <span style="font-weight:600">${r.pct.toFixed(1)}%</span>
+              </div>`}</td>
+          </tr>`).join('')}</tbody>
+      </table>
     </div>
-    <p style="font-size:12px;color:var(--text3)">Listas completas (ausentes, sem correspondência, duplicidades, divergências) disponíveis na aba <strong>Detalhamento</strong> e na exportação.</p>
+
+    <h3 style="font-size:14px;margin:0 0 10px;color:var(--text2)">Detalhamento</h3>
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap" id="ln-conf-det-abas"></div>
+    <input type="text" class="form-input" id="ln-conf-det-busca" placeholder="🔎 Buscar por número do caso, posto, atendente ou matrícula..." style="margin-bottom:12px;max-width:420px" oninput="lnBuscarDetalhamento(this.value)">
+    <div id="ln-conf-det-corpo"></div>
+  `;
+
+  lnRenderBotoesSubabaDetalhamento();
+  lnRenderTabelaDetalhamentoConferencia();
+}
+
+function lnRenderBotoesSubabaDetalhamento() {
+  const el = document.getElementById('ln-conf-det-abas');
+  if (!el || !_lnUltimaConferencia || _lnUltimaConferencia.semIntersecao) return;
+  const c = _lnUltimaConferencia;
+  const opcoes = [
+    {chave:'ausentes', label:'Ausentes do Controle', n:c.ausentes.length},
+    {chave:'sem_correspondencia', label:'Sem Correspondência', n:c.semCorrespondencia.length},
+    {chave:'duplicidades', label:'Duplicidades', n:c.duplicidadesControle.length},
+    {chave:'divergencias', label:'Divergências', n:c.divergencias.length}
+  ];
+  el.innerHTML = opcoes.map(o => `<button class="btn btn-sm ${_lnDetTab===o.chave?'':'btn-secondary'}" onclick="lnMudarSubabaDetalhamentoConferencia('${o.chave}')">${o.label} (${o.n})</button>`).join('');
+}
+
+function lnMudarSubabaDetalhamentoConferencia(tab) {
+  _lnDetTab = tab; _lnDetOrdenacao = { coluna:null, direcao:'asc' }; _lnDetPagina = 1; _lnDetBusca = '';
+  const busca = document.getElementById('ln-conf-det-busca'); if (busca) busca.value = '';
+  lnRenderBotoesSubabaDetalhamento();
+  lnRenderTabelaDetalhamentoConferencia();
+}
+
+function lnBuscarDetalhamento(valor) { _lnDetBusca = valor; _lnDetPagina = 1; lnRenderTabelaDetalhamentoConferencia(); }
+
+function lnCompararValorDetalhamento(a, b, tipo) {
+  if (a==null || a==='') return (b==null||b==='') ? 0 : -1;
+  if (b==null || b==='') return 1;
+  if (tipo==='numero') return (parseFloat(a)||0) - (parseFloat(b)||0);
+  if (tipo==='data') return String(a).localeCompare(String(b)); // AAAA-MM-DD -> ordena cronologicamente por string mesmo
+  return String(a).localeCompare(String(b), 'pt-BR');
+}
+
+function lnOrdenarDetalhamento(chave) {
+  if (_lnDetOrdenacao.coluna===chave) _lnDetOrdenacao.direcao = _lnDetOrdenacao.direcao==='asc'?'desc':'asc';
+  else { _lnDetOrdenacao.coluna = chave; _lnDetOrdenacao.direcao = 'asc'; }
+  _lnDetPagina = 1;
+  lnRenderTabelaDetalhamentoConferencia();
+}
+
+function lnFmtCelulaDetalhamento(v, tipo) {
+  if (v==null || v==='') return '—';
+  if (tipo==='data') return lnFmtData(v);
+  return v;
+}
+
+// Ordenação/busca acontecem sobre o CONJUNTO FILTRADO INTEIRO, nunca só a
+// página atual — só depois disso é que a paginação corta o que é renderizado.
+function lnRenderTabelaDetalhamentoConferencia() {
+  const corpo = document.getElementById('ln-conf-det-corpo');
+  if (!corpo) return;
+  const c = _lnUltimaConferencia;
+  const colunas = LN_DET_COLUNAS[_lnDetTab];
+  let linhas = [];
+  if (c && !c.semIntersecao) {
+    if (_lnDetTab==='ausentes') linhas = c.ausentes.map(x => ({
+      ...x,
+      atendenteNome: x.atendenteNome || '—',
+      supervisor: (allPostos.find(p=>csatNorm(p.nome)===csatNorm(x.posto))||{}).supervisor || '—'
+    }));
+    else if (_lnDetTab==='sem_correspondencia') linhas = c.semCorrespondencia;
+    else if (_lnDetTab==='duplicidades') linhas = c.duplicidadesControle;
+    else if (_lnDetTab==='divergencias') linhas = c.divergencias;
+  }
+
+  if (_lnDetBusca.trim()) {
+    const alvo = _lnDetBusca.trim().toLowerCase();
+    linhas = linhas.filter(l => colunas.some(col => String(l[col.chave]??'').toLowerCase().includes(alvo)));
+  }
+
+  if (_lnDetOrdenacao.coluna) {
+    const col = colunas.find(cc=>cc.chave===_lnDetOrdenacao.coluna);
+    if (col) {
+      linhas = [...linhas].sort((a,b) => {
+        const r = lnCompararValorDetalhamento(a[col.chave], b[col.chave], col.tipo);
+        return _lnDetOrdenacao.direcao==='asc' ? r : -r;
+      });
+    }
+  }
+
+  const totalLinhas = linhas.length;
+  if (!totalLinhas) { corpo.innerHTML = `<div class="empty"><p>Nada nesta seção para os dados/filtros/busca atuais.</p></div>`; return; }
+  const totalPaginas = Math.max(1, Math.ceil(totalLinhas/_lnDetPorPagina));
+  if (_lnDetPagina > totalPaginas) _lnDetPagina = totalPaginas;
+  const inicio = (_lnDetPagina-1)*_lnDetPorPagina;
+  const pagina = linhas.slice(inicio, inicio+_lnDetPorPagina);
+  const seta = (chave) => _lnDetOrdenacao.coluna===chave ? (_lnDetOrdenacao.direcao==='asc'?' ↑':' ↓') : '';
+
+  corpo.innerHTML = `
+    <div class="card" style="padding:0;overflow:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:var(--surface2)">
+          ${colunas.map(col=>`<th style="padding:8px 10px;text-align:left;white-space:nowrap;cursor:pointer;user-select:none" onclick="lnOrdenarDetalhamento('${col.chave}')" title="Ordenar">${col.label}${seta(col.chave)}</th>`).join('')}
+        </tr></thead>
+        <tbody>${pagina.map(l=>`<tr style="border-top:1px solid var(--border)">${colunas.map(col=>`<td style="padding:6px 10px">${lnFmtCelulaDetalhamento(l[col.chave],col.tipo)}</td>`).join('')}</tr>`).join('')}</tbody>
+      </table>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:12px;color:var(--text3);flex-wrap:wrap;gap:8px">
+      <span>${totalLinhas} registro(s) — página ${_lnDetPagina} de ${totalPaginas}</span>
+      <div style="display:flex;gap:6px;align-items:center">
+        <select class="form-input" style="width:auto;padding:4px 8px" onchange="_lnDetPorPagina=parseInt(this.value,10);_lnDetPagina=1;lnRenderTabelaDetalhamentoConferencia()">
+          <option value="25" ${_lnDetPorPagina===25?'selected':''}>25/página</option>
+          <option value="50" ${_lnDetPorPagina===50?'selected':''}>50/página</option>
+          <option value="100" ${_lnDetPorPagina===100?'selected':''}>100/página</option>
+        </select>
+        <button class="btn btn-sm btn-secondary" ${_lnDetPagina<=1?'disabled':''} onclick="_lnDetPagina--;lnRenderTabelaDetalhamentoConferencia()">‹ Anterior</button>
+        <button class="btn btn-sm btn-secondary" ${_lnDetPagina>=totalPaginas?'disabled':''} onclick="_lnDetPagina++;lnRenderTabelaDetalhamentoConferencia()">Próxima ›</button>
+      </div>
+    </div>
   `;
 }
 
-// ── Detalhamento — renderização controlada, nunca milhares de linhas de uma vez ──
-function lnRenderDetalhamentoAba() {
+// ── Aba Detalhamento (topo) — reorganizada, não apagada: os 4 diagnósticos
+// de cruzamento (Ausentes/Sem Correspondência/Duplicidades/Divergências)
+// agora vivem dentro da própria Conferência (onde fazem mais sentido, junto
+// do % de Preenchimento). Aqui sobra só Pendências, que é sobre a Base
+// Oficial em si, não sobre o cruzamento com o Controle.
+async function lnRenderDetalhamentoAba() {
   const el = document.getElementById('ln-aba-detalhamento');
   if (!el) return;
-  el.innerHTML = `
-    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-      <button class="btn btn-sm" onclick="lnDetalharSecao('ausentes')">Ausentes do Controle</button>
-      <button class="btn btn-sm btn-secondary" onclick="lnDetalharSecao('sem_correspondencia')">Sem Correspondência</button>
-      <button class="btn btn-sm btn-secondary" onclick="lnDetalharSecao('duplicidades')">Duplicidades</button>
-      <button class="btn btn-sm btn-secondary" onclick="lnDetalharSecao('divergencias')">Divergências</button>
-      <button class="btn btn-sm btn-secondary" onclick="lnDetalharSecao('pendencias')">Pendências</button>
-    </div>
-    <div id="ln-detalhamento-corpo"><div class="empty"><p>Selecione uma seção acima.</p></div></div>
-  `;
+  el.innerHTML = `<h3 style="font-size:14px;margin:0 0 10px;color:var(--text2)">Pendências</h3><div id="ln-detalhamento-corpo"><div style="text-align:center;padding:30px;color:var(--text3)">⏳ Carregando...</div></div>`;
+  await lnDetalharSecao('pendencias');
 }
 
 async function lnDetalharSecao(secao) {
   const corpo = document.getElementById('ln-detalhamento-corpo');
   if (!corpo) return;
   corpo.innerHTML = `<div style="text-align:center;padding:30px;color:var(--text3)">⏳ Carregando...</div>`;
-  if (!_lnUltimaConferencia && ['ausentes','sem_correspondencia','duplicidades','divergencias'].includes(secao)) {
-    try { _lnUltimaConferencia = await lnCarregarConferencia(); } catch(e) { console.error('[LigNova] erro ao calcular conferência para detalhamento:', e); }
-  }
-  const c = _lnUltimaConferencia;
   let linhas = [], colunas = [];
-  if (secao==='ausentes' && c && !c.semIntersecao) { linhas = c.ausentes; colunas = ['posto','numeroCaso','dataAbertura','matricula','classificacao']; }
-  else if (secao==='sem_correspondencia' && c && !c.semIntersecao) { linhas = c.semCorrespondencia; colunas = ['caso','data','cidade','br','motivo','casoSugerido']; }
-  else if (secao==='duplicidades' && c && !c.semIntersecao) { linhas = c.duplicidadesControle; colunas = ['caso','ocorrencias','cidade','br']; }
-  else if (secao==='divergencias' && c && !c.semIntersecao) { linhas = c.divergencias; colunas = ['tipo','numeroCaso']; }
-  else if (secao==='pendencias' && _lnConfig && _lnConfig.baseOficial && _lnConfig.baseOficial.snapshotVigenteId) {
+  if (secao==='pendencias' && _lnConfig && _lnConfig.baseOficial && _lnConfig.baseOficial.snapshotVigenteId) {
     try {
       const snap = await db.collection('ligacaonova_base_casos').where('snapshotId','==',_lnConfig.baseOficial.snapshotVigenteId).where('situacao','in',['pendencia_matricula','conflito']).get();
       linhas = snap.docs.map(d=>d.data()); colunas = ['numeroCaso','situacao','matricula','dataAbertura'];
@@ -27003,8 +27197,8 @@ async function lnExportar() {
           ['Ausentes do Controle', conferencia.ausentes.length]
         ]), 'Conferência');
 
-        const ausentesLinhas = [['Posto','Número do Caso','Data Abertura','Matrícula','Classificação']];
-        conferencia.ausentes.forEach(c=>ausentesLinhas.push([c.posto,c.numeroCaso,c.dataAbertura,c.matricula,c.classificacao]));
+        const ausentesLinhas = [['Data/Hora de Abertura','Posto','Atendente','Matrícula','Número do Caso','Classificação','Supervisor']];
+        conferencia.ausentes.forEach(c=>ausentesLinhas.push([c.dataAbertura,c.posto,c.atendenteNome||'—',c.matricula,c.numeroCaso,c.classificacao,(allPostos.find(p=>csatNorm(p.nome)===csatNorm(c.posto))||{}).supervisor||'—']));
         XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ausentesLinhas), 'Ausentes do Controle');
 
         const semCorrLinhas = [['Caso','Data','Cidade','BR','Motivo','Caso Sugerido']];

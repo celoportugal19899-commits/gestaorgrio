@@ -27,6 +27,9 @@ const LN_CAMPOS_OBRIGATORIOS = {
   'DATA DE EXTRACAO': ['DATA DE EXTRACAO'],
   'GERENTE': ['GERENTE']
 };
+// Só usado pra exibição (coluna "Atendente" no Detalhamento) — opcional,
+// nunca bloqueia a importação se a coluna não existir no arquivo.
+const LN_CAMPO_ATENDENTE_NOME = ['CRIADO POR: NOME COMPLETO'];
 
 function lnNormalizarCabecalho(h) {
   return String(h || '')
@@ -166,6 +169,10 @@ self.onmessage = function (e) {
     const idxMatricula = mapa['CRIADO POR: N DO FUNCIONARIO'];
     const idxValidacao = mapa['VALIDACAO EMAIL'];
     const idxGerente = mapa['GERENTE'];
+    // Coluna opcional (só exibição) — resolvida à parte, nunca bloqueia a
+    // importação se não existir no arquivo.
+    let idxAtendenteNome;
+    headerRow.forEach((h, idx) => { if (idxAtendenteNome===undefined && LN_CAMPO_ATENDENTE_NOME.includes(lnNormalizarCabecalho(h))) idxAtendenteNome = idx; });
 
     // Passo 1: varre só "Número do caso" + "Data de extração" pra achar a
     // extração mais recente, sem montar o objeto completo de cada linha.
@@ -211,7 +218,8 @@ self.onmessage = function (e) {
         dataAberturaRaw: get(idxDataAbertura),
         matricula: lnNormalizarMatricula(get(idxMatricula)),
         validacaoEmail: String(get(idxValidacao) || '').trim().toUpperCase(),
-        gerente: gerenteRaw
+        gerente: gerenteRaw,
+        atendenteNome: idxAtendenteNome!==undefined ? String(get(idxAtendenteNome)||'').trim() : ''
       };
       (casosPorNumero[numeroCaso] || (casosPorNumero[numeroCaso] = [])).push(linha);
     }
@@ -253,6 +261,7 @@ self.onmessage = function (e) {
 
       resultado.push({
         numeroCaso, matricula: base.matricula, dataAbertura, classificacao,
+        atendenteNome: base.atendenteNome || '',
         gerente: base.gerente, // usado na thread principal pra decidir universo/Sede
         situacao: 'elegivel' // gerente/matrícula->posto/Sede ainda não resolvidos aqui
       });
