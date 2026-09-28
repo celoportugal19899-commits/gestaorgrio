@@ -26552,7 +26552,7 @@ function lnRenderPreviaBaseOficial(resultado) {
       Aba reconhecida: base<br>
       Data de extração encontrada / extração selecionada: ${lnFmtData(resultado.dataExtracao)}<br>
       Linhas reais encontradas: ${t.linhasRealEncontradas}<br>
-      Casos elegíveis: <strong>${t.elegiveis}</strong> &nbsp; Não elegíveis: ${t.naoElegiveis}<br>
+      Ingressos dos postos (universo GERENTE): <strong>${t.elegiveis + t.pendenciaMatricula}</strong> &nbsp; <span style="color:var(--text3)">(Sub Status e Ponto de Fornecimento não filtram o indicador)</span><br>
       Com E-mail: ${t.comEmail} &nbsp; Sem E-mail: ${t.semEmail} &nbsp; Pendência de classificação: ${t.pendenciaClassificacao}<br>
       Duplicidade idêntica (deduplicada): ${t.duplicidadeIdentica} &nbsp; Duplicidade/conflito (fora do resultado): ${t.duplicidadeConflito}<br>
       Pendência de matrícula/posto: ${t.pendenciaMatricula} &nbsp; Casos da Sede: ${t.sede}<br>
@@ -26650,7 +26650,7 @@ async function lnConfirmarImportacaoBaseOficial() {
     await db.collection('ligacaonova_importacoes').add({
       tipo:'base_oficial', arquivo: resultado.arquivoNome, usuario: currentUser.email,
       dataHora: firebase.firestore.FieldValue.serverTimestamp(), dataExtracao: resultado.dataExtracao, competencia,
-      linhasAnalisadas: resultado.totais.linhasRealEncontradas, validos: resultado.totais.elegiveis, ignorados: resultado.totais.naoElegiveis,
+      linhasAnalisadas: resultado.totais.linhasRealEncontradas, validos: resultado.totais.elegiveis, ignorados: 0,
       duplicados: resultado.totais.duplicidadeIdentica + resultado.totais.duplicidadeConflito,
       pendencias: resultado.totais.pendenciaMatricula, resultado:'sucesso', erro:null
     }).catch(e=>console.error('[LigNova] falha ao registrar diagnóstico (não afeta a importação):', e));
