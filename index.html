@@ -25990,6 +25990,8 @@ let _lnPreviaControleAtual = null;
 let _lnImportandoBase = false;
 let _lnImportandoControle = false;
 let _lnCharts = {};
+let _lnResRankingAtual = [];
+let _lnResOrdenacao = { coluna: null, direcao: 'asc' };
 let _lnUltimaConferencia = null;
 
 async function lnAbrirModulo() {
@@ -26239,7 +26241,8 @@ async function lnRenderResultadoOficial() {
   const ranking = postosEmEscopo.map(nome => {
     const d = porPosto[nome] || {comEmail:0,semEmail:0,total:0};
     const pct = d.total>0 ? (d.semEmail/d.total*100) : null;
-    return { nome, ...d, pctSemEmail: pct, situacao: d.total===0?'SEM_INGRESSOS':(pct<=10?'DENTRO_DA_META':'ACIMA_DA_META') };
+    const supervisor = (allPostos.find(p=>csatNorm(p.nome)===csatNorm(nome))||{}).supervisor||'—';
+    return { nome, supervisor, ...d, pctSemEmail: pct, situacao: d.total===0?'SEM_INGRESSOS':(pct<=10?'DENTRO_DA_META':'ACIMA_DA_META') };
   }).sort((a,b)=>{
     if (a.situacao==='SEM_INGRESSOS' && b.situacao!=='SEM_INGRESSOS') return 1;
     if (b.situacao==='SEM_INGRESSOS' && a.situacao!=='SEM_INGRESSOS') return -1;
@@ -26248,19 +26251,30 @@ async function lnRenderResultadoOficial() {
     return b.total-a.total;
   });
   const postosAcimaMeta = ranking.filter(r=>r.situacao==='ACIMA_DA_META').length;
+  _lnResRankingAtual = ranking;
+  _lnResOrdenacao = { coluna: null, direcao: 'asc' }; // volta pra ordem gerencial padrão a cada novo carregamento/filtro
 
   const diasOrdenados = Array.from(new Set(filtrados.map(a=>a.data))).sort();
   let accCom=0, accSem=0;
   const evoLabels=[], evoComPct=[], evoSemPct=[], volCom=[], volSem=[];
+  const diaLabels=[], diaComPct=[], diaSemPct=[];
   diasOrdenados.forEach(dia => {
     const doDia = filtrados.filter(a=>a.data===dia);
     const cDia = doDia.reduce((s,a)=>s+(a.comEmail||0),0), sDia = doDia.reduce((s,a)=>s+(a.semEmail||0),0);
+    const totalDia = cDia + sDia;
     accCom+=cDia; accSem+=sDia;
     const totalAcc = accCom+accSem;
     evoLabels.push(lnFmtDataCurta(dia));
     evoComPct.push(totalAcc>0?+(accCom/totalAcc*100).toFixed(1):null);
     evoSemPct.push(totalAcc>0?+(accSem/totalAcc*100).toFixed(1):null);
     volCom.push(cDia); volSem.push(sDia);
+    // Resultado Diário: só o que aconteceu NAQUELE dia, nunca acumulado — e
+    // dia sem nenhum ingresso não vira um ponto artificial de 0%, é omitido.
+    if (totalDia > 0) {
+      diaLabels.push(lnFmtDataCurta(dia));
+      diaComPct.push(+(cDia/totalDia*100).toFixed(1));
+      diaSemPct.push(+(sDia/totalDia*100).toFixed(1));
+    }
   });
 
   el.innerHTML = `
@@ -26290,33 +26304,90 @@ async function lnRenderResultadoOficial() {
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
       <div class="card" style="padding:16px"><canvas id="ln-chart-evolucao" height="220"></canvas></div>
-      <div class="card" style="padding:16px"><canvas id="ln-chart-volume" height="220"></canvas></div>
+      <div class="card" style="padding:16px"><canvas id="ln-chart-diario" height="220"></canvas></div>
     </div>
-    ${!_lnFiltros.posto ? `<div class="card" style="padding:16px;margin-bottom:20px"><canvas id="ln-chart-comparativo" height="200"></canvas></div>` : ''}
+    <div style="display:grid;grid-template-columns:${!_lnFiltros.posto?'1fr 1fr':'1fr'};gap:16px;margin-bottom:20px">
+      <div class="card" style="padding:16px"><canvas id="ln-chart-volume" height="220"></canvas></div>
+      ${!_lnFiltros.posto ? `<div class="card" style="padding:16px"><canvas id="ln-chart-comparativo" height="200"></canvas></div>` : ''}
+    </div>
     <div class="card" style="padding:0;overflow:auto">
       <table style="width:100%;border-collapse:collapse;font-size:13px">
-        <thead><tr style="background:var(--surface2)">
-          <th style="padding:10px 12px;text-align:left">Posto</th><th style="padding:10px 12px;text-align:left">Supervisor</th>
-          <th style="padding:10px 12px;text-align:right">Com E-mail</th><th style="padding:10px 12px;text-align:right">Sem E-mail</th>
-          <th style="padding:10px 12px;text-align:right">Total</th><th style="padding:10px 12px;text-align:right">% Sem E-mail</th><th style="padding:10px 12px;text-align:left">Situação</th>
-        </tr></thead>
-        <tbody>${ranking.map(r => `<tr style="border-top:1px solid var(--border)">
-            <td style="padding:8px 12px">${r.nome}</td>
-            <td style="padding:8px 12px;color:var(--text3)">${(allPostos.find(p=>csatNorm(p.nome)===csatNorm(r.nome))||{}).supervisor||'—'}</td>
-            <td style="padding:8px 12px;text-align:right">${r.comEmail}</td>
-            <td style="padding:8px 12px;text-align:right">${r.semEmail}</td>
-            <td style="padding:8px 12px;text-align:right">${r.total}</td>
-            <td style="padding:8px 12px;text-align:right">${r.pctSemEmail!==null?r.pctSemEmail.toFixed(1)+'%':'—'}</td>
-            <td style="padding:8px 12px">${r.situacao==='SEM_INGRESSOS'?'<span style="color:var(--text3)">Sem ingressos</span>':r.situacao==='DENTRO_DA_META'?'<span style="color:#22c55e">✅ Dentro da meta</span>':'<span style="color:#ef4444">⚠️ Acima da meta</span>'}</td>
-          </tr>`).join('')}</tbody>
+        <thead><tr id="ln-res-tabela-head" style="background:var(--surface2)"></tr></thead>
+        <tbody id="ln-res-tabela-corpo"></tbody>
       </table>
     </div>
   `;
-  lnDesenharGraficosResultado(evoLabels, evoComPct, evoSemPct, volCom, volSem, ranking);
+  lnRenderTabelaResultado();
+  lnDesenharGraficosResultado(evoLabels, evoComPct, evoSemPct, volCom, volSem, diaLabels, diaComPct, diaSemPct, ranking);
 }
 
-function lnDesenharGraficosResultado(labels, comPct, semPct, volCom, volSem, ranking) {
+// ── Tabela de postos — ordenável por clique no cabeçalho, sem filtro/busca
+// nova (só ↑/↓). Ordem padrão (sem clique): maior % Sem E-mail, empate por
+// maior volume — igual já era antes.
+const LN_RES_COLUNAS = [
+  {chave:'nome', label:'Posto', tipo:'texto'},
+  {chave:'supervisor', label:'Supervisor', tipo:'texto'},
+  {chave:'comEmail', label:'Com E-mail', tipo:'numero'},
+  {chave:'semEmail', label:'Sem E-mail', tipo:'numero'},
+  {chave:'total', label:'Total', tipo:'numero'},
+  {chave:'pctSemEmail', label:'% Sem E-mail', tipo:'numero'},
+  {chave:'situacao', label:'Situação', tipo:'texto'}
+];
+
+function lnOrdenarRanking(lista) {
+  if (!_lnResOrdenacao.coluna) {
+    return [...lista].sort((a,b)=>{
+      if (a.situacao==='SEM_INGRESSOS' && b.situacao!=='SEM_INGRESSOS') return 1;
+      if (b.situacao==='SEM_INGRESSOS' && a.situacao!=='SEM_INGRESSOS') return -1;
+      if (a.situacao==='SEM_INGRESSOS') return 0;
+      if (Math.abs(b.pctSemEmail-a.pctSemEmail)>0.001) return b.pctSemEmail-a.pctSemEmail;
+      return b.total-a.total;
+    });
+  }
+  const col = LN_RES_COLUNAS.find(c=>c.chave===_lnResOrdenacao.coluna);
+  const dir = _lnResOrdenacao.direcao === 'asc' ? 1 : -1;
+  return [...lista].sort((a,b) => {
+    let va = a[col.chave], vb = b[col.chave];
+    if (col.tipo==='numero') {
+      va = (va==null) ? -1 : va; vb = (vb==null) ? -1 : vb;
+      return (va - vb) * dir;
+    }
+    return String(va??'').localeCompare(String(vb??''), 'pt-BR') * dir;
+  });
+}
+
+function lnOrdenarTabelaResultado(coluna) {
+  if (_lnResOrdenacao.coluna===coluna) _lnResOrdenacao.direcao = _lnResOrdenacao.direcao==='asc'?'desc':'asc';
+  else { _lnResOrdenacao.coluna = coluna; _lnResOrdenacao.direcao = 'asc'; }
+  lnRenderTabelaResultado();
+}
+
+function lnRenderTabelaResultado() {
+  const head = document.getElementById('ln-res-tabela-head');
+  const corpo = document.getElementById('ln-res-tabela-corpo');
+  if (!head || !corpo) return;
+  head.innerHTML = LN_RES_COLUNAS.map(col => {
+    const ativo = _lnResOrdenacao.coluna === col.chave;
+    const seta = ativo ? (_lnResOrdenacao.direcao==='asc'?' ↑':' ↓') : ' ↕';
+    const alinhamento = col.tipo==='numero' ? 'right' : 'left';
+    return `<th style="padding:10px 12px;text-align:${alinhamento};cursor:pointer;user-select:none;white-space:nowrap" onclick="lnOrdenarTabelaResultado('${col.chave}')" title="Ordenar">${col.label}<span style="color:${ativo?'var(--primary)':'var(--text3)'};font-size:11px">${seta}</span></th>`;
+  }).join('');
+
+  const ordenado = lnOrdenarRanking(_lnResRankingAtual);
+  corpo.innerHTML = ordenado.map(r => `<tr style="border-top:1px solid var(--border)">
+      <td style="padding:8px 12px">${r.nome}</td>
+      <td style="padding:8px 12px;color:var(--text3)">${r.supervisor}</td>
+      <td style="padding:8px 12px;text-align:right">${r.comEmail}</td>
+      <td style="padding:8px 12px;text-align:right">${r.semEmail}</td>
+      <td style="padding:8px 12px;text-align:right">${r.total}</td>
+      <td style="padding:8px 12px;text-align:right">${r.pctSemEmail!==null?r.pctSemEmail.toFixed(1)+'%':'—'}</td>
+      <td style="padding:8px 12px">${r.situacao==='SEM_INGRESSOS'?'<span style="color:var(--text3)">Sem ingressos</span>':r.situacao==='DENTRO_DA_META'?'<span style="color:#22c55e">✅ Dentro da meta</span>':'<span style="color:#ef4444">⚠️ Acima da meta</span>'}</td>
+    </tr>`).join('');
+}
+
+function lnDesenharGraficosResultado(labels, comPct, semPct, volCom, volSem, diaLabels, diaComPct, diaSemPct, ranking) {
   if (_lnCharts.evolucao) { _lnCharts.evolucao.destroy(); _lnCharts.evolucao=null; }
+  if (_lnCharts.diario) { _lnCharts.diario.destroy(); _lnCharts.diario=null; }
   if (_lnCharts.volume) { _lnCharts.volume.destroy(); _lnCharts.volume=null; }
   if (_lnCharts.comparativo) { _lnCharts.comparativo.destroy(); _lnCharts.comparativo=null; }
 
@@ -26354,6 +26425,43 @@ function lnDesenharGraficosResultado(labels, comPct, semPct, volCom, volSem, ran
       scales:{
         y:{min:0,max:100},
         x:{ ticks:{ autoSkip:false, maxRotation: labels.length>10?60:0, minRotation: labels.length>10?60:0, font:{size:10} } }
+      }
+    }
+  });
+
+  // Resultado Diário (%) — mesmo padrão visual da Evolução Acumulada, mas
+  // cada ponto considera SÓ aquele dia (nunca acumulado). Dias sem nenhum
+  // ingresso já vêm omitidos de diaLabels/diaComPct/diaSemPct.
+  const cd = document.getElementById('ln-chart-diario');
+  if (cd) {
+    cd.parentElement.style.paddingBottom = '8px';
+    cd.height = diaLabels.length > 15 ? 320 : 240;
+  }
+  if (cd) _lnCharts.diario = new Chart(cd.getContext('2d'), {
+    type:'line',
+    data:{ labels: diaLabels, datasets:[
+      { label:'% Com E-mail', data:diaComPct, borderColor:'#22c55e', backgroundColor:'transparent', tension:.2,
+        datalabels:{ align:'top', anchor:'end', color:'#16a34a' } },
+      { label:'% Sem E-mail', data:diaSemPct, borderColor:'#ef4444', backgroundColor:'transparent', tension:.2,
+        datalabels:{ align:'bottom', anchor:'start', color:'#dc2626' } },
+      { label:'Meta (10%)', data:diaLabels.map(()=>10), borderColor:'#f59e0b', borderDash:[6,4], pointRadius:0, datalabels:{display:false} }
+    ]},
+    plugins:[ChartDataLabels],
+    options:{
+      responsive:true,
+      layout:{ padding:{ top:16, bottom:4 } },
+      plugins:{
+        title:{display:true,text:'Resultado Diário (%)'},
+        datalabels:{
+          display: true,
+          formatter: (v) => v==null?'':v.toFixed(1)+'%',
+          font:{size: diaLabels.length>20?8:(diaLabels.length>10?9:10), weight:'600'},
+          offset:2
+        }
+      },
+      scales:{
+        y:{min:0,max:100},
+        x:{ ticks:{ autoSkip:false, maxRotation: diaLabels.length>10?60:0, minRotation: diaLabels.length>10?60:0, font:{size:10} } }
       }
     }
   });
