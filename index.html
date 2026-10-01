@@ -26388,34 +26388,64 @@ function lnAgruparPorDia(filtrados) {
   return Object.values(porDia).filter(d=>d.total>0).sort((a,b)=>a.data.localeCompare(b.data));
 }
 
-function lnUltimoDiaDoMes(ano, mes) { return new Date(ano, mes, 0).getDate(); }
-
-function lnSemanaDoDia(dataISO) {
-  const dia = parseInt(dataISO.slice(8,10),10);
-  const mesAno = dataISO.slice(0,7);
-  let semana;
-  if (dia<=7) semana=1; else if (dia<=14) semana=2; else if (dia<=21) semana=3; else if (dia<=28) semana=4; else semana=5;
-  return `${mesAno}-S${semana}`;
+// Dia operacional = segunda a sexta, excluindo feriado (reaproveita isFeriado,
+// já homologado e usado em outros módulos — nenhuma lista nova inventada).
+function lnEhDiaOperacional(dataISO) {
+  const d = new Date(dataISO + 'T00:00:00');
+  const dow = d.getDay(); // 0=domingo ... 6=sábado
+  if (dow === 0 || dow === 6) return false;
+  const [ano, mes, dia] = dataISO.split('-').map(Number);
+  if (typeof isFeriado === 'function' && isFeriado(ano, mes, dia)) return false;
+  return true;
 }
 
-function lnRotuloSemana(chave) {
-  const ano = chave.slice(0,4), mes = chave.slice(5,7), semNum = parseInt(chave.slice(9),10);
-  const inicios = {1:1,2:8,3:15,4:22,5:29};
-  const fins = {1:7,2:14,3:21,4:28,5:lnUltimoDiaDoMes(parseInt(ano,10),parseInt(mes,10))};
-  return `${String(inicios[semNum]).padStart(2,'0')}–${String(fins[semNum]).padStart(2,'0')}/${mes}`;
+// Segunda e sexta da semana operacional (teórica, independente de haver
+// movimento) a que pertence um dia qualquer.
+function lnSemanaOperacionalDoDia(dataISO) {
+  const d = new Date(dataISO + 'T00:00:00');
+  const dow = d.getDay();
+  const diffSeg = dow === 0 ? -6 : (1 - dow);
+  const segunda = new Date(d); segunda.setDate(d.getDate() + diffSeg);
+  const sexta = new Date(segunda); sexta.setDate(segunda.getDate() + 4);
+  return { segunda, sexta };
+}
+
+function lnISODateLocal(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+
+// Rótulo da semana (ex.: "01–04/09", "28–30/09") clipado aos limites do mês
+// dos dias reais daquela semana — nunca mostra dia de outro mês.
+function lnRotuloSemanaOperacional(segunda, sexta, mesAnoReferencia) {
+  const [anoRef, mesRef] = mesAnoReferencia.split('-').map(Number);
+  const primeiroDiaMes = new Date(anoRef, mesRef-1, 1);
+  const ultimoDiaMes = new Date(anoRef, mesRef, 0);
+  const inicioClip = segunda < primeiroDiaMes ? primeiroDiaMes : segunda;
+  const fimClip = sexta > ultimoDiaMes ? ultimoDiaMes : sexta;
+  const fmt = (d) => String(d.getDate()).padStart(2,'0');
+  return `${fmt(inicioClip)}–${fmt(fimClip)}/${String(mesRef).padStart(2,'0')}`;
 }
 
 // Semana SEM movimento simplesmente não aparece no array — nunca vira 0%.
+// Fim de semana e feriado nunca entram na composição (nem no rótulo, nem
+// no cálculo) — um feriado dentro do intervalo visual da semana não gera
+// movimento artificial.
 function lnAgruparPorSemana(diasAgregados) {
-  const porSemana = {};
-  diasAgregados.forEach(d => {
-    const chave = lnSemanaDoDia(d.data);
-    if (!porSemana[chave]) porSemana[chave] = { chave, comEmail:0, semEmail:0, total:0 };
-    porSemana[chave].comEmail += d.comEmail; porSemana[chave].semEmail += d.semEmail; porSemana[chave].total += d.total;
+  const diasOperacionais = diasAgregados.filter(d => lnEhDiaOperacional(d.data));
+  const grupos = {};
+  diasOperacionais.forEach(d => {
+    const { segunda, sexta } = lnSemanaOperacionalDoDia(d.data);
+    const chave = lnISODateLocal(segunda);
+    if (!grupos[chave]) grupos[chave] = { chave, segunda, sexta, diasData: [], comEmail:0, semEmail:0, total:0 };
+    grupos[chave].diasData.push(d.data);
+    grupos[chave].comEmail += d.comEmail; grupos[chave].semEmail += d.semEmail; grupos[chave].total += d.total;
   });
-  const lista = Object.values(porSemana).sort((a,b)=>a.chave.localeCompare(b.chave)).map(s => ({
-    ...s, rotulo: lnRotuloSemana(s.chave), pctSemEmail: s.total>0 ? (s.semEmail/s.total*100) : null
-  }));
+  const lista = Object.values(grupos).sort((a,b)=>a.chave.localeCompare(b.chave)).map(g => {
+    const mesReferencia = g.diasData[0].slice(0,7); // AAAA-MM do primeiro dia real daquela semana
+    return {
+      ...g,
+      rotulo: lnRotuloSemanaOperacional(g.segunda, g.sexta, mesReferencia),
+      pctSemEmail: g.total>0 ? (g.semEmail/g.total*100) : null
+    };
+  });
   lista.forEach((s,i) => {
     s.variacaoPP = (i>0 && lista[i-1].pctSemEmail!=null && s.pctSemEmail!=null) ? +(s.pctSemEmail - lista[i-1].pctSemEmail).toFixed(1) : null;
   });
@@ -26532,7 +26562,7 @@ function lnCardRecorrenciaDestaques(ranking, recorrenciaPorPosto) {
 // entre os postos acima da meta (não só %), exatamente pra evitar que 1
 // ingresso/1 sem-email/100% suplante 50 ingressos/20 sem-email/40%.
 function lnCardOndeAtuar(ranking, totalSemEmailGeral) {
-  const prioridades = ranking.filter(r=>r.situacao==='ACIMA_DA_META').sort((a,b)=>b.semEmail-a.semEmail).slice(0,3);
+  const prioridades = ranking.filter(r=>r.situacao==='ACIMA_DA_META').sort((a,b)=>b.semEmail-a.semEmail).slice(0,5);
   if (!prioridades.length) {
     return { html: `<div class="card" style="padding:16px 18px"><h4 style="margin:0 0 8px;font-size:13px">🚩 Onde Atuar Primeiro</h4><p style="font-size:12px;color:var(--text3);margin:0">Nenhum posto acima da meta no período filtrado.</p></div>`, prioridades: [] };
   }
@@ -26556,7 +26586,9 @@ function lnCardOndeAtuar(ranking, totalSemEmailGeral) {
 function lnCardPotencialRecuperacao(prioridades, totalGeral, totalSemEmailGeral) {
   if (!prioridades.length || totalGeral<=0) return `<div class="card" style="padding:16px 18px"><h4 style="margin:0 0 8px;font-size:13px">🧮 Potencial de Recuperação <span style="font-size:10px;font-weight:700;color:var(--text3);background:var(--surface2);padding:2px 6px;border-radius:4px;margin-left:4px">SIMULAÇÃO</span></h4><p style="font-size:12px;color:var(--text3);margin:0">Sem postos prioritários para simular neste período.</p></div>`;
   let reducaoTotal = 0;
-  prioridades.forEach(p => { const semSimulado = Math.round(p.total*0.10); reducaoTotal += Math.max(0, p.semEmail - semSimulado); });
+  // floor (não round): round(46×0,10)=5, mas 5/46=10,87% ainda fica ACIMA da
+  // meta — floor garante o maior inteiro de Sem E-mail que mantém ≤10%.
+  prioridades.forEach(p => { const semSimulado = Math.floor(p.total*0.10); reducaoTotal += Math.max(0, p.semEmail - semSimulado); });
   const semSimuladoGeral = totalSemEmailGeral - reducaoTotal;
   const pctSimulado = (semSimuladoGeral/totalGeral)*100;
   const pctReal = (totalSemEmailGeral/totalGeral)*100;
@@ -26618,7 +26650,7 @@ function lnCardDistanciaMeta(pctAtual) {
 function lnCardRecuperacaoPosto(total, semEmail, pctAtual) {
   if (pctAtual<=10 || total<=0) return `<div class="card" style="padding:16px 18px"><h4 style="margin:0 0 8px;font-size:13px">🧮 Potencial / Esforço de Recuperação <span style="font-size:10px;font-weight:700;color:var(--text3);background:var(--surface2);padding:2px 6px;border-radius:4px;margin-left:4px">SIMULAÇÃO</span></h4><p style="font-size:12px;color:var(--text3);margin:0">Posto já está dentro da meta — sem excesso a recuperar.</p></div>`;
 
-  const equivalenteMeta = Math.round(total*0.10);
+  const equivalenteMeta = Math.floor(total*0.10);
   const excesso = semEmail - equivalenteMeta;
   const alvos = [20,15,10].filter(a=>a<pctAtual);
   const esforcos = alvos.map(a => ({ alvo:a, necessario: Math.max(0, Math.ceil(semEmail*100/a - total)) }));
