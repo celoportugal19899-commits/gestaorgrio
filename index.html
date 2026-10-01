@@ -22691,6 +22691,8 @@ function _opNormMesRef(m) {
   if (mm) return `${mm[1]}-${mm[2].padStart(2,'0')}`;
   mm = s.match(/^(\d{4})(\d{2})$/);                   // "202601" (6 dígitos, sem separador)
   if (mm) return `${mm[1]}-${mm[2]}`;
+  mm = s.match(/^(\d{1,2})[-\/_.](\d{4})$/);          // formato invertido: "09/2026", "9-2026"...
+  if (mm && +mm[1]>=1 && +mm[1]<=12) return `${mm[2]}-${mm[1].padStart(2,'0')}`;
   console.warn('[Dashboard Operacional] mesRef em formato não reconhecido, mantido como veio:', JSON.stringify(m));
   return s; // formato não reconhecido — nunca descarta, só não normaliza
 }
@@ -22754,7 +22756,16 @@ function _opMesesTodos() {
   const mp=[...new Set(_opAllPos.map(d=>d.mesRef))];
   return [...new Set([...mi,...mp])].filter(Boolean).sort();
 }
-function _opPostosDisponiveis() { return allPostos.filter(p=>p.nome!=='Posto Teste').map(p=>p.nome).sort(); }
+function _opDedupPostos(lista) {
+  const vistos = new Set();
+  const resultado = [];
+  lista.forEach(nome => {
+    const chave = _opNormNome(nome);
+    if (!vistos.has(chave)) { vistos.add(chave); resultado.push(nome); }
+  });
+  return resultado.sort();
+}
+function _opPostosDisponiveis() { return _opDedupPostos(allPostos.filter(p=>p.nome!=='Posto Teste').map(p=>p.nome)); }
 function _opSupervisoresDisponiveis() { return [...new Set(allPostos.map(p=>p.supervisor).filter(Boolean))].sort(); }
 
 function _opFiltrarPostoSup(dados, campoPosto) {
@@ -22773,9 +22784,23 @@ function _opMesesConsiderados(fonteMeses) { return _opMesesSel.length ? _opMeses
 // Só devolve os agregados do Email Ligação Nova quando a competência vigente
 // bate com o(s) Mês(es) selecionado(s) no Dash — nunca mistura snapshot de
 // uma competência diferente da que o usuário está olhando.
+//
+// Compara sempre pela forma NORMALIZADA dos dois lados (via _opNormMesRef) —
+// nunca por igualdade direta de string. _opMesesSel já guarda valores
+// normalizados (vêm de _opMesesTodos(), que lê de fontes já passadas por
+// _opNormMesRef), mas comparar direto contra _opLnCompetenciaVigente sem
+// renormalizar os dois lados no momento da comparação é frágil a qualquer
+// variação de formato que escape da normalização de origem — a mesma classe
+// de problema que a própria _opNormMesRef já existe pra cobrir entre
+// indicadores/CSAT/POS. Normalizar aqui de novo é defensivo e nunca altera
+// um valor que já estava correto.
 function _opLnDadosFiltrados() {
   if (!_opLnAgregados.length) return [];
-  if (_opMesesSel.length && !_opMesesSel.includes(_opLnCompetenciaVigente)) return [];
+  if (_opMesesSel.length) {
+    const competenciaNorm = _opNormMesRef(_opLnCompetenciaVigente);
+    const selNorm = _opMesesSel.map(m => _opNormMesRef(m));
+    if (!selNorm.includes(competenciaNorm)) return [];
+  }
   return _opLnAgregados;
 }
 
@@ -23142,7 +23167,7 @@ async function renderDashboardOperacional() {
     return;
   }
 
-  const postosDisp = _opFiltroSupervisor ? allPostos.filter(p=>p.supervisor===_opFiltroSupervisor).map(p=>p.nome).sort() : _opPostosDisponiveis();
+  const postosDisp = _opFiltroSupervisor ? _opDedupPostos(allPostos.filter(p=>p.supervisor===_opFiltroSupervisor).map(p=>p.nome)) : _opPostosDisponiveis();
   const supervisoresDisp = _opSupervisoresDisponiveis();
   const selLabel = _opMesesSel.length ? _opMesesSel.map(_indMesLabel).join(', ') : `Todos (${mesesTodos.length})`;
 
@@ -27140,6 +27165,7 @@ async function lnResolverMatriculaPostoEmLote(casos) {
       const rFallback = String(postoFallback).trim().toLowerCase()==='sede' ? 'Sede' : lnResolverNomePosto(postoFallback);
       if (rUsers && rFallback && rUsers !== rFallback) {
         c.situacao = 'conflito_matricula'; c.postoUsers = rUsers; c.postoFallback = rFallback;
+        console.warn('[LigNova] CONFLITO de matrícula — diagnóstico:', { matricula:m, numeroCaso:c.numeroCaso, postoUsersBruto:postoUsers, postoFallbackBruto:postoFallback, postoUsersResolvido:rUsers, postoFallbackResolvido:rFallback });
         resultadoFinal.push(c); return;
       }
     }
@@ -27154,9 +27180,17 @@ async function lnResolverMatriculaPostoEmLote(casos) {
     if (!dentroDoUniversoPorGerente) return; // outra gerência e matrícula não é Sede -> fora do universo, descartado (NUNCA vira pendência)
 
     // Dentro do universo por GERENTE, mas sem posto resolvido -> pendência real
-    if (!m || postoBruto === undefined || postoBruto === null || postoBruto === '') { c.situacao = 'pendencia_matricula'; resultadoFinal.push(c); return; }
+    if (!m || postoBruto === undefined || postoBruto === null || postoBruto === '') {
+      c.situacao = 'pendencia_matricula';
+      console.warn('[LigNova] PENDÊNCIA de matrícula — diagnóstico:', { matricula:m||'(vazia)', numeroCaso:c.numeroCaso, encontradaEmUsers: postoUsers!==undefined, encontradaEmFallback: postoFallback!==undefined, valorUsers:postoUsers, valorFallback:postoFallback });
+      resultadoFinal.push(c); return;
+    }
     const postoResolvido = lnResolverNomePosto(postoBruto);
-    if (!postoResolvido) { c.situacao = 'pendencia_matricula'; resultadoFinal.push(c); return; }
+    if (!postoResolvido) {
+      c.situacao = 'pendencia_matricula';
+      console.warn('[LigNova] PENDÊNCIA de matrícula — posto bruto encontrado mas não resolveu pra nenhum posto canônico:', { matricula:m, numeroCaso:c.numeroCaso, postoBruto });
+      resultadoFinal.push(c); return;
+    }
     c.posto = postoResolvido;
     resultadoFinal.push(c);
   });
@@ -27867,7 +27901,8 @@ async function lnSincronizarAtivosDeslig(input) {
       const br = String(linha['BR']||'').trim().toUpperCase();
       const local = String(linha['Local']||'').trim();
       if (!br || !local) { semAcao++; continue; }
-      if ((allUsers||[]).find(u => u.matriculaBR && String(u.matriculaBR).trim().toUpperCase()===br)) continue; // já resolvido via users — fallback não é necessário
+      const jaEmUsers = (allUsers||[]).find(u => u.matriculaBR && String(u.matriculaBR).trim().toUpperCase()===br);
+      if (jaEmUsers) { console.log('[LigNova] ATIVOS: matrícula já resolvida via users.matriculaBR, fallback não gravado para esta linha:', { br, local, userName: jaEmUsers.name, userLocal: jaEmUsers.local }); continue; }
 
       // Fallback: SEMPRE grava quando BR+Local são válidos — independente de
       // existir ou não uma sugestão pendente pro Time logo abaixo. São
@@ -27875,6 +27910,7 @@ async function lnSincronizarAtivosDeslig(input) {
       // ajuda a completar o cadastro permanente depois) e uma nunca pode
       // bloquear a outra — esse bloqueio mútuo era exatamente o bug.
       const postoResolvido = local.toLowerCase()==='sede' ? 'Sede' : (lnResolverNomePosto(local) || local);
+      console.log('[LigNova] ATIVOS: gravando fallback:', { br, localOriginal: local, postoResolvido });
       batch.set(db.collection('ligacaonova_matricula_fallback').doc(br), { matriculaBR: br, posto: postoResolvido, origem:'ativos_deslig_sync', atualizadoEm: new Date().toISOString() });
       fallbackAtualizado++; opsNoBatch++;
       if (opsNoBatch >= 400) { await batch.commit(); batch = db.batch(); opsNoBatch = 0; }
