@@ -27088,6 +27088,7 @@ async function lnProcessarBaseOficial(file) {
     resultadoWorker.totais.comEmail = resultadoWorker.casos.filter(c=>c.classificacao==='COM_EMAIL' && (c.situacao==='elegivel'||c.situacao==='pendencia_matricula')).length;
     resultadoWorker.totais.semEmail = resultadoWorker.casos.filter(c=>c.classificacao==='SEM_EMAIL' && (c.situacao==='elegivel'||c.situacao==='pendencia_matricula')).length;
     resultadoWorker.totais.pendenciaMatricula = resultadoWorker.casos.filter(c=>c.situacao==='pendencia_matricula').length;
+    resultadoWorker.totais.conflitoMatricula = resultadoWorker.casos.filter(c=>c.situacao==='conflito_matricula').length;
     resultadoWorker.totais.sede = resultadoWorker.casos.filter(c=>c.situacao==='sede').length;
     resultadoWorker.arquivoNome = file.name;
 
@@ -27129,8 +27130,23 @@ async function lnResolverMatriculaPostoEmLote(casos) {
     const dentroDoUniversoPorGerente = gerenteNorm === 'MARCELO PORTUGAL';
 
     const m = c.matricula;
-    let postoBruto = m ? mapaUsers[m] : undefined;
-    if (postoBruto === undefined && m) postoBruto = mapaFallback[m];
+    const postoUsers = m ? mapaUsers[m] : undefined;       // undefined = matrícula não cadastrada em users
+    const postoFallback = m ? mapaFallback[m] : undefined; // undefined = sem cobertura do ATIVOS/DESLIG
+
+    // Conflito: users E fallback existem, os dois têm valor, e resolvem pra
+    // postos DIFERENTES depois de normalizados — nunca escolher silenciosamente.
+    if (postoUsers !== undefined && postoUsers !== null && postoFallback !== undefined && postoFallback !== null) {
+      const rUsers = String(postoUsers).trim().toLowerCase()==='sede' ? 'Sede' : lnResolverNomePosto(postoUsers);
+      const rFallback = String(postoFallback).trim().toLowerCase()==='sede' ? 'Sede' : lnResolverNomePosto(postoFallback);
+      if (rUsers && rFallback && rUsers !== rFallback) {
+        c.situacao = 'conflito_matricula'; c.postoUsers = rUsers; c.postoFallback = rFallback;
+        resultadoFinal.push(c); return;
+      }
+    }
+
+    // Sem conflito (ou só uma das fontes existe): users continua prioridade
+    // quando presente — arquitetura não mudou, só a detecção de divergência.
+    let postoBruto = postoUsers !== undefined ? postoUsers : postoFallback;
     const ehSede = postoBruto !== undefined && postoBruto !== null && String(postoBruto).trim().toLowerCase() === 'sede';
 
     if (ehSede) { c.situacao = 'sede'; c.posto = 'Sede'; resultadoFinal.push(c); return; }
@@ -27162,7 +27178,7 @@ function lnRenderPreviaBaseOficial(resultado) {
       Ingressos dos postos (universo GERENTE): <strong>${t.elegiveis + t.pendenciaMatricula}</strong> &nbsp; <span style="color:var(--text3)">(Sub Status e Ponto de Fornecimento não filtram o indicador)</span><br>
       Com E-mail: ${t.comEmail} &nbsp; Sem E-mail: ${t.semEmail} &nbsp; Pendência de classificação: ${t.pendenciaClassificacao}<br>
       Duplicidade idêntica (deduplicada): ${t.duplicidadeIdentica} &nbsp; Duplicidade/conflito (fora do resultado): ${t.duplicidadeConflito}<br>
-      Pendência de matrícula/posto: ${t.pendenciaMatricula} &nbsp; Casos da Sede: ${t.sede}<br>
+      Pendência de matrícula/posto: ${t.pendenciaMatricula} &nbsp; Conflito de matrícula (users × ATIVOS divergentes): ${t.conflitoMatricula||0} &nbsp; Casos da Sede: ${t.sede}<br>
       Quantidade que será gravada/substituída: <strong>${t.elegiveis + t.pendenciaMatricula + t.sede + t.duplicidadeConflito}</strong>
     </div>
     <button class="btn btn-primary btn-sm" id="ln-btn-confirmar-base" style="margin-top:10px" onclick="lnConfirmarImportacaoBaseOficial()">✅ Confirmar Importação</button>
@@ -27187,7 +27203,7 @@ async function lnConfirmarImportacaoBaseOficial() {
     }
 
     const snapshotId = `basecomp_${competencia}_${Date.now()}`;
-    const casosValidos = resultado.casos.filter(c => ['elegivel','sede','pendencia_matricula','conflito'].includes(c.situacao));
+    const casosValidos = resultado.casos.filter(c => ['elegivel','sede','pendencia_matricula','conflito','conflito_matricula'].includes(c.situacao));
 
     await db.collection('ligacaonova_base_snapshots').doc(snapshotId).set({
       id: snapshotId, competencia, status: 'gravando', dataExtracao: resultado.dataExtracao,
@@ -27738,8 +27754,8 @@ async function lnDetalharSecao(secao) {
   let linhas = [], colunas = [];
   if (secao==='pendencias' && _lnConfig && _lnConfig.baseOficial && _lnConfig.baseOficial.snapshotVigenteId) {
     try {
-      const snap = await db.collection('ligacaonova_base_casos').where('snapshotId','==',_lnConfig.baseOficial.snapshotVigenteId).where('situacao','in',['pendencia_matricula','conflito']).get();
-      linhas = snap.docs.map(d=>d.data()); colunas = ['numeroCaso','situacao','matricula','dataAbertura'];
+      const snap = await db.collection('ligacaonova_base_casos').where('snapshotId','==',_lnConfig.baseOficial.snapshotVigenteId).where('situacao','in',['pendencia_matricula','conflito','conflito_matricula']).get();
+      linhas = snap.docs.map(d=>d.data()); colunas = ['numeroCaso','situacao','matricula','dataAbertura','postoUsers','postoFallback'];
     } catch(e) { console.error('[LigNova] erro ao carregar pendências:', e); }
   }
 
@@ -27851,17 +27867,25 @@ async function lnSincronizarAtivosDeslig(input) {
       const br = String(linha['BR']||'').trim().toUpperCase();
       const local = String(linha['Local']||'').trim();
       if (!br || !local) { semAcao++; continue; }
-      if ((allUsers||[]).find(u => u.matriculaBR && String(u.matriculaBR).trim().toUpperCase()===br)) continue; // já sincronizado
+      if ((allUsers||[]).find(u => u.matriculaBR && String(u.matriculaBR).trim().toUpperCase()===br)) continue; // já resolvido via users — fallback não é necessário
 
+      // Fallback: SEMPRE grava quando BR+Local são válidos — independente de
+      // existir ou não uma sugestão pendente pro Time logo abaixo. São
+      // finalidades diferentes (fallback resolve a matrícula JÁ; sugestão só
+      // ajuda a completar o cadastro permanente depois) e uma nunca pode
+      // bloquear a outra — esse bloqueio mútuo era exatamente o bug.
+      const postoResolvido = local.toLowerCase()==='sede' ? 'Sede' : (lnResolverNomePosto(local) || local);
+      batch.set(db.collection('ligacaonova_matricula_fallback').doc(br), { matriculaBR: br, posto: postoResolvido, origem:'ativos_deslig_sync', atualizadoEm: new Date().toISOString() });
+      fallbackAtualizado++; opsNoBatch++;
+      if (opsNoBatch >= 400) { await batch.commit(); batch = db.batch(); opsNoBatch = 0; }
+
+      // Sugestão: independente do fallback acima — só ajuda a completar o
+      // cadastro permanente do Time quando houver candidato pelo nome.
       const nome = String(linha['Nome do Funcionário']||'').trim().toLowerCase();
       const candidato = (allUsers||[]).find(u => (u.name||'').trim().toLowerCase()===nome && !u.matriculaBR);
       if (candidato) {
         batch.set(db.collection('ligacaonova_sugestoes_matricula').doc(candidato.id), { userId:candidato.id, userName:candidato.name, matriculaBRSugerida: br, posto: local, criadoEm: new Date().toISOString() });
         sugeridos++; opsNoBatch++;
-      } else {
-        const postoResolvido = local.toLowerCase()==='sede' ? 'Sede' : (lnResolverNomePosto(local) || local);
-        batch.set(db.collection('ligacaonova_matricula_fallback').doc(br), { matriculaBR: br, posto: postoResolvido, origem:'ativos_deslig_sync', atualizadoEm: new Date().toISOString() });
-        fallbackAtualizado++; opsNoBatch++;
       }
       if (opsNoBatch >= 400) { await batch.commit(); batch = db.batch(); opsNoBatch = 0; }
     }
