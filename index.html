@@ -26537,28 +26537,34 @@ function lnISODateLocal(d) { return `${d.getFullYear()}-${String(d.getMonth()+1)
 
 // Rótulo da semana (ex.: "01–04/09", "28–30/09") clipado aos limites do mês
 // dos dias reais daquela semana — nunca mostra dia de outro mês.
-// Limite superior que a última semana nunca pode ultrapassar — a Data de
-// Extração REAL da Base Oficial vigente (nunca data do sistema/navegador),
-// e Data Final do filtro quando o usuário tiver selecionado uma.
-function lnLimiteSuperiorSemana() {
+//
+// Limite superior que a última semana nunca pode ultrapassar. Regra
+// principal: MAX(Data/Hora de abertura) dos casos do universo FILTRADO
+// (Mês/Supervisor/Posto/Data) — nunca a Data de Extração, que serve só como
+// teto de segurança adicional (nunca para completar a semana
+// artificialmente), e Data Final do filtro quando o usuário tiver
+// selecionado uma. Nunca usa data do sistema/navegador.
+function lnLimiteSuperiorSemana(ultimoDiaComCasoISO) {
   const limites = [];
-  if (_lnConfig && _lnConfig.baseOficial && _lnConfig.baseOficial.dataExtracaoReal) limites.push(_lnConfig.baseOficial.dataExtracaoReal);
+  if (ultimoDiaComCasoISO) limites.push(ultimoDiaComCasoISO); // regra principal
+  if (_lnConfig && _lnConfig.baseOficial && _lnConfig.baseOficial.dataExtracaoReal) limites.push(_lnConfig.baseOficial.dataExtracaoReal); // teto de segurança
   if (_lnFiltros.dataFim) limites.push(_lnFiltros.dataFim);
   return limites.length ? limites.sort()[0] : null; // o mais restritivo (menor)
 }
 
-function lnRotuloSemanaOperacional(segunda, sexta, mesAnoReferencia) {
+function lnRotuloSemanaOperacional(segunda, sexta, mesAnoReferencia, ultimoDiaComCasoISO) {
   const [anoRef, mesRef] = mesAnoReferencia.split('-').map(Number);
   const primeiroDiaMes = new Date(anoRef, mesRef-1, 1);
   const ultimoDiaMes = new Date(anoRef, mesRef, 0);
   const inicioClip = segunda < primeiroDiaMes ? primeiroDiaMes : segunda;
   let fimClip = sexta > ultimoDiaMes ? ultimoDiaMes : sexta;
 
-  // Semana parcial: o limite real (extração vigente / Data Final) corta a
-  // semana ANTES do que seria o fim dela dentro do mês — indica que ainda
-  // falta(m) dia(s) útil(eis) previsto(s) pra essa semana completar.
+  // Semana parcial: o limite real (último dia com caso no universo filtrado,
+  // ou os tetos de segurança) corta a semana ANTES do que seria o fim dela
+  // dentro do mês — indica que ainda falta(m) dia(s) útil(eis) previsto(s)
+  // pra essa semana completar.
   let parcial = false;
-  const limiteISO = lnLimiteSuperiorSemana();
+  const limiteISO = lnLimiteSuperiorSemana(ultimoDiaComCasoISO);
   if (limiteISO) {
     const limiteDate = new Date(limiteISO + 'T00:00:00');
     if (limiteDate < fimClip) { fimClip = limiteDate; parcial = true; }
@@ -26573,6 +26579,10 @@ function lnRotuloSemanaOperacional(segunda, sexta, mesAnoReferencia) {
 // no cálculo) — um feriado dentro do intervalo visual da semana não gera
 // movimento artificial.
 function lnAgruparPorSemana(diasAgregados) {
+  // MAX(Data/Hora de abertura) do universo JÁ FILTRADO que chegou aqui —
+  // diasAgregados já vem ordenado ascendente (lnAgruparPorDia), então o
+  // último item é o último dia com pelo menos 1 caso.
+  const ultimoDiaComCasoISO = diasAgregados.length ? diasAgregados[diasAgregados.length-1].data : null;
   const diasOperacionais = diasAgregados.filter(d => lnEhDiaOperacional(d.data));
   const grupos = {};
   diasOperacionais.forEach(d => {
@@ -26584,7 +26594,7 @@ function lnAgruparPorSemana(diasAgregados) {
   });
   const lista = Object.values(grupos).sort((a,b)=>a.chave.localeCompare(b.chave)).map(g => {
     const mesReferencia = g.diasData[0].slice(0,7); // AAAA-MM do primeiro dia real daquela semana
-    const { rotulo, parcial } = lnRotuloSemanaOperacional(g.segunda, g.sexta, mesReferencia);
+    const { rotulo, parcial } = lnRotuloSemanaOperacional(g.segunda, g.sexta, mesReferencia, ultimoDiaComCasoISO);
     return { ...g, rotulo, parcial, pctSemEmail: g.total>0 ? (g.semEmail/g.total*100) : null };
   });
   lista.forEach((s,i) => {
