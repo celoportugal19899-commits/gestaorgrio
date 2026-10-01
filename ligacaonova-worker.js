@@ -209,6 +209,23 @@ self.onmessage = function (e) {
 
       const get = (idx) => { const c = ws[XLSX.utils.encode_cell({ r, c: idx })]; return c ? c.v : undefined; };
       const gerenteRaw = get(idxGerente);
+      const matriculaRaw = get(idxMatricula);
+
+      // Diagnóstico temporário — rastreamento da matrícula em investigação
+      // (Italva/Alerrandra), ANTES do filtro de universo por GERENTE, pra
+      // flagrar explicitamente se a linha está sendo descartada já aqui
+      // (GERENTE diferente de MARCELO PORTUGAL e não-ambíguo). Remover
+      // depois de confirmada a causa.
+      if (lnNormalizarMatricula(matriculaRaw) === 'BR0187055567') {
+        const passaUniverso = lnGerentePodeSerDoUniverso(gerenteRaw);
+        self.postMessage({ etapa: 'diagnostico', tag: 'ITALVA-DIAG-WORKER', dados: {
+          linhaPlanilha: r, numeroCasoBruto: cellCaso.v, matriculaBruta: matriculaRaw,
+          matriculaNormalizada: lnNormalizarMatricula(matriculaRaw), gerenteBruto: gerenteRaw,
+          passaFiltroDeUniversoDoWorker: passaUniverso,
+          dataAberturaBruta: get(idxDataAbertura), validacaoEmail: get(idxValidacao)
+        }});
+      }
+
       if (!lnGerentePodeSerDoUniverso(gerenteRaw)) continue;
 
       const numeroCaso = lnNormalizarNumeroCaso(cellCaso.v);

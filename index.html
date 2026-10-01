@@ -22781,27 +22781,41 @@ function _opFiltrarPostoSup(dados, campoPosto) {
 }
 function _opMesesConsiderados(fonteMeses) { return _opMesesSel.length ? _opMesesSel.filter(m=>fonteMeses.includes(m)) : [...fonteMeses]; }
 
-// Só devolve os agregados do Email Ligação Nova quando a competência vigente
-// bate com o(s) Mês(es) selecionado(s) no Dash — nunca mistura snapshot de
-// uma competência diferente da que o usuário está olhando.
+// Email Ligação Nova tem dados DIÁRIOS (1 doc por posto/dia em
+// ligacaonova_base_agregados_dia) — portanto a competência de cada agregado
+// é derivada da PRÓPRIA DATA dele (`a.data.slice(0,7)`), nunca de uma
+// variável global única como `_opLnCompetenciaVigente`. Essa variável
+// continua existindo só como metadado pro badge "Base atualizada em" — ela
+// NUNCA mais funciona como portão que impede a leitura dos agregados.
 //
-// Compara sempre pela forma NORMALIZADA dos dois lados (via _opNormMesRef) —
-// nunca por igualdade direta de string. _opMesesSel já guarda valores
-// normalizados (vêm de _opMesesTodos(), que lê de fontes já passadas por
-// _opNormMesRef), mas comparar direto contra _opLnCompetenciaVigente sem
-// renormalizar os dois lados no momento da comparação é frágil a qualquer
-// variação de formato que escape da normalização de origem — a mesma classe
-// de problema que a própria _opNormMesRef já existe pra cobrir entre
-// indicadores/CSAT/POS. Normalizar aqui de novo é defensivo e nunca altera
-// um valor que já estava correto.
+// Instrumentação temporária (console.log) — ajuda a confirmar, da próxima
+// vez que o Dash for aberto com um filtro de Mês, exatamente quantos
+// agregados existem, qual o intervalo real de datas, e quantos sobram
+// depois do filtro — sem precisar adivinhar.
 function _opLnDadosFiltrados() {
   if (!_opLnAgregados.length) return [];
-  if (_opMesesSel.length) {
-    const competenciaNorm = _opNormMesRef(_opLnCompetenciaVigente);
-    const selNorm = _opMesesSel.map(m => _opNormMesRef(m));
-    if (!selNorm.includes(competenciaNorm)) return [];
+  if (!_opMesesSel.length) return _opLnAgregados; // sem filtro de mês — comportamento atual preservado integralmente
+
+  const mesesNorm = new Set(_opMesesSel.map(m => _opNormMesRef(m)));
+  const filtrados = _opLnAgregados.filter(a => a.data && mesesNorm.has(a.data.slice(0,7)));
+
+  if (typeof console !== 'undefined') {
+    const datasOrdenadas = _opLnAgregados.map(a=>a.data).filter(Boolean).sort();
+    console.log('[LigNova][DASH-DIAG] filtro de Mês aplicado ao indicador Email Ligação Nova:', {
+      opMesesSel: _opMesesSel,
+      mesesNormSelecionados: [...mesesNorm],
+      totalAgregadosCarregados: _opLnAgregados.length,
+      primeiraData: datasOrdenadas[0] || null,
+      ultimaData: datasOrdenadas[datasOrdenadas.length-1] || null,
+      competenciaVigenteGlobal_soMetadado: _opLnCompetenciaVigente,
+      totalAposFiltroPorData: filtrados.length,
+      totalGeralFiltrado: filtrados.reduce((s,a)=>s+(a.total||0),0),
+      comEmailFiltrado: filtrados.reduce((s,a)=>s+(a.comEmail||0),0),
+      semEmailFiltrado: filtrados.reduce((s,a)=>s+(a.semEmail||0),0)
+    });
   }
-  return _opLnAgregados;
+
+  return filtrados;
 }
 
 function _opCalcCardSemEmail() {
@@ -27099,6 +27113,7 @@ async function lnProcessarBaseOficial(file) {
         else if (msg.etapa === 'extraindo_extracao_mais_recente') setStatus(`📅 Extração mais recente: ${lnFmtData(msg.dataExtracao)} (${msg.linhasRealEncontradas} linhas reais encontradas na planilha)`);
         else if (msg.etapa === 'aplicando_elegibilidade') setStatus(`⏳ Aplicando elegibilidade (${msg.linhasAnalisadas} casos distintos na extração)...`);
         else if (msg.etapa === 'duplicidades_avaliadas') setStatus('⏳ Duplicidades avaliadas, montando resultado...');
+        else if (msg.etapa === 'diagnostico') console.log(`[LigNova][${msg.tag}]`, msg.dados);
       };
       worker.onerror = (err) => { worker.terminate(); reject(new Error(err.message || 'Erro inesperado no processamento em segundo plano.')); };
       worker.postMessage({ tipo:'processar_base_oficial', buffer }, [buffer]);
@@ -27194,6 +27209,25 @@ async function lnResolverMatriculaPostoEmLote(casos) {
     c.posto = postoResolvido;
     resultadoFinal.push(c);
   });
+  // Diagnóstico temporário — rastreamento ponta a ponta da matrícula em
+  // investigação (Italva/Alerrandra). Não afeta nenhum processamento, só
+  // expõe o estado real encontrado em cada fonte, caso a caso, pra fechar a
+  // causa raiz com dado, não hipótese. Remover depois de confirmado.
+  const LN_DIAG_MATRICULA = 'BR0187055567';
+  const casosAlvoAntes = casos.filter(c => c.matricula === LN_DIAG_MATRICULA);
+  if (casosAlvoAntes.length) {
+    const casosAlvoDepois = resultadoFinal.filter(c => c.matricula === LN_DIAG_MATRICULA);
+    console.log('[LigNova][ITALVA-DIAG] resolução de matrícula:', {
+      matricula: LN_DIAG_MATRICULA,
+      casosEncontradosBase: casosAlvoAntes.length,
+      detalheCasosNaBase: casosAlvoAntes.map(c => ({ numeroCaso:c.numeroCaso, dataAbertura:c.dataAbertura, classificacao:c.classificacao, gerente:c.gerente, situacaoInicialDoWorker:c.situacao })),
+      emUsers: mapaUsers[LN_DIAG_MATRICULA] !== undefined ? mapaUsers[LN_DIAG_MATRICULA] : '(não encontrada em users.matriculaBR)',
+      emFallback: mapaFallback[LN_DIAG_MATRICULA] !== undefined ? mapaFallback[LN_DIAG_MATRICULA] : '(não encontrada em ligacaonova_matricula_fallback)',
+      situacaoFinalPorCaso: casosAlvoDepois.map(c => ({ numeroCaso:c.numeroCaso, situacao:c.situacao, posto:c.posto||null, postoUsers:c.postoUsers||null, postoFallback:c.postoFallback||null })),
+      totalCasosRetidosDepoisDaResolucao: casosAlvoDepois.length
+    });
+  }
+
   return resultadoFinal;
 }
 
@@ -27261,6 +27295,24 @@ async function lnConfirmarImportacaoBaseOficial() {
       else if (c.classificacao==='SEM_EMAIL') agregados[chave].semEmail++;
     });
     const agregadosArr = Object.values(agregados);
+
+    // Diagnóstico temporário (mesma matrícula em investigação) — confirma
+    // se o(s) caso(s) chegaram até o agregado de ITALVA, com quais números,
+    // antes de qualquer gravação no Firestore.
+    const _lnDiagMatricula = 'BR0187055567';
+    const _lnDiagCasos = resultado.casos.filter(c => c.matricula === _lnDiagMatricula);
+    if (_lnDiagCasos.length) {
+      const agregadosItalva = agregadosArr.filter(a => a.posto === 'ITALVA');
+      console.log('[LigNova][ITALVA-DIAG] agregação/snapshot (antes de gravar):', {
+        matricula: _lnDiagMatricula,
+        situacoesFinais: _lnDiagCasos.map(c => ({ numeroCaso:c.numeroCaso, situacao:c.situacao, posto:c.posto||null, dataAbertura:c.dataAbertura, classificacao:c.classificacao })),
+        casosValidosParaGravar: _lnDiagCasos.filter(c => ['elegivel','sede','pendencia_matricula','conflito','conflito_matricula'].includes(c.situacao)).length,
+        agregadosGeradosParaItalva: agregadosItalva.length,
+        totalItalvaNesteSnapshot: agregadosItalva.reduce((s,a)=>s+a.total,0),
+        comEmailItalva: agregadosItalva.reduce((s,a)=>s+a.comEmail,0),
+        semEmailItalva: agregadosItalva.reduce((s,a)=>s+a.semEmail,0)
+      });
+    }
     for (let i=0;i<agregadosArr.length;i+=400) {
       const batch = db.batch();
       agregadosArr.slice(i,i+400).forEach(a => {
