@@ -22709,6 +22709,10 @@ const OP_META_TMA_SEG = 5*60+11;  // 00:05:11
 const OP_META_TME_SEG = 9*60+29;  // 00:09:29
 
 let _opAllIndicadores = [], _opAllCsat = [], _opAllPos = [];
+// Email Ligação Nova — espelho só de leitura dos agregados já produzidos
+// pelo próprio submódulo (snapshot vigente). Nunca reprocessa a Base
+// Oficial aqui, nunca grava nada de volta.
+let _opLnAgregados = [], _opLnDataExtracao = '', _opLnCompetenciaVigente = '';
 
 async function _opGarantirDadosCarregados() {
   if (!indicadoresCarregados) await carregarTodosIndicadores();
@@ -22721,6 +22725,22 @@ async function _opGarantirDadosCarregados() {
   _opAllIndicadores = allIndicadores.map(d => ({...d, mesRef:_opNormMesRef(d.mesRef)}));
   _opAllCsat         = csatAllData.map(d => ({...d, mesRef:_opNormMesRef(d.mesRef)}));
   _opAllPos          = posAllResultados.map(d => ({...d, mesRef:_opNormMesRef(d.mesRef)}));
+
+  // Email Ligação Nova — lê só o ponteiro vigente + seus agregados por
+  // posto/dia (já prontos, nunca os casos individuais) — mesma fonte que o
+  // próprio submódulo usa pro Resultado Oficial, garantindo os mesmos números.
+  try {
+    const cfgSnap = await db.collection('ligacaonova_config').doc('geral').get();
+    const bo = cfgSnap.exists ? cfgSnap.data().baseOficial : null;
+    if (bo && bo.snapshotVigenteId) {
+      _opLnDataExtracao = bo.dataExtracaoReal || '';
+      _opLnCompetenciaVigente = bo.competenciaVigente || '';
+      const agSnap = await db.collection('ligacaonova_base_agregados_dia').where('snapshotId','==',bo.snapshotVigenteId).get();
+      _opLnAgregados = agSnap.docs.map(d=>d.data());
+    } else {
+      _opLnAgregados = []; _opLnDataExtracao=''; _opLnCompetenciaVigente='';
+    }
+  } catch(e) { console.error('[Dashboard Operacional] erro ao carregar Email Ligação Nova (indicador fica indisponível):', e); _opLnAgregados=[]; _opLnDataExtracao=''; _opLnCompetenciaVigente=''; }
 }
 
 // Lista canônica de competências do Dashboard Operacional: união deduplicada
@@ -22748,6 +22768,63 @@ function _opFiltrarPostoSup(dados, campoPosto) {
   return dados;
 }
 function _opMesesConsiderados(fonteMeses) { return _opMesesSel.length ? _opMesesSel.filter(m=>fonteMeses.includes(m)) : [...fonteMeses]; }
+
+// Só devolve os agregados do Email Ligação Nova quando a competência vigente
+// bate com o(s) Mês(es) selecionado(s) no Dash — nunca mistura snapshot de
+// uma competência diferente da que o usuário está olhando.
+function _opLnDadosFiltrados() {
+  if (!_opLnAgregados.length) return [];
+  if (_opMesesSel.length && !_opMesesSel.includes(_opLnCompetenciaVigente)) return [];
+  return _opLnAgregados;
+}
+
+function _opCalcCardSemEmail() {
+  const dados = _opFiltrarPostoSup(_opLnDadosFiltrados(), 'posto');
+  const total = dados.reduce((s,a)=>s+(a.total||0),0);
+  if (total<=0) return { modo:'semdados' };
+  const semEmail = dados.reduce((s,a)=>s+(a.semEmail||0),0);
+  const pct = semEmail/total*100;
+  return { modo:'ok', resultado:pct, meta:10, total, semEmail, status: pct<=10?'verde':'vermelho' };
+}
+
+// Evolução acumulada do % Sem Email — mesma lógica já homologada no
+// submódulo (acumulado desde o início do período até cada dia), nunca
+// avançando além da Data de Extração real vigente.
+function _opLnEvolucaoAcumulada() {
+  const dados = _opFiltrarPostoSup(_opLnDadosFiltrados(), 'posto');
+  const porDia = {};
+  dados.forEach(a => {
+    if (_opLnDataExtracao && a.data > _opLnDataExtracao) return;
+    if (!porDia[a.data]) porDia[a.data] = { data:a.data, comEmail:0, semEmail:0, total:0 };
+    porDia[a.data].comEmail += a.comEmail||0; porDia[a.data].semEmail += a.semEmail||0; porDia[a.data].total += a.total||0;
+  });
+  const dias = Object.values(porDia).sort((a,b)=>a.data.localeCompare(b.data));
+  let accCom=0, accSem=0;
+  const labels=[], pct=[];
+  dias.forEach(d => {
+    accCom+=d.comEmail; accSem+=d.semEmail;
+    const tot = accCom+accSem;
+    labels.push(typeof lnFmtDataCurta==='function' ? lnFmtDataCurta(d.data) : d.data.slice(8,10)+'/'+d.data.slice(5,7));
+    pct.push(tot>0 ? +(accSem/tot*100).toFixed(1) : null);
+  });
+  return { labels, pct };
+}
+
+// Top 8 por % Sem Email — maior primeiro. Baixo volume (<5) é sinalizado,
+// nunca escondido do ranking.
+function _opRankingSemEmail() {
+  const dados = _opFiltrarPostoSup(_opLnDadosFiltrados(), 'posto');
+  const porPosto = {};
+  dados.forEach(a => {
+    if (!porPosto[a.posto]) porPosto[a.posto] = { posto:a.posto, total:0, semEmail:0 };
+    porPosto[a.posto].total += a.total||0; porPosto[a.posto].semEmail += a.semEmail||0;
+  });
+  return Object.values(porPosto).filter(p=>p.total>0).map(p => ({
+    ...p, pct: p.semEmail/p.total*100,
+    supervisor: allPostos.find(x=>_opNormNome(x.nome)===_opNormNome(p.posto))?.supervisor || '—',
+    baixoVolume: p.total<5
+  })).sort((a,b)=>b.pct-a.pct);
+}
 
 // ── Card POS ─────────────────────────────────────────────────────────────
 function _opCalcCardPOS() {
@@ -22977,6 +23054,9 @@ function _opCalcComparativoSupervisores() {
     const nota = totalPesq>0 ? dCsat.reduce((s,d)=>s+(d.notaMedia||0)*(d.pesquisas||0),0)/totalPesq : null;
     const valorPos = dPos.reduce((s,d)=>s+(d.valor||0),0);
     const metaPos = dPos.reduce((s,d)=>s+getPOSMeta(d.postoNome,d.mesRef),0);
+    const dLn = _opFiltrarPostoSup(_opLnDadosFiltrados(), 'posto').filter(d=>postosSup.has(_opNormNome(d.posto)));
+    const totalLn = dLn.reduce((s,d)=>s+(d.total||0),0);
+    const semEmailLn = dLn.reduce((s,d)=>s+(d.semEmail||0),0);
     return {
       supervisor: sup, qtdPostos: postosSup.size,
       pos: dPos.length ? { pct: metaPos>0?valorPos/metaPos*100:0 } : null,
@@ -22984,7 +23064,8 @@ function _opCalcComparativoSupervisores() {
       ns30: cons && cons.ns30!==null ? cons.ns30 : null,
       senhasPerdidas: cons ? cons.senhasPerdidas : null,
       senhasConsideradas: cons ? cons.totalSenhas : null,
-      tmaSeg: cons ? cons.tmaSeg : null, tmeSeg: cons ? cons.tmeSeg : null
+      tmaSeg: cons ? cons.tmaSeg : null, tmeSeg: cons ? cons.tmeSeg : null,
+      semEmailPct: totalLn>0 ? (semEmailLn/totalLn*100) : null, semEmailTotal: totalLn, semEmailQtd: semEmailLn
     };
   });
 }
@@ -23068,6 +23149,8 @@ async function renderDashboardOperacional() {
   const cardCsat = _opCalcCardCSAT();
   const cardNs30 = _opCalcCardNS30();
   const cardPerd = _opCalcCardSenhasPerdidas();
+  const cardSemEmail = _opCalcCardSemEmail();
+  const rankSemEmail = _opRankingSemEmail();
   const blocoTempos = _opCalcBlocoTempos();
   const resultadoOp = _opCalcResultadoOperacional(cardPos,cardCsat,cardNs30,blocoTempos);
   const radar = _opCalcRadar(cardPos,cardCsat,cardNs30);
@@ -23088,6 +23171,7 @@ async function renderDashboardOperacional() {
       ${_opUltimaAtualizacaoIndicadores?`<span style="font-size:11px;background:rgba(245,158,11,.12);color:#eda100;padding:4px 10px;border-radius:8px;border:1px solid rgba(245,158,11,.3);font-weight:600">📅 Indicadores — Base atualizada em: ${_opUltimaAtualizacaoIndicadores}</span>`:''}
       ${csatUltimaAtualizacao?`<span style="font-size:11px;background:rgba(245,158,11,.12);color:#eda100;padding:4px 10px;border-radius:8px;border:1px solid rgba(245,158,11,.3);font-weight:600">📅 CSAT — Base atualizada em: ${csatUltimaAtualizacao}</span>`:''}
       ${_opUltimaAtualizacaoPos?`<span style="font-size:11px;background:rgba(245,158,11,.12);color:#eda100;padding:4px 10px;border-radius:8px;border:1px solid rgba(245,158,11,.3);font-weight:600">📅 POS — Base atualizada em: ${_opUltimaAtualizacaoPos}</span>`:''}
+      ${_opLnDataExtracao?`<span style="font-size:11px;background:rgba(245,158,11,.12);color:#eda100;padding:4px 10px;border-radius:8px;border:1px solid rgba(245,158,11,.3);font-weight:600">📅 Email Ligação Nova — Base atualizada em: ${lnFmtData(_opLnDataExtracao)}</span>`:''}
     </div>
     <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">Mês</div>
     <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:7px">
@@ -23112,7 +23196,7 @@ async function renderDashboardOperacional() {
     </div>
 
     <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Cards</div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px">
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:10px">
       ${cardHTML('POS', cardPos, cardPos.modo!=='semdados'?`
         <div style="font-size:22px;font-weight:800;color:${_opCorStatus(cardPos.status)}">R$ ${cardPos.resultado.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">Meta: R$ ${cardPos.meta.toLocaleString('pt-BR',{minimumFractionDigits:2})} · ${cardPos.pct.toFixed(1)}% da meta</div>
@@ -23135,6 +23219,10 @@ async function renderDashboardOperacional() {
         <div style="font-size:11px;color:var(--text3);margin-top:2px">${cardPerd.pct.toFixed(1)}% do volume total</div>
         ${cardPerd.resultadoAnterior!==null?`<div style="font-size:11px;color:var(--text3)">Mês anterior: ${cardPerd.resultadoAnterior.toLocaleString('pt-BR')}</div>`:''}
         <div style="font-size:11px;color:var(--text3);margin-top:6px">Sem meta formal — não conta no Resultado Operacional</div>`:'')}
+      ${cardHTML('% Sem Email (Ligação Nova)', cardSemEmail, cardSemEmail.modo!=='semdados'?`
+        <div style="font-size:22px;font-weight:800;color:${_opCorStatus(cardSemEmail.status)}">${cardSemEmail.resultado.toFixed(1)}%</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">Meta: ≤${cardSemEmail.meta}% · ${cardSemEmail.semEmail} de ${cardSemEmail.total} ingressos</div>
+        <div style="font-size:11px;font-weight:700;color:${_opCorStatus(cardSemEmail.status)};margin-top:6px">${_opLabelStatus(cardSemEmail.status)}</div>`:'')}
     </div>
 
     <div style="background:var(--surface2);border-radius:12px;padding:14px;margin-bottom:16px">
@@ -23185,13 +23273,17 @@ async function renderDashboardOperacional() {
         <div style="font-size:12px;font-weight:600;margin-bottom:10px">TMA + TME</div>
         <div style="position:relative;width:100%;height:160px"><canvas id="op-c-tempos"></canvas></div>
       </div>
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">Evolução Acumulada — % Sem Email (Ligação Nova)</div>
+        <div style="position:relative;width:100%;height:160px"><canvas id="op-c-ln-sememail"></canvas></div>
+      </div>
     </div>
 
     <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Comparativo entre Supervisores</div>
     <div style="overflow-x:auto;margin-bottom:16px">
       <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:700px">
         <thead><tr style="border-bottom:1px solid rgba(255,255,255,.15);background:var(--surface3)">
-          ${['Supervisor','Postos','POS','CSAT','NS30','Senhas Perdidas','Senhas Consideradas','TMA','TME'].map(h=>`<th style="padding:7px 10px;text-align:left;color:var(--text3);font-weight:600">${h}</th>`).join('')}
+          ${['Supervisor','Postos','POS','CSAT','NS30','Senhas Perdidas','Senhas Consideradas','TMA','TME','% Sem Email'].map(h=>`<th style="padding:7px 10px;text-align:left;color:var(--text3);font-weight:600">${h}</th>`).join('')}
         </tr></thead>
         <tbody>${comparativo.map(s=>`
           <tr style="border-bottom:1px solid rgba(255,255,255,.04)">
@@ -23204,6 +23296,7 @@ async function renderDashboardOperacional() {
             <td style="padding:6px 10px">${s.senhasConsideradas!==null?s.senhasConsideradas.toLocaleString('pt-BR'):'—'}</td>
             <td style="padding:6px 10px">${fmtTempo(s.tmaSeg)}</td>
             <td style="padding:6px 10px">${fmtTempo(s.tmeSeg)}</td>
+            <td style="padding:6px 10px;color:${s.semEmailPct!=null?(s.semEmailPct<=10?'#1baf7a':'#e24b4a'):'inherit'}">${s.semEmailPct!=null?`${s.semEmailPct.toFixed(1)}% (${s.semEmailQtd}/${s.semEmailTotal})`:'—'}</td>
           </tr>`).join('')}</tbody>
       </table>
     </div>
@@ -23236,6 +23329,10 @@ async function renderDashboardOperacional() {
         <div style="font-size:11px;color:var(--text3);margin-bottom:6px">Média da operação: ${fmtTempo(rankTme.media)}</div>
         ${rankTme.ranking.slice(0,8).map((p,i)=>`<div style="font-size:12px;padding:3px 0;color:var(--text2)">${i+1}º ${p.posto} — ${fmtTempo(p.seg)} ${p.volume?`(${p.volume} atend.)`:''} ${i===0&&rankTme.media!==null?'<span style="color:#eda100">— Resultado atípico, recomenda-se validação</span>':''}</div>`).join('')||'<div style="color:var(--text3);font-size:12px">Sem dados</div>'}
       </div>
+      <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px">% Sem Email (Ligação Nova) — Top 8 Maior %</div>
+        ${rankSemEmail.slice(0,8).map((p,i)=>`<div style="font-size:12px;padding:3px 0;color:var(--text2)">${i+1}º ${p.posto} (${p.supervisor}) — <strong style="color:${p.pct<=10?'#1baf7a':'#e24b4a'}">${p.pct.toFixed(1)}%</strong> (${p.semEmail}/${p.total})${p.baixoVolume?' <span style="color:#eda100">· baixo volume</span>':''}</div>`).join('')||'<div style="color:var(--text3);font-size:12px">Sem dados</div>'}
+      </div>
     </div>
 
     <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Radar Operacional</div>
@@ -23266,7 +23363,7 @@ async function renderDashboardOperacional() {
   setTimeout(() => _opRenderCharts(mesesTodos), 40);
 }
 
-let _chartOpPos=null, _chartOpCsat=null, _chartOpNs30=null, _chartOpTempos=null;
+let _chartOpPos=null, _chartOpCsat=null, _chartOpNs30=null, _chartOpTempos=null, _chartOpLnSemEmail=null;
 function _opRenderCharts(mesesTodos) {
   const tickC='#a0aec0', gridC='rgba(255,255,255,.06)';
   const mesesPos = mesesTodos.filter(m=>[...new Set(_opAllPos.map(d=>d.mesRef))].includes(m));
@@ -23357,6 +23454,32 @@ function _opRenderCharts(mesesTodos) {
         c.data.datasets[0].data.forEach((v,i)=>{ if(v===null)return; const el=c.getDatasetMeta(0).data[i]; ctx.save();ctx.fillStyle='#3b82f6';ctx.font='bold 9px sans-serif';ctx.textAlign='center';ctx.fillText(fmtTempo(v),el.x,el.y-11);ctx.restore(); });
         c.data.datasets[1].data.forEach((v,i)=>{ if(v===null)return; const el=c.getDatasetMeta(1).data[i]; ctx.save();ctx.fillStyle='#eda100';ctx.font='bold 9px sans-serif';ctx.textAlign='center';ctx.fillText(fmtTempo(v),el.x,el.y+16);ctx.restore(); });
       }}]});
+  }
+
+  _chartOpLnSemEmail = _dstroyIndChart(_chartOpLnSemEmail);
+  const ctxLn = document.getElementById('op-c-ln-sememail');
+  const lnEvolucao = _opLnEvolucaoAcumulada();
+  if (ctxLn && lnEvolucao.labels.length) {
+    _chartOpLnSemEmail = new Chart(ctxLn, {
+      type:'line',
+      data:{ labels: lnEvolucao.labels, datasets:[
+        { label:'% Sem Email', data: lnEvolucao.pct, borderColor:'#e24b4a', backgroundColor:'transparent', borderWidth:2, tension:.3, pointRadius:3, pointBackgroundColor:'#e24b4a' },
+        { label:'Meta (10%)', data: lnEvolucao.labels.map(()=>10), borderColor:'rgba(226,75,74,.25)', borderWidth:1, borderDash:[5,5], pointRadius:0, datalabels:{display:false} }
+      ]},
+      plugins:[ChartDataLabels],
+      options:{
+        responsive:true, maintainAspectRatio:false, layout:{padding:{top:20,bottom:8}},
+        plugins:{
+          legend:{display:true,position:'bottom',labels:{color:tickC,font:{size:9},boxWidth:10}},
+          datalabels:{
+            display:true, // todos os pontos, nunca esconder nenhum
+            formatter:(v)=> v==null?'':v.toFixed(1)+'%',
+            align:'top', anchor:'end', color:'#e24b4a', font:{size:9,weight:'600'}
+          }
+        },
+        scales:{ x:{ticks:{color:tickC,font:{size:9}},grid:{display:false}}, y:{min:0,max:100,ticks:{color:tickC,font:{size:10},callback:v=>v+'%'},grid:{color:gridC}} }
+      }
+    });
   }
 }
 
@@ -26414,14 +26537,35 @@ function lnISODateLocal(d) { return `${d.getFullYear()}-${String(d.getMonth()+1)
 
 // Rótulo da semana (ex.: "01–04/09", "28–30/09") clipado aos limites do mês
 // dos dias reais daquela semana — nunca mostra dia de outro mês.
+// Limite superior que a última semana nunca pode ultrapassar — a Data de
+// Extração REAL da Base Oficial vigente (nunca data do sistema/navegador),
+// e Data Final do filtro quando o usuário tiver selecionado uma.
+function lnLimiteSuperiorSemana() {
+  const limites = [];
+  if (_lnConfig && _lnConfig.baseOficial && _lnConfig.baseOficial.dataExtracaoReal) limites.push(_lnConfig.baseOficial.dataExtracaoReal);
+  if (_lnFiltros.dataFim) limites.push(_lnFiltros.dataFim);
+  return limites.length ? limites.sort()[0] : null; // o mais restritivo (menor)
+}
+
 function lnRotuloSemanaOperacional(segunda, sexta, mesAnoReferencia) {
   const [anoRef, mesRef] = mesAnoReferencia.split('-').map(Number);
   const primeiroDiaMes = new Date(anoRef, mesRef-1, 1);
   const ultimoDiaMes = new Date(anoRef, mesRef, 0);
   const inicioClip = segunda < primeiroDiaMes ? primeiroDiaMes : segunda;
-  const fimClip = sexta > ultimoDiaMes ? ultimoDiaMes : sexta;
+  let fimClip = sexta > ultimoDiaMes ? ultimoDiaMes : sexta;
+
+  // Semana parcial: o limite real (extração vigente / Data Final) corta a
+  // semana ANTES do que seria o fim dela dentro do mês — indica que ainda
+  // falta(m) dia(s) útil(eis) previsto(s) pra essa semana completar.
+  let parcial = false;
+  const limiteISO = lnLimiteSuperiorSemana();
+  if (limiteISO) {
+    const limiteDate = new Date(limiteISO + 'T00:00:00');
+    if (limiteDate < fimClip) { fimClip = limiteDate; parcial = true; }
+  }
+
   const fmt = (d) => String(d.getDate()).padStart(2,'0');
-  return `${fmt(inicioClip)}–${fmt(fimClip)}/${String(mesRef).padStart(2,'0')}`;
+  return { rotulo: `${fmt(inicioClip)}–${fmt(fimClip)}/${String(mesRef).padStart(2,'0')}`, parcial };
 }
 
 // Semana SEM movimento simplesmente não aparece no array — nunca vira 0%.
@@ -26440,11 +26584,8 @@ function lnAgruparPorSemana(diasAgregados) {
   });
   const lista = Object.values(grupos).sort((a,b)=>a.chave.localeCompare(b.chave)).map(g => {
     const mesReferencia = g.diasData[0].slice(0,7); // AAAA-MM do primeiro dia real daquela semana
-    return {
-      ...g,
-      rotulo: lnRotuloSemanaOperacional(g.segunda, g.sexta, mesReferencia),
-      pctSemEmail: g.total>0 ? (g.semEmail/g.total*100) : null
-    };
+    const { rotulo, parcial } = lnRotuloSemanaOperacional(g.segunda, g.sexta, mesReferencia);
+    return { ...g, rotulo, parcial, pctSemEmail: g.total>0 ? (g.semEmail/g.total*100) : null };
   });
   lista.forEach((s,i) => {
     s.variacaoPP = (i>0 && lista[i-1].pctSemEmail!=null && s.pctSemEmail!=null) ? +(s.pctSemEmail - lista[i-1].pctSemEmail).toFixed(1) : null;
@@ -26474,7 +26615,7 @@ function lnCardEvolucaoSemanal(semanas) {
         if (s.pctSemEmail==null) return '';
         const cor = s.variacaoPP==null ? 'var(--text2)' : (s.variacaoPP<-0.05?'#22c55e':(s.variacaoPP>0.05?'#ef4444':'var(--text3)'));
         return `<div style="display:flex;justify-content:space-between;font-size:12px">
-          <span style="color:var(--text3)">${s.rotulo}</span>
+          <span style="color:var(--text3)">${s.rotulo}${s.parcial?' <span style="font-size:10px;color:#f59e0b;font-weight:600">· semana parcial</span>':''}</span>
           <span><strong>${s.pctSemEmail.toFixed(1)}%</strong>${s.variacaoPP!=null?` <span style="color:${cor}">${lnFmtPP(s.variacaoPP)}</span>`:''}</span>
         </div>`;
       }).join('')}
