@@ -26316,9 +26316,11 @@ async function lnRenderResultadoOficial() {
         <tbody id="ln-res-tabela-corpo"></tbody>
       </table>
     </div>
+    <div id="ln-analises" style="margin-top:28px"></div>
   `;
   lnRenderTabelaResultado();
   lnDesenharGraficosResultado(evoLabels, evoComPct, evoSemPct, volCom, volSem, diaLabels, diaComPct, diaSemPct, ranking);
+  lnRenderAnalisesInteligentes(filtrados, ranking, total, totalComEmail, totalSemEmail);
 }
 
 // ── Tabela de postos — ordenável por clique no cabeçalho, sem filtro/busca
@@ -26360,6 +26362,319 @@ function lnOrdenarTabelaResultado(coluna) {
   if (_lnResOrdenacao.coluna===coluna) _lnResOrdenacao.direcao = _lnResOrdenacao.direcao==='asc'?'desc':'asc';
   else { _lnResOrdenacao.coluna = coluna; _lnResOrdenacao.direcao = 'asc'; }
   lnRenderTabelaResultado();
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// ANÁLISES INTELIGENTES — determinísticas, calculadas em cima dos mesmos
+// `filtrados`/`ranking` já montados pelo Resultado Oficial (sem nova leitura
+// do Firestore, sem IA/API externa). Reage aos mesmos filtros (Mês,
+// Supervisor, Posto, Data) porque opera sobre o array já filtrado.
+// ══════════════════════════════════════════════════════════════════════════
+
+function lnFmtPP(v) {
+  if (v==null) return '';
+  const seta = v>0.05 ? '↑' : (v<-0.05 ? '↓' : '→');
+  return `${seta} ${Math.abs(v).toFixed(1)} p.p.`;
+}
+
+function lnAgruparPorDia(filtrados) {
+  const porDia = {};
+  filtrados.forEach(a => {
+    if (!porDia[a.data]) porDia[a.data] = {data:a.data, comEmail:0, semEmail:0, total:0};
+    porDia[a.data].comEmail += a.comEmail||0;
+    porDia[a.data].semEmail += a.semEmail||0;
+    porDia[a.data].total += a.total||0;
+  });
+  return Object.values(porDia).filter(d=>d.total>0).sort((a,b)=>a.data.localeCompare(b.data));
+}
+
+function lnUltimoDiaDoMes(ano, mes) { return new Date(ano, mes, 0).getDate(); }
+
+function lnSemanaDoDia(dataISO) {
+  const dia = parseInt(dataISO.slice(8,10),10);
+  const mesAno = dataISO.slice(0,7);
+  let semana;
+  if (dia<=7) semana=1; else if (dia<=14) semana=2; else if (dia<=21) semana=3; else if (dia<=28) semana=4; else semana=5;
+  return `${mesAno}-S${semana}`;
+}
+
+function lnRotuloSemana(chave) {
+  const ano = chave.slice(0,4), mes = chave.slice(5,7), semNum = parseInt(chave.slice(9),10);
+  const inicios = {1:1,2:8,3:15,4:22,5:29};
+  const fins = {1:7,2:14,3:21,4:28,5:lnUltimoDiaDoMes(parseInt(ano,10),parseInt(mes,10))};
+  return `${String(inicios[semNum]).padStart(2,'0')}–${String(fins[semNum]).padStart(2,'0')}/${mes}`;
+}
+
+// Semana SEM movimento simplesmente não aparece no array — nunca vira 0%.
+function lnAgruparPorSemana(diasAgregados) {
+  const porSemana = {};
+  diasAgregados.forEach(d => {
+    const chave = lnSemanaDoDia(d.data);
+    if (!porSemana[chave]) porSemana[chave] = { chave, comEmail:0, semEmail:0, total:0 };
+    porSemana[chave].comEmail += d.comEmail; porSemana[chave].semEmail += d.semEmail; porSemana[chave].total += d.total;
+  });
+  const lista = Object.values(porSemana).sort((a,b)=>a.chave.localeCompare(b.chave)).map(s => ({
+    ...s, rotulo: lnRotuloSemana(s.chave), pctSemEmail: s.total>0 ? (s.semEmail/s.total*100) : null
+  }));
+  lista.forEach((s,i) => {
+    s.variacaoPP = (i>0 && lista[i-1].pctSemEmail!=null && s.pctSemEmail!=null) ? +(s.pctSemEmail - lista[i-1].pctSemEmail).toFixed(1) : null;
+  });
+  return lista;
+}
+
+// Dias com movimento / dias acima da meta, por posto — dias sem movimento
+// NUNCA entram no denominador.
+function lnRecorrenciaPorPosto(filtrados) {
+  const porPosto = {};
+  filtrados.forEach(a => {
+    if ((a.total||0) <= 0) return;
+    if (!porPosto[a.posto]) porPosto[a.posto] = {posto:a.posto, diasComMovimento:0, diasAcimaMeta:0};
+    porPosto[a.posto].diasComMovimento++;
+    if ((a.semEmail/a.total*100) > 10) porPosto[a.posto].diasAcimaMeta++;
+  });
+  return Object.values(porPosto).map(p=>({...p, pctDiasAcimaMeta: p.diasComMovimento>0 ? (p.diasAcimaMeta/p.diasComMovimento*100) : 0}));
+}
+
+function lnCardEvolucaoSemanal(semanas) {
+  if (!semanas.length) return `<div class="card" style="padding:16px 18px"><h4 style="margin:0 0 8px;font-size:13px">📅 Evolução Semanal</h4><p style="font-size:12px;color:var(--text3);margin:0">Dados insuficientes para avaliar evolução semanal.</p></div>`;
+  return `<div class="card" style="padding:16px 18px">
+    <h4 style="margin:0 0 10px;font-size:13px">📅 Evolução Semanal</h4>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      ${semanas.map(s => {
+        if (s.pctSemEmail==null) return '';
+        const cor = s.variacaoPP==null ? 'var(--text2)' : (s.variacaoPP<-0.05?'#22c55e':(s.variacaoPP>0.05?'#ef4444':'var(--text3)'));
+        return `<div style="display:flex;justify-content:space-between;font-size:12px">
+          <span style="color:var(--text3)">${s.rotulo}</span>
+          <span><strong>${s.pctSemEmail.toFixed(1)}%</strong>${s.variacaoPP!=null?` <span style="color:${cor}">${lnFmtPP(s.variacaoPP)}</span>`:''}</span>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+}
+
+function lnCardUltimoImpacto(ultimoDia, pctGeral, semanas) {
+  let htmlUltimo, htmlImpacto;
+  if (!ultimoDia) {
+    htmlUltimo = `<p style="font-size:12px;color:var(--text3);margin:0">Nenhum dia com movimento no período filtrado.</p>`;
+  } else {
+    const pctDia = ultimoDia.total>0 ? (ultimoDia.semEmail/ultimoDia.total*100) : 0;
+    const diffPP = pctGeral - pctDia; // positivo = dia melhor (menor %) que o acumulado
+    const corDia = diffPP>0.05 ? '#22c55e' : (diffPP<-0.05 ? '#ef4444' : 'var(--text3)');
+    htmlUltimo = `<p style="font-size:12px;margin:0 0 4px">Em <strong>${lnFmtData(ultimoDia.data)}</strong> foram registrados <strong>${ultimoDia.total}</strong> ingressos, sendo <strong>${ultimoDia.semEmail}</strong> Sem E-mail (${pctDia.toFixed(1)}%).</p>
+      <p style="font-size:12px;margin:0;color:${corDia}">O resultado do dia ficou ${Math.abs(diffPP).toFixed(1)} p.p. ${diffPP>0.05?'melhor':(diffPP<-0.05?'pior':'igual')} que o acumulado do período.</p>`;
+  }
+
+  const semComMovimento = semanas.filter(s=>s.total>0);
+  if (semComMovimento.length < 2) {
+    htmlImpacto = `<p style="font-size:12px;color:var(--text3);margin:10px 0 0">Dados insuficientes para avaliar impacto recente (menos de 2 semanas com movimento).</p>`;
+  } else {
+    const recente = semComMovimento[semComMovimento.length-1];
+    const anteriores = semComMovimento.slice(0,-1);
+    const comAnt = anteriores.reduce((s,w)=>s+w.comEmail,0), semAnt = anteriores.reduce((s,w)=>s+w.semEmail,0);
+    const totalAnt = comAnt+semAnt;
+    const pctAnt = totalAnt>0 ? (semAnt/totalAnt*100) : null;
+    if (pctAnt==null || recente.pctSemEmail==null) {
+      htmlImpacto = `<p style="font-size:12px;color:var(--text3);margin:10px 0 0">Dados insuficientes para avaliar impacto recente.</p>`;
+    } else {
+      const diff = pctAnt - recente.pctSemEmail; // positivo = semana recente melhor que o acumulado anterior
+      const tendencia = diff>0.5 ? 'MELHORANDO' : (diff<-0.5 ? 'PIORANDO' : 'MANTENDO');
+      const cor = diff>0.5?'#22c55e':(diff<-0.5?'#ef4444':'#f59e0b');
+      htmlImpacto = `<p style="font-size:12px;margin:10px 0 0">A semana mais recente (${recente.rotulo}) registra <strong>${recente.pctSemEmail.toFixed(1)}%</strong> Sem E-mail, ${diff>=0?'abaixo':'acima'} dos <strong>${pctAnt.toFixed(1)}%</strong> acumulados nas semanas anteriores.</p>
+      <p style="font-size:12px;margin:4px 0 0;color:${cor};font-weight:600">${tendencia}</p>`;
+    }
+  }
+
+  return `<div class="card" style="padding:16px 18px">
+    <h4 style="margin:0 0 10px;font-size:13px">🗓️ Último Resultado / Impacto Recente</h4>
+    ${htmlUltimo}
+    ${htmlImpacto}
+  </div>`;
+}
+
+function lnCardTop5(ranking, totalSemEmailGeral) {
+  const top5 = ranking.filter(r=>r.total>0 && r.semEmail>0).sort((a,b)=>b.semEmail-a.semEmail).slice(0,5);
+  if (!top5.length) return `<div class="card" style="padding:16px 18px"><h4 style="margin:0 0 8px;font-size:13px">🎯 Top 5 — Maiores Impactos</h4><p style="font-size:12px;color:var(--text3);margin:0">Nenhum caso Sem E-mail no período filtrado.</p></div>`;
+  const soma = top5.reduce((s,r)=>s+r.semEmail,0);
+  const participacao = totalSemEmailGeral>0 ? (soma/totalSemEmailGeral*100) : 0;
+  return `<div class="card" style="padding:16px 18px">
+    <h4 style="margin:0 0 8px;font-size:13px">🎯 Top 5 — Maiores Impactos</h4>
+    <p style="font-size:12px;margin:0 0 10px">Os 5 postos com maior quantidade de casos Sem E-mail concentram <strong>${soma}</strong> dos <strong>${totalSemEmailGeral}</strong> casos do período (<strong>${participacao.toFixed(1)}%</strong>).</p>
+    <div style="display:flex;flex-direction:column;gap:5px">
+      ${top5.map(r => {
+        const part = totalSemEmailGeral>0 ? (r.semEmail/totalSemEmailGeral*100) : 0;
+        return `<div style="font-size:12px;display:flex;justify-content:space-between"><span>${r.nome}</span><span><strong>${r.semEmail}</strong> casos — ${part.toFixed(1)}%</span></div>`;
+      }).join('')}
+    </div>
+  </div>`;
+}
+
+function lnCardRecorrenciaDestaques(ranking, recorrenciaPorPosto) {
+  const elegiveis = ranking.filter(r=>r.total>=5);
+  const destaques = elegiveis.filter(r=>r.situacao==='DENTRO_DA_META').sort((a,b)=>a.pctSemEmail-b.pctSemEmail).slice(0,3);
+  const destaquesHtml = destaques.length
+    ? destaques.map(r=>`<div style="font-size:12px;display:flex;justify-content:space-between"><span>${r.nome}</span><span style="color:#22c55e"><strong>${r.pctSemEmail.toFixed(1)}%</strong> (${r.total} ingressos)</span></div>`).join('')
+    : `<p style="font-size:12px;color:var(--text3);margin:0">Nenhum posto com volume representativo (mín. 5 ingressos) dentro da meta no período.</p>`;
+
+  const recMinDias = recorrenciaPorPosto.filter(r=>r.diasComMovimento>=5).sort((a,b)=>b.pctDiasAcimaMeta-a.pctDiasAcimaMeta).slice(0,3);
+  const recorrenciaHtml = recMinDias.length
+    ? recMinDias.map(r=>`<div style="font-size:12px;display:flex;justify-content:space-between"><span>${r.posto}</span><span style="color:${r.pctDiasAcimaMeta>50?'#ef4444':'var(--text3)'}">${r.diasAcimaMeta} de ${r.diasComMovimento} dias acima da meta (${r.pctDiasAcimaMeta.toFixed(1)}%)</span></div>`).join('')
+    : `<p style="font-size:12px;color:var(--text3);margin:0">Nenhum posto com dias suficientes (mín. 5) com movimento pra avaliar recorrência.</p>`;
+
+  return `<div class="card" style="padding:16px 18px">
+    <h4 style="margin:0 0 8px;font-size:13px">✅ Destaques Positivos</h4>
+    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px">${destaquesHtml}</div>
+    <h4 style="margin:12px 0 8px;font-size:13px;border-top:1px solid var(--border);padding-top:12px">🔁 Recorrência</h4>
+    <div style="display:flex;flex-direction:column;gap:5px">${recorrenciaHtml}</div>
+  </div>`;
+}
+
+// "Onde Atuar Primeiro" — prioriza por quantidade ABSOLUTA de Sem E-mail
+// entre os postos acima da meta (não só %), exatamente pra evitar que 1
+// ingresso/1 sem-email/100% suplante 50 ingressos/20 sem-email/40%.
+function lnCardOndeAtuar(ranking, totalSemEmailGeral) {
+  const prioridades = ranking.filter(r=>r.situacao==='ACIMA_DA_META').sort((a,b)=>b.semEmail-a.semEmail).slice(0,3);
+  if (!prioridades.length) {
+    return { html: `<div class="card" style="padding:16px 18px"><h4 style="margin:0 0 8px;font-size:13px">🚩 Onde Atuar Primeiro</h4><p style="font-size:12px;color:var(--text3);margin:0">Nenhum posto acima da meta no período filtrado.</p></div>`, prioridades: [] };
+  }
+  const html = `<div class="card" style="padding:16px 18px">
+    <h4 style="margin:0 0 10px;font-size:13px">🚩 Onde Atuar Primeiro</h4>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      ${prioridades.map((r,i) => {
+        const participacao = totalSemEmailGeral>0 ? (r.semEmail/totalSemEmailGeral*100) : 0;
+        return `<div>
+          <div style="font-size:12px;font-weight:700;color:#ef4444;margin-bottom:3px">Prioridade ${i+1} — ${r.nome}</div>
+          <div style="font-size:12px;color:var(--text2)">${r.total} ingressos · ${r.semEmail} Sem E-mail · <strong>${r.pctSemEmail.toFixed(1)}%</strong> (meta: ≤10%)</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Responde por ${participacao.toFixed(1)}% de todos os casos Sem E-mail do período.</div>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+  return { html, prioridades };
+}
+
+// Simulação matemática sobre o volume já realizado — nunca altera dado real.
+function lnCardPotencialRecuperacao(prioridades, totalGeral, totalSemEmailGeral) {
+  if (!prioridades.length || totalGeral<=0) return `<div class="card" style="padding:16px 18px"><h4 style="margin:0 0 8px;font-size:13px">🧮 Potencial de Recuperação <span style="font-size:10px;font-weight:700;color:var(--text3);background:var(--surface2);padding:2px 6px;border-radius:4px;margin-left:4px">SIMULAÇÃO</span></h4><p style="font-size:12px;color:var(--text3);margin:0">Sem postos prioritários para simular neste período.</p></div>`;
+  let reducaoTotal = 0;
+  prioridades.forEach(p => { const semSimulado = Math.round(p.total*0.10); reducaoTotal += Math.max(0, p.semEmail - semSimulado); });
+  const semSimuladoGeral = totalSemEmailGeral - reducaoTotal;
+  const pctSimulado = (semSimuladoGeral/totalGeral)*100;
+  const pctReal = (totalSemEmailGeral/totalGeral)*100;
+  const reducaoPP = pctReal - pctSimulado;
+  return `<div class="card" style="padding:16px 18px;border:1px dashed var(--border)">
+    <h4 style="margin:0 0 4px;font-size:13px">🧮 Potencial de Recuperação <span style="font-size:10px;font-weight:700;color:var(--text3);background:var(--surface2);padding:2px 6px;border-radius:4px;margin-left:4px">SIMULAÇÃO</span></h4>
+    <p style="font-size:11px;color:var(--text3);margin:0 0 10px">Se os postos prioritários (Onde Atuar Primeiro) tivessem atingido 10% Sem E-mail no mesmo volume observado:</p>
+    <div style="display:flex;gap:20px;flex-wrap:wrap">
+      <div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Resultado Real</div><div style="font-size:18px;font-weight:700">${pctReal.toFixed(1)}%</div></div>
+      <div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Cenário Simulado</div><div style="font-size:18px;font-weight:700;color:#22c55e">${pctSimulado.toFixed(1)}%</div></div>
+      <div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Potencial</div><div style="font-size:18px;font-weight:700;color:#22c55e">−${reducaoPP.toFixed(1)} p.p.</div></div>
+    </div>
+  </div>`;
+}
+
+function lnCardRecorrenciaPosto(recorrenciaPosto, nomePosto) {
+  if (!recorrenciaPosto || recorrenciaPosto.diasComMovimento===0) return `<div class="card" style="padding:16px 18px"><h4 style="margin:0 0 8px;font-size:13px">🔁 Recorrência</h4><p style="font-size:12px;color:var(--text3);margin:0">Nenhum dia com movimento no período filtrado.</p></div>`;
+  const cor = recorrenciaPosto.pctDiasAcimaMeta>50?'#ef4444':'#22c55e';
+  return `<div class="card" style="padding:16px 18px">
+    <h4 style="margin:0 0 8px;font-size:13px">🔁 Recorrência</h4>
+    <p style="font-size:13px;margin:0">${nomePosto} ficou acima da meta em <strong style="color:${cor}">${recorrenciaPosto.diasAcimaMeta} dos ${recorrenciaPosto.diasComMovimento}</strong> dias com movimento (${recorrenciaPosto.pctDiasAcimaMeta.toFixed(1)}%).</p>
+    <p style="font-size:11px;color:var(--text3);margin:6px 0 0">${recorrenciaPosto.pctDiasAcimaMeta>50?'Padrão recorrente — indica um problema contínuo, não pontual.':'Sem padrão recorrente predominante.'}</p>
+  </div>`;
+}
+
+function lnCardMelhorPior(semanas, diasAgregados) {
+  const semComMov = semanas.filter(s=>s.total>0 && s.pctSemEmail!=null);
+  const melhorSemana = semComMov.length ? semComMov.reduce((m,s)=>s.pctSemEmail<m.pctSemEmail?s:m) : null;
+  const piorSemana = semComMov.length ? semComMov.reduce((m,s)=>s.pctSemEmail>m.pctSemEmail?s:m) : null;
+
+  const diasComMov = diasAgregados.filter(d=>d.total>0);
+  const melhorDia = diasComMov.length ? diasComMov.reduce((m,d)=> (d.semEmail/d.total) < (m.semEmail/m.total) ? d : m) : null;
+  const piorDia = diasComMov.length ? diasComMov.reduce((m,d)=> (d.semEmail/d.total) > (m.semEmail/m.total) ? d : m) : null;
+
+  const fmtDiaLinha = (d, rotulo, cor) => d ? `<div style="font-size:12px;margin-bottom:4px"><span style="color:var(--text3)">${rotulo}:</span> ${lnFmtData(d.data)} — <strong style="color:${cor}">${(d.semEmail/d.total*100).toFixed(1)}%</strong> (${d.total} ingressos)${d.total<5?' <span style="color:#f59e0b">· baixo volume</span>':''}</div>` : '';
+  const fmtSemanaLinha = (s, rotulo, cor) => s ? `<div style="font-size:12px;margin-bottom:4px"><span style="color:var(--text3)">${rotulo}:</span> ${s.rotulo} — <strong style="color:${cor}">${s.pctSemEmail.toFixed(1)}%</strong> (${s.total} ingressos)</div>` : '';
+
+  if (!melhorSemana && !melhorDia) return `<div class="card" style="padding:16px 18px"><h4 style="margin:0 0 8px;font-size:13px">📊 Melhor × Pior Período</h4><p style="font-size:12px;color:var(--text3);margin:0">Dados insuficientes no período filtrado.</p></div>`;
+
+  return `<div class="card" style="padding:16px 18px">
+    <h4 style="margin:0 0 10px;font-size:13px">📊 Melhor × Pior Período</h4>
+    ${fmtSemanaLinha(melhorSemana,'Melhor semana','#22c55e')}
+    ${fmtSemanaLinha(piorSemana,'Pior semana','#ef4444')}
+    ${fmtDiaLinha(melhorDia,'Melhor dia','#22c55e')}
+    ${fmtDiaLinha(piorDia,'Pior dia','#ef4444')}
+  </div>`;
+}
+
+function lnCardDistanciaMeta(pctAtual) {
+  const dist = pctAtual - 10;
+  const dentro = dist<=0;
+  return `<div class="card" style="padding:16px 18px;border-left:4px solid ${dentro?'#22c55e':'#ef4444'}">
+    <h4 style="margin:0 0 8px;font-size:13px">🎯 Distância da Meta</h4>
+    <div style="font-size:24px;font-weight:700;color:${dentro?'#22c55e':'#ef4444'}">${pctAtual.toFixed(1)}%</div>
+    <div style="font-size:12px;color:var(--text3);margin-top:4px">Meta: ≤10% &nbsp;·&nbsp; ${dentro? `${Math.abs(dist).toFixed(1)} p.p. dentro da meta` : `${dist.toFixed(1)} p.p. acima da meta`}</div>
+  </div>`;
+}
+
+function lnCardRecuperacaoPosto(total, semEmail, pctAtual) {
+  if (pctAtual<=10 || total<=0) return `<div class="card" style="padding:16px 18px"><h4 style="margin:0 0 8px;font-size:13px">🧮 Potencial / Esforço de Recuperação <span style="font-size:10px;font-weight:700;color:var(--text3);background:var(--surface2);padding:2px 6px;border-radius:4px;margin-left:4px">SIMULAÇÃO</span></h4><p style="font-size:12px;color:var(--text3);margin:0">Posto já está dentro da meta — sem excesso a recuperar.</p></div>`;
+
+  const equivalenteMeta = Math.round(total*0.10);
+  const excesso = semEmail - equivalenteMeta;
+  const alvos = [20,15,10].filter(a=>a<pctAtual);
+  const esforcos = alvos.map(a => ({ alvo:a, necessario: Math.max(0, Math.ceil(semEmail*100/a - total)) }));
+
+  return `<div class="card" style="padding:16px 18px;border:1px dashed var(--border)">
+    <h4 style="margin:0 0 4px;font-size:13px">🧮 Potencial / Esforço de Recuperação <span style="font-size:10px;font-weight:700;color:var(--text3);background:var(--surface2);padding:2px 6px;border-radius:4px;margin-left:4px">SIMULAÇÃO</span></h4>
+    <p style="font-size:12px;margin:8px 0 4px">Com ${total} ingressos, 10% corresponderia a aproximadamente <strong>${equivalenteMeta}</strong> casos Sem E-mail — existe hoje um excesso aproximado de <strong style="color:#ef4444">${excesso}</strong> caso(s) em relação ao patamar da meta.</p>
+    <p style="font-size:11px;color:var(--text3);margin:10px 0 4px">Esforço estimado (próximos ingressos hipoteticamente Com E-mail, volume atual mantido):</p>
+    <div style="display:flex;flex-direction:column;gap:3px">
+      ${esforcos.map(e=>`<div style="font-size:12px">Para atingir ${e.alvo}%: aproximadamente <strong>${e.necessario}</strong> novos ingressos consecutivos Com E-mail.</div>`).join('')}
+    </div>
+  </div>`;
+}
+
+function lnRenderAnalisesInteligentes(filtrados, ranking, total, totalComEmail, totalSemEmail) {
+  const el = document.getElementById('ln-analises');
+  if (!el) return;
+  const pctGeral = total>0 ? (totalSemEmail/total*100) : 0;
+  const diasAgregados = lnAgruparPorDia(filtrados);
+  const semanas = lnAgruparPorSemana(diasAgregados);
+  const ultimoDia = diasAgregados.length ? diasAgregados[diasAgregados.length-1] : null;
+
+  if (_lnFiltros.posto) {
+    // MODO B — análise individual do posto. Nenhum ranking entre postos faz
+    // sentido aqui, porque só existe 1 posto no universo filtrado.
+    const recorrenciaArr = lnRecorrenciaPorPosto(filtrados);
+    const recorrenciaPosto = recorrenciaArr[0] || {diasComMovimento:0, diasAcimaMeta:0, pctDiasAcimaMeta:0};
+    el.innerHTML = `
+      <h3 style="font-size:15px;margin:0 0 4px;color:var(--text1)">Análises Inteligentes</h3>
+      <p style="font-size:11px;color:var(--text3);margin:0 0 14px">Análise individual de ${_lnFiltros.posto}, sobre o mesmo universo filtrado.</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px">
+        ${lnCardEvolucaoSemanal(semanas)}
+        ${lnCardUltimoImpacto(ultimoDia, pctGeral, semanas)}
+        ${lnCardRecorrenciaPosto(recorrenciaPosto, _lnFiltros.posto)}
+        ${lnCardMelhorPior(semanas, diasAgregados)}
+        ${lnCardDistanciaMeta(pctGeral)}
+        ${lnCardRecuperacaoPosto(total, totalSemEmail, pctGeral)}
+      </div>
+    `;
+  } else {
+    // MODO A — visão geral ou de uma supervisão inteira.
+    const recorrenciaPorPosto = lnRecorrenciaPorPosto(filtrados);
+    const { html: ondeAtuarHtml, prioridades } = lnCardOndeAtuar(ranking, totalSemEmail);
+    el.innerHTML = `
+      <h3 style="font-size:15px;margin:0 0 4px;color:var(--text1)">Análises Inteligentes</h3>
+      <p style="font-size:11px;color:var(--text3);margin:0 0 14px">${_lnFiltros.supervisor ? `Análise da supervisão de ${_lnFiltros.supervisor}` : 'Análise da operação completa'}, sobre o mesmo universo filtrado.</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px">
+        ${lnCardEvolucaoSemanal(semanas)}
+        ${lnCardUltimoImpacto(ultimoDia, pctGeral, semanas)}
+        ${lnCardTop5(ranking, totalSemEmail)}
+        ${lnCardRecorrenciaDestaques(ranking, recorrenciaPorPosto)}
+        ${ondeAtuarHtml}
+        ${lnCardPotencialRecuperacao(prioridades, total, totalSemEmail)}
+      </div>
+    `;
+  }
 }
 
 function lnRenderTabelaResultado() {
