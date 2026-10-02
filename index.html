@@ -16685,7 +16685,7 @@ async function importarCSAT(input) {
       if(!ano||!mes) return;
       const mesRef=`${ano}-${mes}`;
       const key=`${mesRef}|${loja}`;
-      if(!grupos[key]) grupos[key]={mesRef,postoNome:loja,pesquisas:0,notaSum:0,promotores:0,neutros:0,detratores:0,cordSum:0,cordCount:0};
+      if(!grupos[key]) grupos[key]={mesRef,postoNome:loja,pesquisas:0,notaSum:0,promotores:0,neutros:0,detratores:0,notas5:0,cordSum:0,cordCount:0};
       const g=grupos[key];
       const nota=parseFloat(row['CSAT'])||0;
       const qual=(row['QUALIFICAÇÃO']||'').trim();
@@ -16694,6 +16694,7 @@ async function importarCSAT(input) {
       if(qual==='Promotor') g.promotores++;
       else if(qual==='Neutro') g.neutros++;
       else if(qual==='Detrator') g.detratores++;
+      if(Math.abs(nota-5)<0.001) g.notas5++; // pesquisas com nota exatamente 5,00 — usado pela Campanha Mensal
       if(cord>0){ g.cordSum+=cord; g.cordCount++; }
       // Comentários
       const comentText=(row['EXPERIENCIA_O QUE VOCE ACHA QUE PODE SER MELHORADO']||'').trim();
@@ -16708,7 +16709,7 @@ async function importarCSAT(input) {
       const notaMedia=g.pesquisas>0?+(g.notaSum/g.pesquisas).toFixed(4):0;
       const notaCord=g.cordCount>0?+(g.cordSum/g.cordCount).toFixed(4):0;
       const docId=`${g.mesRef}_${csatNorm(g.postoNome).replace(/\s+/g,'_')}`;
-      batch1.set(db.collection('csat').doc(docId),{mesRef:g.mesRef,postoNome:g.postoNome,pesquisas:g.pesquisas,notaMedia,notaCordialidade:notaCord,promotores:g.promotores,neutros:g.neutros,detratores:g.detratores,updatedAt:new Date().toISOString()},{merge:true});
+      batch1.set(db.collection('csat').doc(docId),{mesRef:g.mesRef,postoNome:g.postoNome,pesquisas:g.pesquisas,notaMedia,notaCordialidade:notaCord,promotores:g.promotores,neutros:g.neutros,detratores:g.detratores,notas5:g.notas5,updatedAt:new Date().toISOString()},{merge:true});
       count++;
     });
     await batch1.commit();
@@ -22673,6 +22674,8 @@ function _trocaRenderDiag(diag) {
 // soma para volumes. CSAT replica a do próprio módulo CSAT: média ponderada por pesquisas.
 // ═══════════════════════════════════════════════════════════════════════════
 
+let _opDashAba = 'geral'; // 'geral' | 'campanha'
+function _opMudarAbaDash(aba) { _opDashAba = aba; renderDashboardOperacional(); }
 let _opMesesSel = [];
 let _opFiltroPosto = '';
 let _opFiltroSupervisor = '';
@@ -22864,6 +22867,326 @@ function _opRankingSemEmail() {
     supervisor: allPostos.find(x=>_opNormNome(x.nome)===_opNormNome(p.posto))?.supervisor || '—',
     baixoVolume: p.total<5
   })).sort((a,b)=>b.pct-a.pct);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// CAMPANHA MENSAL — camada de cálculo/apresentação sobre POS, CSAT e Email
+// Ligação Nova já homologados (_opAllPos, _opAllCsat, _opLnAgregados — os
+// mesmos arrays que o resto do Dash já carrega, nenhuma leitura nova de
+// Firestore é feita aqui). Nenhuma regra de POS/CSAT/Email é alterada.
+// ══════════════════════════════════════════════════════════════════════════
+let _campMesSel = '';
+let _campFiltroSupervisor = '';
+let _campFiltroPosto = '';
+
+function _campAplicarFiltroMes() { _campMesSel = document.getElementById('camp-fil-mes')?.value || ''; renderCampanhaMensal(); }
+function _campAplicarFiltroSupervisor() { _campFiltroSupervisor = document.getElementById('camp-fil-supervisor')?.value || ''; _campFiltroPosto=''; renderCampanhaMensal(); }
+function _campAplicarFiltroPosto() { _campFiltroPosto = document.getElementById('camp-fil-posto')?.value || ''; renderCampanhaMensal(); }
+function _campLimparFiltros() { _campFiltroSupervisor=''; _campFiltroPosto=''; renderCampanhaMensal(); }
+
+// Competências = união do que realmente existe nas 3 fontes — nunca o
+// calendário do navegador. Email entra pela DATA REAL de cada agregado
+// (mesma regra já homologada no filtro de Mês do próprio submódulo).
+function _campCompetenciasDisponiveis() {
+  const s = new Set();
+  (_opAllPos||[]).forEach(d=>{ if(d.mesRef) s.add(d.mesRef); });
+  (_opAllCsat||[]).forEach(d=>{ if(d.mesRef) s.add(d.mesRef); });
+  (_opLnAgregados||[]).forEach(a=>{ if(a.data) s.add(a.data.slice(0,7)); });
+  return [...s].sort();
+}
+
+function _campEmailDadosCompetencia(competencia) {
+  return (_opLnAgregados||[]).filter(a => a.data && a.data.slice(0,7)===competencia);
+}
+
+// Lista de semanas operacionais da competência (rótulo + se está fechada),
+// construída sobre o conjunto COMPLETO de postos — "semana fechada" é um
+// fato do calendário operacional do mês inteiro, não de um posto isolado.
+// Mesma fórmula já homologada em lnAgruparPorSemana/lnRotuloSemanaOperacional
+// (segunda–sexta, clipada pelo mês, nunca ultrapassando o último dia com
+// caso nem a Data de Extração vigente — nunca data do sistema).
+function _campSemanasGlobaisDaCompetencia(dadosCompetencia) {
+  const diasGlobais = lnAgruparPorDia(dadosCompetencia);
+  if (!diasGlobais.length) return [];
+  const ultimoDiaComCaso = diasGlobais[diasGlobais.length-1].data;
+  const diasOperacionais = diasGlobais.filter(d => lnEhDiaOperacional(d.data));
+  const gruposChave = {};
+  diasOperacionais.forEach(d => {
+    const { segunda, sexta } = lnSemanaOperacionalDoDia(d.data);
+    const chave = lnISODateLocal(segunda);
+    if (!gruposChave[chave]) gruposChave[chave] = { chave, segunda, sexta, primeiraDataReal: d.data };
+  });
+  const limites = [ultimoDiaComCaso, _opLnDataExtracao].filter(Boolean).sort();
+  const limiteSuperior = limites.length ? limites[0] : null;
+
+  return Object.values(gruposChave).sort((a,b)=>a.chave.localeCompare(b.chave)).map(g => {
+    const mesReferencia = g.primeiraDataReal.slice(0,7);
+    const [anoRef, mesRef] = mesReferencia.split('-').map(Number);
+    const primeiroDiaMes = new Date(anoRef, mesRef-1, 1);
+    const ultimoDiaMes = new Date(anoRef, mesRef, 0);
+    const inicioClip = g.segunda < primeiroDiaMes ? primeiroDiaMes : g.segunda;
+    let fimClip = g.sexta > ultimoDiaMes ? ultimoDiaMes : g.sexta;
+    let parcial = false;
+    if (limiteSuperior) {
+      const limiteDate = new Date(limiteSuperior + 'T00:00:00');
+      if (limiteDate < fimClip) { fimClip = limiteDate; parcial = true; }
+    }
+    const fmt = (d) => String(d.getDate()).padStart(2,'0');
+    const rotulo = `${fmt(inicioClip)}–${fmt(fimClip)}/${String(mesRef).padStart(2,'0')}`;
+    return { chave: g.chave, rotulo, parcial };
+  });
+}
+
+// Pontuação semanal de Email de UM posto, usando a mesma lista de semanas
+// globais (pra todo posto enxergar a mesma semana como fechada/em
+// andamento). Faixas não-cumulativas: ≤5,0%→10 · 5,1–10,0%→5 · >10,0%→0.
+// Semana parcial nunca soma ponto. Semana sem ingresso nunca vira 10 (nem 0%).
+function _campEmailPontosPosto(dadosCompetencia, postoNome, semanasGlobais) {
+  const dadosPosto = dadosCompetencia.filter(a => csatNorm(a.posto)===csatNorm(postoNome));
+  const porSemana = {};
+  dadosPosto.forEach(a => {
+    if (!lnEhDiaOperacional(a.data)) return;
+    const { segunda } = lnSemanaOperacionalDoDia(a.data);
+    const chave = lnISODateLocal(segunda);
+    if (!porSemana[chave]) porSemana[chave] = { comEmail:0, semEmail:0, total:0 };
+    porSemana[chave].comEmail += a.comEmail||0; porSemana[chave].semEmail += a.semEmail||0; porSemana[chave].total += a.total||0;
+  });
+
+  let pontosTotal = 0;
+  const semanas = semanasGlobais.map(sg => {
+    const d = porSemana[sg.chave] || { comEmail:0, semEmail:0, total:0 };
+    const pctSemEmail = d.total>0 ? (d.semEmail/d.total*100) : null;
+    let pontos = 0, faixa;
+    if (sg.parcial) faixa = 'em_andamento';
+    else if (d.total<=0) faixa = 'sem_ingressos';
+    else if (pctSemEmail<=5.0) { pontos=10; faixa='ate_5'; }
+    else if (pctSemEmail<=10.0) { pontos=5; faixa='5a10'; }
+    else { pontos=0; faixa='acima_10'; }
+    if (!sg.parcial) pontosTotal += pontos;
+    return { rotulo: sg.rotulo, parcial: sg.parcial, total: d.total, semEmail: d.semEmail, comEmail: d.comEmail, pctSemEmail, pontos, faixa };
+  });
+
+  return { semanas, pontosTotal };
+}
+
+// +1 ponto por negociação (qtd já é a mesma regra homologada do indicador
+// POS). Valor NUNCA gera ponto — só serve de desempate.
+function _campPosPontosPosto(postoNome, competencia) {
+  const docs = (_opAllPos||[]).filter(d => d.mesRef===competencia && _opNormNome(d.postoNome)===_opNormNome(postoNome));
+  const disponivelMes = (_opAllPos||[]).some(d => d.mesRef===competencia);
+  if (!docs.length) return { qtd:0, valor:0, pontos:0, disponivel: disponivelMes };
+  const qtd = docs.reduce((s,d)=>s+(d.qtd||0),0);
+  const valor = docs.reduce((s,d)=>s+(d.valor||0),0);
+  return { qtd, valor, pontos: qtd*1, disponivel: true };
+}
+
+// +5 pontos por pesquisa com nota EXATAMENTE 5,00 (nunca média). `notas5`
+// é um campo novo, aditivo, no doc já existente de `csat` — docs importados
+// antes dessa mudança não têm o campo: tratado como "dados incompletos",
+// nunca como zero silencioso.
+function _campCsatPontosPosto(postoNome, competencia) {
+  const docs = (_opAllCsat||[]).filter(d => d.mesRef===competencia && _opNormNome(d.postoNome)===_opNormNome(postoNome));
+  const disponivelMes = (_opAllCsat||[]).some(d => d.mesRef===competencia);
+  if (!docs.length) return { notas5:0, pontos:0, disponivel: disponivelMes, incompleto:false };
+  const incompleto = docs.some(d => d.notas5===undefined);
+  const notas5 = docs.reduce((s,d)=>s+(d.notas5||0),0);
+  return { notas5, pontos: notas5*5, disponivel:true, incompleto };
+}
+
+function _campCalcularPosto(postoNome, competencia, dadosEmailCompetencia, semanasGlobais) {
+  const pos = _campPosPontosPosto(postoNome, competencia);
+  const csat = _campCsatPontosPosto(postoNome, competencia);
+  const emailDisponivel = dadosEmailCompetencia.length>0;
+  const emailInfo = emailDisponivel ? _campEmailPontosPosto(dadosEmailCompetencia, postoNome, semanasGlobais) : { semanas: [], pontosTotal: 0 };
+
+  const total = (pos.disponivel?pos.pontos:0) + (csat.disponivel?csat.pontos:0) + (emailDisponivel?emailInfo.pontosTotal:0);
+  const dadosIncompletos = !pos.disponivel || !csat.disponivel || !emailDisponivel || csat.incompleto;
+  const supervisor = (allPostos.find(p=>_opNormNome(p.nome)===_opNormNome(postoNome))||{}).supervisor || '—';
+
+  return {
+    posto: postoNome, supervisor,
+    pos, csat, email: { semanas: emailInfo.semanas, pontos: emailInfo.pontosTotal, disponivel: emailDisponivel },
+    total, valorPosDesempate: pos.valor||0, dadosIncompletos
+  };
+}
+
+// Ranking = MESMO objeto consumido pela tabela, pela memória de cálculo e
+// pelo texto de WhatsApp — nunca recalculado separadamente em cada lugar.
+function _campCalcularRanking(competencia) {
+  if (!competencia) return [];
+  let postosEmEscopo = _campFiltroPosto ? [_campFiltroPosto]
+    : (_campFiltroSupervisor ? allPostos.filter(p=>p.supervisor===_campFiltroSupervisor).map(p=>p.nome)
+    : allPostos.filter(p=>p.nome!=='Posto Teste').map(p=>p.nome));
+  postosEmEscopo = _opDedupPostos(postosEmEscopo);
+
+  const dadosEmailCompetencia = _campEmailDadosCompetencia(competencia);
+  const semanasGlobais = dadosEmailCompetencia.length ? _campSemanasGlobaisDaCompetencia(dadosEmailCompetencia) : [];
+
+  const lista = postosEmEscopo.map(nome => _campCalcularPosto(nome, competencia, dadosEmailCompetencia, semanasGlobais));
+
+  lista.sort((a,b) => {
+    if (b.total !== a.total) return b.total - a.total;
+    if (b.valorPosDesempate !== a.valorPosDesempate) return b.valorPosDesempate - a.valorPosDesempate;
+    return a.posto.localeCompare(b.posto, 'pt-BR'); // empate técnico — determinístico, nenhum critério de negócio novo
+  });
+  lista.forEach((r,i) => { r.posicao = i+1; });
+  return lista;
+}
+
+function _campCardMemoria(r) {
+  const linhasEmail = r.email.disponivel ? r.email.semanas.map(s => {
+    if (s.parcial) return `<div style="font-size:11px;color:var(--text3)">• ${s.rotulo}: ${s.total>0?s.pctSemEmail.toFixed(1)+'%':'sem ingressos ainda'} — Em andamento</div>`;
+    if (s.total<=0) return `<div style="font-size:11px;color:var(--text3)">• ${s.rotulo}: Sem ingressos — +0</div>`;
+    return `<div style="font-size:11px;color:${s.pontos===10?'#1baf7a':s.pontos===5?'#eda100':'#e24b4a'}">• ${s.rotulo}: ${s.pctSemEmail.toFixed(1)}% — +${s.pontos}</div>`;
+  }).join('') : '<div style="font-size:11px;color:var(--text3)">Email Ligação Nova indisponível para esta competência</div>';
+
+  return `<div class="card" style="padding:14px 18px">
+    <div style="font-size:13px;font-weight:700;margin-bottom:8px">${r.posicao}º — ${r.posto} — ${r.total} pts</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;font-size:12px">
+      <div><div style="font-weight:600;color:var(--text3);margin-bottom:3px">POS</div>
+        ${r.pos.disponivel ? `${r.pos.qtd} negociações × 1 = ${r.pos.pontos} pts` : '<span style="color:#eda100">Indisponível</span>'}</div>
+      <div><div style="font-weight:600;color:var(--text3);margin-bottom:3px">CSAT</div>
+        ${r.csat.disponivel ? `${r.csat.notas5} pesquisas nota 5,00 × 5 = ${r.csat.pontos} pts${r.csat.incompleto?' <span style="color:#eda100">(dados parciais)</span>':''}` : '<span style="color:#eda100">Indisponível</span>'}</div>
+      <div><div style="font-weight:600;color:var(--text3);margin-bottom:3px">EMAIL — ${r.email.pontos} pts</div>
+        ${linhasEmail}</div>
+      <div><div style="font-weight:600;color:var(--text3);margin-bottom:3px">VALOR POS (desempate)</div>
+        ${r.pos.disponivel ? _opFmtRSCompacto(r.valorPosDesempate) : '—'}</div>
+    </div>
+  </div>`;
+}
+
+function _campGerarTextoWhatsApp(competencia, ranking, semanasGlobais) {
+  const label = _indMesLabel(competencia);
+  const semanaAtual = semanasGlobais.find(s=>s.parcial);
+  let txt = `🏆 CAMPANHA MENSAL — ${label.toUpperCase()}\n`;
+  txt += semanaAtual ? `📊 Parcial — semana atual (${semanaAtual.rotulo}) ainda em andamento\n\n` : '\n';
+
+  ranking.forEach(r => {
+    const medalha = r.posicao===1?'🥇':r.posicao===2?'🥈':r.posicao===3?'🥉':`${r.posicao}º`;
+    txt += `${medalha} — ${r.posto} — ${r.total} pts\n`;
+    txt += `POS: ${r.pos.disponivel?`${r.pos.qtd} negociações = ${r.pos.pontos} pts`:'indisponível'}\n`;
+    txt += `CSAT: ${r.csat.disponivel?`${r.csat.notas5} notas 5,00 = ${r.csat.pontos} pts`:'indisponível'}\n`;
+    txt += `Email: ${r.email.disponivel?`${r.email.pontos} pts`:'indisponível'}\n`;
+    if (r.email.disponivel) r.email.semanas.forEach(s => {
+      if (s.parcial) txt += `• ${s.rotulo}: ${s.total>0?s.pctSemEmail.toFixed(1)+'%':'sem ingressos'} — EM ANDAMENTO\n`;
+      else if (s.total<=0) txt += `• ${s.rotulo}: sem ingressos — +0\n`;
+      else txt += `• ${s.rotulo}: ${s.pctSemEmail.toFixed(1)}% — +${s.pontos}\n`;
+    });
+    txt += `Valor POS: ${r.pos.disponivel?_opFmtRSCompacto(r.valorPosDesempate):'—'}\n\n`;
+  });
+
+  txt += `📌 Pontuação:\nPOS: 1 ponto por negociação\nCSAT nota 5,00: 5 pontos por pesquisa\nEmail:\n• até 5,0% Sem Email = 10 pts/semana\n• 5,1% a 10,0% Sem Email = 5 pts/semana\n• acima de 10,0% Sem Email = 0 pts/semana\n\n⚖️ Desempate: maior valor negociado em POS.`;
+  return txt;
+}
+
+async function _campCopiarWhatsApp() {
+  if (!_campMesSel) return;
+  const ranking = _campCalcularRanking(_campMesSel);
+  const dadosEmailCompetencia = _campEmailDadosCompetencia(_campMesSel);
+  const semanasGlobais = dadosEmailCompetencia.length ? _campSemanasGlobaisDaCompetencia(dadosEmailCompetencia) : [];
+  const texto = _campGerarTextoWhatsApp(_campMesSel, ranking, semanasGlobais);
+  try {
+    await navigator.clipboard.writeText(texto);
+    toast('Ranking copiado — cole no WhatsApp.', 'ok');
+  } catch(e) {
+    console.error('[Campanha] erro ao copiar pro clipboard:', e);
+    toast('Não foi possível copiar automaticamente. Selecione o texto manualmente.', 'err');
+  }
+}
+
+async function renderCampanhaMensal() {
+  const wrap = document.getElementById('camp-wrap');
+  if (!wrap) return;
+
+  const competenciasDisp = _campCompetenciasDisponiveis();
+  if (!competenciasDisp.length) {
+    wrap.innerHTML = `<div class="empty"><p>Nenhum dado disponível ainda em POS, CSAT ou Email Ligação Nova.</p></div>`;
+    return;
+  }
+  if (!_campMesSel || !competenciasDisp.includes(_campMesSel)) _campMesSel = competenciasDisp[competenciasDisp.length-1];
+
+  const postosDisp = _opDedupPostos(allPostos.filter(p=>p.nome!=='Posto Teste').map(p=>p.nome));
+  const supervisoresDisp = _opSupervisoresDisponiveis();
+  const postosDispFiltrados = _campFiltroSupervisor ? _opDedupPostos(allPostos.filter(p=>p.supervisor===_campFiltroSupervisor).map(p=>p.nome)) : postosDisp;
+
+  const ranking = _campCalcularRanking(_campMesSel);
+  const dadosEmailCompetencia = _campEmailDadosCompetencia(_campMesSel);
+  const semanasGlobais = dadosEmailCompetencia.length ? _campSemanasGlobaisDaCompetencia(dadosEmailCompetencia) : [];
+  const semanasFechadas = semanasGlobais.filter(s=>!s.parcial).length;
+
+  const posMesExiste = (_opAllPos||[]).some(d=>d.mesRef===_campMesSel);
+  const csatMesExiste = (_opAllCsat||[]).some(d=>d.mesRef===_campMesSel);
+  const emailMesExiste = dadosEmailCompetencia.length>0;
+
+  const lider = ranking[0] || null;
+  const totalPos = ranking.reduce((s,r)=>s+(r.pos.disponivel?r.pos.qtd:0),0);
+  const totalCsat5 = ranking.reduce((s,r)=>s+(r.csat.disponivel?r.csat.notas5:0),0);
+
+  wrap.innerHTML = `
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px">
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Mês</label>
+        <select class="form-select" id="camp-fil-mes" style="min-width:160px" onchange="_campAplicarFiltroMes()">
+          ${competenciasDisp.map(m=>`<option value="${m}" ${_campMesSel===m?'selected':''}>${_indMesLabel(m)}</option>`).join('')}
+        </select></div>
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Supervisor</label>
+        <select class="form-select" id="camp-fil-supervisor" style="min-width:160px" onchange="_campAplicarFiltroSupervisor()">
+          <option value="">Todos</option>
+          ${supervisoresDisp.map(s=>`<option value="${s}" ${_campFiltroSupervisor===s?'selected':''}>${s}</option>`).join('')}
+        </select></div>
+      <div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:3px">Posto</label>
+        <select class="form-select" id="camp-fil-posto" style="min-width:200px" onchange="_campAplicarFiltroPosto()">
+          <option value="">Todos os postos</option>
+          ${postosDispFiltrados.map(p=>`<option value="${p}" ${_campFiltroPosto===p?'selected':''}>${p}</option>`).join('')}
+        </select></div>
+      <button onclick="_campLimparFiltros()" style="font-size:11px;padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.18);background:transparent;color:var(--text3);cursor:pointer">Limpar filtros</button>
+    </div>
+
+    ${(!posMesExiste||!csatMesExiste||!emailMesExiste) ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      ${posMesExiste?'':'<span style="font-size:11px;background:rgba(226,75,74,.12);color:#e24b4a;padding:4px 10px;border-radius:8px;border:1px solid rgba(226,75,74,.3);font-weight:600">⚠️ POS indisponível para esta competência</span>'}
+      ${csatMesExiste?'':'<span style="font-size:11px;background:rgba(226,75,74,.12);color:#e24b4a;padding:4px 10px;border-radius:8px;border:1px solid rgba(226,75,74,.3);font-weight:600">⚠️ CSAT indisponível para esta competência</span>'}
+      ${emailMesExiste?'':'<span style="font-size:11px;background:rgba(226,75,74,.12);color:#e24b4a;padding:4px 10px;border-radius:8px;border:1px solid rgba(226,75,74,.3);font-weight:600">⚠️ Email Ligação Nova indisponível para esta competência</span>'}
+    </div>` : ''}
+
+    ${!ranking.length ? `<div class="empty"><p>Nenhum posto no universo filtrado para esta competência.</p></div>` : `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:20px">
+      <div style="background:var(--surface2);border-radius:12px;padding:14px;border:1px solid rgba(255,255,255,.07)"><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Líder</div><div style="font-size:15px;font-weight:700;margin-top:4px">${lider?lider.posto:'—'}</div></div>
+      <div style="background:var(--surface2);border-radius:12px;padding:14px;border:1px solid rgba(255,255,255,.07)"><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Maior Pontuação</div><div style="font-size:20px;font-weight:800;margin-top:4px;color:#2a78d6">${lider?lider.total:0} pts</div></div>
+      <div style="background:var(--surface2);border-radius:12px;padding:14px;border:1px solid rgba(255,255,255,.07)"><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Total de Postos</div><div style="font-size:20px;font-weight:800;margin-top:4px">${ranking.length}</div></div>
+      <div style="background:var(--surface2);border-radius:12px;padding:14px;border:1px solid rgba(255,255,255,.07)"><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Total POS</div><div style="font-size:20px;font-weight:800;margin-top:4px">${totalPos}</div></div>
+      <div style="background:var(--surface2);border-radius:12px;padding:14px;border:1px solid rgba(255,255,255,.07)"><div style="font-size:10px;color:var(--text3);text-transform:uppercase">CSAT 5,00</div><div style="font-size:20px;font-weight:800;margin-top:4px">${totalCsat5}</div></div>
+      <div style="background:var(--surface2);border-radius:12px;padding:14px;border:1px solid rgba(255,255,255,.07)"><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Semanas Email Apuradas</div><div style="font-size:20px;font-weight:800;margin-top:4px">${semanasFechadas}</div></div>
+    </div>
+
+    <div class="card" style="padding:0;overflow:auto;margin-bottom:20px">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="background:var(--surface2)">
+          <th style="padding:9px 10px;text-align:center">#</th><th style="padding:9px 10px;text-align:left">Posto</th>
+          <th style="padding:9px 10px;text-align:left">Supervisor</th><th style="padding:9px 10px;text-align:right">POS</th>
+          <th style="padding:9px 10px;text-align:right">CSAT 5★</th><th style="padding:9px 10px;text-align:right">Email</th>
+          <th style="padding:9px 10px;text-align:right">Total</th><th style="padding:9px 10px;text-align:right">Valor POS</th>
+        </tr></thead>
+        <tbody>${ranking.map(r => {
+          const medalha = r.posicao===1?'🥇':r.posicao===2?'🥈':r.posicao===3?'🥉':r.posicao+'º';
+          return `<tr style="border-top:1px solid var(--border);${r.posicao<=3?'background:rgba(42,120,214,.05)':''}">
+            <td style="padding:7px 10px;text-align:center;font-weight:700">${medalha}</td>
+            <td style="padding:7px 10px;font-weight:600">${r.posto}${r.dadosIncompletos?' <span style="font-size:10px;color:#eda100" title="Dados incompletos">⚠️</span>':''}</td>
+            <td style="padding:7px 10px;color:var(--text3)">${r.supervisor}</td>
+            <td style="padding:7px 10px;text-align:right">${r.pos.disponivel?r.pos.pontos+' pts':'—'}</td>
+            <td style="padding:7px 10px;text-align:right">${r.csat.disponivel?r.csat.pontos+' pts':'—'}</td>
+            <td style="padding:7px 10px;text-align:right">${r.email.disponivel?r.email.pontos+' pts':'—'}</td>
+            <td style="padding:7px 10px;text-align:right;font-weight:800;color:#2a78d6">${r.total} pts</td>
+            <td style="padding:7px 10px;text-align:right">${r.pos.disponivel?_opFmtRSCompacto(r.valorPosDesempate):'—'}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div>
+
+    <h3 style="font-size:14px;margin:0 0 10px;color:var(--text2)">Memória de Pontuação</h3>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px">${ranking.map(r => _campCardMemoria(r)).join('')}</div>
+
+    <button class="btn btn-primary" onclick="_campCopiarWhatsApp()">📋 Copiar Ranking para WhatsApp</button>
+    `}
+  `;
 }
 
 // ── Card POS ─────────────────────────────────────────────────────────────
@@ -23181,6 +23504,21 @@ async function renderDashboardOperacional() {
     return;
   }
 
+  // Navegação de abas do Dash — "Visão Geral" preserva 100% do conteúdo já
+  // homologado abaixo, sem nenhuma alteração; "Campanha Mensal" é a nova
+  // camada de cálculo/apresentação, isolada em sua própria função.
+  const _opAbaNavHtml = `
+    <div style="display:flex;gap:4px;margin-bottom:18px;border-bottom:1px solid rgba(255,255,255,.08)">
+      <button onclick="_opMudarAbaDash('geral')" style="padding:9px 18px;border:none;background:transparent;cursor:pointer;font-size:13px;font-weight:600;color:${_opDashAba==='geral'?'#2a78d6':'var(--text3)'};border-bottom:2px solid ${_opDashAba==='geral'?'#2a78d6':'transparent'};margin-bottom:-1px">Visão Geral</button>
+      <button onclick="_opMudarAbaDash('campanha')" style="padding:9px 18px;border:none;background:transparent;cursor:pointer;font-size:13px;font-weight:600;color:${_opDashAba==='campanha'?'#2a78d6':'var(--text3)'};border-bottom:2px solid ${_opDashAba==='campanha'?'#2a78d6':'transparent'};margin-bottom:-1px">🏆 Campanha Mensal</button>
+    </div>
+  `;
+  if (_opDashAba === 'campanha') {
+    wrap.innerHTML = _opAbaNavHtml + '<div id="camp-wrap"></div>';
+    await renderCampanhaMensal();
+    return;
+  }
+
   const postosDisp = _opFiltroSupervisor ? _opDedupPostos(allPostos.filter(p=>p.supervisor===_opFiltroSupervisor).map(p=>p.nome)) : _opPostosDisponiveis();
   const supervisoresDisp = _opSupervisoresDisponiveis();
   const selLabel = _opMesesSel.length ? _opMesesSel.map(_indMesLabel).join(', ') : `Todos (${mesesTodos.length})`;
@@ -23206,7 +23544,7 @@ async function renderDashboardOperacional() {
       ${card.modo==='semdados' ? '<div style="font-size:13px;color:var(--text3);margin-top:8px">Sem dados para o período/posto</div>' : corpo}
     </div>`;
 
-  wrap.innerHTML = `
+  wrap.innerHTML = _opAbaNavHtml + `
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
       ${_opUltimaAtualizacaoIndicadores?`<span style="font-size:11px;background:rgba(245,158,11,.12);color:#eda100;padding:4px 10px;border-radius:8px;border:1px solid rgba(245,158,11,.3);font-weight:600">📅 Indicadores — Base atualizada em: ${_opUltimaAtualizacaoIndicadores}</span>`:''}
       ${csatUltimaAtualizacao?`<span style="font-size:11px;background:rgba(245,158,11,.12);color:#eda100;padding:4px 10px;border-radius:8px;border:1px solid rgba(245,158,11,.3);font-weight:600">📅 CSAT — Base atualizada em: ${csatUltimaAtualizacao}</span>`:''}
