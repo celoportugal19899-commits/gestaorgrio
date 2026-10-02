@@ -26348,8 +26348,14 @@ function lnPostosDoSupervisorNorm(supervisor) {
   return new Set((allPostos||[]).filter(p=>p.supervisor===supervisor).map(p=>csatNorm(p.nome)));
 }
 
+// A competência é derivada da DATA REAL de cada agregado (a.data.slice(0,7)),
+// nunca do snapshot vigente ou da Data de Extração — um snapshot é uma
+// fotografia acumulada que pode conter mais de uma competência, então
+// snapshot ≠ competência. Sem isso, o dropdown de Mês não filtrava nada de
+// verdade: qualquer mês selecionado sempre mostrava o snapshot inteiro.
 function lnFiltrarAgregados(agregados) {
   let f = agregados;
+  if (_lnFiltros.competencia) f = f.filter(a => a.data && a.data.slice(0,7) === _lnFiltros.competencia);
   if (_lnFiltros.posto) f = f.filter(a=>a.posto===_lnFiltros.posto);
   else if (_lnFiltros.supervisor) {
     const postosSup = lnPostosDoSupervisorNorm(_lnFiltros.supervisor);
@@ -26414,6 +26420,32 @@ async function lnRenderResultadoOficial() {
     return b.total-a.total;
   });
   const postosAcimaMeta = ranking.filter(r=>r.situacao==='ACIMA_DA_META').length;
+
+  // Diagnóstico temporário de reconciliação — explicita, sempre que o
+  // Resultado Oficial é renderizado, a diferença entre o Total Geral do
+  // card (soma de TODOS os agregados do universo filtrado, incluindo o
+  // bucket "(Pendente)" de pendência de matrícula) e a soma só dos postos
+  // REAIS mostrados na tabela (que nunca inclui "(Pendente)", porque não é
+  // um posto). A diferença entre os dois é esperada e corresponde
+  // exatamente às pendências de matrícula/posto do universo filtrado — não
+  // é um bug, mas precisa ficar visível, nunca escondida.
+  if (typeof console !== 'undefined') {
+    const somaTotalPostosTabela = ranking.reduce((s,r)=>s+r.total,0);
+    const bucketPendente = filtrados.filter(a=>a.posto==='(Pendente)');
+    const totalPendenteNosAgregados = bucketPendente.reduce((s,a)=>s+a.total,0);
+    const italva = ranking.find(r=>csatNorm(r.nome)==='ITALVA');
+    console.log('[LigNova][RECONCILIACAO]', {
+      totalCardGeral: total,
+      comEmailCard: totalComEmail,
+      semEmailCard: totalSemEmail,
+      somaTotalPostosTabela,
+      diferencaCardMenosTabela: total - somaTotalPostosTabela,
+      totalNoBucketPendente_explicaADiferenca: totalPendenteNosAgregados,
+      sedeNoSnapshot_foraDoCardGeral: (_lnConfig.baseOficial.totaisResumo && _lnConfig.baseOficial.totaisResumo.sede) || 0,
+      pendenciaMatriculaNoSnapshotInteiro_semFiltro: (_lnConfig.baseOficial.totaisResumo && _lnConfig.baseOficial.totaisResumo.pendenciaMatricula) || 0,
+      italva: italva ? { total: italva.total, comEmail: italva.comEmail, semEmail: italva.semEmail, pctSemEmail: italva.pctSemEmail } : '(não encontrado no ranking — conferir filtro ativo)'
+    });
+  }
   _lnResRankingAtual = ranking;
   _lnResOrdenacao = { coluna: null, direcao: 'asc' }; // volta pra ordem gerencial padrão a cada novo carregamento/filtro
 
@@ -27869,6 +27901,7 @@ async function lnExportar() {
 
     const casosSnap = await db.collection('ligacaonova_base_casos').where('snapshotId','==',snapshotId).get();
     let casos = casosSnap.docs.map(d=>d.data());
+    if (_lnFiltros.competencia) casos = casos.filter(c=>c.dataAbertura && c.dataAbertura.slice(0,7)===_lnFiltros.competencia);
     if (_lnFiltros.posto) casos = casos.filter(c=>c.posto===_lnFiltros.posto);
     else if (_lnFiltros.supervisor) {
       const postosSup = lnPostosDoSupervisorNorm(_lnFiltros.supervisor);
