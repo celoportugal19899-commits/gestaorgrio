@@ -27606,12 +27606,31 @@ function lnRenderPreviaBaseOficial(resultado) {
   const el = document.getElementById('ln-preview-base');
   if (!el) return;
   const t = resultado.totais;
+
+  // Competências encontradas = derivadas da Data/Hora de abertura dos casos
+  // que de fato serão gravados (nunca da Data de extração). Serve pra
+  // perceber uma virada de mês (ex.: Outubro reconhecido) antes de confirmar.
+  const gravaveis = resultado.casos.filter(c => ['elegivel','pendencia_matricula','sede'].includes(c.situacao));
+  const porCompetencia = {};
+  let semDataAbertura = 0;
+  gravaveis.forEach(c => {
+    if (!c.dataAbertura) { semDataAbertura++; return; }
+    const k = c.dataAbertura.slice(0,7);
+    porCompetencia[k] = (porCompetencia[k]||0) + 1;
+  });
+  const competenciasOrdenadas = Object.keys(porCompetencia).sort();
+  const periodoMin = lnMenorData(gravaveis), periodoMax = lnMaiorData(gravaveis);
+
   el.innerHTML = `
     <div style="background:var(--surface2);border-radius:8px;padding:12px;font-size:13px;line-height:1.8">
       <strong>Prévia — nada foi gravado ainda</strong><br>
       Arquivo reconhecido: ${resultado.arquivoNome}<br>
       Aba reconhecida: base<br>
-      Data de extração encontrada / extração selecionada: ${lnFmtData(resultado.dataExtracao)}<br>
+      Extração selecionada (maior Data de extração do arquivo): <strong>${lnFmtData(resultado.dataExtracao)}</strong><br>
+      Período encontrado (Data/Hora de abertura): ${lnFmtData(periodoMin)} a ${lnFmtData(periodoMax)}<br>
+      Competências encontradas:
+      ${competenciasOrdenadas.length ? competenciasOrdenadas.map(k => `<span style="display:inline-block;margin-left:8px"><strong>${lnFmtCompetencia(k)}</strong> — ${porCompetencia[k]} ingressos</span>`).join('') : '<span style="color:var(--text3)">nenhuma</span>'}<br>
+      ${semDataAbertura ? `<span style="color:#f59e0b">⚠️ ${semDataAbertura} caso(s) sem Data/Hora de abertura válida — ficam fora dos agregados por dia.</span><br>` : ''}
       Linhas reais encontradas: ${t.linhasRealEncontradas}<br>
       Ingressos dos postos (universo GERENTE): <strong>${t.elegiveis + t.pendenciaMatricula}</strong> &nbsp; <span style="color:var(--text3)">(Sub Status e Ponto de Fornecimento não filtram o indicador)</span><br>
       Com E-mail: ${t.comEmail} &nbsp; Sem E-mail: ${t.semEmail} &nbsp; Pendência de classificação: ${t.pendenciaClassificacao}<br>
@@ -27726,6 +27745,16 @@ async function lnConfirmarImportacaoBaseOficial() {
       competenciasBase: Array.from(competenciasDisponiveis)
     }, { merge:true });
 
+    // Releitura de verificação: o ponteiro vigente precisa apontar de fato
+    // para o snapshot e para a extração que acabaram de ser importados.
+    // Se não apontar, a tela continuaria mostrando a base anterior — isso
+    // nunca pode passar como "importado com sucesso".
+    const cfgVerif = await configRef.get();
+    const boVerif = cfgVerif.exists ? cfgVerif.data().baseOficial : null;
+    if (!boVerif || boVerif.snapshotVigenteId !== snapshotId || boVerif.dataExtracaoReal !== resultado.dataExtracao) {
+      throw new Error(`Verificação pós-gravação falhou: o ponteiro vigente (${boVerif ? lnFmtData(boVerif.dataExtracaoReal) : 'vazio'}) não corresponde à extração importada (${lnFmtData(resultado.dataExtracao)}).`);
+    }
+
     await db.collection('ligacaonova_importacoes').add({
       tipo:'base_oficial', arquivo: resultado.arquivoNome, usuario: currentUser.email,
       dataHora: firebase.firestore.FieldValue.serverTimestamp(), dataExtracao: resultado.dataExtracao, competencia,
@@ -27734,7 +27763,7 @@ async function lnConfirmarImportacaoBaseOficial() {
       pendencias: resultado.totais.pendenciaMatricula, resultado:'sucesso', erro:null
     }).catch(e=>console.error('[LigNova] falha ao registrar diagnóstico (não afeta a importação):', e));
 
-    toast('✅ Base Oficial importada com sucesso!', 'ok');
+    toast(`✅ Base Oficial importada — extração ${lnFmtData(resultado.dataExtracao)}, período ${lnFmtData(lnMenorData(casosValidos))} a ${lnFmtData(lnMaiorData(casosValidos))}`, 'ok');
     _lnPreviaBaseAtual = null;
     await lnCarregarConfig();
     lnRenderStatusBases();
@@ -27743,7 +27772,8 @@ async function lnConfirmarImportacaoBaseOficial() {
     lnMudarAba('resultado');
   } catch (e) {
     console.error('[LigNova] erro ao confirmar importação da Base Oficial:', e);
-    toast('Erro ao gravar a importação — o snapshot anterior continua vigente. ' + e.message, 'err');
+    const _msgVerif = String(e.message||'').startsWith('Verificação pós-gravação');
+    toast(_msgVerif ? ('Erro ao confirmar a importação. ' + e.message) : ('Erro ao gravar a importação — o snapshot anterior continua vigente. ' + e.message), 'err');
     db.collection('ligacaonova_importacoes').add({
       tipo:'base_oficial', usuario: currentUser.email, dataHora: firebase.firestore.FieldValue.serverTimestamp(),
       resultado:'falha', erro: String(e.message||e)
