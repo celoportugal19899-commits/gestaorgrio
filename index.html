@@ -26484,7 +26484,45 @@ window.verificarPosLimpeza = async function() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 let _lnConfig = null;
-let _lnFiltros = { competencia: null, supervisor: '', posto: '', dataInicio: null, dataFim: null };
+// competencias = seleção EXPLÍCITA do usuário (Ctrl+clique p/ várias). Vazio =
+// nada marcado: visões detalhadas usam a competência mais recente; o gráfico
+// mensal usa todas as competências existentes.
+let _lnFiltros = { competencias: [], supervisor: '', posto: '', dataInicio: null, dataFim: null };
+
+// Cache dos agregados do snapshot vigente (chave = snapshotId, que é único
+// por importação) — evita reler o Firestore a cada clique de filtro e é a
+// fonte das competências disponíveis (derivadas de a.data, nunca da extração).
+let _lnAgregadosCache = { snapshotId: null, lista: null };
+let _lnCompetenciasDisponiveis = [];
+let _lnCarregandoCompetencias = false;
+let _lnFiltrosCompKey = '';
+async function lnObterAgregadosVigentes() {
+  const snapshotId = _lnConfig && _lnConfig.baseOficial && _lnConfig.baseOficial.snapshotVigenteId;
+  if (!snapshotId) return [];
+  if (_lnAgregadosCache.snapshotId === snapshotId && _lnAgregadosCache.lista) return _lnAgregadosCache.lista;
+  const snap = await db.collection('ligacaonova_base_agregados_dia').where('snapshotId','==',snapshotId).get();
+  const lista = snap.docs.map(d=>d.data());
+  _lnAgregadosCache = { snapshotId, lista };
+  _lnCompetenciasDisponiveis = Array.from(new Set(lista.filter(a=>a.data).map(a=>a.data.slice(0,7)))).sort();
+  return lista;
+}
+// Competências usadas pelas visões DETALHADAS (cards, tabela, gráficos
+// diário/acumulado/volume, ranking, análises): a seleção explícita, ou — sem
+// nada marcado — a mais recente existente (mantém o comportamento anterior).
+function lnCompetenciasDetalhe() {
+  if (_lnFiltros.competencias.length) return _lnFiltros.competencias;
+  return _lnCompetenciasDisponiveis.length ? [_lnCompetenciasDisponiveis[_lnCompetenciasDisponiveis.length-1]] : [];
+}
+// Comparação por intervalo equivalente: só com 2+ competências explícitas E
+// Data Inicial/Final preenchida — o filtro de data é que determina a intenção.
+function lnModoIntervaloEquivalente() {
+  return _lnFiltros.competencias.length >= 2 && !!(_lnFiltros.dataInicio || _lnFiltros.dataFim);
+}
+function lnDiasDoFiltro() {
+  const dIni = _lnFiltros.dataInicio ? parseInt(_lnFiltros.dataInicio.slice(8,10),10) : 1;
+  const dFim = _lnFiltros.dataFim ? parseInt(_lnFiltros.dataFim.slice(8,10),10) : 31;
+  return { dIni, dFim, invalido: dIni > dFim };
+}
 let _lnAbaAtiva = 'resultado';
 let _lnPreviaBaseAtual = null;
 let _lnPreviaControleAtual = null;
@@ -26600,7 +26638,6 @@ function lnMudarAba(aba) {
 }
 
 function lnAplicarFiltros() {
-  _lnFiltros.competencia = document.getElementById('ln-f-mes').value;
   _lnFiltros.supervisor = document.getElementById('ln-f-supervisor').value;
   _lnFiltros.posto = document.getElementById('ln-f-posto').value;
   _lnFiltros.dataInicio = document.getElementById('ln-f-data-inicio').value || null;
@@ -26652,14 +26689,31 @@ function lnFmtCompetencia(comp) {
 function lnRenderFiltros() {
   const el = document.getElementById('ln-filtros');
   if (!el) return;
-  const competencias = (_lnConfig && _lnConfig.competenciasBase) || [];
-  if (!_lnFiltros.competencia && competencias.length) _lnFiltros.competencia = competencias[competencias.length-1];
+
+  // Competências vêm dos AGREGADOS (a.data) — nunca de competenciasBase, que
+  // é montado pela data de extração e criava meses sem dado. Se ainda não
+  // carregou, dispara a carga e re-renderiza quando chegar.
+  const snapVig = _lnConfig && _lnConfig.baseOficial && _lnConfig.baseOficial.snapshotVigenteId;
+  if (snapVig && _lnAgregadosCache.snapshotId !== snapVig && !_lnCarregandoCompetencias) {
+    _lnCarregandoCompetencias = true;
+    lnObterAgregadosVigentes()
+      .then(()=>{ _lnCarregandoCompetencias = false; lnRenderFiltros(); })
+      .catch(e=>{ console.error('[LigNova] erro ao carregar competências:', e); });
+  }
+  const competencias = _lnCompetenciasDisponiveis;
+  if (competencias.length) _lnFiltros.competencias = _lnFiltros.competencias.filter(c => competencias.includes(c));
+  _lnFiltrosCompKey = competencias.join(',');
   const supervisores = Array.from(new Set((allPostos||[]).map(p=>p.supervisor).filter(Boolean))).sort();
+  const dica = !competencias.length ? 'carregando...'
+    : _lnFiltros.competencias.length ? 'Ctrl+clique marca/desmarca vários meses'
+    : `Sem mês marcado: detalhes de ${lnFmtCompetencia(competencias[competencias.length-1])}; gráfico mensal com todos. Ctrl+clique p/ vários`;
   el.innerHTML = `
-    <div class="form-group" style="margin:0"><label class="form-label">Mês</label>
-      <select class="form-input" id="ln-f-mes" onchange="lnAplicarFiltros()">
-        ${competencias.map(c=>`<option value="${c}" ${c===_lnFiltros.competencia?'selected':''}>${lnFmtCompetencia(c)}</option>`).join('') || '<option value="">—</option>'}
-      </select></div>
+    <div class="form-group" style="margin:0"><label class="form-label">Mês <span style="font-weight:400;color:var(--text3)">— ${dica}</span></label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        ${competencias.map(c=>`<button type="button" class="ind-mes-btn${_lnFiltros.competencias.includes(c)?' active':''}" onclick="lnToggleCompetencia('${c}',event)">${lnFmtCompetencia(c)}</button>`).join('') || '<span style="color:var(--text3);font-size:12px">—</span>'}
+        ${competencias.length>1?`<button type="button" class="ind-mes-btn" onclick="lnSelecionarTodasCompetencias()">Todos</button>`:''}
+        ${_lnFiltros.competencias.length?`<button type="button" class="ind-mes-btn" onclick="lnLimparCompetencias()">Limpar</button>`:''}
+      </div></div>
     <div class="form-group" style="margin:0"><label class="form-label">Supervisor</label>
       <select class="form-input" id="ln-f-supervisor" onchange="lnAplicarFiltros()">
         <option value="">Todos</option>
@@ -26677,6 +26731,23 @@ function lnRenderFiltros() {
   `;
 }
 
+// Clique simples: seleciona só aquele mês (ou desmarca, se já era o único).
+// Ctrl/Cmd+clique: adiciona/remove da seleção (padrão multisseleção).
+function lnToggleCompetencia(c, evt) {
+  const sel = _lnFiltros.competencias;
+  if (evt && (evt.ctrlKey || evt.metaKey)) {
+    const i = sel.indexOf(c);
+    if (i>=0) sel.splice(i,1); else sel.push(c);
+    sel.sort();
+  } else {
+    _lnFiltros.competencias = (sel.length===1 && sel[0]===c) ? [] : [c];
+  }
+  lnAplicarFiltros();
+  lnRenderFiltros();
+}
+function lnSelecionarTodasCompetencias() { _lnFiltros.competencias = [..._lnCompetenciasDisponiveis]; lnAplicarFiltros(); lnRenderFiltros(); }
+function lnLimparCompetencias() { _lnFiltros.competencias = []; lnAplicarFiltros(); lnRenderFiltros(); }
+
 // Conjunto de postos (grafia canônica de TODOS_POSTOS_RG) vinculados a um
 // supervisor — usa csatNorm dos dois lados porque allPostos.nome vem em
 // caixa/acentuação mista (ex.: "Aperibé") e a.posto sempre vem canônico
@@ -26693,14 +26764,22 @@ function lnPostosDoSupervisorNorm(supervisor) {
 // verdade: qualquer mês selecionado sempre mostrava o snapshot inteiro.
 function lnFiltrarAgregados(agregados) {
   let f = agregados;
-  if (_lnFiltros.competencia) f = f.filter(a => a.data && a.data.slice(0,7) === _lnFiltros.competencia);
+  const comps = lnCompetenciasDetalhe();
+  if (comps.length) f = f.filter(a => a.data && comps.includes(a.data.slice(0,7)));
   if (_lnFiltros.posto) f = f.filter(a=>a.posto===_lnFiltros.posto);
   else if (_lnFiltros.supervisor) {
     const postosSup = lnPostosDoSupervisorNorm(_lnFiltros.supervisor);
     f = f.filter(a=>postosSup.has(csatNorm(a.posto)));
   }
-  if (_lnFiltros.dataInicio) f = f.filter(a=>a.data>=_lnFiltros.dataInicio);
-  if (_lnFiltros.dataFim) f = f.filter(a=>a.data<=_lnFiltros.dataFim);
+  if (lnModoIntervaloEquivalente()) {
+    // 2+ competências + filtro de data: o DIA DO MÊS informado define o
+    // intervalo comparável em cada competência (01–15/09 × 01–15/10).
+    const { dIni, dFim, invalido } = lnDiasDoFiltro();
+    f = invalido ? [] : f.filter(a => { const d = parseInt(a.data.slice(8,10),10); return d>=dIni && d<=dFim; });
+  } else {
+    if (_lnFiltros.dataInicio) f = f.filter(a=>a.data>=_lnFiltros.dataInicio);
+    if (_lnFiltros.dataFim) f = f.filter(a=>a.data<=_lnFiltros.dataFim);
+  }
   return f;
 }
 
@@ -26716,13 +26795,15 @@ async function lnRenderResultadoOficial() {
   const snapshotId = _lnConfig.baseOficial.snapshotVigenteId;
   let agregados;
   try {
-    const snap = await db.collection('ligacaonova_base_agregados_dia').where('snapshotId','==',snapshotId).get();
-    agregados = snap.docs.map(d=>d.data());
+    agregados = await lnObterAgregadosVigentes();
   } catch(e) {
     console.error('[LigNova] erro ao carregar agregados:', e);
     el.innerHTML = `<div class="empty"><p>Erro ao carregar os dados. Tente novamente.</p></div>`;
     return;
   }
+  // Barra de filtros só é redesenhada se a lista de competências mudou
+  // (evita perder o foco de um campo de data em edição).
+  if (_lnCompetenciasDisponiveis.join(',') !== _lnFiltrosCompKey) lnRenderFiltros();
 
   const filtrados = lnFiltrarAgregados(agregados);
   if (!filtrados.length) {
@@ -26843,15 +26924,18 @@ async function lnRenderResultadoOficial() {
       <div class="card" style="padding:16px"><canvas id="ln-chart-volume" height="220"></canvas></div>
       ${!_lnFiltros.posto ? `<div class="card" style="padding:16px"><canvas id="ln-chart-comparativo" height="200"></canvas></div>` : ''}
     </div>
+    <div id="ln-mensal" style="margin-bottom:20px"></div>
     <div class="card" style="padding:0;overflow:auto">
       <table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead><tr id="ln-res-tabela-head" style="background:var(--surface2)"></tr></thead>
         <tbody id="ln-res-tabela-corpo"></tbody>
       </table>
     </div>
+    <div id="ln-analises-comp" style="margin-top:28px"></div>
     <div id="ln-analises" style="margin-top:28px"></div>
   `;
   lnRenderTabelaResultado();
+  lnRenderMensal(agregados);
   lnDesenharGraficosResultado(evoLabels, evoComPct, evoSemPct, volCom, volSem, diaLabels, diaComPct, diaSemPct, ranking);
   lnRenderAnalisesInteligentes(filtrados, ranking, total, totalComEmail, totalSemEmail);
 }
@@ -26958,7 +27042,7 @@ function lnLimiteSuperiorSemana(ultimoDiaComCasoISO) {
   const limites = [];
   if (ultimoDiaComCasoISO) limites.push(ultimoDiaComCasoISO); // regra principal
   if (_lnConfig && _lnConfig.baseOficial && _lnConfig.baseOficial.dataExtracaoReal) limites.push(_lnConfig.baseOficial.dataExtracaoReal); // teto de segurança
-  if (_lnFiltros.dataFim) limites.push(_lnFiltros.dataFim);
+  if (_lnFiltros.dataFim && !lnModoIntervaloEquivalente()) limites.push(_lnFiltros.dataFim); // no modo equivalente a data vale como dia do mês, não como teto absoluto
   return limites.length ? limites.sort()[0] : null; // o mais restritivo (menor)
 }
 
@@ -27268,6 +27352,310 @@ function lnRenderAnalisesInteligentes(filtrados, ranking, total, totalComEmail, 
       </div>
     `;
   }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// EVOLUÇÃO MENSAL + COMPARAÇÃO ENTRE COMPETÊNCIAS
+// Só filtro + agregação + visualização, sobre os agregados diários já
+// gravados no snapshot vigente (nenhuma releitura de XLSX/casos, nenhuma
+// reimportação). % Sem E-mail = SOMA Sem E-mail / SOMA Total, sempre.
+//  • Sem Data Inicial/Final  → cada competência mostra TUDO que existe nela.
+//  • Com Data + 2 ou mais meses marcados → mesmos DIAS DO MÊS em cada mês.
+// ══════════════════════════════════════════════════════════════════════════
+const LN_MESES_CURTO = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+function lnRotuloCompetenciaCurto(c) { const [y,m] = c.split('-'); return LN_MESES_CURTO[parseInt(m,10)-1] + '/' + y.slice(2); }
+function lnNomeMes(c) { return LN_MESES_PT[parseInt(c.split('-')[1],10)-1]; }
+function lnFmtPct2(v) { return v==null ? '—' : v.toFixed(2).replace('.',',') + '%'; }
+function lnFmtNum2(v) { return v.toFixed(2).replace('.',','); }
+function lnDDMM(iso) { return iso ? iso.slice(8,10) + '/' + iso.slice(5,7) : '—'; }
+function lnUltimoDiaDoMesISO(comp) { const [y,m] = comp.split('-').map(Number); return `${comp}-${String(new Date(y,m,0).getDate()).padStart(2,'0')}`; }
+// Último dia OPERACIONAL (seg–sex, sem feriado) menor ou igual a uma data.
+function lnUltimoDiaUtilAteISO(iso) {
+  const d = new Date(iso + 'T00:00:00');
+  for (let i=0;i<10;i++) { const k = lnISODateLocal(d); if (lnEhDiaOperacional(k)) return k; d.setDate(d.getDate()-1); }
+  return iso;
+}
+
+let _lnCmpDados = null;
+let _lnCmpOrdenacao = { coluna: null, direcao: 'asc' };
+
+// Um item por competência, já com: janela solicitada, dados dentro dela,
+// cobertura (completa/parcial) e quebra por posto. Competência sem dado na
+// janela => total 0 e pct null (NUNCA vira 0%).
+function lnCalcMensal(todos) {
+  const validos = todos.filter(a => a.data);
+  const disponiveis = Array.from(new Set(validos.map(a => a.data.slice(0,7)))).sort();
+  let base = validos;
+  if (_lnFiltros.posto) base = base.filter(a => a.posto === _lnFiltros.posto);
+  else if (_lnFiltros.supervisor) { const ps = lnPostosDoSupervisorNorm(_lnFiltros.supervisor); base = base.filter(a => ps.has(csatNorm(a.posto))); }
+
+  const comps = _lnFiltros.competencias.length ? _lnFiltros.competencias.filter(c => disponiveis.includes(c)) : disponiveis;
+  const equiv = lnModoIntervaloEquivalente();
+  const temData = !!(_lnFiltros.dataInicio || _lnFiltros.dataFim);
+  const { dIni, dFim, invalido } = lnDiasDoFiltro();
+  const extracao = _lnConfig && _lnConfig.baseOficial ? _lnConfig.baseOficial.dataExtracaoReal : null;
+  const pad = n => String(n).padStart(2,'0');
+
+  return comps.map(c => {
+    const ultimoMes = lnUltimoDiaDoMesISO(c), diasMes = parseInt(ultimoMes.slice(8),10);
+    let ini = `${c}-01`, fim = ultimoMes, vazio = false;
+    if (equiv) {
+      if (invalido || dIni > diasMes) vazio = true;
+      ini = `${c}-${pad(Math.min(Math.max(1,dIni),diasMes))}`; fim = `${c}-${pad(Math.min(dFim,diasMes))}`;
+    } else if (temData) {
+      if (_lnFiltros.dataInicio && _lnFiltros.dataInicio > ini) ini = _lnFiltros.dataInicio;
+      if (_lnFiltros.dataFim && _lnFiltros.dataFim < fim) fim = _lnFiltros.dataFim;
+      if (ini > fim) vazio = true;
+    }
+    const globais = validos.filter(a => a.data.slice(0,7) === c);
+    const ultimoGlobal = globais.reduce((m,a) => a.data > m ? a.data : m, '');
+    const temPosterior = disponiveis.some(x => x > c);
+    // Completa = existe dado além do fim pedido (mês posterior, último dia
+    // útil já coberto, ou extração posterior ao fim). Nunca se projeta dia futuro.
+    const fimUtil = vazio ? fim : lnUltimoDiaUtilAteISO(fim);
+    const completo = vazio ? false : (temPosterior || ultimoGlobal >= fimUtil || !!(extracao && extracao > fim));
+    const dados = vazio ? [] : base.filter(a => a.data.slice(0,7) === c && a.data >= ini && a.data <= fim);
+    const com = dados.reduce((s,a) => s + (a.comEmail||0), 0), sem = dados.reduce((s,a) => s + (a.semEmail||0), 0);
+    const total = com + sem;
+    const porPosto = {};
+    dados.forEach(a => {
+      if (!porPosto[a.posto]) porPosto[a.posto] = { total:0, sem:0 };
+      porPosto[a.posto].total += (a.comEmail||0) + (a.semEmail||0); porPosto[a.posto].sem += a.semEmail||0;
+    });
+    return {
+      comp: c, rotulo: lnRotuloCompetenciaCurto(c), nome: lnNomeMes(c), ini, fim, vazio,
+      solicitadoLabel: `${ini.slice(8,10)}–${fim.slice(8,10)}/${c.slice(5,7)}`,
+      ultimoGlobal, disponivelAte: (ultimoGlobal && ultimoGlobal < fim) ? ultimoGlobal : fim,
+      completo, parcial: !completo, total, com, sem, pct: total > 0 ? sem/total*100 : null, porPosto,
+      intervalo: equiv || temData
+    };
+  });
+}
+
+function lnLinhasComparativas(mensal) {
+  if (mensal.length < 2) return [];
+  const postos = _lnFiltros.posto ? [_lnFiltros.posto]
+    : (_lnFiltros.supervisor ? TODOS_POSTOS_RG.filter(p => lnPostosDoSupervisorNorm(_lnFiltros.supervisor).has(csatNorm(p))) : TODOS_POSTOS_RG);
+  const first = mensal[0], last = mensal[mensal.length-1];
+  const anyParcial = !first.completo || !last.completo;
+  return postos.map(nome => {
+    const vals = {};
+    mensal.forEach(m => { const d = m.porPosto[nome]; vals[m.comp] = d && d.total > 0 ? { total:d.total, sem:d.sem, pct:d.sem/d.total*100 } : null; });
+    const vF = vals[first.comp], vL = vals[last.comp];
+    const variacao = (vF && vL) ? vL.pct - vF.pct : null;
+    let situacao = 'Sem comparação';
+    if (variacao != null) situacao = Math.abs(variacao) < 0.05 ? 'Estável' : (variacao < 0 ? (anyParcial ? 'Abaixo do anterior' : 'Melhorou') : (anyParcial ? 'Acima do anterior' : 'Piorou'));
+    return { nome, vals, variacao, situacao, baixoVolume: !!((vF && vF.total < 5) || (vL && vL.total < 5)) };
+  }).filter(r => Object.values(r.vals).some(v => v));
+}
+
+function lnTextoVariacao(a, b) {
+  if (a.pct == null || b.pct == null) return { delta:null, texto:'Sem dados em uma das competências — sem variação.', cor:'var(--text3)', rotulo:'—', situacao:null };
+  const delta = b.pct - a.pct, abs = Math.abs(delta);
+  const estavel = abs < 0.005;
+  const cor = estavel ? 'var(--text3)' : (delta < 0 ? '#22c55e' : '#ef4444');
+  const seta = estavel ? '→' : (delta < 0 ? '↓' : '↑');
+  const dir = estavel ? 'no mesmo patamar de' : `${lnFmtNum2(abs)} p.p. ${delta < 0 ? 'abaixo' : 'acima'} de`;
+  const ambosCompletos = a.completo && b.completo;
+  // MELHORA/PIORA/ESTÁVEL só quando as duas pontas estão completas; com
+  // competência parcial a frase é "resultado atual", nunca fechamento.
+  const situacao = ambosCompletos ? (estavel ? 'ESTÁVEL' : (delta < 0 ? 'MELHORA' : 'PIORA')) : null;
+  let texto;
+  if (ambosCompletos && (a.intervalo || b.intervalo)) texto = estavel ? 'Estável no período comparável.' : `${delta < 0 ? 'Melhora' : 'Piora'} de ${lnFmtNum2(abs)} p.p. no período comparável.`;
+  else if (ambosCompletos) texto = `${b.nome} ${dir} ${a.nome}.`;
+  else texto = `Resultado atual de ${b.nome} ${dir} ${a.nome}. Comparação com competência parcial.`;
+  return { delta, texto, cor, rotulo: `${seta} ${lnFmtNum2(abs)} p.p.`, situacao };
+}
+
+function lnStatusCompetenciaHtml(m) {
+  if (m.vazio || m.total === 0) return `<span style="color:var(--text3)">Sem dados${m.intervalo ? ' no intervalo' : ''}</span>`;
+  if (m.intervalo) return m.completo
+    ? `<span style="color:var(--text3)">${m.solicitadoLabel} · completo</span>`
+    : `<span style="color:#f59e0b">Período solicitado: ${m.solicitadoLabel} · Dados disponíveis: até ${lnDDMM(m.disponivelAte)} · PARCIAL</span>`;
+  return m.completo ? `<span style="color:var(--text3)">Fechado</span>` : `<span style="color:#f59e0b">Parcial até ${lnDDMM(m.disponivelAte)}</span>`;
+}
+
+function lnCardsComparativosHtml(mensal) {
+  const card = (titulo, big, sub, cor) => `<div class="card" style="padding:14px 18px;border-left:4px solid ${cor||'var(--border)'}">
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">${titulo}</div>
+      <div style="font-size:26px;font-weight:700">${big}</div><div style="font-size:11px;margin-top:2px">${sub}</div></div>`;
+  const first = mensal[0], last = mensal[mensal.length-1];
+  const v = lnTextoVariacao(first, last);
+  const cardComp = m => card(`${m.nome}/${m.comp.slice(0,4)}`, lnFmtPct2(m.pct), `${lnStatusCompetenciaHtml(m)}${m.total>0&&m.total<5?' · <span style="color:#f59e0b">baixo volume</span>':''}`, m.pct==null?'var(--border)':(m.pct<=10?'#22c55e':'#ef4444'));
+  const cardVar = card('Variação', `<span style="color:${v.cor}">${v.rotulo}</span>`, `${v.situacao?`<strong style="color:${v.cor}">${v.situacao}</strong> — `:''}<span style="color:var(--text2)">${v.texto}</span>`, v.cor);
+  if (mensal.length === 2) return [cardComp(first), cardComp(last), cardVar].join('');
+  const comPct = mensal.filter(m => m.pct != null);
+  const melhor = comPct.length ? comPct.reduce((a,b) => b.pct < a.pct ? b : a) : null;
+  const pior = comPct.length ? comPct.reduce((a,b) => b.pct > a.pct ? b : a) : null;
+  return [
+    cardComp(first), cardComp(last), cardVar,
+    card('Melhor resultado', melhor ? `${melhor.rotulo} — ${lnFmtPct2(melhor.pct)}` : '—', melhor ? lnStatusCompetenciaHtml(melhor) : '', '#22c55e'),
+    card('Pior resultado', pior ? `${pior.rotulo} — ${lnFmtPct2(pior.pct)}` : '—', pior ? lnStatusCompetenciaHtml(pior) : '', '#ef4444')
+  ].join('');
+}
+
+function lnDesenharGraficoMensal(mensal) {
+  if (_lnCharts.mensal) { _lnCharts.mensal.destroy(); _lnCharts.mensal = null; }
+  const cv = document.getElementById('ln-chart-mensal');
+  if (!cv) return;
+  const labels = mensal.map(m => m.rotulo + (m.parcial && m.total > 0 ? ' (parcial)' : ''));
+  const pcts = mensal.map(m => m.pct == null ? null : +m.pct.toFixed(2));
+  const maxPct = Math.max(10, ...pcts.filter(x => x != null));
+  _lnCharts.mensal = new Chart(cv.getContext('2d'), {
+    type: 'line',
+    data: { labels, datasets: [
+      { label: '% Sem E-mail', data: pcts, borderColor: '#ef4444', backgroundColor: 'transparent', tension: .2, spanGaps: false,
+        pointRadius: 5, pointBackgroundColor: mensal.map(m => m.parcial ? '#ffffff' : '#ef4444'), pointBorderColor: '#ef4444', pointBorderWidth: 2,
+        datalabels: { align: 'top', anchor: 'end', color: '#dc2626' } },
+      { label: 'Meta (10%)', data: labels.map(() => 10), borderColor: '#f59e0b', borderDash: [6,4], pointRadius: 0, datalabels: { display: false } }
+    ]},
+    plugins: [ChartDataLabels],
+    options: {
+      responsive: true, layout: { padding: { top: 22, bottom: 4, left: 10, right: 16 } },
+      plugins: {
+        title: { display: true, text: 'Evolução mensal — % Sem E-mail' },
+        datalabels: { display: true, formatter: v => v == null ? '' : v.toFixed(2).replace('.',',') + '%', font: { size: 11, weight: '600' }, offset: 2 }
+      },
+      scales: { y: { min: 0, suggestedMax: Math.ceil((maxPct + 8) / 5) * 5 }, x: { ticks: { autoSkip: false } } }
+    }
+  });
+}
+
+function lnColunasComparativas(mensal) {
+  return [
+    { chave:'nome', label:'Posto', tipo:'texto' },
+    ...mensal.map(m => ({ chave:'p:'+m.comp, label:m.rotulo + (m.parcial ? ' (parcial)' : ''), tipo:'numero', comp:m.comp })),
+    { chave:'variacao', label:'Variação p.p.', tipo:'numero' },
+    { chave:'situacao', label:'Situação', tipo:'texto' }
+  ];
+}
+function lnOrdenarTabelaComparativa(chave) {
+  if (_lnCmpOrdenacao.coluna === chave) _lnCmpOrdenacao.direcao = _lnCmpOrdenacao.direcao === 'asc' ? 'desc' : 'asc';
+  else { _lnCmpOrdenacao.coluna = chave; _lnCmpOrdenacao.direcao = 'asc'; }
+  lnRenderTabelaComparativa();
+}
+function lnRenderTabelaComparativa() {
+  const el = document.getElementById('ln-cmp-tabela');
+  if (!el || !_lnCmpDados) return;
+  const { mensal, linhas } = _lnCmpDados;
+  const cols = lnColunasComparativas(mensal);
+  const last = mensal[mensal.length-1];
+  const valor = (r, col) => col.chave === 'nome' ? r.nome : col.chave === 'situacao' ? r.situacao : col.chave === 'variacao' ? r.variacao : (r.vals[col.comp] ? r.vals[col.comp].pct : null);
+  let ordenadas = [...linhas];
+  if (!_lnCmpOrdenacao.coluna) {
+    // padrão: maior % no período mais recente primeiro (quem precisa de atenção); sem dado por último
+    ordenadas.sort((a,b) => { const x = a.vals[last.comp], y = b.vals[last.comp]; if (!x && !y) return 0; if (!x) return 1; if (!y) return -1; return y.pct - x.pct; });
+  } else {
+    const col = cols.find(c => c.chave === _lnCmpOrdenacao.coluna), dir = _lnCmpOrdenacao.direcao === 'asc' ? 1 : -1;
+    ordenadas.sort((a,b) => {
+      const va = valor(a, col), vb = valor(b, col);
+      if (col.tipo === 'numero') { if (va == null && vb == null) return 0; if (va == null) return 1; if (vb == null) return -1; return (va - vb) * dir; }
+      return String(va ?? '').localeCompare(String(vb ?? ''), 'pt-BR') * dir;
+    });
+  }
+  const cabecalho = cols.map(col => {
+    const ativo = _lnCmpOrdenacao.coluna === col.chave;
+    const seta = ativo ? (_lnCmpOrdenacao.direcao === 'asc' ? ' ↑' : ' ↓') : ' ↕';
+    return `<th style="padding:9px 12px;text-align:${col.tipo==='numero'?'right':'left'};cursor:pointer;user-select:none;white-space:nowrap" onclick="lnOrdenarTabelaComparativa('${col.chave}')" title="Ordenar">${col.label}<span style="color:${ativo?'var(--primary)':'var(--text3)'};font-size:11px">${seta}</span></th>`;
+  }).join('');
+  const corSit = s => /Melhorou|Abaixo/.test(s) ? '#22c55e' : /Piorou|Acima/.test(s) ? '#ef4444' : 'var(--text3)';
+  const linhasHtml = ordenadas.map(r => `<tr style="border-top:1px solid var(--border)">
+      <td style="padding:7px 12px">${r.nome}</td>
+      ${mensal.map(m => { const v = r.vals[m.comp]; return `<td style="padding:7px 12px;text-align:right">${v ? `${lnFmtPct2(v.pct)} <span style="font-size:10px;color:var(--text3)">(${v.total})</span>` : '<span style="color:var(--text3)">—</span>'}</td>`; }).join('')}
+      <td style="padding:7px 12px;text-align:right;color:${r.variacao==null?'var(--text3)':(r.variacao<0?'#22c55e':(r.variacao>0?'#ef4444':'var(--text3)'))}">${r.variacao==null?'—':(r.variacao<0?'↓ ':r.variacao>0?'↑ ':'→ ')+lnFmtNum2(Math.abs(r.variacao))}</td>
+      <td style="padding:7px 12px;color:${corSit(r.situacao)}">${r.situacao}${r.baixoVolume?' <span style="font-size:10px;color:#f59e0b">· baixo volume</span>':''}</td>
+    </tr>`).join('');
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:var(--surface2)">${cabecalho}</tr></thead><tbody>${linhasHtml}</tbody></table>`;
+}
+
+// Análises determinísticas — duas linguagens distintas, nunca misturadas:
+// modo real (sem filtro de data) e comparação por intervalo (com data).
+function lnAnaliseComparativaHtml(mensal, linhas) {
+  if (mensal.length < 2) return '';
+  const first = mensal[0], last = mensal[mensal.length-1];
+  const intervalo = lnModoIntervaloEquivalente();
+  const { dIni, dFim } = lnDiasDoFiltro();
+  const itens = [];
+
+  if (first.pct == null || last.pct == null) {
+    const sem = [first, last].filter(m => m.pct == null).map(m => m.nome).join(' e ');
+    itens.push(`Sem dados em ${sem} ${intervalo ? 'no intervalo informado' : 'para os filtros atuais'} — não há variação a comparar.`);
+  } else {
+    const delta = last.pct - first.pct, abs = Math.abs(delta);
+    const dir = abs < 0.005 ? 'no mesmo patamar' : `${lnFmtNum2(abs)} p.p. ${delta < 0 ? 'abaixo' : 'acima'}`;
+    const volume = (first.total < 5 || last.total < 5) ? ' <span style="color:#f59e0b">(leitura com baixo volume)</span>' : '';
+    if (intervalo) {
+      const dd = n => String(n).padStart(2,'0');
+      const trecho = _lnFiltros.dataInicio && _lnFiltros.dataFim ? `de ${dd(dIni)} a ${dd(dFim)}` : (_lnFiltros.dataInicio ? `a partir do dia ${dd(dIni)}` : `até o dia ${dd(dFim)}`);
+      itens.push(`No intervalo ${trecho}, ${last.nome} apresenta resultado ${dir} de ${first.nome} (${lnFmtPct2(last.pct)} × ${lnFmtPct2(first.pct)}).${volume}`);
+    } else {
+      const ref = first.completo ? `do fechamento de ${first.nome} (${lnFmtPct2(first.pct)})` : `de ${first.nome} (${lnFmtPct2(first.pct)}, parcial até ${lnDDMM(first.disponivelAte)})`;
+      itens.push(`${last.nome} está em ${lnFmtPct2(last.pct)} Sem E-mail${last.completo ? '' : ' até ' + lnDDMM(last.disponivelAte)}, ${dir} ${ref}.${last.completo ? '' : ` ${last.nome} ainda é uma competência parcial.`}${volume}`);
+    }
+  }
+  if (intervalo) mensal.filter(m => !m.completo && !m.vazio).forEach(m => itens.push(`<span style="color:#f59e0b">Atenção:</span> ${m.nome} — período solicitado ${m.solicitadoLabel}; dados disponíveis até ${lnDDMM(m.disponivelAte)}. Cobertura diferente das demais competências.`));
+
+  if (mensal.length >= 3) {
+    const comPct = mensal.filter(m => m.pct != null);
+    if (comPct.length) {
+      const melhor = comPct.reduce((a,b) => b.pct < a.pct ? b : a), pior = comPct.reduce((a,b) => b.pct > a.pct ? b : a);
+      itens.push(`Trajetória: ${comPct.map(m => `${m.rotulo} ${lnFmtPct2(m.pct)}`).join(' → ')}. Melhor resultado: ${melhor.rotulo} (${lnFmtPct2(melhor.pct)}); pior: ${pior.rotulo} (${lnFmtPct2(pior.pct)}).`);
+    }
+  }
+
+  if (!_lnFiltros.posto && linhas.length) {
+    const comp = linhas.filter(r => r.variacao != null);
+    const melhoraram = comp.filter(r => r.variacao < -0.05).length, pioraram = comp.filter(r => r.variacao > 0.05).length;
+    const refPeriodo = mensal.length > 2 ? ` (${first.rotulo} × ${last.rotulo})` : '';
+    if (comp.length) {
+      itens.push(intervalo
+        ? `Dos ${comp.length} postos comparáveis${refPeriodo}, ${melhoraram} melhoraram e ${pioraram} pioraram.`
+        : `Dos ${comp.length} postos analisados${refPeriodo}, ${melhoraram} apresentam resultado atual melhor que ${first.nome} e ${pioraram} pior.`);
+      const elegiveis = comp.filter(r => r.vals[first.comp].total >= 5 && r.vals[last.comp].total >= 5);
+      const pool = elegiveis.length ? elegiveis : comp, flag = elegiveis.length ? '' : ' <span style="color:#f59e0b">(baixo volume)</span>';
+      const maior = pool.reduce((a,b) => b.variacao < a.variacao ? b : a), maiorAlta = pool.reduce((a,b) => b.variacao > a.variacao ? b : a);
+      const det = r => `${r.nome} (${lnFmtPct2(r.vals[first.comp].pct)} → ${lnFmtPct2(r.vals[last.comp].pct)}, ${lnFmtNum2(Math.abs(r.variacao))} p.p.)`;
+      if (maior.variacao < -0.05) itens.push(`${intervalo ? 'Maior evolução no intervalo' : 'Maior redução atual'}: ${det(maior)}.${flag}`);
+      if (maiorAlta.variacao > 0.05) itens.push(`${intervalo ? 'Maior piora no intervalo' : 'Maior aumento atual'}: ${det(maiorAlta)}.${flag}`);
+      if (!elegiveis.length) itens.push(`Nenhum posto com o volume mínimo (5 ingressos) nas duas competências — destaques acima têm baixo volume.`);
+    } else itens.push('Nenhum posto com dados nas duas competências para comparar.');
+  }
+
+  return `<h3 style="font-size:15px;margin:0 0 4px;color:var(--text1)">Análises Inteligentes — ${intervalo ? 'comparação por intervalo' : 'evolução entre competências'}</h3>
+    <p style="font-size:11px;color:var(--text3);margin:0 0 12px">${intervalo ? 'Mesmos dias do mês em cada competência (filtro de Data ativo).' : 'Cada competência com todo o dado disponível (sem filtro de Data); mês parcial não é tratado como fechamento.'}</p>
+    <div class="card" style="padding:16px 18px"><ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:7px;font-size:13px;line-height:1.5">${itens.map(t => `<li>${t}</li>`).join('')}</ul></div>`;
+}
+
+function lnRenderMensal(todos) {
+  const el = document.getElementById('ln-mensal');
+  if (!el) return;
+  const mensal = lnCalcMensal(todos);
+  const explicitas = _lnFiltros.competencias.length >= 2;
+  const linhas = explicitas ? lnLinhasComparativas(mensal) : [];
+  _lnCmpDados = { mensal, linhas };
+  if (!mensal.length) { el.innerHTML = ''; const a = document.getElementById('ln-analises-comp'); if (a) a.innerHTML = ''; return; }
+
+  const intervalo = lnModoIntervaloEquivalente();
+  const { dIni, dFim, invalido } = lnDiasDoFiltro();
+  const banner = intervalo ? `<div class="card" style="padding:10px 14px;margin-bottom:12px;border-left:4px solid #6366f1;font-size:12px;line-height:1.7">
+      <strong>Comparação por intervalo: ${invalido ? '<span style="color:#ef4444">dia inicial maior que o final — intervalo inválido</span>' : `dias ${String(dIni).padStart(2,'0')} a ${String(dFim).padStart(2,'0')}`}</strong><br>
+      ${mensal.map(m => `${m.nome}: ${lnStatusCompetenciaHtml(m)}`).join(' &nbsp;|&nbsp; ')}</div>` : '';
+  const chips = mensal.map(m => `<span style="font-size:11px;margin-right:14px"><strong>${m.rotulo}</strong> ${lnFmtPct2(m.pct)} · ${lnStatusCompetenciaHtml(m)}${m.total>0&&m.total<5?' · <span style="color:#f59e0b">baixo volume</span>':''}</span>`).join('');
+  const escopo = _lnFiltros.posto ? `Posto ${_lnFiltros.posto}` : (_lnFiltros.supervisor ? `Supervisor ${_lnFiltros.supervisor}` : 'Operação completa');
+
+  el.innerHTML = `
+    <h3 style="font-size:15px;margin:0 0 4px;color:var(--text1)">Evolução Mensal</h3>
+    <p style="font-size:11px;color:var(--text3);margin:0 0 12px">${escopo} · ${_lnFiltros.competencias.length ? 'competências marcadas' : 'todas as competências existentes'} · % Sem E-mail = soma Sem E-mail ÷ soma Total de cada competência</p>
+    ${banner}
+    <div class="card" style="padding:16px;margin-bottom:12px"><canvas id="ln-chart-mensal" height="${mensal.length>6?120:90}"></canvas>
+      <div style="margin-top:10px;line-height:1.9">${chips}</div></div>
+    ${explicitas ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:12px">${lnCardsComparativosHtml(mensal)}</div>` : ''}
+    ${explicitas && !_lnFiltros.posto && linhas.length ? `<div class="card" style="padding:0;overflow:auto"><div id="ln-cmp-tabela"></div></div>` : ''}`;
+
+  lnDesenharGraficoMensal(mensal);
+  if (explicitas && !_lnFiltros.posto && linhas.length) lnRenderTabelaComparativa();
+  const a = document.getElementById('ln-analises-comp');
+  if (a) a.innerHTML = explicitas ? lnAnaliseComparativaHtml(mensal, linhas) : '';
 }
 
 function lnRenderTabelaResultado() {
@@ -28264,36 +28652,71 @@ async function lnExportar() {
   toast('Preparando exportação...', 'ok');
   try {
     const snapshotId = _lnConfig.baseOficial.snapshotVigenteId;
-    const agregSnap = await db.collection('ligacaonova_base_agregados_dia').where('snapshotId','==',snapshotId).get();
-    const agregados = lnFiltrarAgregados(agregSnap.docs.map(d=>d.data()));
+    const agregTodos = await lnObterAgregadosVigentes();
+    const agregados = lnFiltrarAgregados(agregTodos);
+    const mensalExport = lnCalcMensal(agregTodos);
+    const linhasCmpExport = _lnFiltros.competencias.length >= 2 ? lnLinhasComparativas(mensalExport) : [];
 
     const casosSnap = await db.collection('ligacaonova_base_casos').where('snapshotId','==',snapshotId).get();
     let casos = casosSnap.docs.map(d=>d.data());
-    if (_lnFiltros.competencia) casos = casos.filter(c=>c.dataAbertura && c.dataAbertura.slice(0,7)===_lnFiltros.competencia);
+    const compsExp = lnCompetenciasDetalhe();
+    if (compsExp.length) casos = casos.filter(c=>c.dataAbertura && compsExp.includes(c.dataAbertura.slice(0,7)));
     if (_lnFiltros.posto) casos = casos.filter(c=>c.posto===_lnFiltros.posto);
     else if (_lnFiltros.supervisor) {
       const postosSup = lnPostosDoSupervisorNorm(_lnFiltros.supervisor);
       casos = casos.filter(c=>c.posto && postosSup.has(csatNorm(c.posto)));
     }
-    if (_lnFiltros.dataInicio) casos = casos.filter(c=>!c.dataAbertura || c.dataAbertura>=_lnFiltros.dataInicio);
-    if (_lnFiltros.dataFim) casos = casos.filter(c=>!c.dataAbertura || c.dataAbertura<=_lnFiltros.dataFim);
+    if (lnModoIntervaloEquivalente()) {
+      // mesmos dias do mês em cada competência (igual ao filtro de tela)
+      const { dIni, dFim, invalido } = lnDiasDoFiltro();
+      casos = invalido ? [] : casos.filter(c=>{ if(!c.dataAbertura) return false; const d = parseInt(c.dataAbertura.slice(8,10),10); return d>=dIni && d<=dFim; });
+    } else {
+      if (_lnFiltros.dataInicio) casos = casos.filter(c=>!c.dataAbertura || c.dataAbertura>=_lnFiltros.dataInicio);
+      if (_lnFiltros.dataFim) casos = casos.filter(c=>!c.dataAbertura || c.dataAbertura<=_lnFiltros.dataFim);
+    }
 
     const wb = XLSX.utils.book_new();
     const totalCom = agregados.reduce((s,a)=>s+(a.comEmail||0),0), totalSem = agregados.reduce((s,a)=>s+(a.semEmail||0),0);
+    const modoExp = lnModoIntervaloEquivalente() ? 'Comparação por intervalo (mesmos dias do mês)' : ((_lnFiltros.dataInicio||_lnFiltros.dataFim) ? 'Filtro de data' : 'Competência inteira');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
       ['Resumo — Email Ligação Nova'], [],
+      ['Competências', compsExp.map(lnFmtCompetencia).join(', ') || '—'],
+      ['Modo', modoExp],
+      ['Data inicial', _lnFiltros.dataInicio ? lnFmtData(_lnFiltros.dataInicio) : '—'], ['Data final', _lnFiltros.dataFim ? lnFmtData(_lnFiltros.dataFim) : '—'],
+      ['Supervisor', _lnFiltros.supervisor || 'Todos'], ['Posto', _lnFiltros.posto || 'Todos'], [],
       ['Total Com E-mail', totalCom], ['Total Sem E-mail', totalSem],
       ['% Sem E-mail', totalCom+totalSem>0 ? (totalSem/(totalCom+totalSem)*100).toFixed(1)+'%' : '—']
     ]), 'Resumo');
 
+    // Evolução Mensal — mesma base do gráfico/cards da tela (cada linha traz a
+    // competência, a janela de dias usada e a cobertura).
+    const linhasMensal = [['Competência','Período considerado','Dados disponíveis até','Situação','Com E-mail','Sem E-mail','Total','% Sem E-mail']];
+    mensalExport.forEach(m=>linhasMensal.push([lnFmtCompetencia(m.comp), m.vazio?'—':`${lnFmtData(m.ini)} a ${lnFmtData(m.fim)}`, m.ultimoGlobal?lnFmtData(m.disponivelAte):'—', m.total===0?'Sem dados':(m.completo?'Completo/Fechado':'PARCIAL'), m.com, m.sem, m.total, m.pct==null?'—':+m.pct.toFixed(2)]));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(linhasMensal), 'Evolução Mensal');
+
+    if (linhasCmpExport.length && !_lnFiltros.posto) {
+      const cabCmp = ['Posto'];
+      mensalExport.forEach(m=>{ cabCmp.push(`% Sem E-mail ${lnRotuloCompetenciaCurto(m.comp)}`, `Total ${lnRotuloCompetenciaCurto(m.comp)}`); });
+      cabCmp.push('Variação p.p. (último × primeiro)','Situação','Baixo volume');
+      const linhasCmp = [cabCmp];
+      linhasCmpExport.forEach(r=>{
+        const l = [r.nome];
+        mensalExport.forEach(m=>{ const v = r.vals[m.comp]; l.push(v?+v.pct.toFixed(2):'—', v?v.total:0); });
+        l.push(r.variacao==null?'—':+r.variacao.toFixed(2), r.situacao, r.baixoVolume?'sim':'');
+        linhasCmp.push(l);
+      });
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(linhasCmp), 'Comparativo por Posto');
+    }
+
+    // Resultado por Posto, sempre identificando a competência de cada linha.
     const porPosto = {};
-    agregados.forEach(a=>{ if(!porPosto[a.posto]) porPosto[a.posto]={comEmail:0,semEmail:0}; porPosto[a.posto].comEmail+=a.comEmail||0; porPosto[a.posto].semEmail+=a.semEmail||0; });
-    const linhasPosto = [['Posto','Com E-mail','Sem E-mail','Total','% Sem E-mail']];
-    Object.entries(porPosto).forEach(([posto,d])=>{ const t=d.comEmail+d.semEmail; linhasPosto.push([posto,d.comEmail,d.semEmail,t,t>0?(d.semEmail/t*100).toFixed(1)+'%':'—']); });
+    agregados.forEach(a=>{ const k = a.posto+'|'+a.data.slice(0,7); if(!porPosto[k]) porPosto[k]={posto:a.posto,comp:a.data.slice(0,7),comEmail:0,semEmail:0}; porPosto[k].comEmail+=a.comEmail||0; porPosto[k].semEmail+=a.semEmail||0; });
+    const linhasPosto = [['Competência','Posto','Com E-mail','Sem E-mail','Total','% Sem E-mail']];
+    Object.values(porPosto).sort((x,y)=>x.comp.localeCompare(y.comp)||x.posto.localeCompare(y.posto)).forEach(d=>{ const t=d.comEmail+d.semEmail; linhasPosto.push([lnFmtCompetencia(d.comp),d.posto,d.comEmail,d.semEmail,t,t>0?(d.semEmail/t*100).toFixed(1)+'%':'—']); });
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(linhasPosto), 'Resultado por Posto');
 
-    const linhasCasos = [['Número do Caso','Posto','Data Abertura','Classificação','Situação']];
-    casos.forEach(c=>linhasCasos.push([c.numeroCaso,c.posto||'—',c.dataAbertura||'—',c.classificacao||'—',c.situacao]));
+    const linhasCasos = [['Competência','Número do Caso','Posto','Data Abertura','Classificação','Situação']];
+    casos.forEach(c=>linhasCasos.push([c.dataAbertura?lnFmtCompetencia(c.dataAbertura.slice(0,7)):'—',c.numeroCaso,c.posto||'—',c.dataAbertura||'—',c.classificacao||'—',c.situacao]));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(linhasCasos), 'Base Oficial Filtrada');
 
     let conferencia = _lnUltimaConferencia;
@@ -28329,7 +28752,7 @@ async function lnExportar() {
     casos.filter(c=>c.situacao==='pendencia_matricula'||c.situacao==='conflito').forEach(c=>pendLinhas.push([c.numeroCaso,c.situacao,c.matricula||'—',c.dataAbertura||'—']));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(pendLinhas), 'Pendências');
 
-    XLSX.writeFile(wb, `email-ligacao-nova_${_lnFiltros.competencia||'geral'}.xlsx`);
+    XLSX.writeFile(wb, `email-ligacao-nova_${compsExp.join('_')||'geral'}${lnModoIntervaloEquivalente()?'_intervalo':''}.xlsx`);
   } catch(e) { console.error('[LigNova] erro ao exportar:', e); toast('Erro ao exportar: '+e.message, 'err'); }
 }
 
