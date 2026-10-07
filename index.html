@@ -26891,13 +26891,16 @@ async function lnRenderResultadoOficial() {
   _lnResOrdenacao = { coluna: null, direcao: 'asc' }; // volta pra ordem gerencial padrão a cada novo carregamento/filtro
 
   const diasOrdenados = Array.from(new Set(filtrados.map(a=>a.data))).sort();
-  let accCom=0, accSem=0;
+  let accCom=0, accSem=0, compAcc=null;
   const evoLabels=[], evoComPct=[], evoSemPct=[], volCom=[], volSem=[];
   const diaLabels=[], diaComPct=[], diaSemPct=[];
   diasOrdenados.forEach(dia => {
     const doDia = filtrados.filter(a=>a.data===dia);
     const cDia = doDia.reduce((s,a)=>s+(a.comEmail||0),0), sDia = doDia.reduce((s,a)=>s+(a.semEmail||0),0);
     const totalDia = cDia + sDia;
+    // Cada competência tem o seu PRÓPRIO acumulador: ao virar o mês, zera
+    // (nunca carrega o acumulado do mês anterior para o seguinte).
+    if (dia.slice(0,7) !== compAcc) { compAcc = dia.slice(0,7); accCom = 0; accSem = 0; }
     accCom+=cDia; accSem+=sDia;
     const totalAcc = accCom+accSem;
     evoLabels.push(lnFmtDataCurta(dia));
@@ -26958,7 +26961,17 @@ async function lnRenderResultadoOficial() {
   `;
   lnRenderTabelaResultado();
   lnRenderMensal(agregados);
-  lnDesenharGraficosResultado(evoLabels, evoComPct, evoSemPct, volCom, volSem, diaLabels, diaComPct, diaSemPct, ranking);
+  // Séries acumuladas INDEPENDENTES por competência (2+ meses: uma série por
+  // mês sobre o eixo de dia do mês). Reconcilia o último ponto de cada mês com
+  // a soma direta dos agregados daquele mês — se divergir, é erro (console).
+  const evoMulti = lnSeriesAcumuladasPorCompetencia(filtrados);
+  evoMulti.forEach(sr => {
+    const doMes = filtrados.filter(a => a.data && a.data.slice(0,7) === sr.comp);
+    const sem = doMes.reduce((x,a)=>x+(a.semEmail||0),0), tot = doMes.reduce((x,a)=>x+(a.comEmail||0)+(a.semEmail||0),0);
+    const esperado = tot>0 ? sem/tot*100 : null, ult = sr.pontos[sr.pontos.length-1];
+    if (!ult || esperado==null || Math.abs(ult.pctSem - esperado) > 0.0001) console.error('[LigNova][RECONCILIACAO-ACUMULADO] divergência em', sr.comp, { ultimoPonto: ult && ult.pctSem, esperado });
+  });
+  lnDesenharGraficosResultado(evoLabels, evoComPct, evoSemPct, volCom, volSem, diaLabels, diaComPct, diaSemPct, ranking, evoMulti.length >= 2 ? evoMulti : null);
   lnRenderAnalisesInteligentes(filtrados, ranking, total, totalComEmail, totalSemEmail);
 }
 
@@ -27703,7 +27716,30 @@ function lnRenderTabelaResultado() {
     </tr>`).join('');
 }
 
-function lnDesenharGraficosResultado(labels, comPct, semPct, volCom, volSem, diaLabels, diaComPct, diaSemPct, ranking) {
+// Uma série acumulada por competência, cada uma com acumulador próprio
+// (começa em zero no 1º dia com dado do mês). Último ponto = soma Sem E-mail
+// ÷ soma Total da competência, nos mesmos filtros.
+function lnSeriesAcumuladasPorCompetencia(filtrados) {
+  const porComp = {};
+  filtrados.forEach(a => {
+    if (!a.data) return;
+    const c = a.data.slice(0,7);
+    if (!porComp[c]) porComp[c] = {};
+    if (!porComp[c][a.data]) porComp[c][a.data] = { com:0, sem:0 };
+    porComp[c][a.data].com += a.comEmail||0; porComp[c][a.data].sem += a.semEmail||0;
+  });
+  return Object.keys(porComp).sort().map(comp => {
+    let accCom = 0, accSem = 0; // zera a cada competência
+    const pontos = Object.keys(porComp[comp]).sort().map(data => {
+      accCom += porComp[comp][data].com; accSem += porComp[comp][data].sem;
+      const tot = accCom + accSem;
+      return { data, dia: parseInt(data.slice(8,10),10), pctCom: tot>0 ? accCom/tot*100 : null, pctSem: tot>0 ? accSem/tot*100 : null };
+    });
+    return { comp, rotulo: lnRotuloCompetenciaCurto(comp), pontos };
+  });
+}
+
+function lnDesenharGraficosResultado(labels, comPct, semPct, volCom, volSem, diaLabels, diaComPct, diaSemPct, ranking, evoMulti) {
   if (_lnCharts.evolucao) { _lnCharts.evolucao.destroy(); _lnCharts.evolucao=null; }
   if (_lnCharts.diario) { _lnCharts.diario.destroy(); _lnCharts.diario=null; }
   if (_lnCharts.volume) { _lnCharts.volume.destroy(); _lnCharts.volume=null; }
@@ -27718,7 +27754,37 @@ function lnDesenharGraficosResultado(labels, comPct, semPct, volCom, volSem, dia
     ce.parentElement.style.paddingBottom = '8px';
     ce.height = labels.length > 15 ? 320 : 240;
   }
-  if (ce) _lnCharts.evolucao = new Chart(ce.getContext('2d'), {
+  if (ce && evoMulti) {
+    // 2+ competências: séries independentes sobre o mesmo eixo de DIA DO MÊS
+    // (dia 01 de Set × dia 01 de Out ...). Sem concatenar meses.
+    const dias = Array.from(new Set(evoMulti.flatMap(sr => sr.pontos.map(pt => pt.dia)))).sort((a,b)=>a-b);
+    const corSem = ['#ef4444','#f97316','#a855f7','#db2777'], corCom = ['#22c55e','#0ea5e9','#14b8a6','#84cc16'];
+    const ds = [];
+    evoMulti.forEach((sr, i) => {
+      const porDia = {}; sr.pontos.forEach(pt => { porDia[pt.dia] = pt; });
+      const cs = corSem[i % corSem.length], cc = corCom[i % corCom.length];
+      ds.push({ label:`% Sem E-mail — ${sr.rotulo}`, data:dias.map(d => porDia[d] ? +porDia[d].pctSem.toFixed(2) : null), borderColor:cs, backgroundColor:'transparent', tension:.2, spanGaps:true,
+        datalabels:{ align: i%2===0 ? 'bottom' : 'top', anchor: i%2===0 ? 'start' : 'end', color:cs } });
+      ds.push({ label:`% Com E-mail — ${sr.rotulo}`, data:dias.map(d => porDia[d] ? +porDia[d].pctCom.toFixed(2) : null), borderColor:cc, backgroundColor:'transparent', borderDash:[5,3], tension:.2, spanGaps:true,
+        datalabels:{ align: i%2===0 ? 'top' : 'bottom', anchor: i%2===0 ? 'end' : 'start', color:cc } });
+    });
+    ds.push({ label:'Meta (10%)', data:dias.map(() => 10), borderColor:'#f59e0b', borderDash:[6,4], pointRadius:0, datalabels:{display:false} });
+    ce.parentElement.style.paddingBottom = '8px';
+    ce.height = 340;
+    _lnCharts.evolucao = new Chart(ce.getContext('2d'), {
+      type:'line',
+      data:{ labels: dias.map(d => String(d).padStart(2,'0')), datasets: ds },
+      plugins:[ChartDataLabels],
+      options:{
+        responsive:true, layout:{ padding:{ top:16, bottom:4 } },
+        plugins:{
+          title:{ display:true, text:'Evolução acumulada por competência — mesmo dia do mês' },
+          datalabels:{ display:true, formatter:v => v==null ? '' : v.toFixed(2).replace('.',',') + '%', font:{ size: dias.length>14 ? 8 : 9, weight:'600' }, offset:2 }
+        },
+        scales:{ y:{ min:0, max:100 }, x:{ title:{ display:true, text:'Dia do mês' }, ticks:{ autoSkip:false, font:{ size:10 } } } }
+      }
+    });
+  } else if (ce) _lnCharts.evolucao = new Chart(ce.getContext('2d'), {
     type:'line',
     data:{ labels, datasets:[
       { label:'% Com E-mail', data:comPct, borderColor:'#22c55e', backgroundColor:'transparent', tension:.2,
