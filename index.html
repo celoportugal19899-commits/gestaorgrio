@@ -1759,6 +1759,7 @@ const PosCanalLabels = {
     <div id="view-adm-rh-atestado" class="view">
       <div class="topbar">
         <div class="page-header" style="margin:0"><h1>Atestados Médicos</h1><p>Atestados enviados pelos colaboradores</p></div>
+        <button class="btn btn-primary" id="adm-lancar-atestado-btn" style="display:none" onclick="abrirLancarAtestadoAdm()">➕ Lançar Atestado</button>
       </div>
       <div id="adm-atestados-stats" class="grid-3" style="margin-bottom:20px"></div>
       <div id="adm-atestados-lista"></div>
@@ -2826,6 +2827,35 @@ const PosCanalLabels = {
   </div>
 </div>
 
+<!-- MODAL: LANÇAR ATESTADO EM NOME DE COLABORADOR (admin) -->
+<div class="modal-overlay" id="modal-lancar-atestado">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header"><div class="modal-title">➕ Lançar Atestado</div><button class="close-btn" onclick="closeModal('modal-lancar-atestado')">✕</button></div>
+    <div class="form-group">
+      <label class="form-label">Colaborador</label>
+      <select class="form-input" id="lanc-atestado-colab"></select>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div class="form-group"><label class="form-label">Data de início do afastamento</label><input type="date" class="form-input" id="lanc-atestado-inicio"></div>
+      <div class="form-group"><label class="form-label">Data de retorno (inclusive)</label><input type="date" class="form-input" id="lanc-atestado-fim"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Observação (opcional)</label><input class="form-input" id="lanc-atestado-obs" placeholder="Ex: Laringite, consulta de rotina..."></div>
+    <div class="form-group">
+      <label class="form-label">Arquivo PDF do atestado</label>
+      <div class="rh-drop-zone" style="padding:16px" onclick="document.getElementById('lanc-atestado-file-input').click()">
+        <div class="dz-ico" style="font-size:22px">📄</div>
+        <div class="dz-title" style="font-size:13px" id="lanc-atestado-file-label">Selecionar PDF</div>
+        <input type="file" id="lanc-atestado-file-input" accept=".pdf" style="display:none" onchange="handleAtestadoAdmFile(this.files[0])">
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:14px">O lançamento fica registrado com o seu usuário (quem lançou e quando).</div>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-lancar-atestado')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" id="lanc-atestado-btn" onclick="confirmarLancamentoAtestadoAdm()">💾 Lançar Atestado</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: EDITAR ATESTADO (admin) -->
 <div class="modal-overlay" id="modal-editar-atestado">
   <div class="modal" style="max-width:440px">
@@ -2992,12 +3022,35 @@ const PRIORIDADES = {baixa: '🟢', media: '🟡', alta: '🟠', critica: '🔴'
 async function initIncidencias() {
   if (unsubIncidencias) unsubIncidencias();
   unsubIncidencias = db.collection('incidencias').onSnapshot(snap => {
-    allIncidencias = snap.docs.map(d => ({id: d.id, ...d.data()}));
+    // Exclusão LÓGICA: incidência com excluida:true nunca entra em allIncidencias —
+    // portanto não participa de cards, badge, gráficos, rankings, listas nem exportação.
+    allIncidencias = snap.docs.map(d => ({id: d.id, ...d.data()})).filter(inc => inc.excluida !== true);
     const active = document.querySelector('.view.active');
     if (active && active.id === 'view-col-incidencias') renderColIncidencias();
     if (active && active.id === 'view-adm-incidencias') renderDashboardIncidencias();
     updateIncBadge();
   });
+}
+
+// Exclui (logicamente) UMA incidência aberta — só ADM, com confirmação.
+// Grava excluida/excluidaEm/excluidaPor no próprio documento; nada é apagado
+// fisicamente e nenhuma outra incidência é tocada.
+async function excluirIncidencia(incId) {
+  if (currentUser?.role !== 'admin') { toast('Apenas administradores podem excluir incidências.', 'err'); return; }
+  const inc = allIncidencias.find(i => i.id === incId);
+  if (!inc) { toast('Incidência não encontrada', 'err'); return; }
+  if (inc.status !== 'aberta') { toast('Só é possível excluir incidências abertas.', 'err'); return; }
+  if (!confirm('Deseja realmente excluir esta incidência?\n\n' + inc.tipo + ' — ' + inc.posto + '\n\nEla deixará de aparecer nos indicadores e listas.')) return;
+  try {
+    await db.collection('incidencias').doc(incId).update({
+      excluida: true,
+      excluidaEm: new Date().toISOString(),
+      excluidaPor: currentUser.id,
+      excluidaPorNome: currentUser.name,
+      excluidaPorEmail: currentUser.email
+    });
+    toast('🗑 Incidência excluída.', 'ok');
+  } catch (e) { toast('Erro ao excluir incidência: ' + e.message, 'err'); }
 }
 
 function updateIncBadge() {
@@ -3298,6 +3351,7 @@ function renderIncCard(inc) {
         <div style="display:flex;gap:8px;margin-top:10px">
           <button class="btn btn-sm btn-secondary" onclick="abrirModalAtualizarIncidencia('${inc.id}')">💬 Atualizar</button>
           <button class="btn btn-sm btn-primary" style="background:var(--green)" onclick="abrirModalFecharIncidencia('${inc.id}')">✅ Normalizar</button>
+          ${currentUser?.role === 'admin' ? `<button class="btn btn-sm btn-danger" style="margin-left:auto" onclick="excluirIncidencia('${inc.id}')">🗑 Excluir incidência</button>` : ''}
         </div>
       ` : `
         <div style="font-size:12px;color:var(--green);margin-top:8px">✅ Normalizada em ${fmtD(inc.normalizadoEm.split('T')[0])}</div>
@@ -3690,24 +3744,32 @@ function renderChartsIncidencias(incidencias) {
             data: dadosLinha.map(d => d.abertas),
             borderColor: 'rgb(239, 68, 68)',
             backgroundColor: 'rgba(239, 68, 68, 0.1)',
-            tension: 0.3
+            tension: 0.3,
+            datalabels: {align: 'top', anchor: 'end', color: '#f87171'}
           },
           {
             label: 'Normalizadas',
             data: dadosLinha.map(d => d.normalizadas),
             borderColor: 'rgb(34, 197, 94)',
             backgroundColor: 'rgba(34, 197, 94, 0.1)',
-            tension: 0.3
+            tension: 0.3,
+            datalabels: {align: 'bottom', anchor: 'start', color: '#4ade80'}
           }
         ]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: {legend: {display: true, position: 'top', labels: {color:'#a0aec0'}}},
+        layout: {padding: {top: 18, bottom: 6}},
+        plugins: {
+          legend: {display: true, position: 'top', labels: {color:'#a0aec0'}},
+          // rótulos só nas instâncias de Incidências (plugin por gráfico, sem registro global)
+          datalabels: {display: true, formatter: v => Math.round(v), font: {size: 11, weight: '600'}, offset: 3}
+        },
         scales: {y: {beginAtZero: true, ticks: {stepSize: 1, color:'#a0aec0'}, grid: {color:'rgba(255,255,255,.06)'}},
                  x: {ticks: {color:'#a0aec0'}, grid: {color:'rgba(255,255,255,.06)'}}}
-      }
+      },
+      plugins: [ChartDataLabels]
     });
   }
   
@@ -3737,8 +3799,12 @@ function renderChartsIncidencias(incidencias) {
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: {legend: {display: true, position: 'right', labels: {color:'#a0aec0', padding:12}}}
-      }
+        plugins: {
+          legend: {display: true, position: 'right', labels: {color:'#a0aec0', padding:12}},
+          datalabels: {display: true, formatter: v => Math.round(v), color: '#fff', font: {size: 12, weight: '700'}, textStrokeColor: 'rgba(0,0,0,.55)', textStrokeWidth: 3}
+        }
+      },
+      plugins: [ChartDataLabels]
     });
   }
   
@@ -3769,12 +3835,17 @@ function renderChartsIncidencias(incidencias) {
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: {legend: {display: false}},
+        layout: {padding: {top: 20}},
+        plugins: {
+          legend: {display: false},
+          datalabels: {display: true, anchor: 'end', align: 'end', formatter: v => Math.round(v), color: '#cbd5e1', font: {size: 11, weight: '700'}}
+        },
         scales: {
           y: {beginAtZero: true, ticks: {stepSize: 1}},
           x: {ticks: {maxRotation: 45, minRotation: 45}}
         }
-      }
+      },
+      plugins: [ChartDataLabels]
     });
   }
 }
@@ -4123,6 +4194,28 @@ async function resetarSenha(userId, reqId) {
   } catch(e) { toast('Erro ao resetar senha', 'err'); }
 }
 
+// Cancelamento LÓGICO de uma solicitação de reset: só muda o status do pedido
+// (pendente → cancelado) e registra quem/quando. NÃO toca na senha do usuário
+// e NÃO executa reset — isso continua sendo exclusivo de resetarSenha().
+async function cancelarSolicitacaoReset(reqId) {
+  if (currentUser?.role !== 'admin') { toast('Apenas administradores podem cancelar solicitações.', 'err'); return; }
+  if (!confirm('Deseja realmente cancelar esta solicitação de redefinição de senha?\n\nA senha do usuário NÃO será alterada.')) return;
+  try {
+    const ref = db.collection('reset_requests').doc(reqId);
+    const snap = await ref.get();
+    if (!snap.exists || snap.data().status !== 'pendente') { toast('Esta solicitação não está mais pendente.', 'err'); renderAdmDashboardExtras(); return; }
+    await ref.update({
+      status: 'cancelado',
+      canceladoEm: new Date().toISOString(),
+      canceladoPor: currentUser.id,
+      canceladoPorNome: currentUser.name,
+      canceladoPorEmail: currentUser.email
+    });
+    toast('Solicitação cancelada. A senha do usuário não foi alterada.', 'ok');
+    renderAdmDashboardExtras();
+  } catch(e) { toast('Erro ao cancelar solicitação: ' + e.message, 'err'); }
+}
+
 async function doLogout() {
   try {
     if (auth && auth.currentUser) {
@@ -4239,7 +4332,7 @@ async function renderAdmDashboardExtras() {
   const wrap = document.getElementById('reset-requests-wrap');
   if (!wrap) return;
   if (!reqs.length) { wrap.innerHTML=''; return; }
-  wrap.innerHTML = `<div style="margin-bottom:20px"><div style="font-size:12px;color:var(--yellow);text-transform:uppercase;letter-spacing:.8px;font-weight:700;margin-bottom:10px">🔑 ${reqs.length} solicitação(ões) de reset de senha</div>${reqs.map(r=>`<div class="device-req-card"><div style="font-size:22px">🔑</div><div class="dr-info"><div class="dr-title">${r.userName}</div><div class="dr-sub">${r.userEmail} • ${fmtDT(r.requestedAt)}</div></div><button class="btn btn-sm btn-primary" onclick="resetarSenha('${r.userId}','${r.id}')">Resetar Senha</button></div>`).join('')}</div>`;
+  wrap.innerHTML = `<div style="margin-bottom:20px"><div style="font-size:12px;color:var(--yellow);text-transform:uppercase;letter-spacing:.8px;font-weight:700;margin-bottom:10px">🔑 ${reqs.length} solicitação(ões) de reset de senha</div>${reqs.map(r=>`<div class="device-req-card"><div style="font-size:22px">🔑</div><div class="dr-info"><div class="dr-title">${r.userName}</div><div class="dr-sub">${r.userEmail} • ${fmtDT(r.requestedAt)}</div></div><div style="display:flex;gap:6px;margin-left:auto"><button class="btn btn-sm btn-primary" onclick="resetarSenha('${r.userId}','${r.id}')">Resetar Senha</button><button class="btn btn-sm btn-secondary" onclick="cancelarSolicitacaoReset('${r.id}')">Cancelar solicitação</button></div></div>`).join('')}</div>`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -13926,6 +14019,38 @@ function handleAtestadoFile(file) {
   reader.readAsDataURL(file);
 }
 
+// Núcleo ÚNICO de gravação de atestado — usado pelo colaborador (próprio
+// atestado) e pelo ADM (lançamento em nome de um colaborador).
+async function _gravarAtestado({ colaborador, dataInicio, dataFim, obs, pdfBase64, lancadoPorAdm }) {
+  const ref = db.collection('atestados').doc();
+  const agora = new Date().toISOString();
+  const doc = {
+    id: ref.id,
+    colaboradorId: colaborador.id,
+    colaboradorEmail: colaborador.email,
+    colaboradorNome: colaborador.name,
+    dataInicio,
+    dataFim,
+    observacao: obs,
+    pdfBase64,
+    enviadoEm: agora,
+    vistoAdm: false
+  };
+  if (lancadoPorAdm) {
+    // Auditoria do lançamento feito pelo ADM (só neste caminho — o fluxo do
+    // colaborador continua gravando exatamente os mesmos campos de antes).
+    doc.vistoAdm = true;
+    doc.origem = 'adm';
+    doc.criadoPor = currentUser.id;
+    doc.criadoPorEmail = currentUser.email;
+    doc.criadoPorNome = currentUser.name;
+    doc.criadoPorPerfil = currentUser.role;
+    doc.criadoEm = agora;
+  }
+  await ref.set(doc);
+  return doc;
+}
+
 async function confirmarAtestado() {
   const dataInicio = document.getElementById('at-data-inicio').value;
   const dataFim = document.getElementById('at-data-fim').value;
@@ -13936,19 +14061,7 @@ async function confirmarAtestado() {
   if (dataFim < dataInicio) { toast('Data de retorno não pode ser anterior ao início', 'err'); return; }
   
   try {
-    const ref = db.collection('atestados').doc();
-    await ref.set({
-      id: ref.id,
-      colaboradorId: currentUser.id,
-      colaboradorEmail: currentUser.email,
-      colaboradorNome: currentUser.name,
-      dataInicio,
-      dataFim,
-      observacao: obs,
-      pdfBase64: atestadoFileBase64,
-      enviadoEm: new Date().toISOString(),
-      vistoAdm: false
-    });
+    await _gravarAtestado({ colaborador: currentUser, dataInicio, dataFim, obs, pdfBase64: atestadoFileBase64, lancadoPorAdm: false });
     // Notificar ADM
     const adm = allUsers.find(u => u.role === 'admin');
     if (adm) await addNotificacao(adm.email, '🏥 Novo Atestado', `${currentUser.name} enviou atestado de ${fmtD(dataInicio)} a ${fmtD(dataFim)}.`, '🏥', 'yellow');
@@ -13961,6 +14074,50 @@ async function confirmarAtestado() {
     atestadoFileBase64 = null;
     toast('✅ Atestado enviado com sucesso!', 'ok');
   } catch(e) { toast('Erro ao enviar atestado: ' + e.message, 'err'); }
+}
+
+// ── ADM lança atestado em nome de um colaborador (mesmo núcleo de gravação) ──
+let atestadoAdmFileBase64 = null;
+function abrirLancarAtestadoAdm() {
+  if (currentUser?.role !== 'admin') { toast('Apenas administradores podem lançar atestados.', 'err'); return; }
+  const collabs = allUsers.filter(u => u.role !== 'admin' && isAtivo(u)).sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  document.getElementById('lanc-atestado-colab').innerHTML = '<option value="">Selecione o colaborador...</option>' +
+    collabs.map(u => `<option value="${u.id}">${u.name}${u.email ? ' — ' + u.email : ''}</option>`).join('');
+  ['lanc-atestado-inicio','lanc-atestado-fim','lanc-atestado-obs'].forEach(i => document.getElementById(i).value = '');
+  document.getElementById('lanc-atestado-file-label').textContent = 'Selecionar PDF';
+  document.getElementById('lanc-atestado-file-input').value = '';
+  atestadoAdmFileBase64 = null;
+  document.getElementById('modal-lancar-atestado').classList.add('open');
+}
+function handleAtestadoAdmFile(file) {
+  if (!file) return;
+  if (file.type !== 'application/pdf') { toast('Selecione um arquivo PDF', 'err'); return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    atestadoAdmFileBase64 = e.target.result.split(',')[1];
+    document.getElementById('lanc-atestado-file-label').textContent = `✅ ${file.name}`;
+  };
+  reader.readAsDataURL(file);
+}
+async function confirmarLancamentoAtestadoAdm() {
+  if (currentUser?.role !== 'admin') { toast('Apenas administradores podem lançar atestados.', 'err'); return; }
+  const colabId = document.getElementById('lanc-atestado-colab').value;
+  const dataInicio = document.getElementById('lanc-atestado-inicio').value;
+  const dataFim = document.getElementById('lanc-atestado-fim').value;
+  const obs = document.getElementById('lanc-atestado-obs').value.trim();
+  const colaborador = allUsers.find(u => u.id === colabId);
+  if (!colaborador) { toast('Selecione o colaborador', 'err'); return; }
+  if (!dataInicio || !dataFim) { toast('Informe as datas do afastamento', 'err'); return; }
+  if (!atestadoAdmFileBase64) { toast('Anexe o PDF do atestado', 'err'); return; }
+  if (dataFim < dataInicio) { toast('Data de retorno não pode ser anterior ao início', 'err'); return; }
+  const btn = document.getElementById('lanc-atestado-btn'); if (btn) { btn.disabled = true; btn.textContent = '⏳ Salvando...'; }
+  try {
+    await _gravarAtestado({ colaborador, dataInicio, dataFim, obs, pdfBase64: atestadoAdmFileBase64, lancadoPorAdm: true });
+    atestadoAdmFileBase64 = null;
+    closeModal('modal-lancar-atestado');
+    toast(`✅ Atestado de ${colaborador.name} lançado.`, 'ok');
+  } catch(e) { toast('Erro ao lançar atestado: ' + e.message, 'err'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = '💾 Lançar Atestado'; } }
 }
 
 function renderColRhAtestado() {
@@ -13987,6 +14144,8 @@ function renderColRhAtestado() {
 }
 
 function renderAdmRhAtestado() {
+  const _btnLanc = document.getElementById('adm-lancar-atestado-btn');
+  if (_btnLanc) _btnLanc.style.display = currentUser?.role === 'admin' ? '' : 'none';
   // Stats
   const statsEl = document.getElementById('adm-atestados-stats');
   const hoje = todayKey();
@@ -14019,7 +14178,7 @@ function renderAdmRhAtestado() {
         ${a.observacao ? `<span>· ${a.observacao}</span>` : ''}
       </div>
       <div style="display:flex;gap:8px;align-items:center">
-        <span style="font-size:11px;color:var(--text3)">Enviado em ${fmtDT(a.enviadoEm)}</span>
+        <span style="font-size:11px;color:var(--text3)">${a.origem==='adm' ? `Lançado por ${a.criadoPorNome||'ADM'} em ${fmtDT(a.criadoEm||a.enviadoEm)}` : `Enviado em ${fmtDT(a.enviadoEm)}`}</span>
         <div style="margin-left:auto;display:flex;gap:6px">
           <button class="btn btn-sm btn-secondary" onclick="abrirVerAtestado('${a.id}')">🏥 Ver Atestado</button>
           ${currentUser?.role==='admin' ? `<button class="btn btn-sm btn-secondary" onclick="abrirEditarAtestado('${a.id}')">✏️ Editar</button>
@@ -22740,7 +22899,7 @@ let _opAllIndicadores = [], _opAllCsat = [], _opAllPos = [];
 // Email Ligação Nova — espelho só de leitura dos agregados já produzidos
 // pelo próprio submódulo (snapshot vigente). Nunca reprocessa a Base
 // Oficial aqui, nunca grava nada de volta.
-let _opLnAgregados = [], _opLnDataExtracao = '', _opLnCompetenciaVigente = '';
+let _opLnAgregados = [], _opLnDataExtracao = '', _opLnCompetenciaVigente = '', _opLnSnapshotId = '';
 
 async function _opGarantirDadosCarregados() {
   if (!indicadoresCarregados) await carregarTodosIndicadores();
@@ -22761,6 +22920,7 @@ async function _opGarantirDadosCarregados() {
     const cfgSnap = await db.collection('ligacaonova_config').doc('geral').get();
     const bo = cfgSnap.exists ? cfgSnap.data().baseOficial : null;
     if (bo && bo.snapshotVigenteId) {
+      _opLnSnapshotId = bo.snapshotVigenteId;
       _opLnDataExtracao = bo.dataExtracaoReal || '';
       _opLnCompetenciaVigente = bo.competenciaVigente || '';
       const agSnap = await db.collection('ligacaonova_base_agregados_dia').where('snapshotId','==',bo.snapshotVigenteId).get();
@@ -22806,67 +22966,68 @@ function _opFiltrarPostoSup(dados, campoPosto) {
 }
 function _opMesesConsiderados(fonteMeses) { return _opMesesSel.length ? _opMesesSel.filter(m=>fonteMeses.includes(m)) : [...fonteMeses]; }
 
-// Email Ligação Nova tem dados DIÁRIOS (1 doc por posto/dia em
-// ligacaonova_base_agregados_dia) — portanto a competência de cada agregado
-// é derivada da PRÓPRIA DATA dele (`a.data.slice(0,7)`), nunca de uma
-// variável global única como `_opLnCompetenciaVigente`. Essa variável
-// continua existindo só como metadado pro badge "Base atualizada em" — ela
-// NUNCA mais funciona como portão que impede a leitura dos agregados.
-//
-// Instrumentação temporária (console.log) — ajuda a confirmar, da próxima
-// vez que o Dash for aberto com um filtro de Mês, exatamente quantos
-// agregados existem, qual o intervalo real de datas, e quantos sobram
-// depois do filtro — sem precisar adivinhar.
-function _opLnDadosFiltrados() {
-  if (!_opLnAgregados.length) return [];
-  if (!_opMesesSel.length) return _opLnAgregados; // sem filtro de mês — comportamento atual preservado integralmente
-
-  const mesesNorm = new Set(_opMesesSel.map(m => _opNormMesRef(m)));
-  const filtrados = _opLnAgregados.filter(a => a.data && mesesNorm.has(a.data.slice(0,7)));
-
-  if (typeof console !== 'undefined') {
-    const datasOrdenadas = _opLnAgregados.map(a=>a.data).filter(Boolean).sort();
-    console.log('[LigNova][DASH-DIAG] filtro de Mês aplicado ao indicador Email Ligação Nova:', {
-      opMesesSel: _opMesesSel,
-      mesesNormSelecionados: [...mesesNorm],
-      totalAgregadosCarregados: _opLnAgregados.length,
-      primeiraData: datasOrdenadas[0] || null,
-      ultimaData: datasOrdenadas[datasOrdenadas.length-1] || null,
-      competenciaVigenteGlobal_soMetadado: _opLnCompetenciaVigente,
-      totalAposFiltroPorData: filtrados.length,
-      totalGeralFiltrado: filtrados.reduce((s,a)=>s+(a.total||0),0),
-      comEmailFiltrado: filtrados.reduce((s,a)=>s+(a.comEmail||0),0),
-      semEmailFiltrado: filtrados.reduce((s,a)=>s+(a.semEmail||0),0)
-    });
-  }
-
-  return filtrados;
+// ── Email Ligação Nova no Dash: reaproveita EXATAMENTE a lógica do módulo ──
+// O Dash não tem regra própria: carrega temporariamente o estado de filtros do
+// módulo (_lnFiltros) com os filtros do Dash e chama lnFiltrarAgregados — a
+// mesma função do Resultado Oficial. Assim competência (pela data do agregado),
+// Supervisor/Posto (chave canônica) e o default "sem mês marcado = competência
+// mais recente" são idênticos aos do módulo por construção.
+function _opLnCompetenciasExistentes() {
+  return Array.from(new Set((_opLnAgregados||[]).filter(a=>a.data).map(a=>a.data.slice(0,7)))).sort();
+}
+function _opPostoCanonicoRG(nome) {
+  if (!nome) return '';
+  const k = lnChavePosto(nome);
+  return TODOS_POSTOS_RG.find(p => csatNorm(p) === k) || null;
+}
+function _opLnFiltrarComoModulo(comPostoSup) {
+  const agregados = _opLnAgregados || [];
+  if (!agregados.length) return [];
+  const comps = _opLnCompetenciasExistentes();
+  let sel = _opMesesSel.map(m => _opNormMesRef(m));
+  if (sel.length) { sel = sel.filter(c => comps.includes(c)); if (!sel.length) return []; } // mês sem dado nunca vira outro mês
+  let posto = '';
+  if (comPostoSup && _opFiltroPosto) { posto = _opPostoCanonicoRG(_opFiltroPosto); if (!posto) return []; }
+  const salvoF = _lnFiltros, salvoC = _lnCompetenciasDisponiveis;
+  try {
+    _lnCompetenciasDisponiveis = comps;
+    _lnFiltros = { competencias: sel, supervisor: comPostoSup ? _opFiltroSupervisor : '', posto, dataInicio: null, dataFim: null };
+    return lnFiltrarAgregados(agregados);
+  } finally { _lnFiltros = salvoF; _lnCompetenciasDisponiveis = salvoC; }
+}
+function _opLnDadosFiltrados() { return _opLnFiltrarComoModulo(true); }   // Mês + Supervisor + Posto
+function _opLnDadosCompetencia() { return _opLnFiltrarComoModulo(false); } // só Mês (p/ comparativo entre supervisores)
+// Total = Com + Sem (igual ao Resultado Oficial). NÃO usar o campo `total` do
+// agregado: ele também conta casos com pendência de classificação.
+function _opLnTotais(dados) {
+  const com = dados.reduce((x,a)=>x+(a.comEmail||0),0), sem = dados.reduce((x,a)=>x+(a.semEmail||0),0);
+  const total = com + sem;
+  return { com, sem, total, pct: total>0 ? sem/total*100 : null };
 }
 
 function _opCalcCardSemEmail() {
-  const dados = _opFiltrarPostoSup(_opLnDadosFiltrados(), 'posto');
-  const total = dados.reduce((s,a)=>s+(a.total||0),0);
-  if (total<=0) return { modo:'semdados' };
-  const semEmail = dados.reduce((s,a)=>s+(a.semEmail||0),0);
-  const pct = semEmail/total*100;
-  return { modo:'ok', resultado:pct, meta:10, total, semEmail, status: pct<=10?'verde':'vermelho' };
+  const dados = _opLnDadosFiltrados();
+  const t = _opLnTotais(dados);
+  if (t.total<=0) return { modo:'semdados' };
+  const competencias = Array.from(new Set(dados.map(a=>a.data.slice(0,7)))).sort();
+  return { modo:'ok', resultado:t.pct, meta:10, total:t.total, comEmail:t.com, semEmail:t.sem, competencias, status: t.pct<=10?'verde':'vermelho' };
 }
 
-// Evolução acumulada do % Sem Email — mesma lógica já homologada no
-// submódulo (acumulado desde o início do período até cada dia), nunca
-// avançando além da Data de Extração real vigente.
+// Evolução acumulada do % Sem Email — acumulador PRÓPRIO por competência
+// (zera na virada do mês), nunca avançando além da Data de Extração vigente.
 function _opLnEvolucaoAcumulada() {
-  const dados = _opFiltrarPostoSup(_opLnDadosFiltrados(), 'posto');
+  const dados = _opLnDadosFiltrados();
   const porDia = {};
   dados.forEach(a => {
     if (_opLnDataExtracao && a.data > _opLnDataExtracao) return;
-    if (!porDia[a.data]) porDia[a.data] = { data:a.data, comEmail:0, semEmail:0, total:0 };
-    porDia[a.data].comEmail += a.comEmail||0; porDia[a.data].semEmail += a.semEmail||0; porDia[a.data].total += a.total||0;
+    if (!porDia[a.data]) porDia[a.data] = { data:a.data, comEmail:0, semEmail:0 };
+    porDia[a.data].comEmail += a.comEmail||0; porDia[a.data].semEmail += a.semEmail||0;
   });
   const dias = Object.values(porDia).sort((a,b)=>a.data.localeCompare(b.data));
-  let accCom=0, accSem=0;
+  let accCom=0, accSem=0, compAtual=null;
   const labels=[], pct=[];
   dias.forEach(d => {
+    if (d.data.slice(0,7) !== compAtual) { compAtual = d.data.slice(0,7); accCom = 0; accSem = 0; }
     accCom+=d.comEmail; accSem+=d.semEmail;
     const tot = accCom+accSem;
     labels.push(typeof lnFmtDataCurta==='function' ? lnFmtDataCurta(d.data) : d.data.slice(8,10)+'/'+d.data.slice(5,7));
@@ -22878,17 +23039,53 @@ function _opLnEvolucaoAcumulada() {
 // Top 8 por % Sem Email — maior primeiro. Baixo volume (<5) é sinalizado,
 // nunca escondido do ranking.
 function _opRankingSemEmail() {
-  const dados = _opFiltrarPostoSup(_opLnDadosFiltrados(), 'posto');
+  const dados = _opLnDadosFiltrados();
   const porPosto = {};
   dados.forEach(a => {
     if (!porPosto[a.posto]) porPosto[a.posto] = { posto:a.posto, total:0, semEmail:0 };
-    porPosto[a.posto].total += a.total||0; porPosto[a.posto].semEmail += a.semEmail||0;
+    porPosto[a.posto].total += (a.comEmail||0)+(a.semEmail||0); porPosto[a.posto].semEmail += a.semEmail||0;
   });
   return Object.values(porPosto).filter(p=>p.total>0).map(p => ({
     ...p, pct: p.semEmail/p.total*100,
-    supervisor: allPostos.find(x=>_opNormNome(x.nome)===_opNormNome(p.posto))?.supervisor || '—',
+    supervisor: allPostos.find(x=>lnChavePosto(x.nome)===lnChavePosto(p.posto))?.supervisor || '—',
     baixoVolume: p.total<5
   })).sort((a,b)=>b.pct-a.pct);
+}
+
+// Diagnóstico de homologação (manual, não roda sozinho): no Console, rode
+// opReconciliarDash(). Compara o Dash com o que o módulo oficial calcularia
+// para os MESMOS filtros e confere o snapshot lido.
+function opReconciliarDash() {
+  const r = {};
+  const base = _opDadosIndicadoresConsiderados();
+  if (base.modo === 'ok') {
+    const filtroInd = allIndicadores.filter(d => base.meses.includes(d.mesRef));
+    const dadosInd = _opFiltroPosto ? filtroInd.filter(d=>_opNormNome(d.postoNome)===_opNormNome(_opFiltroPosto))
+      : (_opFiltroSupervisor ? filtroInd.filter(d=>allPostos.some(p=>p.supervisor===_opFiltroSupervisor && _opNormNome(p.nome)===_opNormNome(d.postoNome))) : filtroInd);
+    const atMod = dadosInd.reduce((x,d)=>x+(parseInt(d.senhasAtendidas)||0),0);
+    const atDash = _opCalcCardSenhasAtendidas().total;
+    const nsMod = indConsolidarNS(dadosInd, 30), nsDash = _opCalcCardNS30().resultado;
+    r.SenhasAtendidas = { dash: atDash, indicadores: atMod, bate: atDash === atMod };
+    r.NS30 = { dash: nsDash, indicadores: nsMod, bate: Math.abs(nsDash - nsMod) < 1e-9 };
+  } else r.Indicadores = 'sem dados para a seleção';
+  const d = _opCalcCardSemEmail();
+  let modulo = null;
+  if (_lnAgregadosCache && _lnAgregadosCache.lista) {
+    const salvoF = _lnFiltros, salvoC = _lnCompetenciasDisponiveis;
+    try {
+      _lnCompetenciasDisponiveis = Array.from(new Set(_lnAgregadosCache.lista.filter(a=>a.data).map(a=>a.data.slice(0,7)))).sort();
+      const sel = _opMesesSel.map(m=>_opNormMesRef(m)).filter(c=>_lnCompetenciasDisponiveis.includes(c));
+      _lnFiltros = { competencias: sel, supervisor: _opFiltroSupervisor, posto: _opFiltroPosto ? (_opPostoCanonicoRG(_opFiltroPosto)||'__x__') : '', dataInicio:null, dataFim:null };
+      modulo = _opLnTotais(lnFiltrarAgregados(_lnAgregadosCache.lista));
+    } finally { _lnFiltros = salvoF; _lnCompetenciasDisponiveis = salvoC; }
+  }
+  r.SemEmail = modulo ? {
+    dash: d.modo==='ok' ? { total:d.total, com:d.comEmail, sem:d.semEmail, pct:d.resultado } : 'sem dados',
+    moduloOficial: modulo, snapshotDash: _opLnSnapshotId, snapshotModulo: _lnAgregadosCache.snapshotId,
+    bate: d.modo==='ok' ? (d.total===modulo.total && d.semEmail===modulo.sem && _opLnSnapshotId===_lnAgregadosCache.snapshotId) : modulo.total===0
+  } : 'abra o módulo Email Ligação Nova uma vez para carregar a referência oficial';
+  console.log('[Dash×Oficial] reconciliação', r);
+  return r;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -23271,11 +23468,15 @@ function _opDadosIndicadoresConsiderados() {
 // Cenário B (vários): reproduz EXATAMENTE a metodologia de renderPainelIndicadores()
 // — média simples de NS30/TMA/TME entre registros; soma para os volumes.
 function _opConsolidarIndicadores(dados) {
+  // NS30 vem da MESMA função do módulo Indicadores (indConsolidarNS): soma das
+  // atendidas em até 30min ÷ soma das atendidas — nunca média simples dos % —
+  // sem arredondar; quem exibe formata. Fallback só se não houver contagem.
+  const ns30Exato = indConsolidarNS(dados, 30);
   if (dados.length === 1) {
     const d=dados[0];
     const n30 = parseFloat(d.ns30);
     return {
-      cenario:'A', ns30: isNaN(n30)?null:n30,
+      cenario:'A', ns30: ns30Exato!==null ? ns30Exato : (isNaN(n30)?null:n30),
       tmaSeg: parseTempo(d.tma), tmeSeg: parseTempo(d.tme),
       senhasPerdidas: parseInt(d.senhasPerdidas)||0,
       totalSenhas: (parseInt(d.senhasAtendidas)||0)+(parseInt(d.senhasCanceladas)||0)+(parseInt(d.senhasPerdidas)||0)
@@ -23291,7 +23492,7 @@ function _opConsolidarIndicadores(dados) {
     somaCanceladas+=parseInt(d.senhasCanceladas)||0;
   });
   return {
-    cenario:'B', ns30: cNS>0?somaNS30/cNS:null,
+    cenario:'B', ns30: ns30Exato!==null ? ns30Exato : (cNS>0?somaNS30/cNS:null),
     tmaSeg: cTMA>0?Math.round(somaTMA/cTMA):null, tmeSeg: cTME>0?Math.round(somaTME/cTME):null,
     senhasPerdidas: somaPerdidas, totalSenhas: somaAtendidas+somaCanceladas+somaPerdidas
   };
@@ -23316,6 +23517,26 @@ function _opCalcCardNS30() {
   return { modo: base.meses.length===1?'unico':'periodo', resultado:cons.ns30, meta:OP_META_NS30,
            diferenca:cons.ns30-OP_META_NS30, totalSenhas:cons.totalSenhas, senhasPerdidas:cons.senhasPerdidas,
            status, resultadoAnterior: ant.cons?ant.cons.ns30:null, mesAnteriorRef: ant.mesAnteriorRef };
+}
+
+// Senhas Atendidas — MESMA definição de renderPainelIndicadores():
+// soma de `senhasAtendidas` dos registros de `indicadores` da seleção (Mês +
+// Supervisor/Posto). Sem cálculo paralelo: usa a base já carregada pelo Dash.
+function _opCalcCardSenhasAtendidas() {
+  const base=_opDadosIndicadoresConsiderados();
+  if (base.modo!=='ok') return {modo:'semdados'};
+  const total=base.dados.reduce((s,d)=>s+(parseInt(d.senhasAtendidas)||0),0);
+  const nPostos=new Set(base.dados.map(d=>_opNormNome(d.postoNome))).size;
+  let anterior=null, mesAnteriorRef=null;
+  if (base.meses.length===1) {
+    const ord=[...base.mesesFonte].sort(); const i=ord.indexOf(base.meses[0]);
+    mesAnteriorRef=i>0?ord[i-1]:null;
+    if (mesAnteriorRef) {
+      const dAnt=_opFiltrarPostoSup(_opAllIndicadores.filter(d=>d.mesRef===mesAnteriorRef),'postoNome');
+      if (dAnt.length) anterior=dAnt.reduce((s,d)=>s+(parseInt(d.senhasAtendidas)||0),0);
+    }
+  }
+  return { modo: base.meses.length===1?'unico':'periodo', total, nPostos, resultadoAnterior: anterior, mesAnteriorRef };
 }
 
 function _opCalcCardSenhasPerdidas() {
@@ -23439,9 +23660,9 @@ function _opCalcComparativoSupervisores() {
     const nota = totalPesq>0 ? dCsat.reduce((s,d)=>s+(d.notaMedia||0)*(d.pesquisas||0),0)/totalPesq : null;
     const valorPos = dPos.reduce((s,d)=>s+(d.valor||0),0);
     const metaPos = dPos.reduce((s,d)=>s+getPOSMeta(d.postoNome,d.mesRef),0);
-    const dLn = _opFiltrarPostoSup(_opLnDadosFiltrados(), 'posto').filter(d=>postosSup.has(_opNormNome(d.posto)));
-    const totalLn = dLn.reduce((s,d)=>s+(d.total||0),0);
-    const semEmailLn = dLn.reduce((s,d)=>s+(d.semEmail||0),0);
+    const postosSupLn = new Set(allPostos.filter(p=>p.supervisor===sup).map(p=>lnChavePosto(p.nome)));
+    const dLn = _opLnDadosCompetencia().filter(d=>postosSupLn.has(lnChavePosto(d.posto)));
+    const _tLn = _opLnTotais(dLn); const totalLn = _tLn.total, semEmailLn = _tLn.sem;
     return {
       supervisor: sup, qtdPostos: postosSup.size,
       pos: dPos.length ? { pct: metaPos>0?valorPos/metaPos*100:0 } : null,
@@ -23548,6 +23769,7 @@ async function renderDashboardOperacional() {
   const cardPos = _opCalcCardPOS();
   const cardCsat = _opCalcCardCSAT();
   const cardNs30 = _opCalcCardNS30();
+  const cardSenhasAt = _opCalcCardSenhasAtendidas();
   const cardPerd = _opCalcCardSenhasPerdidas();
   const cardSemEmail = _opCalcCardSemEmail();
   const rankSemEmail = _opRankingSemEmail();
@@ -23596,7 +23818,7 @@ async function renderDashboardOperacional() {
     </div>
 
     <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Cards</div>
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:10px">
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:10px">
       ${cardHTML('POS', cardPos, cardPos.modo!=='semdados'?`
         <div style="font-size:22px;font-weight:800;color:${_opCorStatus(cardPos.status)}">R$ ${cardPos.resultado.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">Meta: R$ ${cardPos.meta.toLocaleString('pt-BR',{minimumFractionDigits:2})} · ${cardPos.pct.toFixed(1)}% da meta</div>
@@ -23608,11 +23830,16 @@ async function renderDashboardOperacional() {
         <div style="font-size:11px;color:var(--text3);margin-top:2px">Meta: ${cardCsat.meta.toFixed(2)} · ${cardCsat.totalPesq} pesquisa(s)</div>
         ${cardCsat.resultadoAnterior!==null?`<div style="font-size:11px;color:var(--text3)">Mês anterior: ${cardCsat.resultadoAnterior.toFixed(2)}</div>`:''}
         ${cardCsat.status?`<div style="font-size:11px;font-weight:700;color:${_opCorStatus(cardCsat.status)};margin-top:6px">${_opLabelStatus(cardCsat.status)}</div>`:''}`:'')}
+      ${cardHTML('Senhas Atendidas', cardSenhasAt, cardSenhasAt.modo!=='semdados'?`
+        <div style="font-size:22px;font-weight:800;color:var(--text)">${cardSenhasAt.total.toLocaleString('pt-BR')}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">${cardSenhasAt.nPostos} posto(s) · fonte: Indicadores</div>
+        ${cardSenhasAt.resultadoAnterior!==null?`<div style="font-size:11px;color:var(--text3)">Mês anterior: ${cardSenhasAt.resultadoAnterior.toLocaleString('pt-BR')}</div>`:''}
+        <div style="font-size:11px;color:var(--text3);margin-top:6px">Sem meta formal — não conta no Resultado Operacional</div>`:'')}
       ${cardHTML('NS30', cardNs30, cardNs30.modo!=='semdados'?`
-        <div style="font-size:22px;font-weight:800;color:${_opCorStatus(cardNs30.status)}">${cardNs30.resultado.toFixed(1)}%</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px">Meta: ${cardNs30.meta}% · Diferença: ${cardNs30.diferenca.toFixed(1)}p.p.</div>
+        <div style="font-size:22px;font-weight:800;color:${_opCorStatus(cardNs30.status)}">${cardNs30.resultado.toFixed(2)}%</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">Meta: ${cardNs30.meta}% · Diferença: ${cardNs30.diferenca.toFixed(2)}p.p.</div>
         <div style="font-size:11px;color:var(--text3)">Total: ${cardNs30.totalSenhas.toLocaleString('pt-BR')} · Perdidas: ${cardNs30.senhasPerdidas.toLocaleString('pt-BR')}</div>
-        ${cardNs30.resultadoAnterior!==null?`<div style="font-size:11px;color:var(--text3)">Mês anterior: ${cardNs30.resultadoAnterior.toFixed(1)}%</div>`:''}
+        ${cardNs30.resultadoAnterior!==null?`<div style="font-size:11px;color:var(--text3)">Mês anterior: ${cardNs30.resultadoAnterior.toFixed(2)}%</div>`:''}
         <div style="font-size:11px;font-weight:700;color:${_opCorStatus(cardNs30.status)};margin-top:6px">${_opLabelStatus(cardNs30.status)}</div>`:'')}
       ${cardHTML('Senhas Perdidas', cardPerd, cardPerd.modo!=='semdados'?`
         <div style="font-size:22px;font-weight:800;color:var(--text)">${cardPerd.quantidade.toLocaleString('pt-BR')}</div>
@@ -23620,8 +23847,9 @@ async function renderDashboardOperacional() {
         ${cardPerd.resultadoAnterior!==null?`<div style="font-size:11px;color:var(--text3)">Mês anterior: ${cardPerd.resultadoAnterior.toLocaleString('pt-BR')}</div>`:''}
         <div style="font-size:11px;color:var(--text3);margin-top:6px">Sem meta formal — não conta no Resultado Operacional</div>`:'')}
       ${cardHTML('% Sem Email (Ligação Nova)', cardSemEmail, cardSemEmail.modo!=='semdados'?`
-        <div style="font-size:22px;font-weight:800;color:${_opCorStatus(cardSemEmail.status)}">${cardSemEmail.resultado.toFixed(1)}%</div>
+        <div style="font-size:22px;font-weight:800;color:${_opCorStatus(cardSemEmail.status)}">${cardSemEmail.resultado.toFixed(2)}%</div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">Meta: ≤${cardSemEmail.meta}% · ${cardSemEmail.semEmail} de ${cardSemEmail.total} ingressos</div>
+        <div style="font-size:11px;color:var(--text3)">Competência: ${cardSemEmail.competencias.map(lnRotuloCompetenciaCurto).join(', ')}</div>
         <div style="font-size:11px;font-weight:700;color:${_opCorStatus(cardSemEmail.status)};margin-top:6px">${_opLabelStatus(cardSemEmail.status)}</div>`:'')}
     </div>
 
@@ -23691,12 +23919,12 @@ async function renderDashboardOperacional() {
             <td style="padding:6px 10px">${s.qtdPostos}</td>
             <td style="padding:6px 10px">${s.pos?s.pos.pct.toFixed(1)+'%':'—'}</td>
             <td style="padding:6px 10px">${s.csat?`${s.csat.nota.toFixed(2)} (${s.csat.pesquisas})`:'—'}</td>
-            <td style="padding:6px 10px">${s.ns30!==null?s.ns30.toFixed(1)+'%':'—'}</td>
+            <td style="padding:6px 10px">${s.ns30!==null?s.ns30.toFixed(2)+'%':'—'}</td>
             <td style="padding:6px 10px">${s.senhasPerdidas!==null?s.senhasPerdidas.toLocaleString('pt-BR'):'—'}</td>
             <td style="padding:6px 10px">${s.senhasConsideradas!==null?s.senhasConsideradas.toLocaleString('pt-BR'):'—'}</td>
             <td style="padding:6px 10px">${fmtTempo(s.tmaSeg)}</td>
             <td style="padding:6px 10px">${fmtTempo(s.tmeSeg)}</td>
-            <td style="padding:6px 10px;color:${s.semEmailPct!=null?(s.semEmailPct<=10?'#1baf7a':'#e24b4a'):'inherit'}">${s.semEmailPct!=null?`${s.semEmailPct.toFixed(1)}% (${s.semEmailQtd}/${s.semEmailTotal})`:'—'}</td>
+            <td style="padding:6px 10px;color:${s.semEmailPct!=null?(s.semEmailPct<=10?'#1baf7a':'#e24b4a'):'inherit'}">${s.semEmailPct!=null?`${s.semEmailPct.toFixed(2)}% (${s.semEmailQtd}/${s.semEmailTotal})`:'—'}</td>
           </tr>`).join('')}</tbody>
       </table>
     </div>
@@ -23713,7 +23941,7 @@ async function renderDashboardOperacional() {
       </div>
       <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
         <div style="font-size:12px;font-weight:600;margin-bottom:8px">Menor NS30</div>
-        ${rankNs30.slice(0,8).map((p,i)=>`<div style="font-size:12px;padding:3px 0;color:var(--text2)">${i+1}º ${p.posto} — ${p.ns30.toFixed(1)}%</div>`).join('')||'<div style="color:var(--text3);font-size:12px">Sem dados</div>'}
+        ${rankNs30.slice(0,8).map((p,i)=>`<div style="font-size:12px;padding:3px 0;color:var(--text2)">${i+1}º ${p.posto} — ${p.ns30.toFixed(2)}%</div>`).join('')||'<div style="color:var(--text3);font-size:12px">Sem dados</div>'}
       </div>
       <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
         <div style="font-size:12px;font-weight:600;margin-bottom:8px">Senhas Perdidas — Maior Quantidade</div>
@@ -26775,8 +27003,16 @@ function lnLimparCompetencias() { _lnFiltros.competencias = []; lnAplicarFiltros
 // caixa/acentuação mista (ex.: "Aperibé") e a.posto sempre vem canônico
 // maiúsculo sem acento (ex.: "APERIBE"); comparar direto (===) nunca batia,
 // e era exatamente por isso que o filtro de Supervisor não funcionava.
+// Chave canônica de posto: normaliza acento/caixa E aplica o alias oficial de
+// grafia (CSAT_NOME_MAP). Sem isso "Laje de Muriaé" (cadastro do sistema) nunca
+// casava com "LAJE DO MURIAE" (canônico do módulo) e o posto sumia dos filtros
+// por Supervisor.
+function lnChavePosto(nome) {
+  const n = csatNorm(nome);
+  return csatNorm(CSAT_NOME_MAP[n] || n);
+}
 function lnPostosDoSupervisorNorm(supervisor) {
-  return new Set((allPostos||[]).filter(p=>p.supervisor===supervisor).map(p=>csatNorm(p.nome)));
+  return new Set((allPostos||[]).filter(p=>p.supervisor===supervisor).map(p=>lnChavePosto(p.nome)));
 }
 
 // A competência é derivada da DATA REAL de cada agregado (a.data.slice(0,7)),
