@@ -6184,7 +6184,27 @@ function fmtTempo(seg) {
 }
 function fmtNS(val) {
   if(val===null||val===undefined||val==='') return '—';
-  const n=parseFloat(val); if(isNaN(n)) return '—'; return n.toFixed(1)+'%';
+  const n=parseFloat(val); if(isNaN(n)) return '—'; return n.toFixed(2)+'%';
+}
+
+// NS consolidado = SOMA(atendidas dentro do prazo) ÷ SOMA(atendidas) × 100 —
+// exatamente a definição da linha oficial "RG SERVICES / Total" (ex.: Set/26,
+// NS30 = 11.847 ÷ 11.851 = 99,9662%). NUNCA média simples dos % dos postos
+// (dava 99,9648%). Sem arredondar: quem chama formata só na apresentação.
+// Usa a contagem exata gravada (atendidasNNmin) quando existe; senão a
+// reconstrói do % gravado (2 casas) × atendidas — exato, porque o erro de
+// arredondamento (≤0,005%) sobre ≤ ~1.500 atendidas/posto/mês é < 0,5 senha.
+function indConsolidarNS(dados, nivel) {
+  const campoPct='ns'+nivel, campoCnt='atendidas'+nivel+'min';
+  let dentro=0, atend=0;
+  (dados||[]).forEach(d=>{
+    const a=parseInt(d.senhasAtendidas)||0; if(a<=0) return;
+    const p=parseFloat(d[campoPct]);
+    let c=parseFloat(d[campoCnt]);
+    if(isNaN(c) || (c===0 && p>0)) { if(isNaN(p)) return; c=Math.round(p/100*a); }
+    dentro+=Math.min(c,a); atend+=a;
+  });
+  return atend>0 ? dentro/atend*100 : null;
 }
 function nsClass(val) {
   const n=parseFloat(val); if(isNaN(n)) return '';
@@ -6336,19 +6356,18 @@ async function renderPainelIndicadores() {
   const nPostos=Object.keys(porPostoHoras).length||1;
   const mediaGeral=totalDiasUteis>0?Math.round(totalAtendidas/totalDiasUteis):0;
 
-  let somaTMA=0,cTMA=0,somaTME=0,cTME=0,somaS10=0,somaS15=0,somaS30=0,cNS=0;
+  let somaTMA=0,cTMA=0,somaTME=0,cTME=0;
   dados.forEach(d=>{
     const tma=parseTempo(d.tma);if(tma!==null){somaTMA+=tma;cTMA++;}
     const tme=parseTempo(d.tme);if(tme!==null){somaTME+=tme;cTME++;}
-    const n10=parseFloat(d.ns10);if(!isNaN(n10)){somaS10+=n10;cNS++;}
-    const n15=parseFloat(d.ns15);if(!isNaN(n15)) somaS15+=n15;
-    const n30=parseFloat(d.ns30);if(!isNaN(n30)) somaS30+=n30;
   });
   const mediaTMA=cTMA>0?Math.round(somaTMA/cTMA):null;
   const mediaTME=cTME>0?Math.round(somaTME/cTME):null;
-  const mNS10=cNS>0?(somaS10/cNS).toFixed(1):null;
-  const mNS15=cNS>0?(somaS15/cNS).toFixed(1):null;
-  const mNS30=cNS>0?(somaS30/cNS).toFixed(1):null;
+  // NS consolidado exato (sem arredondar antes); 2 casas só aqui, na exibição.
+  const _nsFmt=v=>v===null?null:v.toFixed(2);
+  const mNS10=_nsFmt(indConsolidarNS(dados,10));
+  const mNS15=_nsFmt(indConsolidarNS(dados,15));
+  const mNS30=_nsFmt(indConsolidarNS(dados,30));
 
   document.getElementById('ind-kpi-grid').innerHTML=`
     <div class="ind-kpi-card"><div class="ind-kpi-label">Senhas Atendidas</div><div class="ind-kpi-val">${totalAtendidas.toLocaleString('pt-BR')}</div><div class="ind-kpi-sub">${nPostos} posto(s)</div></div>
@@ -6539,7 +6558,7 @@ function renderAnalisesCompletas(dados,postos,totalDiasUteis) {
     <div class="ind-bar-row">
       <span class="ind-posto-name">${nome}</span>
       <div class="ind-bar-wrap"><div class="ind-bar-fill ${nsClass(v)}" style="width:${v}%"></div></div>
-      <span class="ind-posto-val" style="color:var(--${v>=99?'green':v>=95?'yellow':'red'})">${v.toFixed(1)}%</span>
+      <span class="ind-posto-val" style="color:var(--${v>=99?'green':v>=95?'yellow':'red'})">${v.toFixed(2)}%</span>
     </div>`).join('');
 
   el.innerHTML=`
@@ -6592,9 +6611,9 @@ function renderTabelaDetalhada(dados,postos,totalDiasUteis,postoFiltro) {
     const senhaH=hTotal>0?(g.atend/hTotal).toFixed(1):'—';
     const tmaM=g.tmas.length?Math.round(g.tmas.reduce((a,b)=>a+b,0)/g.tmas.length):null;
     const tmeM=g.tmes.length?Math.round(g.tmes.reduce((a,b)=>a+b,0)/g.tmes.length):null;
-    const ns10M=g.ns10s.length?(g.ns10s.reduce((a,b)=>a+b,0)/g.ns10s.length).toFixed(1):null;
-    const ns15M=g.ns15s.length?(g.ns15s.reduce((a,b)=>a+b,0)/g.ns15s.length).toFixed(1):null;
-    const ns30M=g.ns30s.length?(g.ns30s.reduce((a,b)=>a+b,0)/g.ns30s.length).toFixed(1):null;
+    const ns10M=g.ns10s.length?(g.ns10s.reduce((a,b)=>a+b,0)/g.ns10s.length):null;
+    const ns15M=g.ns15s.length?(g.ns15s.reduce((a,b)=>a+b,0)/g.ns15s.length):null;
+    const ns30M=g.ns30s.length?(g.ns30s.reduce((a,b)=>a+b,0)/g.ns30s.length):null;
     return `<tr>
       <td class="rank">${i+1}</td>
       <td style="font-weight:600;white-space:nowrap">${nome}</td>
@@ -6744,6 +6763,9 @@ async function importarExcelIndicadores() {
           ns10:(row['NS 10']!=null&&!isNaN(parseFloat(row['NS 10'])))?Math.round(parseFloat(row['NS 10'])*10000)/100:null,
           ns15:(row['NS 15']!=null&&!isNaN(parseFloat(row['NS 15'])))?Math.round(parseFloat(row['NS 15'])*10000)/100:null,
           ns30:(row['NS 30']!=null&&!isNaN(parseFloat(row['NS 30'])))?Math.round(parseFloat(row['NS 30'])*10000)/100:null,
+          // contagens EXATAS dentro do prazo (permitem consolidar NS sem perder precisão)
+          atendidas10min:(!isNaN(parseFloat(row['Atendidas até 10 minutos'])))?Math.round(parseFloat(row['Atendidas até 10 minutos'])):(!isNaN(parseFloat(row['NS 10']))?Math.round(parseFloat(row['NS 10'])*(parseFloat(row['Atendidas'])||0)):null),
+          atendidas15min:(!isNaN(parseFloat(row['NS 15'])))?Math.round(parseFloat(row['NS 15'])*(parseFloat(row['Atendidas'])||0)):null,
           atendidas30min:Math.round(parseFloat(row['Atendidas até 30 minutos'])||0),
           apos30min:Math.round(parseFloat(row['Atendidas após 30 minutos'])||0),
           atendidas45min:Math.round(parseFloat(row['Atendidas até 45 minutos'])||0),
