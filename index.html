@@ -22954,13 +22954,25 @@ function _opDedupPostos(lista) {
 function _opPostosDisponiveis() { return _opDedupPostos(allPostos.filter(p=>p.nome!=='Posto Teste').map(p=>p.nome)); }
 function _opSupervisoresDisponiveis() { return [...new Set(allPostos.map(p=>p.supervisor).filter(Boolean))].sort(); }
 
-function _opFiltrarPostoSup(dados, campoPosto) {
+// Regra OFICIAL dos módulos CSAT e POS para identificar posto e supervisor:
+//  • o nome do posto é levado ao nome canônico (CSAT_NOME_MAP — o mesmo usado na
+//    importação, ex.: "Conceição de Macabu" → CONCEICAO DE MACABU);
+//  • o grupo do supervisor é CSAT_SUPERVISORES (a lista usada pela aba Supervisor
+//    do CSAT); só se o supervisor não existir ali cai no cadastro (allPostos).
+function _opNomeCanonicoOficial(nome) { const n = csatNorm(nome); return CSAT_NOME_MAP[n] || n; }
+function _opPostosSupervisorOficial(sup) {
+  const cfg = CSAT_SUPERVISORES[csatNorm(sup).split(' ')[0].toLowerCase()];
+  const nomes = cfg ? cfg.postos : allPostos.filter(p=>p.supervisor===sup).map(p=>p.nome);
+  return new Set(nomes.map(n=>_opNormNome(_opNomeCanonicoOficial(n))));
+}
+function _opFiltrarPostoSup(dados, campoPosto, regraOficial) {
   if (_opFiltroPosto) {
-    const alvo = _opNormNome(_opFiltroPosto);
+    const alvo = _opNormNome(regraOficial ? _opNomeCanonicoOficial(_opFiltroPosto) : _opFiltroPosto);
     return dados.filter(d=>_opNormNome(d[campoPosto])===alvo);
   }
   if (_opFiltroSupervisor) {
-    const postosSup = new Set(allPostos.filter(p=>p.supervisor===_opFiltroSupervisor).map(p=>_opNormNome(p.nome)));
+    const postosSup = regraOficial ? _opPostosSupervisorOficial(_opFiltroSupervisor)
+      : new Set(allPostos.filter(p=>p.supervisor===_opFiltroSupervisor).map(p=>_opNormNome(p.nome)));
     return dados.filter(d=>postosSup.has(_opNormNome(d[campoPosto])));
   }
   return dados;
@@ -23132,14 +23144,24 @@ function _audModInd(m, setExato){
   const rows = allIndicadores.filter(d=>d.mesRef===m && (!setExato || setExato.has(d.postoNome)));
   return { n:rows.length, atendidas: rows.reduce((s,d)=>s+(parseInt(d.senhasAtendidas)||0),0), ns30: indConsolidarNS(rows,30) };
 }
-function _audModCsat(m, setExato){
-  const rows = csatAllData.filter(d=>d.mesRef===m && (!setExato || setExato.has(d.postoNome)));
+function _audSupOficial(sup){ return CSAT_SUPERVISORES[csatNorm(sup).split(' ')[0].toLowerCase()] || null; }
+function _audNomeCsat(n){ const k=csatNorm(n); return CSAT_NOME_MAP[k]||k; }
+// CSAT oficial: renderCsatPainel (posto = nome gravado, canônico) e renderCsatSupervisor
+// (CSAT_SUPERVISORES[...].postos.includes(d.postoNome)); média ponderada por pesquisas.
+function _audModCsat(metas, e){
+  let rows = csatAllData.filter(d=>metas.includes(d.mesRef));
+  if (e.tipo==='posto'){ const alvo=_audNomeCsat(e.posto); rows=rows.filter(d=>d.postoNome===alvo); }
+  else if (e.tipo==='sup'){ const cfg=_audSupOficial(e.sup); rows = cfg ? rows.filter(d=>cfg.postos.includes(d.postoNome)) : []; }
   let pesq=0, soma=0; rows.forEach(d=>{ const q=d.pesquisas||0; pesq+=q; soma+=(d.notaMedia||0)*q; });
   return { n:rows.length, nota: pesq>0 ? soma/pesq : null };
 }
-function _audModPos(m, setExato){
-  const rows = posAllResultados.filter(d=>d.mesRef===m && (!setExato || setExato.has(d.postoNome)));
-  const valor = rows.reduce((s,d)=>s+(d.valor||0),0), meta = rows.reduce((s,d)=>s+getPOSMeta(d.postoNome,d.mesRef),0);
+// POS oficial: renderPOSKPIs/renderPOSRanking (chave posNormKey; meta = getPOSMeta(posto, mês)).
+// O módulo POS não tem visão por supervisor: o consolidado é a soma dos postos do grupo oficial.
+function _audModPos(metas, e){
+  let rows = posAllResultados.filter(d=>metas.includes(d.mesRef));
+  if (e.tipo==='posto'){ const k=posNormKey(_audNomeCsat(e.posto)); rows=rows.filter(d=>posNormKey(d.postoNome)===k); }
+  else if (e.tipo==='sup'){ const cfg=_audSupOficial(e.sup); const ks=new Set(cfg?cfg.postos.map(posNormKey):[]); rows=rows.filter(d=>ks.has(posNormKey(d.postoNome))); }
+  const valor=rows.reduce((s,d)=>s+(d.valor||0),0), meta=rows.reduce((s,d)=>s+getPOSMeta(d.postoNome,d.mesRef),0);
   return { n:rows.length, valor: rows.length?valor:null, pct: meta>0 ? valor/meta*100 : null };
 }
 function _audModLn(lista, comps, supervisor, postoCanon){
@@ -23187,6 +23209,7 @@ function _audDiagnosticos(fe){
 
 function _audAvalia(dash, mod, indep, temIndep){
   if (dash==null && mod==null && indep==null) return null;       // sem dado em lugar nenhum: não gera linha
+  if (mod==null && dash!=null) return 'Não validado';              // oficial ausente: não é divergência numérica confirmada
   if (!_audIgual(dash,mod)) return 'Divergente';
   if (!temIndep) return 'Não validado';
   return _audIgual(dash,indep) ? 'OK' : 'Divergente';
@@ -23194,6 +23217,7 @@ function _audAvalia(dash, mod, indep, temIndep){
 function _audCausa(ind, sit, dash, mod, indep, diag, extra){
   if (sit==='OK') return '';
   const modulo = ind.split(' — ')[0];
+  if (sit==='Não validado' && mod==null && dash!=null) return 'Valor oficial ausente: o módulo oficial não tem registro para esta seleção pela regra dele (nome/mês/grupo). Não é divergência numérica confirmada — o Dash mostra '+dash+(indep!=null?' e a releitura independente '+indep:'')+'.';
   if (sit==='Não validado') return (extra&&extra.nv) || 'Não há fonte independente para este indicador (a meta/regra vem só do próprio módulo). Dash e módulo foram comparados entre si.';
   if (extra && extra.causa) return extra.causa;
   if (!_audIgual(dash,mod)) {
@@ -23231,19 +23255,21 @@ async function opVerificarConsistenciaExecutar(onProgress){
       if (e.tipo==='posto'){ setNorm=new Set([_opNormNome(e.posto)]); setLn=new Set([lnChavePosto(e.posto)]); setExato=new Set(allPostos.filter(p=>_opNormNome(p.nome)===_opNormNome(e.posto)).map(p=>p.nome)); postoCanon=_opPostoCanonicoRG(e.posto)||''; }
       else if (e.tipo==='sup'){ const ps=allPostos.filter(p=>p.supervisor===e.sup); setNorm=new Set(ps.map(p=>_opNormNome(p.nome))); setLn=new Set(ps.map(p=>lnChavePosto(p.nome))); setExato=new Set(ps.map(p=>p.nome)); }
       if (e.tipo==='posto' && !postoCanon) postoCanon='__fora_do_cadastro__';
+      // CSAT/POS: identidade oficial (nome canônico + grupo CSAT_SUPERVISORES)
+      const setOf = e.tipo==='posto' ? new Set([_opNormNome(_audNomeCsat(e.posto))]) : (e.tipo==='sup' ? _opPostosSupervisorOficial(e.sup) : null);
 
       const D = _audDash(metas, e.posto, e.sup);
       // Módulo oficial: Indicadores/CSAT/POS olham UM mês cru por vez; para "Todos" soma os meses.
-      const mI=metas.map(m=>_audModInd(m,setExato)), mC=metas.map(m=>_audModCsat(m,setExato)), mP=metas.map(m=>_audModPos(m,setExato));
+      const mI=metas.map(m=>_audModInd(m,setExato));
       const modInd = (()=>{ if(metas.length===1) return mI[0]; const rows=allIndicadores.filter(d=>metas.includes(d.mesRef)&&(!setExato||setExato.has(d.postoNome))); return { n:rows.length, atendidas:rows.reduce((s,d)=>s+(parseInt(d.senhasAtendidas)||0),0), ns30:indConsolidarNS(rows,30) }; })();
-      const modCsat = (()=>{ if(metas.length===1) return mC[0]; const rows=csatAllData.filter(d=>metas.includes(d.mesRef)&&(!setExato||setExato.has(d.postoNome))); let p=0,s=0; rows.forEach(d=>{const q=d.pesquisas||0;p+=q;s+=(d.notaMedia||0)*q;}); return { n:rows.length, nota:p>0?s/p:null }; })();
-      const modPos = (()=>{ if(metas.length===1) return mP[0]; const rows=posAllResultados.filter(d=>metas.includes(d.mesRef)&&(!setExato||setExato.has(d.postoNome))); const v=rows.reduce((s,d)=>s+(d.valor||0),0), mt=rows.reduce((s,d)=>s+getPOSMeta(d.postoNome,d.mesRef),0); return { n:rows.length, valor:rows.length?v:null, pct:mt>0?v/mt*100:null }; })();
+      const modCsat = _audModCsat(metas, e);
+      const modPos = _audModPos(metas, e);
       const modLn = postoCanon==='__fora_do_cadastro__' ? {n:0,com:0,sem:0,total:0,pct:null} : _audModLn(lista, metas.filter(c=>fe.ln.some(a=>a.data&&a.data.slice(0,7)===c)), e.tipo==='sup'?e.sup:'', e.tipo==='posto'?postoCanon:'');
-      const iI=_audIndepInd(fe,metas,setNorm), iC=_audIndepCsat(fe,metas,setNorm), iP=_audIndepPos(fe,metas,setNorm), iL=_audIndepLn(fe,metas,setLn);
+      const iI=_audIndepInd(fe,metas,setNorm), iC=_audIndepCsat(fe,metas,setOf), iP=_audIndepPos(fe,metas,setOf), iL=_audIndepLn(fe,metas,setLn);
 
       const push=(ind, tipo, dash, mod, indep, temIndep, extra)=>{
         const sit=_audAvalia(dash,mod,indep,temIndep); if(!sit) return;
-        const ref = (!_audIgual(dash,mod)) ? mod : (temIndep ? indep : mod);
+        const ref = (mod==null) ? null : ((!_audIgual(dash,mod)) ? mod : (temIndep ? indep : mod));
         const dif = (_audN(dash)===null||_audN(ref)===null) ? null : dash-ref;
         linhas.push({ comp:rot, compLabel:_audLabelComp(rot), posto: e.tipo==='posto'?e.posto:(e.tipo==='sup'?'(todos do supervisor)':'(consolidado)'), supervisor:e.sup||'(todos)',
           escopo:e.tipo, indicador:ind, tipo, dash:_audN(dash), mod:_audN(mod), indep: temIndep?_audN(indep):null, dif, situacao:sit,
@@ -23696,7 +23722,7 @@ function _opCalcCardPOS() {
   if (!mesesFonte.length) return {modo:'semdados'};
   const meses=_opMesesConsiderados(mesesFonte);
   if (!meses.length) return {modo:'semdados'};
-  const dados=_opFiltrarPostoSup(_opAllPos.filter(d=>meses.includes(d.mesRef)),'postoNome');
+  const dados=_opFiltrarPostoSup(_opAllPos.filter(d=>meses.includes(d.mesRef)),'postoNome',true);
   if (!dados.length) return {modo:'semdados'};
   const resultado=dados.reduce((s,d)=>s+(d.valor||0),0);
   const meta=dados.reduce((s,d)=>s+getPOSMeta(d.postoNome,d.mesRef),0);
@@ -23706,7 +23732,7 @@ function _opCalcCardPOS() {
   if (meses.length===1) {
     const ord=[...mesesFonte].sort(); const idx=ord.indexOf(meses[0]);
     mesAnteriorRef=idx>0?ord[idx-1]:null;
-    if (mesAnteriorRef) resultadoAnterior=_opFiltrarPostoSup(_opAllPos.filter(d=>d.mesRef===mesAnteriorRef),'postoNome').reduce((s,d)=>s+(d.valor||0),0);
+    if (mesAnteriorRef) resultadoAnterior=_opFiltrarPostoSup(_opAllPos.filter(d=>d.mesRef===mesAnteriorRef),'postoNome',true).reduce((s,d)=>s+(d.valor||0),0);
   }
   return {modo:meses.length===1?'unico':'periodo', resultado, meta, diferenca:resultado-meta, pct, status, resultadoAnterior, mesAnteriorRef};
 }
@@ -23717,7 +23743,7 @@ function _opCalcCardCSAT() {
   if (!mesesFonte.length) return {modo:'semdados'};
   const meses=_opMesesConsiderados(mesesFonte);
   if (!meses.length) return {modo:'semdados'};
-  const dados=_opFiltrarPostoSup(_opAllCsat.filter(d=>meses.includes(d.mesRef)),'postoNome');
+  const dados=_opFiltrarPostoSup(_opAllCsat.filter(d=>meses.includes(d.mesRef)),'postoNome',true);
   if (!dados.length) return {modo:'semdados'};
   const totalPesq=dados.reduce((s,d)=>s+(d.pesquisas||0),0);
   const nota=totalPesq>0?dados.reduce((s,d)=>s+(d.notaMedia||0)*(d.pesquisas||0),0)/totalPesq:null;
@@ -23727,7 +23753,7 @@ function _opCalcCardCSAT() {
     const ord=[...mesesFonte].sort(); const idx=ord.indexOf(meses[0]);
     mesAnteriorRef=idx>0?ord[idx-1]:null;
     if (mesAnteriorRef) {
-      const dAnt=_opFiltrarPostoSup(_opAllCsat.filter(d=>d.mesRef===mesAnteriorRef),'postoNome');
+      const dAnt=_opFiltrarPostoSup(_opAllCsat.filter(d=>d.mesRef===mesAnteriorRef),'postoNome',true);
       const pAnt=dAnt.reduce((s,d)=>s+(d.pesquisas||0),0);
       resultadoAnterior=pAnt>0?dAnt.reduce((s,d)=>s+(d.notaMedia||0)*(d.pesquisas||0),0)/pAnt:null;
     }
@@ -23865,7 +23891,7 @@ function _opCalcResultadoOperacional(cardPos,cardCsat,cardNs30,blocoTempos) {
 // ── Rankings ─────────────────────────────────────────────────────────────
 function _opRankingMenorPOS() {
   const meses=_opMesesConsiderados([...new Set(_opAllPos.map(d=>d.mesRef))]);
-  const dados=_opFiltrarPostoSup(_opAllPos.filter(d=>meses.includes(d.mesRef)),'postoNome');
+  const dados=_opFiltrarPostoSup(_opAllPos.filter(d=>meses.includes(d.mesRef)),'postoNome',true);
   const porPosto={};
   dados.forEach(d=>{ if(!porPosto[d.postoNome]) porPosto[d.postoNome]={valor:0,meta:0};
     porPosto[d.postoNome].valor+=(d.valor||0); porPosto[d.postoNome].meta+=getPOSMeta(d.postoNome,d.mesRef); });
@@ -23873,7 +23899,7 @@ function _opRankingMenorPOS() {
 }
 function _opRankingMenorCSAT() {
   const meses=_opMesesConsiderados(_opMesesTodos()); // lista canônica (Indicadores+POS)
-  const dados=_opFiltrarPostoSup(_opAllCsat.filter(d=>meses.includes(d.mesRef)),'postoNome');
+  const dados=_opFiltrarPostoSup(_opAllCsat.filter(d=>meses.includes(d.mesRef)),'postoNome',true);
   const porPosto={};
   dados.forEach(d=>{ if(!porPosto[d.postoNome]) porPosto[d.postoNome]={soma:0,pesq:0};
     porPosto[d.postoNome].soma+=(d.notaMedia||0)*(d.pesquisas||0); porPosto[d.postoNome].pesq+=(d.pesquisas||0); });
@@ -23935,8 +23961,9 @@ function _opCalcComparativoSupervisores() {
   return ['Leonardo','Victor'].map(sup => {
     const postosSup = new Set(allPostos.filter(p=>p.supervisor===sup).map(p=>_opNormNome(p.nome)));
     const dInd = _opAllIndicadores.filter(d=>mesesInd.includes(d.mesRef) && postosSup.has(_opNormNome(d.postoNome)));
-    const dCsat = _opAllCsat.filter(d=>mesesCsat.includes(d.mesRef) && postosSup.has(_opNormNome(d.postoNome)));
-    const dPos = _opAllPos.filter(d=>mesesPos.includes(d.mesRef) && postosSup.has(_opNormNome(d.postoNome)));
+    const postosSupOf = _opPostosSupervisorOficial(sup); // regra oficial CSAT/POS
+    const dCsat = _opAllCsat.filter(d=>mesesCsat.includes(d.mesRef) && postosSupOf.has(_opNormNome(d.postoNome)));
+    const dPos = _opAllPos.filter(d=>mesesPos.includes(d.mesRef) && postosSupOf.has(_opNormNome(d.postoNome)));
     const cons = dInd.length ? _opConsolidarIndicadores(dInd) : null;
     const totalPesq = dCsat.reduce((s,d)=>s+(d.pesquisas||0),0);
     const nota = totalPesq>0 ? dCsat.reduce((s,d)=>s+(d.notaMedia||0)*(d.pesquisas||0),0)/totalPesq : null;
@@ -24284,7 +24311,7 @@ function _opRenderCharts(mesesTodos) {
   _chartOpPos = _dstroyIndChart(_chartOpPos);
   const ctxPos = document.getElementById('op-c-pos');
   if (ctxPos && mesesPos.length) {
-    const dadosBase = _opFiltrarPostoSup(_opAllPos, 'postoNome');
+    const dadosBase = _opFiltrarPostoSup(_opAllPos, 'postoNome',true);
     const val = mesesPos.map(m=>dadosBase.filter(d=>d.mesRef===m).reduce((s,d)=>s+(d.valor||0),0));
     const qtd = mesesPos.map(m=>dadosBase.filter(d=>d.mesRef===m).reduce((s,d)=>s+(d.qtd||0),0));
     _chartOpPos = new Chart(ctxPos, {data:{labels:mesesPos.map(_indMesLabel), datasets:[
@@ -24313,7 +24340,7 @@ function _opRenderCharts(mesesTodos) {
   _chartOpCsat = _dstroyIndChart(_chartOpCsat);
   const ctxCsat = document.getElementById('op-c-csat');
   if (ctxCsat && mesesCsat.length) {
-    const dadosBase = _opFiltrarPostoSup(_opAllCsat, 'postoNome');
+    const dadosBase = _opFiltrarPostoSup(_opAllCsat, 'postoNome',true);
     const notas = mesesCsat.map(m=>{ const d=dadosBase.filter(x=>x.mesRef===m); const p=d.reduce((s,x)=>s+(x.pesquisas||0),0); return p>0?+(d.reduce((s,x)=>s+(x.notaMedia||0)*(x.pesquisas||0),0)/p).toFixed(2):null; });
     const pesqs = mesesCsat.map(m=>dadosBase.filter(x=>x.mesRef===m).reduce((s,x)=>s+(x.pesquisas||0),0));
     _chartOpCsat = new Chart(ctxCsat, {data:{labels:mesesCsat.map(_indMesLabel), datasets:[
