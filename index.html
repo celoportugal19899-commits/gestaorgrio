@@ -1420,6 +1420,7 @@ const PosCanalLabels = {
     <div id="view-adm-operacao-dashboard" class="view">
       <div class="topbar">
         <div class="topbar-title">📊 Dashboard Operacional</div>
+        <button class="btn btn-sm" id="op-aud-btn" style="margin-left:auto;display:none" onclick="opAbrirAuditoria()">🔎 Verificar Consistência dos Dados</button>
       </div>
       <div class="view-content">
         <div id="op-dash-wrap"></div>
@@ -22924,7 +22925,7 @@ async function _opGarantirDadosCarregados() {
       _opLnDataExtracao = bo.dataExtracaoReal || '';
       _opLnCompetenciaVigente = bo.competenciaVigente || '';
       const agSnap = await db.collection('ligacaonova_base_agregados_dia').where('snapshotId','==',bo.snapshotVigenteId).get();
-      _opLnAgregados = agSnap.docs.map(d=>d.data());
+      _opLnAgregados = agSnap.docs.map(d=>lnNormalizarAgregado(d.data()));
     } else {
       _opLnAgregados = []; _opLnDataExtracao=''; _opLnCompetenciaVigente='';
     }
@@ -23050,6 +23051,287 @@ function _opRankingSemEmail() {
     supervisor: allPostos.find(x=>lnChavePosto(x.nome)===lnChavePosto(p.posto))?.supervisor || '—',
     baixoVolume: p.total<5
   })).sort((a,b)=>b.pct-a.pct);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VERIFICAR CONSISTÊNCIA DOS DADOS — auditoria automática, SOMENTE LEITURA.
+// Compara, para cada Competência × (Consolidado | Supervisor | Posto) × Indicador:
+//   (1) DASHBOARD  — valor que os cards do Dash mostram (funções _opCalcCard*)
+//   (2) MÓDULO OFICIAL — recalculado com a regra/filtro do próprio módulo
+//        (Indicadores/CSAT/POS: arrays crus + comparação EXATA de mesRef e posto;
+//         Email Ligação Nova: lnFiltrarAgregados, a função do Resultado Oficial)
+//   (3) FONTE INDEPENDENTE — releitura nova do Firestore + loops próprios
+//        (não usa os arrays em memória, nem os cards, nem lnFiltrarAgregados).
+// Nunca grava no Firestore. Diferenças só de formatação (casas decimais) não
+// são divergência: compara-se o NÚMERO com tolerância de 1e-6.
+// ═══════════════════════════════════════════════════════════════════════════
+const OP_AUD_TOL = 1e-6;
+const OP_AUD_LS = 'op_aud_ultima_execucao';
+let _opAudResultado = null, _opAudExecutando = false;
+
+function _audEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function _audN(v){ return (v===null||v===undefined||(typeof v==='number'&&isNaN(v))) ? null : Number(v); }
+function _audIgual(a,b){ a=_audN(a); b=_audN(b); if(a===null&&b===null) return true; if(a===null||b===null) return false; return Math.abs(a-b)<=OP_AUD_TOL; }
+function _audFmt(v, tipo){
+  v=_audN(v); if(v===null) return '—';
+  if(tipo==='pct') return v.toFixed(2).replace('.',',')+'%';
+  return Number.isInteger(v) ? v.toLocaleString('pt-BR') : v.toFixed(2).replace('.',',');
+}
+function _audLabelComp(m){ if(m==='*') return 'Todos os meses'; const [a,mo]=m.split('-'); return (mo?mo+'/'+a:m); }
+
+async function _audCarregarFontes(){
+  const [i,c,p,cfg] = await Promise.all([
+    db.collection('indicadores').get(), db.collection('csat').get(), db.collection('pos_resultados').get(),
+    db.collection('ligacaonova_config').doc('geral').get()
+  ]);
+  const fe = { ind:i.docs.map(d=>d.data()), csat:c.docs.map(d=>d.data()), pos:p.docs.map(d=>d.data()), ln:[], snapshotId:null };
+  const bo = cfg.exists ? cfg.data().baseOficial : null;
+  if (bo && bo.snapshotVigenteId) {
+    fe.snapshotId = bo.snapshotVigenteId;
+    const s = await db.collection('ligacaonova_base_agregados_dia').where('snapshotId','==',bo.snapshotVigenteId).get();
+    fe.ln = s.docs.map(d=>d.data());
+  }
+  return fe;
+}
+
+// ── (3) Fonte independente ──────────────────────────────────────────────
+function _audIndepInd(fe, metas, setN){
+  const rows = fe.ind.filter(d=>metas.includes(_opNormMesRef(d.mesRef)) && (!setN || setN.has(_opNormNome(d.postoNome))));
+  let at=0, dentro=0, base=0;
+  rows.forEach(d=>{
+    const a=parseInt(d.senhasAtendidas)||0; at+=a; if(a<=0) return;
+    const p=parseFloat(d.ns30); let c=parseFloat(d.atendidas30min);
+    if(isNaN(c) || (c===0 && p>0)){ if(isNaN(p)) return; c=Math.round(p/100*a); }
+    dentro+=Math.min(c,a); base+=a;
+  });
+  return { n:rows.length, atendidas:at, ns30: base>0 ? dentro/base*100 : null };
+}
+function _audIndepCsat(fe, metas, setN){
+  const rows = fe.csat.filter(d=>metas.includes(_opNormMesRef(d.mesRef)) && (!setN || setN.has(_opNormNome(d.postoNome))));
+  let pesq=0, soma=0; rows.forEach(d=>{ const q=d.pesquisas||0; pesq+=q; soma+=(d.notaMedia||0)*q; });
+  return { n:rows.length, nota: pesq>0 ? soma/pesq : null };
+}
+function _audIndepPos(fe, metas, setN){
+  const rows = fe.pos.filter(d=>metas.includes(_opNormMesRef(d.mesRef)) && (!setN || setN.has(_opNormNome(d.postoNome))));
+  return { n:rows.length, valor: rows.length ? rows.reduce((s,d)=>s+(d.valor||0),0) : null };
+}
+function _audIndepLn(fe, metas, setLn){
+  let com=0, sem=0, stored=0, canc=0, nc=0, temCanc=false, n=0;
+  fe.ln.forEach(a=>{
+    if(!a.data || !metas.includes(a.data.slice(0,7))) return;
+    if(setLn && !setLn.has(lnChavePosto(a.posto))) return;
+    n++; com+=a.comEmail||0; sem+=a.semEmail||0; stored+=a.total||0;
+    if(a.cancelados!==undefined){ temCanc=true; canc+=a.cancelados||0; nc+=a.naoClassificados||0; }
+  });
+  const t=com+sem;
+  return { n, com, sem, total:t, pct: t>0 ? sem/t*100 : null, stored, canc, nc, temCanc };
+}
+
+// ── (2) Módulo oficial ──────────────────────────────────────────────────
+function _audModInd(m, setExato){
+  const rows = allIndicadores.filter(d=>d.mesRef===m && (!setExato || setExato.has(d.postoNome)));
+  return { n:rows.length, atendidas: rows.reduce((s,d)=>s+(parseInt(d.senhasAtendidas)||0),0), ns30: indConsolidarNS(rows,30) };
+}
+function _audModCsat(m, setExato){
+  const rows = csatAllData.filter(d=>d.mesRef===m && (!setExato || setExato.has(d.postoNome)));
+  let pesq=0, soma=0; rows.forEach(d=>{ const q=d.pesquisas||0; pesq+=q; soma+=(d.notaMedia||0)*q; });
+  return { n:rows.length, nota: pesq>0 ? soma/pesq : null };
+}
+function _audModPos(m, setExato){
+  const rows = posAllResultados.filter(d=>d.mesRef===m && (!setExato || setExato.has(d.postoNome)));
+  const valor = rows.reduce((s,d)=>s+(d.valor||0),0), meta = rows.reduce((s,d)=>s+getPOSMeta(d.postoNome,d.mesRef),0);
+  return { n:rows.length, valor: rows.length?valor:null, pct: meta>0 ? valor/meta*100 : null };
+}
+function _audModLn(lista, comps, supervisor, postoCanon){
+  if(!comps.length) return { n:0, com:0, sem:0, total:0, pct:null }; // competência sem dado nunca vira "a mais recente"
+  const salvoF=_lnFiltros, salvoC=_lnCompetenciasDisponiveis;
+  try{
+    _lnCompetenciasDisponiveis = Array.from(new Set(lista.filter(a=>a.data).map(a=>a.data.slice(0,7)))).sort();
+    _lnFiltros = { competencias:comps, supervisor:supervisor||'', posto:postoCanon||'', dataInicio:null, dataFim:null };
+    const f = lnFiltrarAgregados(lista);
+    const com=f.reduce((s,a)=>s+(a.comEmail||0),0), sem=f.reduce((s,a)=>s+(a.semEmail||0),0), t=com+sem;
+    return { n:f.length, com, sem, total:t, pct: t>0 ? sem/t*100 : null };
+  } finally { _lnFiltros=salvoF; _lnCompetenciasDisponiveis=salvoC; }
+}
+
+// ── (1) Dashboard ───────────────────────────────────────────────────────
+function _audDash(metas, posto, supervisor){
+  const sM=_opMesesSel, sP=_opFiltroPosto, sS=_opFiltroSupervisor;
+  try{
+    _opMesesSel=metas.slice(); _opFiltroPosto=posto||''; _opFiltroSupervisor=supervisor||'';
+    const at=_opCalcCardSenhasAtendidas(), ns=_opCalcCardNS30(), cs=_opCalcCardCSAT(), po=_opCalcCardPOS(), ln=_opCalcCardSemEmail();
+    return {
+      atendidas: at.modo==='semdados'?null:at.total,
+      ns30: ns.modo==='semdados'?null:ns.resultado,
+      csat: cs.modo==='semdados'?null:cs.nota,
+      posValor: po.modo==='semdados'?null:po.resultado,
+      posPct: po.modo==='semdados'?null:po.pct,
+      lnCom: ln.modo==='ok'?ln.comEmail:null, lnSem: ln.modo==='ok'?ln.semEmail:null,
+      lnTotal: ln.modo==='ok'?ln.total:null, lnPct: ln.modo==='ok'?ln.resultado:null
+    };
+  } finally { _opMesesSel=sM; _opFiltroPosto=sP; _opFiltroSupervisor=sS; }
+}
+
+function _audDiagnosticos(fe){
+  const d = { mesFormato:{}, postosFora:{}, lnLegado:false, lnExtras:0 };
+  [['Indicadores',fe.ind],['CSAT',fe.csat],['POS',fe.pos]].forEach(([nome,arr])=>{
+    const fmt=new Set(); arr.forEach(r=>{ if(r.mesRef!=null && _opNormMesRef(r.mesRef)!==String(r.mesRef)) fmt.add(String(r.mesRef)); });
+    if(fmt.size) d.mesFormato[nome]=[...fmt];
+    const nomesOk=new Set(allPostos.map(p=>p.nome)), fora=new Set();
+    arr.forEach(r=>{ if(r.postoNome && !nomesOk.has(r.postoNome)) fora.add(r.postoNome); });
+    if(fora.size) d.postosFora[nome]=[...fora];
+  });
+  fe.ln.forEach(a=>{ if(a.cancelados===undefined) d.lnLegado=true; if((a.total||0)!==((a.comEmail||0)+(a.semEmail||0))) d.lnExtras += (a.total||0)-((a.comEmail||0)+(a.semEmail||0)); });
+  return d;
+}
+
+function _audAvalia(dash, mod, indep, temIndep){
+  if (dash==null && mod==null && indep==null) return null;       // sem dado em lugar nenhum: não gera linha
+  if (!_audIgual(dash,mod)) return 'Divergente';
+  if (!temIndep) return 'Não validado';
+  return _audIgual(dash,indep) ? 'OK' : 'Divergente';
+}
+function _audCausa(ind, sit, dash, mod, indep, diag, extra){
+  if (sit==='OK') return '';
+  const modulo = ind.split(' — ')[0];
+  if (sit==='Não validado') return (extra&&extra.nv) || 'Não há fonte independente para este indicador (a meta/regra vem só do próprio módulo). Dash e módulo foram comparados entre si.';
+  if (extra && extra.causa) return extra.causa;
+  if (!_audIgual(dash,mod)) {
+    if (diag.mesFormato[modulo]) return `mesRef gravado em formato diferente (${diag.mesFormato[modulo].slice(0,4).join(', ')}): o Dash normaliza o mês, o módulo compara o texto cru.`;
+    if (diag.postosFora[modulo]) return `Nome de posto gravado fora do cadastro (${diag.postosFora[modulo].slice(0,3).join(', ')}): o Dash normaliza acento/caixa, o módulo compara o nome exato.`;
+    return 'Dash e módulo consolidam a seleção de forma diferente (filtro de mês/posto/supervisor ou regra de consolidação).';
+  }
+  return 'Dash e módulo coincidem, mas a releitura independente do Firestore discorda: dado alterado depois do carregamento da tela (recarregue) ou regra compartilhada incorreta.';
+}
+
+async function opVerificarConsistenciaExecutar(onProgress){
+  const t0 = Date.now();
+  await _opGarantirDadosCarregados();
+  const fe = await _audCarregarFontes();
+  const lista = await lnObterAgregadosVigentes();
+  const diag = _audDiagnosticos(fe);
+
+  const mesesBase = new Set(_opMesesTodos());
+  fe.ln.forEach(a=>{ if(a.data) mesesBase.add(a.data.slice(0,7)); });
+  const meses = [...mesesBase].filter(Boolean).sort();
+  const grupos = meses.map(m=>[m,[m]]).concat([['*', meses.slice()]]);
+
+  const postos = _opPostosDisponiveis();
+  const sups = _opSupervisoresDisponiveis();
+  const escopos = [{ tipo:'cons', posto:'', sup:'' }]
+    .concat(sups.map(s=>({tipo:'sup', posto:'', sup:s})))
+    .concat(postos.map(p=>({tipo:'posto', posto:p, sup:(allPostos.find(x=>_opNormNome(x.nome)===_opNormNome(p))||{}).supervisor||''})));
+
+  const linhas = [];
+  for (let gi=0; gi<grupos.length; gi++){
+    const [rot, metas] = grupos[gi];
+    for (const e of escopos){
+      // conjuntos de nomes por escopo
+      let setNorm=null, setLn=null, setExato=null, postoCanon='';
+      if (e.tipo==='posto'){ setNorm=new Set([_opNormNome(e.posto)]); setLn=new Set([lnChavePosto(e.posto)]); setExato=new Set(allPostos.filter(p=>_opNormNome(p.nome)===_opNormNome(e.posto)).map(p=>p.nome)); postoCanon=_opPostoCanonicoRG(e.posto)||''; }
+      else if (e.tipo==='sup'){ const ps=allPostos.filter(p=>p.supervisor===e.sup); setNorm=new Set(ps.map(p=>_opNormNome(p.nome))); setLn=new Set(ps.map(p=>lnChavePosto(p.nome))); setExato=new Set(ps.map(p=>p.nome)); }
+      if (e.tipo==='posto' && !postoCanon) postoCanon='__fora_do_cadastro__';
+
+      const D = _audDash(metas, e.posto, e.sup);
+      // Módulo oficial: Indicadores/CSAT/POS olham UM mês cru por vez; para "Todos" soma os meses.
+      const mI=metas.map(m=>_audModInd(m,setExato)), mC=metas.map(m=>_audModCsat(m,setExato)), mP=metas.map(m=>_audModPos(m,setExato));
+      const modInd = (()=>{ if(metas.length===1) return mI[0]; const rows=allIndicadores.filter(d=>metas.includes(d.mesRef)&&(!setExato||setExato.has(d.postoNome))); return { n:rows.length, atendidas:rows.reduce((s,d)=>s+(parseInt(d.senhasAtendidas)||0),0), ns30:indConsolidarNS(rows,30) }; })();
+      const modCsat = (()=>{ if(metas.length===1) return mC[0]; const rows=csatAllData.filter(d=>metas.includes(d.mesRef)&&(!setExato||setExato.has(d.postoNome))); let p=0,s=0; rows.forEach(d=>{const q=d.pesquisas||0;p+=q;s+=(d.notaMedia||0)*q;}); return { n:rows.length, nota:p>0?s/p:null }; })();
+      const modPos = (()=>{ if(metas.length===1) return mP[0]; const rows=posAllResultados.filter(d=>metas.includes(d.mesRef)&&(!setExato||setExato.has(d.postoNome))); const v=rows.reduce((s,d)=>s+(d.valor||0),0), mt=rows.reduce((s,d)=>s+getPOSMeta(d.postoNome,d.mesRef),0); return { n:rows.length, valor:rows.length?v:null, pct:mt>0?v/mt*100:null }; })();
+      const modLn = postoCanon==='__fora_do_cadastro__' ? {n:0,com:0,sem:0,total:0,pct:null} : _audModLn(lista, metas.filter(c=>fe.ln.some(a=>a.data&&a.data.slice(0,7)===c)), e.tipo==='sup'?e.sup:'', e.tipo==='posto'?postoCanon:'');
+      const iI=_audIndepInd(fe,metas,setNorm), iC=_audIndepCsat(fe,metas,setNorm), iP=_audIndepPos(fe,metas,setNorm), iL=_audIndepLn(fe,metas,setLn);
+
+      const push=(ind, tipo, dash, mod, indep, temIndep, extra)=>{
+        const sit=_audAvalia(dash,mod,indep,temIndep); if(!sit) return;
+        const ref = (!_audIgual(dash,mod)) ? mod : (temIndep ? indep : mod);
+        const dif = (_audN(dash)===null||_audN(ref)===null) ? null : dash-ref;
+        linhas.push({ comp:rot, compLabel:_audLabelComp(rot), posto: e.tipo==='posto'?e.posto:(e.tipo==='sup'?'(todos do supervisor)':'(consolidado)'), supervisor:e.sup||'(todos)',
+          escopo:e.tipo, indicador:ind, tipo, dash:_audN(dash), mod:_audN(mod), indep: temIndep?_audN(indep):null, dif, situacao:sit,
+          causa:_audCausa(ind,sit,dash,mod,indep,diag,extra), detalhe: extra&&extra.detalhe || '' });
+      };
+      push('Indicadores — Senhas Atendidas','int', D.atendidas, modInd.n?modInd.atendidas:null, iI.n?iI.atendidas:null, true);
+      push('Indicadores — NS30','pct', D.ns30, modInd.ns30, iI.ns30, true);
+      push('CSAT — Nota média','dec', D.csat, modCsat.nota, iC.nota, true);
+      push('POS — Resultado (R$)','dec', D.posValor, modPos.valor, iP.valor, true);
+      push('POS — % da meta','pct', D.posPct, modPos.pct, null, false, { nv:'A meta de POS (getPOSMeta) só existe no módulo; não há fonte independente para a meta. Resultado (R$) é validado à parte.' });
+      const dl = `Cancelados: ${iL.temCanc?iL.canc:'n/d'} · Não classificados: ${iL.temCanc?iL.nc:'n/d'} · Total gravado: ${iL.stored} · COM+SEM: ${iL.total}`;
+      push('Email Ligação Nova — Com E-mail','int', D.lnCom, modLn.n?modLn.com:null, iL.n?iL.com:null, true, {detalhe:dl});
+      push('Email Ligação Nova — Sem E-mail','int', D.lnSem, modLn.n?modLn.sem:null, iL.n?iL.sem:null, true, {detalhe:dl});
+      push('Email Ligação Nova — Total (COM+SEM)','int', D.lnTotal, modLn.n?modLn.total:null, iL.n?iL.total:null, true, {detalhe:dl});
+      push('Email Ligação Nova — % Sem E-mail','pct', D.lnPct, modLn.pct, iL.pct, true, {detalhe:dl});
+      // Regra de integridade: Total gravado deve ser = COM + SEM (casos fora das classes ficam à parte)
+      if (iL.n){
+        const ok = iL.stored === iL.total;
+        linhas.push({ comp:rot, compLabel:_audLabelComp(rot), posto: e.tipo==='posto'?e.posto:(e.tipo==='sup'?'(todos do supervisor)':'(consolidado)'), supervisor:e.sup||'(todos)',
+          escopo:e.tipo, indicador:'Email Ligação Nova — Total gravado = COM+SEM', tipo:'int', dash:iL.total, mod:iL.stored, indep:null, dif:iL.total-iL.stored,
+          situacao: ok?'OK':'Divergente',
+          causa: ok?'':`O Total gravado no snapshot (${iL.stored}) é maior que COM+SEM (${iL.total}): diferença de ${iL.stored-iL.total} caso(s) fora das classes ${iL.temCanc?`(cancelados ${iL.canc}, não classificados ${iL.nc})`:'(snapshot anterior à correção, sem separação de cancelados). A tela já usa COM+SEM; reimporte a Base Oficial para separar cancelados'}.`,
+          detalhe: dl });
+      }
+    }
+    if (onProgress) { onProgress(gi+1, grupos.length); await new Promise(r=>setTimeout(r,0)); }
+  }
+
+  const cont = { OK:0, Divergente:0, 'Não validado':0 }, porMod = {};
+  linhas.forEach(l=>{ cont[l.situacao]++; if(l.situacao==='Divergente'){ const m=l.indicador.split(' — ')[0]; porMod[m]=(porMod[m]||0)+1; } });
+  const ranking = Object.entries(porMod).sort((a,b)=>b[1]-a[1]);
+  const res = { linhas, total:linhas.length, ok:cont.OK, divergentes:cont.Divergente, naoValidados:cont['Não validado'], ranking,
+    executadoEm:new Date().toISOString(), duracaoMs:Date.now()-t0, snapshotLn:fe.snapshotId, diagnosticos:diag };
+  _opAudResultado = res;
+  try { localStorage.setItem(OP_AUD_LS, JSON.stringify({ em:res.executadoEm, total:res.total, ok:res.ok, div:res.divergentes, nv:res.naoValidados })); } catch(e){}
+  return res;
+}
+
+function _audUltimaTxt(){
+  try { const u=JSON.parse(localStorage.getItem(OP_AUD_LS)||'null'); if(u) return `${new Date(u.em).toLocaleString('pt-BR')} — ${u.total} verificações, ${u.div} divergência(s)`; } catch(e){}
+  return 'nunca executada neste navegador';
+}
+function opAbrirAuditoria(){
+  if (currentUser?.role!=='admin') { toast('Apenas administradores podem usar a verificação de consistência.','err'); return; }
+  let ov=document.getElementById('modal-op-auditoria');
+  if(!ov){ ov=document.createElement('div'); ov.className='modal-overlay'; ov.id='modal-op-auditoria'; document.body.appendChild(ov); }
+  ov.innerHTML=`<div class="modal" style="max-width:1280px;width:96vw;max-height:92vh;overflow-y:auto">
+    <div class="modal-header"><div class="modal-title">🔎 Verificar Consistência dos Dados</div><button class="close-btn" onclick="closeModal('modal-op-auditoria')">✕</button></div>
+    <div style="padding:4px 2px 12px;color:var(--text3);font-size:12px">Somente leitura — não grava nada. Compara Dashboard × Módulo oficial × releitura independente do Firestore. Última execução: <strong id="op-aud-ultima">${_audEsc(_audUltimaTxt())}</strong></div>
+    <div style="margin-bottom:12px"><button class="btn btn-primary" id="op-aud-run" onclick="opAuditoriaRodar()">▶ Executar verificação</button> <span id="op-aud-prog" style="font-size:12px;color:var(--text3);margin-left:8px"></span></div>
+    <div id="op-aud-corpo"></div></div>`;
+  ov.classList.add('open');
+  if(_opAudResultado) opAuditoriaRender();
+}
+async function opAuditoriaRodar(){
+  if(_opAudExecutando) return; _opAudExecutando=true;
+  const b=document.getElementById('op-aud-run'), pr=document.getElementById('op-aud-prog'); if(b) b.disabled=true;
+  try{
+    await opVerificarConsistenciaExecutar((i,n)=>{ if(pr) pr.textContent=`Verificando… ${i}/${n}`; });
+    if(pr) pr.textContent=''; const u=document.getElementById('op-aud-ultima'); if(u) u.textContent=_audUltimaTxt();
+    opAuditoriaRender();
+  }catch(e){ console.error('[Auditoria]',e); if(pr) pr.textContent='Erro: '+(e&&e.message||e); }
+  finally{ _opAudExecutando=false; if(b) b.disabled=false; }
+}
+let _opAudFiltro = { sit:'Divergente', ind:'', lim:300 };
+function opAuditoriaFiltrar(campo, v){ _opAudFiltro[campo]=v; if(campo!=='lim') _opAudFiltro.lim=300; opAuditoriaRender(); }
+function opAuditoriaRender(){
+  const r=_opAudResultado, el=document.getElementById('op-aud-corpo'); if(!r||!el) return;
+  const card=(t,v,c)=>`<div style="flex:1;min-width:130px;background:var(--bg2,#1a1d27);border:1px solid var(--border,#2a2f3a);border-radius:10px;padding:10px 12px"><div style="font-size:11px;color:var(--text3)">${t}</div><div style="font-size:22px;font-weight:800;color:${c||'inherit'}">${v}</div></div>`;
+  const inds=[...new Set(r.linhas.map(l=>l.indicador))];
+  let f=r.linhas.filter(l=>(!_opAudFiltro.sit||l.situacao===_opAudFiltro.sit)&&(!_opAudFiltro.ind||l.indicador===_opAudFiltro.ind));
+  const ordem={'Divergente':0,'Não validado':1,'OK':2}; f=f.slice().sort((a,b)=>ordem[a.situacao]-ordem[b.situacao]);
+  const cor={'OK':'#22c55e','Divergente':'#ef4444','Não validado':'#f59e0b'};
+  const rank=r.ranking.length?r.ranking.map(([m,n])=>`${_audEsc(m)} (${n})`).join(' · '):'nenhum — sem divergências';
+  const extras=[]; Object.entries(r.diagnosticos.mesFormato).forEach(([m,v])=>extras.push(`⚠️ ${_audEsc(m)}: mesRef em formato fora do padrão (${_audEsc(v.slice(0,5).join(', '))})`));
+  Object.entries(r.diagnosticos.postosFora).forEach(([m,v])=>extras.push(`⚠️ ${_audEsc(m)}: posto fora do cadastro (${_audEsc(v.slice(0,5).join(', '))})`));
+  if(r.diagnosticos.lnLegado) extras.push('⚠️ Email Ligação Nova: snapshot vigente anterior à correção (sem separação de cancelados). Total gravado inclui '+r.diagnosticos.lnExtras+' caso(s) fora de COM/SEM; a tela já usa COM+SEM.');
+  el.innerHTML=`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">${card('Total de verificações',r.total.toLocaleString('pt-BR'))}${card('OK',r.ok.toLocaleString('pt-BR'),cor.OK)}${card('Divergências',r.divergentes.toLocaleString('pt-BR'),cor.Divergente)}${card('Não concluídas (não validado)',r.naoValidados.toLocaleString('pt-BR'),cor['Não validado'])}</div>
+  <div style="font-size:12px;color:var(--text2);margin-bottom:6px"><strong>Módulos com mais inconsistências:</strong> ${rank}</div>
+  <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Executado em ${_audEsc(new Date(r.executadoEm).toLocaleString('pt-BR'))} (${(r.duracaoMs/1000).toFixed(1)}s) · Snapshot Email Ligação Nova: ${_audEsc(r.snapshotLn||'—')}</div>
+  ${extras.map(x=>`<div style="font-size:12px;color:#f59e0b;margin-bottom:3px">${x}</div>`).join('')}
+  <div style="display:flex;gap:8px;margin:10px 0;flex-wrap:wrap"><select class="form-control" style="max-width:190px" onchange="opAuditoriaFiltrar('sit',this.value)">${['','Divergente','Não validado','OK'].map(s=>`<option value="${s}"${_opAudFiltro.sit===s?' selected':''}>${s||'Todas as situações'}</option>`).join('')}</select>
+  <select class="form-control" style="max-width:320px" onchange="opAuditoriaFiltrar('ind',this.value)"><option value="">Todos os indicadores</option>${inds.map(i=>`<option${_opAudFiltro.ind===i?' selected':''}>${_audEsc(i)}</option>`).join('')}</select>
+  <span style="font-size:12px;color:var(--text3);align-self:center">${f.length.toLocaleString('pt-BR')} linha(s)</span></div>
+  <div style="overflow-x:auto"><table class="table" style="width:100%;font-size:12px"><thead><tr><th>Competência</th><th>Posto</th><th>Supervisor</th><th>Indicador</th><th style="text-align:right">Dashboard</th><th style="text-align:right">Módulo oficial</th><th style="text-align:right">Diferença</th><th>Situação</th></tr></thead><tbody>
+  ${f.slice(0,_opAudFiltro.lim).map((l,i)=>`<tr style="cursor:pointer" onclick="document.getElementById('aud-d-${i}').style.display=(document.getElementById('aud-d-${i}').style.display==='none'?'table-row':'none')"><td>${_audEsc(l.compLabel)}</td><td>${_audEsc(l.posto)}</td><td>${_audEsc(l.supervisor)}</td><td>${_audEsc(l.indicador)}</td><td style="text-align:right">${_audFmt(l.dash,l.tipo)}</td><td style="text-align:right">${_audFmt(l.mod,l.tipo)}</td><td style="text-align:right">${l.dif===null?'—':_audFmt(l.dif,l.tipo)}</td><td style="color:${cor[l.situacao]};font-weight:700">${l.situacao}</td></tr>
+  <tr id="aud-d-${i}" style="display:none"><td colspan="8" style="background:var(--bg3,#12141c);padding:8px 12px"><div><strong>Fonte independente:</strong> ${l.indep===null?'não disponível':_audFmt(l.indep,l.tipo)}</div>${l.causa?`<div><strong>Causa provável:</strong> ${_audEsc(l.causa)}</div>`:''}${l.detalhe?`<div style="color:var(--text3)">${_audEsc(l.detalhe)}</div>`:''}</td></tr>`).join('')}
+  </tbody></table></div>${f.length>_opAudFiltro.lim?`<div style="text-align:center;margin-top:8px"><button class="btn btn-sm" onclick="opAuditoriaFiltrar('lim',${_opAudFiltro.lim+500})">Mostrar mais</button></div>`:''}`;
 }
 
 // Diagnóstico de homologação (manual, não roda sozinho): no Console, rode
@@ -23738,6 +24020,7 @@ const _opLabelStatus = s => s==='verde'?'Dentro da meta':s==='amarelo'?'No limit
 async function renderDashboardOperacional() {
   if (currentUser?.role!=='admin' && currentUser?.cargo!=='Supervisor Comercial') return;
   const wrap = document.getElementById('op-dash-wrap'); if (!wrap) return;
+  { const _b = document.getElementById('op-aud-btn'); if (_b) _b.style.display = (currentUser?.role==='admin') ? '' : 'none'; }
   wrap.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text3)">⏳ Carregando dados operacionais...</div>';
   await _opGarantirDadosCarregados();
 
@@ -26746,12 +27029,19 @@ let _lnAgregadosCache = { snapshotId: null, lista: null };
 let _lnCompetenciasDisponiveis = [];
 let _lnCarregandoCompetencias = false;
 let _lnFiltrosCompKey = '';
+// Normaliza um agregado lido do Firestore: Total = COM + SEM SEMPRE (vale para
+// snapshots antigos, onde `total` gravado incluía cancelados/não classificados).
+// O valor gravado fica em `totalGravado` só para auditoria; nada é regravado.
+function lnNormalizarAgregado(a) {
+  const com = a.comEmail||0, sem = a.semEmail||0;
+  return { ...a, totalGravado: a.total, total: com+sem, cancelados: a.cancelados===undefined ? null : a.cancelados, naoClassificados: a.naoClassificados===undefined ? null : a.naoClassificados };
+}
 async function lnObterAgregadosVigentes() {
   const snapshotId = _lnConfig && _lnConfig.baseOficial && _lnConfig.baseOficial.snapshotVigenteId;
   if (!snapshotId) return [];
   if (_lnAgregadosCache.snapshotId === snapshotId && _lnAgregadosCache.lista) return _lnAgregadosCache.lista;
   const snap = await db.collection('ligacaonova_base_agregados_dia').where('snapshotId','==',snapshotId).get();
-  const lista = snap.docs.map(d=>d.data());
+  const lista = snap.docs.map(d=>lnNormalizarAgregado(d.data()));
   _lnAgregadosCache = { snapshotId, lista };
   _lnCompetenciasDisponiveis = Array.from(new Set(lista.filter(a=>a.data).map(a=>a.data.slice(0,7)))).sort();
   return lista;
@@ -27078,7 +27368,7 @@ async function lnRenderResultadoOficial() {
   const porPosto = {};
   filtrados.forEach(a=>{
     if (!porPosto[a.posto]) porPosto[a.posto]={comEmail:0,semEmail:0,total:0};
-    porPosto[a.posto].comEmail += a.comEmail||0; porPosto[a.posto].semEmail += a.semEmail||0; porPosto[a.posto].total += a.total||0;
+    porPosto[a.posto].comEmail += a.comEmail||0; porPosto[a.posto].semEmail += a.semEmail||0; porPosto[a.posto].total += (a.comEmail||0)+(a.semEmail||0);
   });
   const postosEmEscopo = _lnFiltros.posto ? [_lnFiltros.posto]
     : (_lnFiltros.supervisor
@@ -28209,6 +28499,8 @@ async function lnProcessarBaseOficial(file) {
     resultadoWorker.totais.elegiveis = resultadoWorker.casos.filter(c=>c.situacao==='elegivel').length;
     resultadoWorker.totais.comEmail = resultadoWorker.casos.filter(c=>c.classificacao==='COM_EMAIL' && (c.situacao==='elegivel'||c.situacao==='pendencia_matricula')).length;
     resultadoWorker.totais.semEmail = resultadoWorker.casos.filter(c=>c.classificacao==='SEM_EMAIL' && (c.situacao==='elegivel'||c.situacao==='pendencia_matricula')).length;
+    resultadoWorker.totais.cancelados = resultadoWorker.casos.filter(c=>c.classificacao==='CANCELADO' && (c.situacao==='elegivel'||c.situacao==='pendencia_matricula')).length;
+    resultadoWorker.totais.pendenciaClassificacao = resultadoWorker.casos.filter(c=>c.classificacao==='PENDENTE_CLASSIFICACAO' && (c.situacao==='elegivel'||c.situacao==='pendencia_matricula')).length;
     resultadoWorker.totais.pendenciaMatricula = resultadoWorker.casos.filter(c=>c.situacao==='pendencia_matricula').length;
     resultadoWorker.totais.conflitoMatricula = resultadoWorker.casos.filter(c=>c.situacao==='conflito_matricula').length;
     resultadoWorker.totais.sede = resultadoWorker.casos.filter(c=>c.situacao==='sede').length;
@@ -28345,7 +28637,8 @@ function lnRenderPreviaBaseOficial(resultado) {
       ${semDataAbertura ? `<span style="color:#f59e0b">⚠️ ${semDataAbertura} caso(s) sem Data/Hora de abertura válida — ficam fora dos agregados por dia.</span><br>` : ''}
       Linhas reais encontradas: ${t.linhasRealEncontradas}<br>
       Ingressos dos postos (universo GERENTE): <strong>${t.elegiveis + t.pendenciaMatricula}</strong> &nbsp; <span style="color:var(--text3)">(Sub Status e Ponto de Fornecimento não filtram o indicador)</span><br>
-      Com E-mail: ${t.comEmail} &nbsp; Sem E-mail: ${t.semEmail} &nbsp; Pendência de classificação: ${t.pendenciaClassificacao}<br>
+      <strong>Válidos (Com + Sem): ${t.comEmail + t.semEmail}</strong> &nbsp; Com E-mail: ${t.comEmail} &nbsp; Sem E-mail: ${t.semEmail} &nbsp; <span style="color:var(--text3)">% Sem E-mail = Sem ÷ (Com + Sem)</span><br>
+      Fora do cálculo (mostrados à parte): Cancelados <strong>${t.cancelados||0}</strong> &nbsp; Pendência de classificação ${t.pendenciaClassificacao||0}<br>
       Duplicidade idêntica (deduplicada): ${t.duplicidadeIdentica} &nbsp; Duplicidade/conflito (fora do resultado): ${t.duplicidadeConflito}<br>
       Pendência de matrícula/posto: ${t.pendenciaMatricula} &nbsp; Conflito de matrícula (users × ATIVOS divergentes): ${t.conflitoMatricula||0} &nbsp; Casos da Sede: ${t.sede}<br>
       Quantidade que será gravada/substituída: <strong>${t.elegiveis + t.pendenciaMatricula + t.sede + t.duplicidadeConflito}</strong>
@@ -28390,10 +28683,14 @@ async function lnConfirmarImportacaoBaseOficial() {
     resultado.casos.filter(c=>(c.situacao==='elegivel'||c.situacao==='pendencia_matricula') && c.dataAbertura).forEach(c => {
       const postoChave = c.situacao==='elegivel' ? c.posto : '(Pendente)';
       const chave = `${postoChave}|${c.dataAbertura}`;
-      if (!agregados[chave]) agregados[chave] = { posto:postoChave, data:c.dataAbertura, comEmail:0, semEmail:0, total:0 };
-      agregados[chave].total++;
-      if (c.classificacao==='COM_EMAIL') agregados[chave].comEmail++;
-      else if (c.classificacao==='SEM_EMAIL') agregados[chave].semEmail++;
+      if (!agregados[chave]) agregados[chave] = { posto:postoChave, data:c.dataAbertura, comEmail:0, semEmail:0, total:0, cancelados:0, naoClassificados:0 };
+      // REGRA OFICIAL (provada na planilha da Enel): Total = COM + SEM. Cancelados e
+      // casos sem classificação ficam em campos próprios e NÃO entram no Total
+      // nem no denominador do % Sem E-mail.
+      if (c.classificacao==='COM_EMAIL') { agregados[chave].comEmail++; agregados[chave].total++; }
+      else if (c.classificacao==='SEM_EMAIL') { agregados[chave].semEmail++; agregados[chave].total++; }
+      else if (c.classificacao==='CANCELADO') agregados[chave].cancelados++;
+      else agregados[chave].naoClassificados++;
     });
     const agregadosArr = Object.values(agregados);
 
@@ -28656,7 +28953,7 @@ async function lnCarregarConferencia() {
   // (dentro do universo GERENTE, só sem posto resolvido) — o cruzamento por
   // Número do caso não depende do posto estar resolvido. Sede e conflito
   // ficam de fora, conforme já definido.
-  let casos = casosSnap.docs.map(d=>d.data()).filter(c=>(c.situacao==='elegivel'||c.situacao==='pendencia_matricula') && c.dataAbertura>=inicioComum && c.dataAbertura<=fimComum);
+  let casos = casosSnap.docs.map(d=>d.data()).filter(c=>(c.situacao==='elegivel'||c.situacao==='pendencia_matricula') && c.classificacao!=='CANCELADO' && c.dataAbertura>=inicioComum && c.dataAbertura<=fimComum);
   if (_lnFiltros.posto) casos = casos.filter(c=>c.posto===_lnFiltros.posto);
   else if (_lnFiltros.supervisor) {
     const postosSup = lnPostosDoSupervisorNorm(_lnFiltros.supervisor);

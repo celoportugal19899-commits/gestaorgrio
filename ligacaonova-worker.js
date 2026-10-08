@@ -247,7 +247,7 @@ self.onmessage = function (e) {
     // NUNCA é usado — idêntico nos campos relevantes deduplica com alerta;
     // divergente vira conflito, fora do Resultado Oficial.
     const resultado = [];
-    let comEmail = 0, semEmail = 0, pendenciaClassificacao = 0, naoElegiveis = 0,
+    let comEmail = 0, semEmail = 0, cancelados = 0, pendenciaClassificacao = 0, naoElegiveis = 0,
         duplicidadeIdentica = 0, duplicidadeConflito = 0;
 
     for (const numeroCaso in casosPorNumero) {
@@ -279,6 +279,7 @@ self.onmessage = function (e) {
       let classificacao = 'PENDENTE_CLASSIFICACAO';
       if (base.validacaoEmail === 'COM EMAIL') { classificacao = 'COM_EMAIL'; comEmail++; }
       else if (base.validacaoEmail === 'SEM EMAIL') { classificacao = 'SEM_EMAIL'; semEmail++; }
+      else if (base.validacaoEmail === 'CANCELADO') { classificacao = 'CANCELADO'; cancelados++; } // regra oficial Enel: fora do denominador
       else { pendenciaClassificacao++; }
 
       resultado.push({
@@ -300,7 +301,7 @@ self.onmessage = function (e) {
         totais: {
           linhasRealEncontradas: linhasComCaso,
           elegiveis: resultado.filter(r => r.situacao === 'elegivel').length,
-          naoElegiveis, comEmail, semEmail, pendenciaClassificacao,
+          naoElegiveis, comEmail, semEmail, cancelados, pendenciaClassificacao,
           duplicidadeIdentica, duplicidadeConflito
         },
         casos: resultado
