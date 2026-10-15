@@ -27063,6 +27063,42 @@ function lnNormalizarAgregado(a) {
   const com = a.comEmail||0, sem = a.semEmail||0;
   return { ...a, totalGravado: a.total, total: com+sem, cancelados: a.cancelados===undefined ? null : a.cancelados, naoClassificados: a.naoClassificados===undefined ? null : a.naoClassificados };
 }
+// ═══ METODOLOGIA "CÁLCULO CANCELADOS" (Resultado Oficial) ═══════════════════
+// Botão DESLIGADO (padrão, reinicia a cada abertura do módulo): Total = COM + SEM
+// (metodologia vigente). LIGADO: Total = COM + SEM + CANCELADOS — cancelados NUNCA
+// entram nas quantidades COM/SEM, só no denominador. TODA conta de total/percentual
+// do módulo passa por lnTotalAgregado/lnMetricas (fonte única). O parâmetro
+// incluirCanc é EXPLÍCITO (default = falso) para que consumidores de outros
+// módulos (ex.: Dashboard Operacional) continuem exatamente como antes.
+let _lnCalcCancelados = false;
+function lnTotalAgregado(a, incluirCanc) {
+  return (a.comEmail||0) + (a.semEmail||0) + (incluirCanc ? (a.cancelados||0) : 0);
+}
+function lnMetricas(lista, incluirCanc) {
+  let com=0, sem=0, canc=0;
+  (lista||[]).forEach(a => { com += a.comEmail||0; sem += a.semEmail||0; canc += a.cancelados||0; });
+  const total = com + sem + (incluirCanc ? canc : 0);
+  return {
+    com, sem, canc, total, incluiCanc: !!incluirCanc,
+    pctSem: total>0 ? sem/total*100 : null,
+    pctCom: total>0 ? com/total*100 : null,
+    pctCanc: (incluirCanc && total>0) ? canc/total*100 : null
+  };
+}
+function lnAlternarCalcCancelados() {
+  _lnCalcCancelados = !_lnCalcCancelados;
+  _lnUltimaConferencia = null; // a Conferência depende da metodologia
+  lnRenderResultadoOficial();
+}
+function lnHtmlToggleCancelados(lista) {
+  const on = _lnCalcCancelados;
+  const nulos = on && (lista||[]).some(a => a.cancelados === null || a.cancelados === undefined);
+  return `<div class="card" id="ln-calc-canc-bar" style="padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-left:4px solid ${on?'#6366f1':'var(--border)'}">
+    <button type="button" id="ln-btn-calc-canc" role="switch" aria-checked="${on}" class="btn btn-sm ${on?'':'btn-secondary'}" onclick="lnAlternarCalcCancelados()">🔀 Cálculo Cancelados: ${on?'LIGADO':'DESLIGADO'}</button>
+    <span style="font-size:12px;color:var(--text3)">${on ? 'Total de ingressos = Com E-mail + Sem E-mail + Cancelados. Cancelados não entram nas quantidades Com/Sem.' : 'Metodologia atual: ordens canceladas ficam fora do total.'}</span>
+    ${nulos ? `<span style="font-size:12px;color:#f59e0b">⚠️ Parte da base foi importada antes do registro de cancelados — esses dias contam 0 cancelados. Reimporte a Base Oficial para o cálculo completo.</span>` : ''}
+  </div>`;
+}
 async function lnObterAgregadosVigentes() {
   const snapshotId = _lnConfig && _lnConfig.baseOficial && _lnConfig.baseOficial.snapshotVigenteId;
   if (!snapshotId) return [];
@@ -27101,6 +27137,7 @@ let _lnResOrdenacao = { coluna: null, direcao: 'asc' };
 let _lnUltimaConferencia = null;
 
 async function lnAbrirModulo() {
+  _lnCalcCancelados = false; _lnUltimaConferencia = null; // Cálculo Cancelados sempre DESLIGADO em novo acesso
   await lnCarregarConfig();
   lnRenderStatusBases();
   lnRenderFiltros();
@@ -27382,27 +27419,29 @@ async function lnRenderResultadoOficial() {
 
   const filtrados = lnFiltrarAgregados(agregados);
   if (!filtrados.length) {
-    el.innerHTML = `<div class="empty"><p>Nenhum ingresso para os filtros selecionados.</p></div>`;
+    el.innerHTML = lnHtmlToggleCancelados([]) + `<div class="empty"><p>Nenhum ingresso para os filtros selecionados.</p></div>`;
     return;
   }
 
-  const totalComEmail = filtrados.reduce((s,a)=>s+(a.comEmail||0),0);
-  const totalSemEmail = filtrados.reduce((s,a)=>s+(a.semEmail||0),0);
-  const total = totalComEmail + totalSemEmail;
-  const pctSemEmail = total>0 ? (totalSemEmail/total*100) : 0;
-  const pctComEmail = total>0 ? (totalComEmail/total*100) : 0;
+  const inc = _lnCalcCancelados;
+  const M = lnMetricas(filtrados, inc);
+  const totalComEmail = M.com, totalSemEmail = M.sem, totalCancelados = M.canc;
+  const total = M.total;
+  const pctSemEmail = M.pctSem || 0;
+  const pctComEmail = M.pctCom || 0;
+  const pctCancelados = M.pctCanc || 0;
 
   const porPosto = {};
   filtrados.forEach(a=>{
-    if (!porPosto[a.posto]) porPosto[a.posto]={comEmail:0,semEmail:0,total:0};
-    porPosto[a.posto].comEmail += a.comEmail||0; porPosto[a.posto].semEmail += a.semEmail||0; porPosto[a.posto].total += (a.comEmail||0)+(a.semEmail||0);
+    if (!porPosto[a.posto]) porPosto[a.posto]={comEmail:0,semEmail:0,cancelados:0,total:0};
+    porPosto[a.posto].comEmail += a.comEmail||0; porPosto[a.posto].semEmail += a.semEmail||0; porPosto[a.posto].cancelados += a.cancelados||0; porPosto[a.posto].total += lnTotalAgregado(a, inc);
   });
   const postosEmEscopo = _lnFiltros.posto ? [_lnFiltros.posto]
     : (_lnFiltros.supervisor
         ? TODOS_POSTOS_RG.filter(pCanon => lnPostosDoSupervisorNorm(_lnFiltros.supervisor).has(csatNorm(pCanon)))
         : TODOS_POSTOS_RG);
   const ranking = postosEmEscopo.map(nome => {
-    const d = porPosto[nome] || {comEmail:0,semEmail:0,total:0};
+    const d = porPosto[nome] || {comEmail:0,semEmail:0,cancelados:0,total:0};
     const pct = d.total>0 ? (d.semEmail/d.total*100) : null;
     const supervisor = (allPostos.find(p=>csatNorm(p.nome)===csatNorm(nome))||{}).supervisor||'—';
     return { nome, supervisor, ...d, pctSemEmail: pct, situacao: d.total===0?'SEM_INGRESSOS':(pct<=10?'DENTRO_DA_META':'ACIMA_DA_META') };
@@ -27444,36 +27483,42 @@ async function lnRenderResultadoOficial() {
   _lnResOrdenacao = { coluna: null, direcao: 'asc' }; // volta pra ordem gerencial padrão a cada novo carregamento/filtro
 
   const diasOrdenados = Array.from(new Set(filtrados.map(a=>a.data))).sort();
-  let accCom=0, accSem=0, compAcc=null;
+  let accCom=0, accSem=0, accCanc=0, compAcc=null;
   const evoLabels=[], evoComPct=[], evoSemPct=[], volCom=[], volSem=[];
+  const evoCancPct=[], volCanc=[], diaCancPct=[];
   const diaLabels=[], diaComPct=[], diaSemPct=[];
   diasOrdenados.forEach(dia => {
     const doDia = filtrados.filter(a=>a.data===dia);
     const cDia = doDia.reduce((s,a)=>s+(a.comEmail||0),0), sDia = doDia.reduce((s,a)=>s+(a.semEmail||0),0);
-    const totalDia = cDia + sDia;
+    const kDia = doDia.reduce((s,a)=>s+(a.cancelados||0),0); // cancelados SÓ daquele dia
+    const totalDia = cDia + sDia + (inc ? kDia : 0);
     // Cada competência tem o seu PRÓPRIO acumulador: ao virar o mês, zera
     // (nunca carrega o acumulado do mês anterior para o seguinte).
-    if (dia.slice(0,7) !== compAcc) { compAcc = dia.slice(0,7); accCom = 0; accSem = 0; }
-    accCom+=cDia; accSem+=sDia;
-    const totalAcc = accCom+accSem;
+    if (dia.slice(0,7) !== compAcc) { compAcc = dia.slice(0,7); accCom = 0; accSem = 0; accCanc = 0; }
+    accCom+=cDia; accSem+=sDia; accCanc+=kDia; // acumulado: só cancelados até esta data
+    const totalAcc = accCom+accSem+(inc ? accCanc : 0);
     evoLabels.push(lnFmtDataCurta(dia));
     evoComPct.push(totalAcc>0?+(accCom/totalAcc*100).toFixed(1):null);
     evoSemPct.push(totalAcc>0?+(accSem/totalAcc*100).toFixed(1):null);
-    volCom.push(cDia); volSem.push(sDia);
+    volCom.push(cDia); volSem.push(sDia); volCanc.push(kDia);
+    evoCancPct.push(totalAcc>0?+(accCanc/totalAcc*100).toFixed(1):null);
     // Resultado Diário: só o que aconteceu NAQUELE dia, nunca acumulado — e
     // dia sem nenhum ingresso não vira um ponto artificial de 0%, é omitido.
     if (totalDia > 0) {
       diaLabels.push(lnFmtDataCurta(dia));
       diaComPct.push(+(cDia/totalDia*100).toFixed(1));
       diaSemPct.push(+(sDia/totalDia*100).toFixed(1));
+      diaCancPct.push(+(kDia/totalDia*100).toFixed(1));
     }
   });
 
   el.innerHTML = `
+    ${lnHtmlToggleCancelados(filtrados)}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px;margin-bottom:20px">
       <div class="card" style="padding:16px 20px;border-left:4px solid var(--primary)">
         <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">Total de Ingressos</div>
         <div style="font-size:28px;font-weight:700;color:var(--text1)">${total}</div>
+        ${inc ? '<div style="font-size:11px;color:var(--text3)">Com + Sem + Cancelados</div>' : ''}
       </div>
       <div class="card" style="padding:16px 20px;border-left:4px solid #22c55e">
         <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">Com E-mail</div>
@@ -27487,8 +27532,13 @@ async function lnRenderResultadoOficial() {
       <div class="card" style="padding:16px 20px;border-left:4px solid ${pctSemEmail<=10?'#22c55e':'#ef4444'}">
         <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">% Sem E-mail</div>
         <div style="font-size:28px;font-weight:700;color:${pctSemEmail<=10?'#22c55e':'#ef4444'}">${pctSemEmail.toFixed(2)}%</div>
-        <div style="font-size:11px;color:var(--text3)">${pctSemEmail<=10?'✅ dentro da meta':'⚠️ acima da meta'} (meta: ≤10%)</div>
+        <div style="font-size:11px;color:var(--text3)">${pctSemEmail<=10?'✅ dentro da meta':'⚠️ acima da meta'} (meta: ≤10%)${inc?' · base com cancelados':''}</div>
       </div>
+      ${inc ? `<div class="card" style="padding:16px 20px;border-left:4px solid #6b7280">
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">Cancelados</div>
+        <div style="font-size:28px;font-weight:700;color:#6b7280">${totalCancelados}</div>
+        <div style="font-size:11px;color:var(--text3)">${pctCancelados.toFixed(1)}%</div>
+      </div>` : ''}
       <div class="card" style="padding:16px 20px;border-left:4px solid var(--border)">
         <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">Postos Acima da Meta</div>
         <div style="font-size:28px;font-weight:700;color:var(--text1)">${postosAcimaMeta}</div>
@@ -27517,15 +27567,15 @@ async function lnRenderResultadoOficial() {
   // Séries acumuladas INDEPENDENTES por competência (2+ meses: uma série por
   // mês sobre o eixo de dia do mês). Reconcilia o último ponto de cada mês com
   // a soma direta dos agregados daquele mês — se divergir, é erro (console).
-  const evoMulti = lnSeriesAcumuladasPorCompetencia(filtrados);
+  const evoMulti = lnSeriesAcumuladasPorCompetencia(filtrados, inc);
   evoMulti.forEach(sr => {
     const doMes = filtrados.filter(a => a.data && a.data.slice(0,7) === sr.comp);
-    const sem = doMes.reduce((x,a)=>x+(a.semEmail||0),0), tot = doMes.reduce((x,a)=>x+(a.comEmail||0)+(a.semEmail||0),0);
+    const sem = doMes.reduce((x,a)=>x+(a.semEmail||0),0), tot = doMes.reduce((x,a)=>x+lnTotalAgregado(a, inc),0);
     const esperado = tot>0 ? sem/tot*100 : null, ult = sr.pontos[sr.pontos.length-1];
     if (!ult || esperado==null || Math.abs(ult.pctSem - esperado) > 0.0001) console.error('[LigNova][RECONCILIACAO-ACUMULADO] divergência em', sr.comp, { ultimoPonto: ult && ult.pctSem, esperado });
   });
-  lnDesenharGraficosResultado(evoLabels, evoComPct, evoSemPct, volCom, volSem, diaLabels, diaComPct, diaSemPct, ranking, evoMulti.length >= 2 ? evoMulti : null);
-  lnRenderAnalisesInteligentes(filtrados, ranking, total, totalComEmail, totalSemEmail);
+  lnDesenharGraficosResultado(evoLabels, evoComPct, evoSemPct, volCom, volSem, diaLabels, diaComPct, diaSemPct, ranking, evoMulti.length >= 2 ? evoMulti : null, inc ? { evoCanc:evoCancPct, diaCanc:diaCancPct, volCanc } : null);
+  lnRenderAnalisesInteligentes(filtrados, ranking, total, totalComEmail, totalSemEmail, inc);
 }
 
 // ── Tabela de postos — ordenável por clique no cabeçalho, sem filtro/busca
@@ -27541,6 +27591,12 @@ const LN_RES_COLUNAS = [
   {chave:'situacao', label:'Situação', tipo:'texto'}
 ];
 
+// Coluna extra "Cancelados" só aparece com o Cálculo Cancelados LIGADO.
+function lnColunasRes() {
+  if (!_lnCalcCancelados) return LN_RES_COLUNAS;
+  const l = LN_RES_COLUNAS.slice(); l.splice(4, 0, {chave:'cancelados', label:'Cancelados', tipo:'numero'}); return l;
+}
+
 function lnOrdenarRanking(lista) {
   if (!_lnResOrdenacao.coluna) {
     return [...lista].sort((a,b)=>{
@@ -27551,7 +27607,7 @@ function lnOrdenarRanking(lista) {
       return b.total-a.total;
     });
   }
-  const col = LN_RES_COLUNAS.find(c=>c.chave===_lnResOrdenacao.coluna);
+  const col = lnColunasRes().find(c=>c.chave===_lnResOrdenacao.coluna) || LN_RES_COLUNAS[0];
   const dir = _lnResOrdenacao.direcao === 'asc' ? 1 : -1;
   return [...lista].sort((a,b) => {
     let va = a[col.chave], vb = b[col.chave];
@@ -27582,13 +27638,14 @@ function lnFmtPP(v) {
   return `${seta} ${Math.abs(v).toFixed(1)} p.p.`;
 }
 
-function lnAgruparPorDia(filtrados) {
+function lnAgruparPorDia(filtrados, incluirCanc) {
   const porDia = {};
   filtrados.forEach(a => {
-    if (!porDia[a.data]) porDia[a.data] = {data:a.data, comEmail:0, semEmail:0, total:0};
+    if (!porDia[a.data]) porDia[a.data] = {data:a.data, comEmail:0, semEmail:0, total:0, ...(incluirCanc ? {cancelados:0} : {})};
     porDia[a.data].comEmail += a.comEmail||0;
     porDia[a.data].semEmail += a.semEmail||0;
-    porDia[a.data].total += a.total||0;
+    if (incluirCanc) porDia[a.data].cancelados += a.cancelados||0;
+    porDia[a.data].total += incluirCanc ? lnTotalAgregado(a, true) : (a.total||0);
   });
   return Object.values(porDia).filter(d=>d.total>0).sort((a,b)=>a.data.localeCompare(b.data));
 }
@@ -27687,13 +27744,14 @@ function lnAgruparPorSemana(diasAgregados) {
 
 // Dias com movimento / dias acima da meta, por posto — dias sem movimento
 // NUNCA entram no denominador.
-function lnRecorrenciaPorPosto(filtrados) {
+function lnRecorrenciaPorPosto(filtrados, incluirCanc) {
   const porPosto = {};
   filtrados.forEach(a => {
-    if ((a.total||0) <= 0) return;
+    const tDia = incluirCanc ? lnTotalAgregado(a, true) : (a.total||0);
+    if (tDia <= 0) return;
     if (!porPosto[a.posto]) porPosto[a.posto] = {posto:a.posto, diasComMovimento:0, diasAcimaMeta:0};
     porPosto[a.posto].diasComMovimento++;
-    if ((a.semEmail/a.total*100) > 10) porPosto[a.posto].diasAcimaMeta++;
+    if ((a.semEmail/tDia*100) > 10) porPosto[a.posto].diasAcimaMeta++;
   });
   return Object.values(porPosto).map(p=>({...p, pctDiasAcimaMeta: p.diasComMovimento>0 ? (p.diasAcimaMeta/p.diasComMovimento*100) : 0}));
 }
@@ -27734,7 +27792,7 @@ function lnCardUltimoImpacto(ultimoDia, pctGeral, semanas) {
     const recente = semComMovimento[semComMovimento.length-1];
     const anteriores = semComMovimento.slice(0,-1);
     const comAnt = anteriores.reduce((s,w)=>s+w.comEmail,0), semAnt = anteriores.reduce((s,w)=>s+w.semEmail,0);
-    const totalAnt = comAnt+semAnt;
+    const totalAnt = anteriores.reduce((s,w)=>s+w.total,0); // total já segue a metodologia ativa
     const pctAnt = totalAnt>0 ? (semAnt/totalAnt*100) : null;
     if (pctAnt==null || recente.pctSemEmail==null) {
       htmlImpacto = `<p style="font-size:12px;color:var(--text3);margin:10px 0 0">Dados insuficientes para avaliar impacto recente.</p>`;
@@ -27898,18 +27956,18 @@ function lnCardRecuperacaoPosto(total, semEmail, pctAtual) {
   </div>`;
 }
 
-function lnRenderAnalisesInteligentes(filtrados, ranking, total, totalComEmail, totalSemEmail) {
+function lnRenderAnalisesInteligentes(filtrados, ranking, total, totalComEmail, totalSemEmail, incluirCanc) {
   const el = document.getElementById('ln-analises');
   if (!el) return;
   const pctGeral = total>0 ? (totalSemEmail/total*100) : 0;
-  const diasAgregados = lnAgruparPorDia(filtrados);
+  const diasAgregados = lnAgruparPorDia(filtrados, incluirCanc);
   const semanas = lnAgruparPorSemana(diasAgregados);
   const ultimoDia = diasAgregados.length ? diasAgregados[diasAgregados.length-1] : null;
 
   if (_lnFiltros.posto) {
     // MODO B — análise individual do posto. Nenhum ranking entre postos faz
     // sentido aqui, porque só existe 1 posto no universo filtrado.
-    const recorrenciaArr = lnRecorrenciaPorPosto(filtrados);
+    const recorrenciaArr = lnRecorrenciaPorPosto(filtrados, incluirCanc);
     const recorrenciaPosto = recorrenciaArr[0] || {diasComMovimento:0, diasAcimaMeta:0, pctDiasAcimaMeta:0};
     el.innerHTML = `
       <h3 style="font-size:15px;margin:0 0 4px;color:var(--text1)">Análises Inteligentes</h3>
@@ -27925,7 +27983,7 @@ function lnRenderAnalisesInteligentes(filtrados, ranking, total, totalComEmail, 
     `;
   } else {
     // MODO A — visão geral ou de uma supervisão inteira.
-    const recorrenciaPorPosto = lnRecorrenciaPorPosto(filtrados);
+    const recorrenciaPorPosto = lnRecorrenciaPorPosto(filtrados, incluirCanc);
     const { html: ondeAtuarHtml, prioridades } = lnCardOndeAtuar(ranking, totalSemEmail);
     el.innerHTML = `
       <h3 style="font-size:15px;margin:0 0 4px;color:var(--text1)">Análises Inteligentes</h3>
@@ -28003,18 +28061,20 @@ function lnCalcMensal(todos) {
     const fimUtil = vazio ? fim : lnUltimoDiaUtilAteISO(fim);
     const completo = vazio ? false : (temPosterior || ultimoGlobal >= fimUtil || !!(extracao && extracao > fim));
     const dados = vazio ? [] : base.filter(a => a.data.slice(0,7) === c && a.data >= ini && a.data <= fim);
-    const com = dados.reduce((s,a) => s + (a.comEmail||0), 0), sem = dados.reduce((s,a) => s + (a.semEmail||0), 0);
-    const total = com + sem;
+    const incM = _lnCalcCancelados;
+    const MM = lnMetricas(dados, incM);
+    const com = MM.com, sem = MM.sem, canc = MM.canc;
+    const total = MM.total;
     const porPosto = {};
     dados.forEach(a => {
       if (!porPosto[a.posto]) porPosto[a.posto] = { total:0, sem:0 };
-      porPosto[a.posto].total += (a.comEmail||0) + (a.semEmail||0); porPosto[a.posto].sem += a.semEmail||0;
+      porPosto[a.posto].total += lnTotalAgregado(a, incM); porPosto[a.posto].sem += a.semEmail||0;
     });
     return {
       comp: c, rotulo: lnRotuloCompetenciaCurto(c), nome: lnNomeMes(c), ini, fim, vazio,
       solicitadoLabel: `${ini.slice(8,10)}–${fim.slice(8,10)}/${c.slice(5,7)}`,
       ultimoGlobal, disponivelAte: (ultimoGlobal && ultimoGlobal < fim) ? ultimoGlobal : fim,
-      completo, parcial: !completo, total, com, sem, pct: total > 0 ? sem/total*100 : null, porPosto,
+      completo, parcial: !completo, total, com, sem, canc, pct: total > 0 ? sem/total*100 : null, porPosto,
       intervalo: equiv || temData
     };
   });
@@ -28233,7 +28293,7 @@ function lnRenderMensal(todos) {
 
   el.innerHTML = `
     <h3 style="font-size:15px;margin:0 0 4px;color:var(--text1)">Evolução Mensal</h3>
-    <p style="font-size:11px;color:var(--text3);margin:0 0 12px">${escopo} · ${_lnFiltros.competencias.length ? 'competências marcadas' : 'todas as competências existentes'} · % Sem E-mail = soma Sem E-mail ÷ soma Total de cada competência</p>
+    <p style="font-size:11px;color:var(--text3);margin:0 0 12px">${escopo} · ${_lnFiltros.competencias.length ? 'competências marcadas' : 'todas as competências existentes'} · % Sem E-mail = soma Sem E-mail ÷ soma Total de cada competência${_lnCalcCancelados?' (Total = Com + Sem + Cancelados)':''}</p>
     ${banner}
     <div class="card" style="padding:16px;margin-bottom:12px"><canvas id="ln-chart-mensal" height="${mensal.length>6?120:90}"></canvas>
       <div style="margin-top:10px;line-height:1.9">${chips}</div></div>
@@ -28250,7 +28310,7 @@ function lnRenderTabelaResultado() {
   const head = document.getElementById('ln-res-tabela-head');
   const corpo = document.getElementById('ln-res-tabela-corpo');
   if (!head || !corpo) return;
-  head.innerHTML = LN_RES_COLUNAS.map(col => {
+  head.innerHTML = lnColunasRes().map(col => {
     const ativo = _lnResOrdenacao.coluna === col.chave;
     const seta = ativo ? (_lnResOrdenacao.direcao==='asc'?' ↑':' ↓') : ' ↕';
     const alinhamento = col.tipo==='numero' ? 'right' : 'left';
@@ -28263,6 +28323,7 @@ function lnRenderTabelaResultado() {
       <td style="padding:8px 12px;color:var(--text3)">${r.supervisor}</td>
       <td style="padding:8px 12px;text-align:right">${r.comEmail}</td>
       <td style="padding:8px 12px;text-align:right">${r.semEmail}</td>
+      ${_lnCalcCancelados ? `<td style="padding:8px 12px;text-align:right">${r.cancelados||0}</td>` : ''}
       <td style="padding:8px 12px;text-align:right">${r.total}</td>
       <td style="padding:8px 12px;text-align:right">${r.pctSemEmail!==null?r.pctSemEmail.toFixed(1)+'%':'—'}</td>
       <td style="padding:8px 12px">${r.situacao==='SEM_INGRESSOS'?'<span style="color:var(--text3)">Sem ingressos</span>':r.situacao==='DENTRO_DA_META'?'<span style="color:#22c55e">✅ Dentro da meta</span>':'<span style="color:#ef4444">⚠️ Acima da meta</span>'}</td>
@@ -28272,27 +28333,27 @@ function lnRenderTabelaResultado() {
 // Uma série acumulada por competência, cada uma com acumulador próprio
 // (começa em zero no 1º dia com dado do mês). Último ponto = soma Sem E-mail
 // ÷ soma Total da competência, nos mesmos filtros.
-function lnSeriesAcumuladasPorCompetencia(filtrados) {
+function lnSeriesAcumuladasPorCompetencia(filtrados, incluirCanc) {
   const porComp = {};
   filtrados.forEach(a => {
     if (!a.data) return;
     const c = a.data.slice(0,7);
     if (!porComp[c]) porComp[c] = {};
-    if (!porComp[c][a.data]) porComp[c][a.data] = { com:0, sem:0 };
-    porComp[c][a.data].com += a.comEmail||0; porComp[c][a.data].sem += a.semEmail||0;
+    if (!porComp[c][a.data]) porComp[c][a.data] = { com:0, sem:0, canc:0 };
+    porComp[c][a.data].com += a.comEmail||0; porComp[c][a.data].sem += a.semEmail||0; porComp[c][a.data].canc += a.cancelados||0;
   });
   return Object.keys(porComp).sort().map(comp => {
-    let accCom = 0, accSem = 0; // zera a cada competência
+    let accCom = 0, accSem = 0, accCanc = 0; // zera a cada competência
     const pontos = Object.keys(porComp[comp]).sort().map(data => {
-      accCom += porComp[comp][data].com; accSem += porComp[comp][data].sem;
-      const tot = accCom + accSem;
-      return { data, dia: parseInt(data.slice(8,10),10), pctCom: tot>0 ? accCom/tot*100 : null, pctSem: tot>0 ? accSem/tot*100 : null };
+      accCom += porComp[comp][data].com; accSem += porComp[comp][data].sem; accCanc += porComp[comp][data].canc;
+      const tot = accCom + accSem + (incluirCanc ? accCanc : 0);
+      return { data, dia: parseInt(data.slice(8,10),10), pctCom: tot>0 ? accCom/tot*100 : null, pctSem: tot>0 ? accSem/tot*100 : null, pctCanc: (incluirCanc && tot>0) ? accCanc/tot*100 : null };
     });
     return { comp, rotulo: lnRotuloCompetenciaCurto(comp), pontos };
   });
 }
 
-function lnDesenharGraficosResultado(labels, comPct, semPct, volCom, volSem, diaLabels, diaComPct, diaSemPct, ranking, evoMulti) {
+function lnDesenharGraficosResultado(labels, comPct, semPct, volCom, volSem, diaLabels, diaComPct, diaSemPct, ranking, evoMulti, extras) {
   if (_lnCharts.evolucao) { _lnCharts.evolucao.destroy(); _lnCharts.evolucao=null; }
   if (_lnCharts.diario) { _lnCharts.diario.destroy(); _lnCharts.diario=null; }
   if (_lnCharts.volume) { _lnCharts.volume.destroy(); _lnCharts.volume=null; }
@@ -28320,6 +28381,7 @@ function lnDesenharGraficosResultado(labels, comPct, semPct, volCom, volSem, dia
         datalabels:{ align: i%2===0 ? 'bottom' : 'top', anchor: i%2===0 ? 'start' : 'end', color:cs } });
       ds.push({ label:`% Com E-mail — ${sr.rotulo}`, data:dias.map(d => porDia[d] ? +porDia[d].pctCom.toFixed(2) : null), borderColor:cc, backgroundColor:'transparent', borderDash:[5,3], tension:.2, spanGaps:true,
         datalabels:{ align: i%2===0 ? 'top' : 'bottom', anchor: i%2===0 ? 'end' : 'start', color:cc } });
+      if (extras) ds.push({ label:`% Cancelados — ${sr.rotulo}`, data:dias.map(d => porDia[d] && porDia[d].pctCanc!=null ? +porDia[d].pctCanc.toFixed(2) : null), borderColor:'#6b7280', backgroundColor:'transparent', borderDash:[2,3], tension:.2, spanGaps:true, datalabels:{display:false} });
     });
     ds.push({ label:'Meta (10%)', data:dias.map(() => 10), borderColor:'#f59e0b', borderDash:[6,4], pointRadius:0, datalabels:{display:false} });
     ce.parentElement.style.paddingBottom = '8px';
@@ -28345,7 +28407,7 @@ function lnDesenharGraficosResultado(labels, comPct, semPct, volCom, volSem, dia
       { label:'% Sem E-mail', data:semPct, borderColor:'#ef4444', backgroundColor:'transparent', tension:.2,
         datalabels:{ align:'bottom', anchor:'start', color:'#dc2626' } },
       { label:'Meta (10%)', data:labels.map(()=>10), borderColor:'#f59e0b', borderDash:[6,4], pointRadius:0, datalabels:{display:false} }
-    ]},
+    ].concat(extras ? [{ label:'% Cancelados', data:extras.evoCanc, borderColor:'#6b7280', backgroundColor:'transparent', borderDash:[2,3], tension:.2, datalabels:{ align:'right', anchor:'center', color:'#6b7280' } }] : [])},
     plugins:[ChartDataLabels],
     options:{
       responsive:true,
@@ -28382,7 +28444,7 @@ function lnDesenharGraficosResultado(labels, comPct, semPct, volCom, volSem, dia
       { label:'% Sem E-mail', data:diaSemPct, borderColor:'#ef4444', backgroundColor:'transparent', tension:.2,
         datalabels:{ align:'bottom', anchor:'start', color:'#dc2626' } },
       { label:'Meta (10%)', data:diaLabels.map(()=>10), borderColor:'#f59e0b', borderDash:[6,4], pointRadius:0, datalabels:{display:false} }
-    ]},
+    ].concat(extras ? [{ label:'% Cancelados', data:extras.diaCanc, borderColor:'#6b7280', backgroundColor:'transparent', borderDash:[2,3], tension:.2, datalabels:{ align:'right', anchor:'center', color:'#6b7280' } }] : [])},
     plugins:[ChartDataLabels],
     options:{
       responsive:true,
@@ -28409,7 +28471,7 @@ function lnDesenharGraficosResultado(labels, comPct, semPct, volCom, volSem, dia
     data:{ labels, datasets:[
       { label:'Com E-mail', data:volCom, backgroundColor:'#22c55e' },
       { label:'Sem E-mail', data:volSem, backgroundColor:'#ef4444' }
-    ]},
+    ].concat(extras ? [{ label:'Cancelados', data:extras.volCanc, backgroundColor:'#6b7280' }] : [])},
     plugins:[ChartDataLabels],
     options:{
       responsive:true,
@@ -28980,13 +29042,17 @@ async function lnCarregarConferencia() {
   // (dentro do universo GERENTE, só sem posto resolvido) — o cruzamento por
   // Número do caso não depende do posto estar resolvido. Sede e conflito
   // ficam de fora, conforme já definido.
-  let casos = casosSnap.docs.map(d=>d.data()).filter(c=>(c.situacao==='elegivel'||c.situacao==='pendencia_matricula') && c.classificacao!=='CANCELADO' && c.dataAbertura>=inicioComum && c.dataAbertura<=fimComum);
+  let casos = casosSnap.docs.map(d=>d.data()).filter(c=>(c.situacao==='elegivel'||c.situacao==='pendencia_matricula') && (_lnCalcCancelados || c.classificacao!=='CANCELADO') && c.dataAbertura>=inicioComum && c.dataAbertura<=fimComum);
   if (_lnFiltros.posto) casos = casos.filter(c=>c.posto===_lnFiltros.posto);
   else if (_lnFiltros.supervisor) {
     const postosSup = lnPostosDoSupervisorNorm(_lnFiltros.supervisor);
     casos = casos.filter(c=>c.posto && postosSup.has(csatNorm(c.posto)));
   }
 
+  // Cálculo Cancelados LIGADO: cancelados viram a 3ª categoria (nunca "encontrados"
+  // nem "ausentes"); entram só no universo/denominador de Casos Oficiais.
+  const cancelados = casos.filter(c=>c.classificacao==='CANCELADO');
+  casos = casos.filter(c=>c.classificacao!=='CANCELADO');
   const controleSnap = await db.collection('ligacaonova_controle_registros').where('snapshotId','==',snapControle).get();
   const controle = controleSnap.docs.map(d=>d.data()).filter(r=>r.data>=inicioComum && r.data<=fimComum);
 
@@ -29017,7 +29083,7 @@ async function lnCarregarConferencia() {
   });
 
   return {
-    periodoComum:{ inicio:inicioComum, fim:fimComum }, totalOficialElegivel: casos.length,
+    periodoComum:{ inicio:inicioComum, fim:fimComum }, totalOficialElegivel: casos.length + cancelados.length, incluiCancelados: _lnCalcCancelados, cancelados,
     encontrados, ausentes, semCorrespondencia, divergencias,
     duplicidadesControle: controle.filter(r=>r.duplicado)
   };
@@ -29056,15 +29122,18 @@ const LN_DET_COLUNAS = {
   ]
 };
 
+LN_DET_COLUNAS.cancelados = LN_DET_COLUNAS.ausentes;
+
 function lnMontarRankingConferencia(resultado) {
   const porPosto = {};
-  const touch = (posto) => { if(!porPosto[posto]) porPosto[posto] = {oficiais:0,encontrados:0,ausentes:0}; return porPosto[posto]; };
+  const touch = (posto) => { if(!porPosto[posto]) porPosto[posto] = {oficiais:0,encontrados:0,ausentes:0,cancelados:0}; return porPosto[posto]; };
   resultado.encontrados.forEach(c => { if(!c.posto) return; const p = touch(c.posto); p.oficiais++; p.encontrados++; });
   resultado.ausentes.forEach(c => { if(!c.posto) return; const p = touch(c.posto); p.oficiais++; p.ausentes++; });
+  (resultado.cancelados||[]).forEach(c => { if(!c.posto) return; const p = touch(c.posto); p.oficiais++; p.cancelados++; });
   const postosEmEscopo = _lnFiltros.posto ? [_lnFiltros.posto]
     : (_lnFiltros.supervisor ? TODOS_POSTOS_RG.filter(pCanon => lnPostosDoSupervisorNorm(_lnFiltros.supervisor).has(csatNorm(pCanon))) : TODOS_POSTOS_RG);
   return postosEmEscopo.map(nome => {
-    const d = porPosto[nome] || {oficiais:0,encontrados:0,ausentes:0};
+    const d = porPosto[nome] || {oficiais:0,encontrados:0,ausentes:0,cancelados:0};
     const pct = d.oficiais>0 ? (d.encontrados/d.oficiais*100) : 0;
     return { nome, ...d, pct, supervisor: (allPostos.find(p=>csatNorm(p.nome)===csatNorm(nome))||{}).supervisor||'—' };
   }).sort((a,b) => {
@@ -29099,7 +29168,7 @@ async function lnRenderConferenciaAba() {
   _lnDetTab = 'ausentes'; _lnDetBusca=''; _lnDetOrdenacao={coluna:null,direcao:'asc'}; _lnDetPagina=1;
 
   el.innerHTML = `
-    <div style="font-size:12px;color:var(--text3);margin-bottom:14px">Período comparável: <strong>${lnFmtData(resultado.periodoComum.inicio)} a ${lnFmtData(resultado.periodoComum.fim)}</strong></div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:14px">${resultado.incluiCancelados?'<span style="color:#6366f1;font-weight:600">🔀 Cálculo Cancelados: LIGADO</span> · ':''}Período comparável: <strong>${lnFmtData(resultado.periodoComum.inicio)} a ${lnFmtData(resultado.periodoComum.fim)}</strong></div>
 
     <div class="card" style="padding:22px 24px;margin-bottom:20px;border-left:5px solid ${corPct};display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:18px">
       <div>
@@ -29110,6 +29179,7 @@ async function lnRenderConferenciaAba() {
         <div><div style="font-size:11px;color:var(--text3);text-transform:uppercase">Casos Oficiais</div><div style="font-size:22px;font-weight:700">${resultado.totalOficialElegivel}</div></div>
         <div><div style="font-size:11px;color:var(--text3);text-transform:uppercase">Encontrados</div><div style="font-size:22px;font-weight:700;color:#22c55e">${resultado.encontrados.length}</div></div>
         <div><div style="font-size:11px;color:var(--text3);text-transform:uppercase">Ausentes</div><div style="font-size:22px;font-weight:700;color:#ef4444">${resultado.ausentes.length}</div></div>
+        ${resultado.incluiCancelados ? `<div><div style="font-size:11px;color:var(--text3);text-transform:uppercase">Cancelados</div><div style="font-size:22px;font-weight:700;color:#6b7280">${resultado.cancelados.length}</div></div>` : ''}
       </div>
     </div>
 
@@ -29119,7 +29189,7 @@ async function lnRenderConferenciaAba() {
         <thead><tr style="background:var(--surface2)">
           <th style="padding:9px 12px;text-align:left">Posto</th><th style="padding:9px 12px;text-align:left">Supervisor</th>
           <th style="padding:9px 12px;text-align:right">Oficiais</th><th style="padding:9px 12px;text-align:right">Encontrados</th>
-          <th style="padding:9px 12px;text-align:right">Ausentes</th><th style="padding:9px 12px;text-align:left">Preenchimento</th>
+          <th style="padding:9px 12px;text-align:right">Ausentes</th>${resultado.incluiCancelados?'<th style="padding:9px 12px;text-align:right">Cancelados</th>':''}<th style="padding:9px 12px;text-align:left">Preenchimento</th>
         </tr></thead>
         <tbody>${rankingPostos.map(r => `<tr style="border-top:1px solid var(--border)">
             <td style="padding:7px 12px">${r.nome}</td>
@@ -29127,6 +29197,7 @@ async function lnRenderConferenciaAba() {
             <td style="padding:7px 12px;text-align:right">${r.oficiais}</td>
             <td style="padding:7px 12px;text-align:right">${r.encontrados}</td>
             <td style="padding:7px 12px;text-align:right">${r.ausentes}</td>
+            ${resultado.incluiCancelados?`<td style="padding:7px 12px;text-align:right">${r.cancelados||0}</td>`:''}
             <td style="padding:7px 12px">${r.oficiais===0 ? '<span style="color:var(--text3)">Sem casos</span>' : `
               <div style="display:flex;align-items:center;gap:8px">
                 <div style="width:70px;height:6px;background:var(--surface2);border-radius:3px;overflow:hidden">
@@ -29157,7 +29228,7 @@ function lnRenderBotoesSubabaDetalhamento() {
     {chave:'sem_correspondencia', label:'Sem Correspondência', n:c.semCorrespondencia.length},
     {chave:'duplicidades', label:'Duplicidades', n:c.duplicidadesControle.length},
     {chave:'divergencias', label:'Divergências', n:c.divergencias.length}
-  ];
+  ].concat(c.incluiCancelados ? [{chave:'cancelados', label:'Cancelados', n:(c.cancelados||[]).length}] : []);
   el.innerHTML = opcoes.map(o => `<button class="btn btn-sm ${_lnDetTab===o.chave?'':'btn-secondary'}" onclick="lnMudarSubabaDetalhamentoConferencia('${o.chave}')">${o.label} (${o.n})</button>`).join('');
 }
 
@@ -29201,6 +29272,11 @@ function lnRenderTabelaDetalhamentoConferencia() {
   let linhas = [];
   if (c && !c.semIntersecao) {
     if (_lnDetTab==='ausentes') linhas = c.ausentes.map(x => ({
+      ...x,
+      atendenteNome: x.atendenteNome || '—',
+      supervisor: (allPostos.find(p=>csatNorm(p.nome)===csatNorm(x.posto))||{}).supervisor || '—'
+    }));
+    else if (_lnDetTab==='cancelados') linhas = (c.cancelados||[]).map(x => ({
       ...x,
       atendenteNome: x.atendenteNome || '—',
       supervisor: (allPostos.find(p=>csatNorm(p.nome)===csatNorm(x.posto))||{}).supervisor || '—'
@@ -29325,6 +29401,7 @@ async function lnExportar() {
 
     const wb = XLSX.utils.book_new();
     const totalCom = agregados.reduce((s,a)=>s+(a.comEmail||0),0), totalSem = agregados.reduce((s,a)=>s+(a.semEmail||0),0);
+    const incExp = _lnCalcCancelados, MX = lnMetricas(agregados, incExp);
     const modoExp = lnModoIntervaloEquivalente() ? 'Comparação por intervalo (mesmos dias do mês)' : ((_lnFiltros.dataInicio||_lnFiltros.dataFim) ? 'Filtro de data' : 'Competência inteira');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
       ['Resumo — Email Ligação Nova'], [],
@@ -29333,8 +29410,8 @@ async function lnExportar() {
       ['Data inicial', _lnFiltros.dataInicio ? lnFmtData(_lnFiltros.dataInicio) : '—'], ['Data final', _lnFiltros.dataFim ? lnFmtData(_lnFiltros.dataFim) : '—'],
       ['Supervisor', _lnFiltros.supervisor || 'Todos'], ['Posto', _lnFiltros.posto || 'Todos'], [],
       ['Total Com E-mail', totalCom], ['Total Sem E-mail', totalSem],
-      ['% Sem E-mail', totalCom+totalSem>0 ? (totalSem/(totalCom+totalSem)*100).toFixed(1)+'%' : '—']
-    ]), 'Resumo');
+      ['% Sem E-mail', MX.total>0 ? (totalSem/MX.total*100).toFixed(1)+'%' : '—']
+    ].concat(incExp ? [['Total Cancelados', MX.canc], ['Total de Ingressos (Com+Sem+Cancelados)', MX.total], ['Metodologia', 'Cálculo Cancelados LIGADO']] : [])), 'Resumo');
 
     // Evolução Mensal — mesma base do gráfico/cards da tela (cada linha traz a
     // competência, a janela de dias usada e a cobertura).
@@ -29358,9 +29435,9 @@ async function lnExportar() {
 
     // Resultado por Posto, sempre identificando a competência de cada linha.
     const porPosto = {};
-    agregados.forEach(a=>{ const k = a.posto+'|'+a.data.slice(0,7); if(!porPosto[k]) porPosto[k]={posto:a.posto,comp:a.data.slice(0,7),comEmail:0,semEmail:0}; porPosto[k].comEmail+=a.comEmail||0; porPosto[k].semEmail+=a.semEmail||0; });
-    const linhasPosto = [['Competência','Posto','Com E-mail','Sem E-mail','Total','% Sem E-mail']];
-    Object.values(porPosto).sort((x,y)=>x.comp.localeCompare(y.comp)||x.posto.localeCompare(y.posto)).forEach(d=>{ const t=d.comEmail+d.semEmail; linhasPosto.push([lnFmtCompetencia(d.comp),d.posto,d.comEmail,d.semEmail,t,t>0?(d.semEmail/t*100).toFixed(1)+'%':'—']); });
+    agregados.forEach(a=>{ const k = a.posto+'|'+a.data.slice(0,7); if(!porPosto[k]) porPosto[k]={posto:a.posto,comp:a.data.slice(0,7),comEmail:0,semEmail:0,canc:0}; porPosto[k].comEmail+=a.comEmail||0; porPosto[k].semEmail+=a.semEmail||0; porPosto[k].canc+=a.cancelados||0; });
+    const linhasPosto = [incExp ? ['Competência','Posto','Com E-mail','Sem E-mail','Cancelados','Total','% Sem E-mail'] : ['Competência','Posto','Com E-mail','Sem E-mail','Total','% Sem E-mail']];
+    Object.values(porPosto).sort((x,y)=>x.comp.localeCompare(y.comp)||x.posto.localeCompare(y.posto)).forEach(d=>{ const t=d.comEmail+d.semEmail+(incExp?d.canc:0); const pctP=t>0?(d.semEmail/t*100).toFixed(1)+'%':'—'; linhasPosto.push(incExp ? [lnFmtCompetencia(d.comp),d.posto,d.comEmail,d.semEmail,d.canc,t,pctP] : [lnFmtCompetencia(d.comp),d.posto,d.comEmail,d.semEmail,t,pctP]); });
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(linhasPosto), 'Resultado por Posto');
 
     const linhasCasos = [['Competência','Número do Caso','Posto','Data Abertura','Classificação','Situação']];
@@ -29376,7 +29453,7 @@ async function lnExportar() {
           ['Casos oficiais no período', conferencia.totalOficialElegivel],
           ['Encontrados no Controle', conferencia.encontrados.length],
           ['Ausentes do Controle', conferencia.ausentes.length]
-        ]), 'Conferência');
+        ].concat(conferencia.incluiCancelados ? [['Cancelados', (conferencia.cancelados||[]).length], ['Metodologia', 'Cálculo Cancelados LIGADO']] : [])), 'Conferência');
 
         const ausentesLinhas = [['Data/Hora de Abertura','Posto','Atendente','Matrícula','Número do Caso','Classificação','Supervisor']];
         conferencia.ausentes.forEach(c=>ausentesLinhas.push([c.dataAbertura,c.posto,c.atendenteNome||'—',c.matricula,c.numeroCaso,c.classificacao,(allPostos.find(p=>csatNorm(p.nome)===csatNorm(c.posto))||{}).supervisor||'—']));
