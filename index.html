@@ -22920,12 +22920,12 @@ async function _opGarantirDadosCarregados() {
   try {
     const cfgSnap = await db.collection('ligacaonova_config').doc('geral').get();
     const bo = cfgSnap.exists ? cfgSnap.data().baseOficial : null;
-    if (bo && bo.snapshotVigenteId) {
-      _opLnSnapshotId = bo.snapshotVigenteId;
+    if (bo && lnGruposSnapshots(bo).length) {
+      _opLnSnapshotId = lnChaveGrupos(lnGruposSnapshots(bo));
       _opLnDataExtracao = bo.dataExtracaoReal || '';
       _opLnCompetenciaVigente = bo.competenciaVigente || '';
-      const agSnap = await db.collection('ligacaonova_base_agregados_dia').where('snapshotId','==',bo.snapshotVigenteId).get();
-      _opLnAgregados = agSnap.docs.map(d=>lnNormalizarAgregado(d.data()));
+      const agDocs = await lnCarregarDocsGrupos('ligacaonova_base_agregados_dia', bo, lnCompDoAgregado);
+      _opLnAgregados = agDocs.map(lnNormalizarAgregado);
     } else {
       _opLnAgregados = []; _opLnDataExtracao=''; _opLnCompetenciaVigente='';
     }
@@ -23098,10 +23098,9 @@ async function _audCarregarFontes(){
   ]);
   const fe = { ind:i.docs.map(d=>d.data()), csat:c.docs.map(d=>d.data()), pos:p.docs.map(d=>d.data()), ln:[], snapshotId:null };
   const bo = cfg.exists ? cfg.data().baseOficial : null;
-  if (bo && bo.snapshotVigenteId) {
-    fe.snapshotId = bo.snapshotVigenteId;
-    const s = await db.collection('ligacaonova_base_agregados_dia').where('snapshotId','==',bo.snapshotVigenteId).get();
-    fe.ln = s.docs.map(d=>d.data());
+  if (bo && lnGruposSnapshots(bo).length) {
+    fe.snapshotId = lnChaveGrupos(lnGruposSnapshots(bo));
+    fe.ln = await lnCarregarDocsGrupos('ligacaonova_base_agregados_dia', bo, lnCompDoAgregado);
   }
   return fe;
 }
@@ -27099,13 +27098,51 @@ function lnHtmlToggleCancelados(lista) {
     ${nulos ? `<span style="font-size:12px;color:#f59e0b">⚠️ Parte da base foi importada antes do registro de cancelados — esses dias contam 0 cancelados. Reimporte a Base Oficial para o cálculo completo.</span>` : ''}
   </div>`;
 }
+// ══ Modelo de snapshots POR COMPETÊNCIA ═════════════════════════════════
+// baseOficial.competencias = { 'AAAA-MM': { snapshotId, dataExtracao, assinatura, qtd, ... } }
+// Cada mês aponta pro SEU snapshot; importar um mês só troca o ponteiro daquele mês
+// (numa transação). Configs antigas (sem o mapa) continuam funcionando: um único
+// snapshot com todas as competências (grupo sem filtro de competência).
+const LN_WORKER_VERSAO_ESPERADA = 'ln-worker-3.0-stream';
+let _lnUltimoWorkerInfo = null;
+function lnGruposSnapshots(bo) {
+  if (!bo) return [];
+  const m = bo.competencias;
+  if (m && Object.keys(m).length) {
+    const g = {};
+    Object.keys(m).forEach(c => { const id = m[c] && m[c].snapshotId; if (!id) return; (g[id] || (g[id] = [])).push(c); });
+    return Object.keys(g).sort().map(id => ({ snapshotId: id, comps: g[id].sort() }));
+  }
+  return bo.snapshotVigenteId ? [{ snapshotId: bo.snapshotVigenteId, comps: null }] : [];
+}
+function lnChaveGrupos(gs) { return gs.map(g => g.snapshotId + ':' + (g.comps ? g.comps.join('+') : '*')).join('|'); }
+function lnTemBaseOficial(cfg) { return !!(cfg && cfg.baseOficial && lnGruposSnapshots(cfg.baseOficial).length); }
+function lnChaveBaseVigente() { return lnChaveGrupos(lnGruposSnapshots(_lnConfig && _lnConfig.baseOficial)); }
+// Lê uma coleção (agregados/casos) só dos snapshots vigentes, e — quando vários meses
+// compartilham um snapshot antigo — só dos meses que de fato apontam pra ele (evita contar em dobro).
+async function lnCarregarDocsGrupos(colecao, bo, compDoDoc, ajustarQuery) {
+  const gs = lnGruposSnapshots(bo);
+  const partes = await Promise.all(gs.map(async g => {
+    let q = db.collection(colecao).where('snapshotId','==',g.snapshotId);
+    if (ajustarQuery) q = ajustarQuery(q);
+    const snap = await q.get();
+    return snap.docs.map(d => d.data()).filter(x => !g.comps || g.comps.includes(compDoDoc(x)));
+  }));
+  return [].concat(...partes);
+}
+function lnCompDoAgregado(a) { return a && a.data ? String(a.data).slice(0,7) : LN_SEM_DATA; }
+async function lnCarregarCasosVigentes(boOpc, ajustarQuery) {
+  const bo = boOpc || (_lnConfig && _lnConfig.baseOficial);
+  return lnCarregarDocsGrupos('ligacaonova_base_casos', bo, lnCompDoCaso, ajustarQuery);
+}
 async function lnObterAgregadosVigentes() {
-  const snapshotId = _lnConfig && _lnConfig.baseOficial && _lnConfig.baseOficial.snapshotVigenteId;
-  if (!snapshotId) return [];
-  if (_lnAgregadosCache.snapshotId === snapshotId && _lnAgregadosCache.lista) return _lnAgregadosCache.lista;
-  const snap = await db.collection('ligacaonova_base_agregados_dia').where('snapshotId','==',snapshotId).get();
-  const lista = snap.docs.map(d=>lnNormalizarAgregado(d.data()));
-  _lnAgregadosCache = { snapshotId, lista };
+  const bo = _lnConfig && _lnConfig.baseOficial;
+  const chave = lnChaveGrupos(lnGruposSnapshots(bo));
+  if (!chave) return [];
+  if (_lnAgregadosCache.snapshotId === chave && _lnAgregadosCache.lista) return _lnAgregadosCache.lista;
+  const docs = await lnCarregarDocsGrupos('ligacaonova_base_agregados_dia', bo, lnCompDoAgregado);
+  const lista = docs.map(lnNormalizarAgregado);
+  _lnAgregadosCache = { snapshotId: chave, lista }; // `snapshotId` guarda a CHAVE do conjunto de snapshots vigentes
   _lnCompetenciasDisponiveis = Array.from(new Set(lista.filter(a=>a.data).map(a=>a.data.slice(0,7)))).sort();
   return lista;
 }
@@ -27251,6 +27288,17 @@ function lnAplicarFiltros() {
 }
 
 // ── Status das bases (topo, sempre visível) ──
+function lnHtmlDiagnosticoBase(b) {
+  const gs = lnGruposSnapshots(b);
+  const mapa = b.competencias || null;
+  const linhas = mapa
+    ? Object.keys(mapa).sort().map(k => `<tr><td style="padding:2px 8px"><strong>${k===LN_SEM_DATA?'Sem data':lnFmtCompetencia(k)}</strong></td><td style="padding:2px 8px">${mapa[k].dataExtracao ? lnFmtData(mapa[k].dataExtracao) : '—'}</td><td style="padding:2px 8px;color:var(--text3)">${mapa[k].snapshotId}${mapa[k].legado ? ' (legado)' : ''}</td></tr>`).join('')
+    : `<tr><td colspan="3" style="padding:2px 8px;color:var(--text3)">Formato antigo: um snapshot único (${gs[0] ? gs[0].snapshotId : '—'}). Será migrado na próxima importação (sem cópia, sem exclusão).</td></tr>`;
+  const w = _lnUltimoWorkerInfo;
+  return `<details style="margin-top:6px;font-size:12px"><summary style="cursor:pointer;color:var(--text3)">🔎 Diagnóstico da base vigente</summary>
+    <table style="border-collapse:collapse;margin-top:4px"><thead><tr style="text-align:left;color:var(--text3)"><th style="padding:2px 8px">Competência</th><th style="padding:2px 8px">Extração</th><th style="padding:2px 8px">Snapshot</th></tr></thead><tbody>${linhas}</tbody></table>
+    <div style="color:var(--text3);margin-top:4px">Worker esperado: ${LN_WORKER_VERSAO_ESPERADA}${w ? ` · último processamento nesta sessão: ${w.versao}` : ' · ainda não usado nesta sessão'}</div></details>`;
+}
 function lnRenderStatusBases() {
   const el = document.getElementById('ln-status-bases');
   if (!el) return;
@@ -27266,9 +27314,12 @@ function lnRenderStatusBases() {
     <div class="card" style="padding:16px 20px;border-left:4px solid var(--primary)">
       <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:6px">Base Oficial</div>
       ${b ? `<div style="font-size:13px;line-height:1.7">
-        Atualizada em (extração): <strong>${lnFmtData(b.dataExtracaoReal)}</strong><br>
+        ${b.extracoesPorCompetencia && Object.keys(b.extracoesPorCompetencia).length
+          ? `Extração por competência: ${Object.keys(b.extracoesPorCompetencia).sort().map(k => `<strong>${k===LN_SEM_DATA?'Sem data':lnFmtCompetencia(k)}</strong> ${lnFmtData(b.extracoesPorCompetencia[k])}`).join(' · ')}<br>`
+          : `Atualizada em (extração): <strong>${lnFmtData(b.dataExtracaoReal)}</strong><br>`}
         Importada em: ${lnFmtDataHora(b.importadoEm)}<br>
         Período: ${lnFmtData(b.periodoInicio)} a ${lnFmtData(b.periodoFim)}
+        ${lnHtmlDiagnosticoBase(b)}
       </div>` : `<div style="font-size:13px;color:var(--text3)">Nenhuma importação ainda.</div>`}
     </div>
     <div class="card" style="padding:16px 20px;border-left:4px solid #6366f1">
@@ -27297,7 +27348,7 @@ function lnRenderFiltros() {
   // Competências vêm dos AGREGADOS (a.data) — nunca de competenciasBase, que
   // é montado pela data de extração e criava meses sem dado. Se ainda não
   // carregou, dispara a carga e re-renderiza quando chegar.
-  const snapVig = _lnConfig && _lnConfig.baseOficial && _lnConfig.baseOficial.snapshotVigenteId;
+  const snapVig = lnChaveBaseVigente();
   if (snapVig && _lnAgregadosCache.snapshotId !== snapVig && !_lnCarregandoCompetencias) {
     _lnCarregandoCompetencias = true;
     lnObterAgregadosVigentes()
@@ -27399,12 +27450,11 @@ function lnFiltrarAgregados(agregados) {
 async function lnRenderResultadoOficial() {
   const el = document.getElementById('ln-aba-resultado');
   if (!el) return;
-  if (!_lnConfig || !_lnConfig.baseOficial || !_lnConfig.baseOficial.snapshotVigenteId) {
+  if (!lnTemBaseOficial(_lnConfig)) {
     el.innerHTML = `<div class="empty"><p>Nenhuma Base Oficial importada ainda.<br>Vá na aba <strong>Importar</strong> pra começar.</p></div>`;
     return;
   }
   el.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text3)">⏳ Carregando...</div>`;
-  const snapshotId = _lnConfig.baseOficial.snapshotVigenteId;
   let agregados;
   try {
     agregados = await lnObterAgregadosVigentes();
@@ -28039,7 +28089,8 @@ function lnCalcMensal(todos) {
   const equiv = lnModoIntervaloEquivalente();
   const temData = !!(_lnFiltros.dataInicio || _lnFiltros.dataFim);
   const { dIni, dFim, invalido } = lnDiasDoFiltro();
-  const extracao = _lnConfig && _lnConfig.baseOficial ? _lnConfig.baseOficial.dataExtracaoReal : null;
+  const extracaoGeral = _lnConfig && _lnConfig.baseOficial ? _lnConfig.baseOficial.dataExtracaoReal : null;
+  const mapaExtracoes = (_lnConfig && _lnConfig.baseOficial && _lnConfig.baseOficial.extracoesPorCompetencia) || {};
   const pad = n => String(n).padStart(2,'0');
 
   return comps.map(c => {
@@ -28059,6 +28110,7 @@ function lnCalcMensal(todos) {
     // Completa = existe dado além do fim pedido (mês posterior, último dia
     // útil já coberto, ou extração posterior ao fim). Nunca se projeta dia futuro.
     const fimUtil = vazio ? fim : lnUltimoDiaUtilAteISO(fim);
+    const extracao = mapaExtracoes[c] || extracaoGeral; // extração REAL desta competência
     const completo = vazio ? false : (temPosterior || ultimoGlobal >= fimUtil || !!(extracao && extracao > fim));
     const dados = vazio ? [] : base.filter(a => a.data.slice(0,7) === c && a.data >= ini && a.data <= fim);
     const incM = _lnCalcCancelados;
@@ -28542,6 +28594,80 @@ function lnRenderImportarAba() {
 }
 
 // ── Importação Base Oficial — Worker + resolução de matrícula + prévia ──
+// ═══ CONSOLIDAÇÃO POR COMPETÊNCIA (importação da Base Oficial) ═════════════
+// Cada competência (mês da Data/Hora de ABERTURA) usa a SUA extração mais recente
+// (decidido no Worker). Aqui se decide o que acontece com cada competência frente
+// ao snapshot vigente, sem apagar histórico:
+//   nova          → não existia, entra;
+//   substitui     → existia e a extração do arquivo é igual/mais recente → arquivo vale;
+//   mantem_atual  → existia e a extração gravada é MAIS RECENTE que a do arquivo → fica a atual;
+//   preservada    → existe só no snapshot atual (arquivo não traz) → transportada.
+// O snapshot anterior NÃO é apagado (fica 'substituido' no Firestore).
+const LN_SEM_DATA = 'SEM_DATA';
+function lnCompDoCaso(c) { return c.competencia || (c.dataAbertura ? c.dataAbertura.slice(0,7) : LN_SEM_DATA); }
+function lnRotuloCompetenciaImport(k) { return k === LN_SEM_DATA ? 'Sem data de abertura' : lnFmtCompetencia(k); }
+
+// Assinatura de conteúdo de uma competência (nº de casos + hash FNV-1a): permite pular a gravação
+// quando a mesma extração é reimportada sem nenhuma mudança (zero leitura/escrita desnecessária).
+function lnAssinaturaCompetencia(casos) {
+  const linhas = casos.map(c => [c.numeroCaso, c.situacao, c.classificacao||'', c.posto||'', c.dataAbertura||'', c.matricula||''].join('|')).sort();
+  let h = 0x811c9dc5;
+  const txt = linhas.join('\n');
+  for (let i = 0; i < txt.length; i++) { h ^= txt.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return linhas.length + ':' + h.toString(16);
+}
+
+// Lê SÓ o documento de configuração (1 leitura). Configs legadas (um snapshot único, sem mapa)
+// viram um mapa virtual: cada competência aponta pro snapshot legado (nada é copiado nem apagado).
+async function lnLerEstadoVigenteBase() {
+  const cfgSnap = await db.collection('ligacaonova_config').doc('geral').get();
+  const cfg = cfgSnap.exists ? cfgSnap.data() : {};
+  const bo = cfg.baseOficial || null;
+  const estado = { cfg, bo, legado: false, mapa: {} };
+  if (!bo) return estado;
+  if (bo.competencias && Object.keys(bo.competencias).length) { estado.mapa = JSON.parse(JSON.stringify(bo.competencias)); return estado; }
+  if (!bo.snapshotVigenteId) return estado;
+  estado.legado = true;
+  const ext = bo.extracoesPorCompetencia || {};
+  let comps = bo.competenciasNoSnapshot || Object.keys(ext);
+  if (!comps.length) { // snapshot muito antigo: descobre os meses nos agregados (única leitura extra, só nesta migração)
+    const ag = await db.collection('ligacaonova_base_agregados_dia').where('snapshotId','==',bo.snapshotVigenteId).get();
+    comps = Array.from(new Set(ag.docs.map(d => lnCompDoAgregado(d.data())).filter(k => k !== LN_SEM_DATA)));
+  }
+  comps.forEach(k => { estado.mapa[k] = { snapshotId: bo.snapshotVigenteId, dataExtracao: ext[k] || bo.dataExtracaoReal || null, legado: true }; });
+  return estado;
+}
+
+function lnMontarPlanoConsolidacao(resultado, estado) {
+  const extArq = resultado.extracoesPorCompetencia || {};
+  const mapa = estado.mapa || {};
+  const grupos = {};
+  (resultado.casosArquivo || resultado.casos).forEach(c => { const k = lnCompDoCaso(c); (grupos[k] || (grupos[k] = [])).push(c); });
+  const todas = Array.from(new Set([...Object.keys(grupos), ...Object.keys(mapa)])).sort();
+  const aplicar = new Set(), preservar = new Set(), linhas = [];
+  todas.forEach(k => {
+    const casosK = grupos[k] || [];
+    const noArq = casosK.length > 0, noAtual = Object.prototype.hasOwnProperty.call(mapa, k);
+    const eArq = extArq[k] || null, eAtual = noAtual ? (mapa[k].dataExtracao || null) : null;
+    const assinatura = noArq ? lnAssinaturaCompetencia(casosK.filter(c => LN_STATUS_GRAVAVEIS.includes(c.situacao))) : null;
+    let acao;
+    if (noArq && !noAtual) acao = 'nova';
+    else if (noArq && noAtual) {
+      if (eArq && eAtual && eArq < eAtual) acao = 'mantem_atual';
+      else if (mapa[k].assinatura && mapa[k].assinatura === assinatura && (eArq||'') === (eAtual||'')) acao = 'inalterada';
+      else acao = 'substitui';
+    }
+    else if (!noArq && noAtual) acao = 'preservada';
+    else return;
+    if (acao === 'nova' || acao === 'substitui') aplicar.add(k); else preservar.add(k);
+    const c = { com:0, sem:0, canc:0 };
+    casosK.forEach(x => { if (x.situacao==='elegivel'||x.situacao==='pendencia_matricula') { if (x.classificacao==='COM_EMAIL') c.com++; else if (x.classificacao==='SEM_EMAIL') c.sem++; else if (x.classificacao==='CANCELADO') c.canc++; } });
+    linhas.push({ competencia:k, acao, extracaoArquivo:eArq, extracaoAtual:eAtual, casosArquivo:casosK.length, casosAtual:noAtual ? (mapa[k].qtd ?? null) : null, com:c.com, sem:c.sem, canc:c.canc, assinatura, snapshotAtual: noAtual ? mapa[k].snapshotId : null });
+  });
+  return { linhas, aplicar, preservar };
+}
+const LN_STATUS_GRAVAVEIS = ['elegivel','sede','pendencia_matricula','conflito','conflito_matricula'];
+
 function lnSelecionarArquivoBaseOficial(input) {
   const file = input.files[0];
   if (!file) return;
@@ -28559,32 +28685,45 @@ async function lnProcessarBaseOficial(file) {
   setStatus('⏳ Lendo planilha (processamento em segundo plano, a tela continua respondendo)...');
 
   try {
-    const buffer = await file.arrayBuffer();
+    if (typeof DecompressionStream === 'undefined') throw new Error('Este navegador não tem DecompressionStream (precisa de Chrome/Edge 103+, Firefox 113+ ou Safari 16.4+). Atualize o navegador.');
+    const t0 = Date.now();
+    // O arquivo NÃO é carregado na memória da página: o Worker recebe o File e lê em fluxo (pedaço a pedaço).
     const resultadoWorker = await new Promise((resolve, reject) => {
-      let worker;
-      try { worker = new Worker('ligacaonova-worker.js'); }
+      let worker, versaoRecebida = null;
+      const falhaVersao = (vista) => { try { worker.terminate(); } catch(_) {} reject(new Error(`O navegador carregou uma versão ANTIGA do ligacaonova-worker.js (${vista || 'sem identificação'}); a esperada é ${LN_WORKER_VERSAO_ESPERADA}. Publique o worker novo e force a atualização (Ctrl+F5) antes de importar. Nada foi gravado.`)); };
+      try { worker = new Worker('ligacaonova-worker.js?v=' + encodeURIComponent(LN_WORKER_VERSAO_ESPERADA)); }
       catch(eWorker) { reject(new Error('Não foi possível iniciar o processamento em segundo plano: ' + eWorker.message)); return; }
 
       worker.onmessage = (e) => {
         const msg = e.data;
+        if (msg.etapa === 'versao') { versaoRecebida = msg.versao; if (msg.versao !== LN_WORKER_VERSAO_ESPERADA) falhaVersao(msg.versao); return; }
+        if (!versaoRecebida && msg.etapa !== 'erro') { falhaVersao(null); return; } // worker antigo nunca anuncia a versão
         if (msg.etapa === 'erro') { worker.terminate(); reject(new Error(msg.mensagem)); return; }
         if (msg.etapa === 'concluido') { worker.terminate(); resolve(msg.resultado); return; }
-        if (msg.etapa === 'lendo_planilha') setStatus(msg.tentativaAmpliada ? `⏳ Base grande — ampliando leitura (até ${msg.novoTeto.toLocaleString('pt-BR')} linhas)...` : '⏳ Lendo planilha...');
-        else if (msg.etapa === 'aba_localizada') setStatus(`✅ Aba "${msg.abaEncontrada}" localizada. Buscando a extração mais recente...`);
-        else if (msg.etapa === 'extraindo_extracao_mais_recente') setStatus(`📅 Extração mais recente: ${lnFmtData(msg.dataExtracao)} (${msg.linhasRealEncontradas} linhas reais encontradas na planilha)`);
+        if (msg.etapa === 'lendo_planilha') setStatus(msg.progresso != null ? `⏳ Lendo planilha em fluxo… ${Math.round(msg.progresso*100)}% (${(msg.linhasVarridas||0).toLocaleString('pt-BR')} linhas com dado varridas)` : '⏳ Lendo planilha em fluxo…');
+        else if (msg.etapa === 'aba_localizada') setStatus(`✅ Aba "${msg.abaEncontrada}" localizada (${Math.round(msg.bytesDescompactadosDaAba/1048576)} MB de XML, lidos em fluxo). Buscando a extração mais recente de cada competência...`);
+        else if (msg.etapa === 'extraindo_extracao_mais_recente') setStatus(`📅 ${Object.keys(msg.extracoesPorCompetencia||{}).length} competência(s) com extração própria (${msg.linhasRealEncontradas.toLocaleString('pt-BR')} linhas reais na planilha)`);
         else if (msg.etapa === 'aplicando_elegibilidade') setStatus(`⏳ Aplicando elegibilidade (${msg.linhasAnalisadas} casos distintos na extração)...`);
         else if (msg.etapa === 'duplicidades_avaliadas') setStatus('⏳ Duplicidades avaliadas, montando resultado...');
-        else if (msg.etapa === 'diagnostico') console.log(`[LigNova][${msg.tag}]`, msg.dados);
       };
-      worker.onerror = (err) => { worker.terminate(); reject(new Error(err.message || 'Erro inesperado no processamento em segundo plano.')); };
-      worker.postMessage({ tipo:'processar_base_oficial', buffer }, [buffer]);
+      worker.onerror = (err) => { try { worker.terminate(); } catch(_) {} reject(new Error(err.message || 'Erro inesperado no processamento em segundo plano.')); };
+      worker.postMessage({ tipo:'processar_base_oficial', file });
     });
+    if (resultadoWorker.workerVersao !== LN_WORKER_VERSAO_ESPERADA || !resultadoWorker.extracoesPorCompetencia) throw new Error('Resposta do Worker em formato antigo — nada foi gravado. Atualize o ligacaonova-worker.js e force a atualização do navegador (Ctrl+F5).');
+    _lnUltimoWorkerInfo = { versao: resultadoWorker.workerVersao, leitura: resultadoWorker.leitura, segundos: Math.round((Date.now()-t0)/100)/10, arquivo: file.name, tamanhoMB: Math.round(file.size/1048576*10)/10 };
 
     setStatus('⏳ Delimitando universo (GERENTE/Sede) e resolvendo matrícula → posto...');
     resultadoWorker.casos = await lnResolverMatriculaPostoEmLote(resultadoWorker.casos);
-    // Recalcula os totais sobre o universo FINAL (depois de excluir outras
-    // gerências) — os totais que o Worker devolveu ainda incluíam qualquer
-    // linha "ambígua" (GERENTE vazio/0/"-") que não era Sede de verdade.
+    // Consolidação por competência: confronta o arquivo com o snapshot vigente.
+    // `casosArquivo` = tudo que o arquivo trouxe; `casos` = só o que será gravado
+    // a partir dele (competências novas/substituídas). As demais são preservadas.
+    setStatus('⏳ Confrontando as competências do arquivo com a base vigente...');
+    resultadoWorker.casosArquivo = resultadoWorker.casos;
+    const estadoVigente = await lnLerEstadoVigenteBase();
+    resultadoWorker.plano = lnMontarPlanoConsolidacao(resultadoWorker, estadoVigente);
+    resultadoWorker.estadoLegado = estadoVigente.legado;
+    // Totais = o que o ARQUIVO traz (universo final, depois de excluir outras gerências).
+    // O que será gravado de fato é só o plano (nova/substitui).
     resultadoWorker.totais.elegiveis = resultadoWorker.casos.filter(c=>c.situacao==='elegivel').length;
     resultadoWorker.totais.comEmail = resultadoWorker.casos.filter(c=>c.classificacao==='COM_EMAIL' && (c.situacao==='elegivel'||c.situacao==='pendencia_matricula')).length;
     resultadoWorker.totais.semEmail = resultadoWorker.casos.filter(c=>c.classificacao==='SEM_EMAIL' && (c.situacao==='elegivel'||c.situacao==='pendencia_matricula')).length;
@@ -28594,6 +28733,7 @@ async function lnProcessarBaseOficial(file) {
     resultadoWorker.totais.conflitoMatricula = resultadoWorker.casos.filter(c=>c.situacao==='conflito_matricula').length;
     resultadoWorker.totais.sede = resultadoWorker.casos.filter(c=>c.situacao==='sede').length;
     resultadoWorker.arquivoNome = file.name;
+    resultadoWorker.casos = resultadoWorker.casosArquivo; // `casos` = tudo que o arquivo trouxe; a gravação usa o plano
 
     setStatus('✅ Processamento concluído — revise a prévia abaixo antes de confirmar.');
     _lnPreviaBaseAtual = resultadoWorker;
@@ -28695,6 +28835,25 @@ async function lnResolverMatriculaPostoEmLote(casos) {
 }
 
 
+function lnHtmlPlanoConsolidacao(resultado) {
+  const p = resultado.plano; if (!p || !p.linhas.length) return '';
+  const rot = { nova:'🆕 Nova — será criada', substitui:'🔄 Substitui a atual', mantem_atual:'🛡️ Mantém a atual (mais recente que o arquivo)', preservada:'📦 Preservada (não consta no arquivo)', inalterada:'⏸️ Inalterada — nada a gravar' };
+  const diag = resultado.diagnosticoCompetencias || {};
+  const avisos = [];
+  Object.keys(diag).forEach(k => { if (diag[k].casosSoEmExtracoesAnteriores) avisos.push(`${lnRotuloCompetenciaImport(k)}: ${diag[k].casosSoEmExtracoesAnteriores} caso(s) constavam em extração anterior e não estão na mais recente (ficam de fora, como manda a extração mais recente)`); });
+  Object.keys(diag).forEach(k => { if (diag[k].casosReatribuidosOutraGerencia) avisos.push(`${lnRotuloCompetenciaImport(k)}: ${diag[k].casosReatribuidosOutraGerencia} caso(s) aparecem na extração mais recente sob OUTRA gerência — fora do universo (informativo)`); });
+  (resultado.competenciasSemExtracao||[]).forEach(s => avisos.push(`${lnRotuloCompetenciaImport(s.competencia)}: ${s.linhas} linha(s) sem Data de extração válida — ignoradas (nenhuma data é inventada)`));
+  if (resultado.estadoLegado) avisos.push('Base atual no formato antigo (um snapshot único): ao confirmar, os meses que não mudam passam a apontar para esse snapshot, sem cópia e sem exclusão.');
+  const w = _lnUltimoWorkerInfo;
+  return `<div style="margin:6px 0 8px"><strong>Verificação por competência</strong> <span style="color:var(--text3)">(nada gravado ainda)</span>
+    <table style="border-collapse:collapse;font-size:12px;margin-top:4px;width:100%"><thead><tr style="text-align:left;color:var(--text3)">
+      <th style="padding:3px 8px">Competência</th><th style="padding:3px 8px;text-align:right">Elegíveis</th><th style="padding:3px 8px;text-align:right">Com</th><th style="padding:3px 8px;text-align:right">Sem</th><th style="padding:3px 8px;text-align:right">Canc.</th><th style="padding:3px 8px">Extração no arquivo</th><th style="padding:3px 8px">Extração gravada hoje</th><th style="padding:3px 8px">Ação prevista</th></tr></thead><tbody>
+      ${p.linhas.map(l => `<tr style="border-top:1px solid var(--border)"><td style="padding:3px 8px"><strong>${lnRotuloCompetenciaImport(l.competencia)}</strong></td><td style="padding:3px 8px;text-align:right">${l.casosArquivo}</td><td style="padding:3px 8px;text-align:right">${l.com}</td><td style="padding:3px 8px;text-align:right">${l.sem}</td><td style="padding:3px 8px;text-align:right">${l.canc}</td><td style="padding:3px 8px">${l.extracaoArquivo ? lnFmtData(l.extracaoArquivo) : '—'}</td><td style="padding:3px 8px">${l.extracaoAtual ? lnFmtData(l.extracaoAtual) : '—'}</td><td style="padding:3px 8px">${rot[l.acao]}</td></tr>`).join('')}
+    </tbody></table>
+    ${w ? `<div style="color:var(--text3);margin-top:4px">Worker <strong>${w.versao}</strong> carregado · leitura em fluxo de ${w.tamanhoMB} MB (${w.leitura ? Math.round(w.leitura.bytesDescompactadosDaAba/1048576) : '?'} MB de XML, ${w.leitura ? w.leitura.linhasXmlVarridas.toLocaleString('pt-BR') : '?'} linhas com dado) em ${w.segundos}s</div>` : ''}
+    ${avisos.length ? `<div style="color:#f59e0b;margin-top:4px">${avisos.map(a=>'⚠️ '+a).join('<br>')}</div>` : ''}</div>`;
+}
+
 function lnRenderPreviaBaseOficial(resultado) {
   const el = document.getElementById('ln-preview-base');
   if (!el) return;
@@ -28703,7 +28862,7 @@ function lnRenderPreviaBaseOficial(resultado) {
   // Competências encontradas = derivadas da Data/Hora de abertura dos casos
   // que de fato serão gravados (nunca da Data de extração). Serve pra
   // perceber uma virada de mês (ex.: Outubro reconhecido) antes de confirmar.
-  const gravaveis = resultado.casos.filter(c => ['elegivel','pendencia_matricula','sede'].includes(c.situacao));
+  const gravaveis = (resultado.casosArquivo || resultado.casos).filter(c => ['elegivel','pendencia_matricula','sede'].includes(c.situacao));
   const porCompetencia = {};
   let semDataAbertura = 0;
   gravaveis.forEach(c => {
@@ -28719,22 +28878,52 @@ function lnRenderPreviaBaseOficial(resultado) {
       <strong>Prévia — nada foi gravado ainda</strong><br>
       Arquivo reconhecido: ${resultado.arquivoNome}<br>
       Aba reconhecida: base<br>
-      Extração selecionada (maior Data de extração do arquivo): <strong>${lnFmtData(resultado.dataExtracao)}</strong><br>
+      Extração mais recente do arquivo: <strong>${lnFmtData(resultado.dataExtracao)}</strong> <span style="color:var(--text3)">(cada competência usa a sua própria extração mais recente — veja a tabela)</span><br>
       Período encontrado (Data/Hora de abertura): ${lnFmtData(periodoMin)} a ${lnFmtData(periodoMax)}<br>
       Competências encontradas:
       ${competenciasOrdenadas.length ? competenciasOrdenadas.map(k => `<span style="display:inline-block;margin-left:8px"><strong>${lnFmtCompetencia(k)}</strong> — ${porCompetencia[k]} ingressos</span>`).join('') : '<span style="color:var(--text3)">nenhuma</span>'}<br>
       ${semDataAbertura ? `<span style="color:#f59e0b">⚠️ ${semDataAbertura} caso(s) sem Data/Hora de abertura válida — ficam fora dos agregados por dia.</span><br>` : ''}
+      ${lnHtmlPlanoConsolidacao(resultado)}
       Linhas reais encontradas: ${t.linhasRealEncontradas}<br>
       Ingressos dos postos (universo GERENTE): <strong>${t.elegiveis + t.pendenciaMatricula}</strong> &nbsp; <span style="color:var(--text3)">(Sub Status e Ponto de Fornecimento não filtram o indicador)</span><br>
       <strong>Válidos (Com + Sem): ${t.comEmail + t.semEmail}</strong> &nbsp; Com E-mail: ${t.comEmail} &nbsp; Sem E-mail: ${t.semEmail} &nbsp; <span style="color:var(--text3)">% Sem E-mail = Sem ÷ (Com + Sem)</span><br>
       Fora do cálculo (mostrados à parte): Cancelados <strong>${t.cancelados||0}</strong> &nbsp; Pendência de classificação ${t.pendenciaClassificacao||0}<br>
       Duplicidade idêntica (deduplicada): ${t.duplicidadeIdentica} &nbsp; Duplicidade/conflito (fora do resultado): ${t.duplicidadeConflito}<br>
       Pendência de matrícula/posto: ${t.pendenciaMatricula} &nbsp; Conflito de matrícula (users × ATIVOS divergentes): ${t.conflitoMatricula||0} &nbsp; Casos da Sede: ${t.sede}<br>
-      Quantidade que será gravada/substituída: <strong>${t.elegiveis + t.pendenciaMatricula + t.sede + t.duplicidadeConflito}</strong>
+      Competências que serão gravadas: <strong>${(resultado.plano && resultado.plano.aplicar.size) ? Array.from(resultado.plano.aplicar).sort().map(lnRotuloCompetenciaImport).join(', ') : 'nenhuma (nada a alterar)'}</strong> &nbsp; · &nbsp; Preservadas/inalteradas: <strong>${(resultado.plano && resultado.plano.preservar.size) ? Array.from(resultado.plano.preservar).sort().map(lnRotuloCompetenciaImport).join(', ') : 'nenhuma'}</strong>
     </div>
     <button class="btn btn-primary btn-sm" id="ln-btn-confirmar-base" style="margin-top:10px" onclick="lnConfirmarImportacaoBaseOficial()">✅ Confirmar Importação</button>
     <button class="btn btn-secondary btn-sm" style="margin-top:10px" onclick="_lnPreviaBaseAtual=null;document.getElementById('ln-preview-base').innerHTML='';document.getElementById('ln-import-base-status').textContent='';">Cancelar</button>
   `;
+}
+
+function lnAgregarCasosCompetencia(casos) {
+  const agregados = {};
+  // Elegível com posto resolvido -> posto real. Pendência de matrícula -> bucket "(Pendente)":
+  // conta no Total/Com/Sem da visão Geral mas nunca no ranking por posto.
+  casos.filter(c=>(c.situacao==='elegivel'||c.situacao==='pendencia_matricula') && c.dataAbertura).forEach(c => {
+    const postoChave = c.situacao==='elegivel' ? c.posto : '(Pendente)';
+    const chave = `${postoChave}|${c.dataAbertura}`;
+    if (!agregados[chave]) agregados[chave] = { posto:postoChave, data:c.dataAbertura, comEmail:0, semEmail:0, total:0, cancelados:0, naoClassificados:0 };
+    // REGRA OFICIAL: Total = COM + SEM. Cancelados e não classificados ficam em campos próprios.
+    if (c.classificacao==='COM_EMAIL') { agregados[chave].comEmail++; agregados[chave].total++; }
+    else if (c.classificacao==='SEM_EMAIL') { agregados[chave].semEmail++; agregados[chave].total++; }
+    else if (c.classificacao==='CANCELADO') agregados[chave].cancelados++;
+    else agregados[chave].naoClassificados++;
+  });
+  return Object.values(agregados);
+}
+
+function lnHtmlRelatorioGravacao(rel) {
+  const rot = { nova:'🆕 Criada', substitui:'🔄 Atualizada', mantem_atual:'🛡️ Mantida', preservada:'📦 Preservada', inalterada:'⏸️ Inalterada', pulada_mais_nova:'🛡️ Mantida (outra importação mais nova venceu)' };
+  return `<div style="background:var(--surface2);border-radius:8px;padding:12px;font-size:13px;line-height:1.7">
+    <strong>✅ Importação concluída — meses efetivamente gravados</strong> <span style="color:var(--text3)">(conferido por releitura do Firestore)</span>
+    <table style="border-collapse:collapse;font-size:12px;margin-top:6px;width:100%"><thead><tr style="text-align:left;color:var(--text3)">
+      <th style="padding:3px 8px">Competência</th><th style="padding:3px 8px">Resultado</th><th style="padding:3px 8px">Extração apontada</th><th style="padding:3px 8px;text-align:right">Casos gravados agora</th><th style="padding:3px 8px;text-align:right">Dias (agregados)</th><th style="padding:3px 8px">Snapshot</th></tr></thead><tbody>
+      ${rel.linhas.map(l => `<tr style="border-top:1px solid var(--border)"><td style="padding:3px 8px"><strong>${lnRotuloCompetenciaImport(l.competencia)}</strong></td><td style="padding:3px 8px">${rot[l.resultado]||l.resultado}</td><td style="padding:3px 8px">${l.extracao ? lnFmtData(l.extracao) : '—'}</td><td style="padding:3px 8px;text-align:right">${l.casosGravados}</td><td style="padding:3px 8px;text-align:right">${l.dias}</td><td style="padding:3px 8px;color:var(--text3)">${l.snapshotId}</td></tr>`).join('')}
+    </tbody></table>
+    Meses que o filtro de competências passa a listar: <strong>${rel.mesesNoFiltro.length ? rel.mesesNoFiltro.map(lnFmtCompetencia).join(', ') : '—'}</strong>
+    <div style="margin-top:8px"><button class="btn btn-primary btn-sm" onclick="lnMudarAba('resultado')">Ver Resultado Oficial</button></div></div>`;
 }
 
 async function lnConfirmarImportacaoBaseOficial() {
@@ -28742,136 +28931,165 @@ async function lnConfirmarImportacaoBaseOficial() {
   const resultado = _lnPreviaBaseAtual;
   const btn = document.getElementById('ln-btn-confirmar-base');
   if (btn) btn.disabled = true;
+  const criados = []; // snapshots criados nesta tentativa (para marcar 'falhou' se algo der errado antes do ponteiro)
   try {
     const operacaoId = await getOperacaoId();
-    const competencia = resultado.dataExtracao.slice(0,7);
     const mesCorrente = new Date().toISOString().slice(0,7);
-    if (competencia !== mesCorrente) {
-      if (!confirm(`Você está importando uma competência histórica (${competencia}), diferente do mês corrente (${mesCorrente}). Confirma que é intencional?`)) {
+    const mesExtracao = resultado.dataExtracao.slice(0,7);
+    if (mesExtracao !== mesCorrente) {
+      if (!confirm(`Você está importando uma extração histórica (${mesExtracao}), diferente do mês corrente (${mesCorrente}). Confirma que é intencional?`)) {
         if (btn) btn.disabled = false;
         return;
       }
     }
 
-    const snapshotId = `basecomp_${competencia}_${Date.now()}`;
-    const casosValidos = resultado.casos.filter(c => ['elegivel','sede','pendencia_matricula','conflito','conflito_matricula'].includes(c.situacao));
+    // Config relida AGORA (alguém pode ter importado desde a prévia) e plano refeito sobre ela.
+    const estado = await lnLerEstadoVigenteBase();
+    const plano = lnMontarPlanoConsolidacao(resultado, estado);
+    const casosArquivo = resultado.casosArquivo || resultado.casos;
+    const porComp = {};
+    casosArquivo.forEach(c => { const k = lnCompDoCaso(c); if (plano.aplicar.has(k) && LN_STATUS_GRAVAVEIS.includes(c.situacao)) (porComp[k] || (porComp[k] = [])).push(c); });
 
-    await db.collection('ligacaonova_base_snapshots').doc(snapshotId).set({
-      id: snapshotId, competencia, status: 'gravando', dataExtracao: resultado.dataExtracao,
-      totais: resultado.totais, importadoEm: firebase.firestore.FieldValue.serverTimestamp(),
-      importadoPor: currentUser.email, quantidadeGravadaConfirmada: 0
-    });
+    // Um caso nunca pode existir duas vezes no que será gravado.
+    const vistos = new Set(); const duplicados = [];
+    Object.values(porComp).forEach(arr => arr.forEach(c => { if (vistos.has(c.numeroCaso)) duplicados.push(c.numeroCaso); vistos.add(c.numeroCaso); }));
+    if (duplicados.length) throw new Error(`Importação abortada: o caso ${duplicados[0]} apareceria mais de uma vez (${duplicados.length} duplicidade(s)). Nada foi gravado.`);
 
-    const agregados = {};
-    // Elegível com posto resolvido -> posto real. Pendência de matrícula
-    // (dentro do universo, mas sem posto) -> bucket sintético "(Pendente)":
-    // continua contando no Total/Com/Sem E-mail da visão Geral (nunca
-    // "some" do resultado), mas nunca aparece no ranking por posto nem
-    // quando um Posto/Supervisor específico é filtrado — porque nenhum
-    // posto real nem supervisor bate com esse valor.
-    resultado.casos.filter(c=>(c.situacao==='elegivel'||c.situacao==='pendencia_matricula') && c.dataAbertura).forEach(c => {
-      const postoChave = c.situacao==='elegivel' ? c.posto : '(Pendente)';
-      const chave = `${postoChave}|${c.dataAbertura}`;
-      if (!agregados[chave]) agregados[chave] = { posto:postoChave, data:c.dataAbertura, comEmail:0, semEmail:0, total:0, cancelados:0, naoClassificados:0 };
-      // REGRA OFICIAL (provada na planilha da Enel): Total = COM + SEM. Cancelados e
-      // casos sem classificação ficam em campos próprios e NÃO entram no Total
-      // nem no denominador do % Sem E-mail.
-      if (c.classificacao==='COM_EMAIL') { agregados[chave].comEmail++; agregados[chave].total++; }
-      else if (c.classificacao==='SEM_EMAIL') { agregados[chave].semEmail++; agregados[chave].total++; }
-      else if (c.classificacao==='CANCELADO') agregados[chave].cancelados++;
-      else agregados[chave].naoClassificados++;
-    });
-    const agregadosArr = Object.values(agregados);
+    const extArq = resultado.extracoesPorCompetencia || {};
+    const ts = Date.now();
+    const novos = {}; // competência -> dados do snapshot novo
+    const aplicarOrd = Array.from(plano.aplicar).sort();
 
-    // Diagnóstico temporário (mesma matrícula em investigação) — confirma
-    // se o(s) caso(s) chegaram até o agregado de ITALVA, com quais números,
-    // antes de qualquer gravação no Firestore.
-    const _lnDiagMatricula = 'BR0187055567';
-    const _lnDiagCasos = resultado.casos.filter(c => c.matricula === _lnDiagMatricula);
-    if (_lnDiagCasos.length) {
-      const agregadosItalva = agregadosArr.filter(a => a.posto === 'ITALVA');
-      console.log('[LigNova][ITALVA-DIAG] agregação/snapshot (antes de gravar):', {
-        matricula: _lnDiagMatricula,
-        situacoesFinais: _lnDiagCasos.map(c => ({ numeroCaso:c.numeroCaso, situacao:c.situacao, posto:c.posto||null, dataAbertura:c.dataAbertura, classificacao:c.classificacao })),
-        casosValidosParaGravar: _lnDiagCasos.filter(c => ['elegivel','sede','pendencia_matricula','conflito','conflito_matricula'].includes(c.situacao)).length,
-        agregadosGeradosParaItalva: agregadosItalva.length,
-        totalItalvaNesteSnapshot: agregadosItalva.reduce((s,a)=>s+a.total,0),
-        comEmailItalva: agregadosItalva.reduce((s,a)=>s+a.comEmail,0),
-        semEmailItalva: agregadosItalva.reduce((s,a)=>s+a.semEmail,0)
+    // 1) Cada competência a gravar vira um snapshot PRÓPRIO — nada vigente é tocado ainda.
+    for (const comp of aplicarOrd) {
+      const casos = porComp[comp] || [];
+      const snapshotId = `bc_${comp}_${ts}`;
+      const agregadosArr = lnAgregarCasosCompetencia(casos);
+      const ext = extArq[comp] || null;
+      await db.collection('ligacaonova_base_snapshots').doc(snapshotId).set({
+        id: snapshotId, modelo:'por_competencia', competencia: comp, competencias:[comp], extracoesPorCompetencia:{ [comp]: ext }, dataExtracao: ext,
+        status:'gravando', importadoEm: firebase.firestore.FieldValue.serverTimestamp(), importadoPor: currentUser.email, quantidadeGravadaConfirmada: 0
       });
-    }
-    for (let i=0;i<agregadosArr.length;i+=400) {
-      const batch = db.batch();
-      agregadosArr.slice(i,i+400).forEach(a => {
-        batch.set(db.collection('ligacaonova_base_agregados_dia').doc(`${snapshotId}_${a.posto}_${a.data}`), { snapshotId, operacaoId, ...a });
-      });
-      await batch.commit();
+      criados.push(snapshotId);
+      for (let i=0;i<agregadosArr.length;i+=400) {
+        const batch = db.batch();
+        agregadosArr.slice(i,i+400).forEach(a => batch.set(db.collection('ligacaonova_base_agregados_dia').doc(`${snapshotId}_${a.posto}_${a.data}`), { snapshotId, operacaoId, ...a }));
+        await batch.commit();
+      }
+      let gravados = 0;
+      for (let i=0;i<casos.length;i+=400) {
+        const lote = casos.slice(i,i+400);
+        const batch = db.batch();
+        lote.forEach(c => batch.set(db.collection('ligacaonova_base_casos').doc(`${snapshotId}_${c.numeroCaso}`), { snapshotId, operacaoId, ...c }));
+        await batch.commit();
+        gravados += lote.length;
+      }
+      if (gravados !== casos.length) throw new Error(`Divergência na contagem de gravação de ${comp} — importação abortada, a versão vigente foi mantida.`);
+      // conferência por releitura dos agregados do mês recém-criado
+      const agVerif = await db.collection('ligacaonova_base_agregados_dia').where('snapshotId','==',snapshotId).get();
+      if (agVerif.size !== agregadosArr.length) throw new Error(`Conferência de ${comp} falhou: ${agVerif.size} agregado(s) lidos de volta, ${agregadosArr.length} esperados — a versão vigente foi mantida.`);
+      await db.collection('ligacaonova_base_snapshots').doc(snapshotId).update({ status:'pronto', quantidadeGravadaConfirmada: gravados });
+      const datas = casos.map(c=>c.dataAbertura).filter(Boolean).sort();
+      novos[comp] = { snapshotId, dataExtracao: ext, assinatura: lnAssinaturaCompetencia(casos), qtd: casos.length, dias: agregadosArr.length,
+        periodoInicio: datas[0] || null, periodoFim: datas[datas.length-1] || null, importadoEm: new Date().toISOString(), importadoPor: currentUser.email };
     }
 
-    let gravados = 0;
-    for (let i=0;i<casosValidos.length;i+=400) {
-      const lote = casosValidos.slice(i,i+400);
-      const batch = db.batch();
-      lote.forEach(c => {
-        batch.set(db.collection('ligacaonova_base_casos').doc(`${snapshotId}_${c.numeroCaso}`), { snapshotId, operacaoId, ...c });
-      });
-      await batch.commit();
-      gravados += lote.length;
-    }
-
-    if (gravados !== casosValidos.length) throw new Error('Divergência na contagem de gravação — importação abortada, o snapshot anterior continua vigente.');
-
-    await db.collection('ligacaonova_base_snapshots').doc(snapshotId).update({ status:'vigente', quantidadeGravadaConfirmada: gravados });
-
+    // 2) Troca atômica dos ponteiros (uma transação): só aqui a base vigente muda. Se outra
+    //    importação mais nova já apontou uma competência, essa competência NÃO é sobrescrita.
     const configRef = db.collection('ligacaonova_config').doc('geral');
-    const configSnap = await configRef.get();
-    const configAtual = configSnap.exists ? configSnap.data() : {};
-    const snapshotAnteriorId = configAtual.baseOficial ? configAtual.baseOficial.snapshotVigenteId : null;
-    if (snapshotAnteriorId && snapshotAnteriorId !== snapshotId) {
-      await db.collection('ligacaonova_base_snapshots').doc(snapshotAnteriorId).update({ status:'substituido' }).catch(()=>{});
+    let aplicadas = [], puladas = [], anterioresSubstituidos = [];
+    if (aplicarOrd.length) {
+      const tx = await db.runTransaction(async (t) => {
+        const cs = await t.get(configRef);
+        const cfg = cs.exists ? cs.data() : {};
+        const bo = cfg.baseOficial || {};
+        let mapa;
+        if (bo.competencias && Object.keys(bo.competencias).length) mapa = JSON.parse(JSON.stringify(bo.competencias));
+        else {
+          const jaMigrado = !!bo.snapshotVigenteId && Object.keys(estado.mapa).length && estado.mapa[Object.keys(estado.mapa)[0]].snapshotId === bo.snapshotVigenteId;
+          if (bo.snapshotVigenteId && !jaMigrado) throw new Error('A base vigente mudou durante a importação. Reenvie a planilha para recalcular. Nada foi alterado.');
+          mapa = JSON.parse(JSON.stringify(estado.mapa));
+        }
+        const aplic = [], pul = [], subst = [];
+        aplicarOrd.forEach(comp => {
+          const atual = mapa[comp], novo = novos[comp];
+          if (atual && atual.dataExtracao && novo.dataExtracao && atual.dataExtracao > novo.dataExtracao) { pul.push(comp); return; }
+          if (atual && atual.snapshotId) subst.push(atual.snapshotId);
+          mapa[comp] = novo; aplic.push(comp);
+        });
+        if (aplic.length) {
+          const reais = Object.keys(mapa).filter(k => k !== LN_SEM_DATA).sort();
+          const ultima = reais.length ? reais[reais.length-1] : Object.keys(mapa).sort().pop();
+          const extMapa = {}; Object.keys(mapa).forEach(k => { extMapa[k] = mapa[k].dataExtracao || null; });
+          const ini = [], fim = [];
+          Object.keys(mapa).forEach(k => { const e = mapa[k]; if (e.periodoInicio) { ini.push(e.periodoInicio); fim.push(e.periodoFim); } else { if (bo.periodoInicio) ini.push(bo.periodoInicio); if (bo.periodoFim) fim.push(bo.periodoFim); } });
+          const comps = new Set(cfg.competenciasBase || []); reais.forEach(k => comps.add(k));
+          t.set(configRef, { baseOficial: {
+            ...bo, modelo:'por_competencia', competencias: mapa,
+            snapshotVigenteId: mapa[ultima].snapshotId, competenciaVigente: ultima,
+            dataExtracaoReal: Object.values(extMapa).filter(Boolean).sort().pop() || bo.dataExtracaoReal || null,
+            extracoesPorCompetencia: extMapa, competenciasNoSnapshot: reais,
+            importadoEm: new Date().toISOString(), importadoPor: currentUser.email,
+            periodoInicio: ini.sort()[0] || null, periodoFim: fim.sort().pop() || null
+          }, competenciasBase: Array.from(comps) }, { merge:true });
+        }
+        return { aplic, pul, subst };
+      });
+      aplicadas = tx.aplic; puladas = tx.pul; anterioresSubstituidos = tx.subst;
     }
-    const competenciasDisponiveis = new Set(configAtual.competenciasBase || []);
-    competenciasDisponiveis.add(competencia);
 
-    await configRef.set({
-      baseOficial: {
-        snapshotVigenteId: snapshotId, competenciaVigente: competencia, dataExtracaoReal: resultado.dataExtracao,
-        importadoEm: new Date().toISOString(), importadoPor: currentUser.email,
-        periodoInicio: lnMenorData(casosValidos), periodoFim: lnMaiorData(casosValidos),
-        totaisResumo: { pendenciaMatricula: resultado.totais.pendenciaMatricula||0, sede: resultado.totais.sede||0 }
-      },
-      competenciasBase: Array.from(competenciasDisponiveis)
-    }, { merge:true });
-
-    // Releitura de verificação: o ponteiro vigente precisa apontar de fato
-    // para o snapshot e para a extração que acabaram de ser importados.
-    // Se não apontar, a tela continuaria mostrando a base anterior — isso
-    // nunca pode passar como "importado com sucesso".
+    // 3) Releitura de verificação do ponteiro + do que o filtro de competências vai listar.
     const cfgVerif = await configRef.get();
     const boVerif = cfgVerif.exists ? cfgVerif.data().baseOficial : null;
-    if (!boVerif || boVerif.snapshotVigenteId !== snapshotId || boVerif.dataExtracaoReal !== resultado.dataExtracao) {
-      throw new Error(`Verificação pós-gravação falhou: o ponteiro vigente (${boVerif ? lnFmtData(boVerif.dataExtracaoReal) : 'vazio'}) não corresponde à extração importada (${lnFmtData(resultado.dataExtracao)}).`);
-    }
+    aplicadas.forEach(comp => {
+      const e = boVerif && boVerif.competencias && boVerif.competencias[comp];
+      if (!e || e.snapshotId !== novos[comp].snapshotId || e.dataExtracao !== novos[comp].dataExtracao)
+        throw new Error(`Verificação pós-gravação falhou: o ponteiro de ${comp} não corresponde ao snapshot importado.`);
+    });
+    _lnConfig = cfgVerif.exists ? cfgVerif.data() : _lnConfig;
+    _lnAgregadosCache = { snapshotId: null, lista: null };
+    const agVig = aplicarOrd.length || boVerif ? await lnObterAgregadosVigentes() : [];
+    const mesesNoFiltro = _lnCompetenciasDisponiveis.slice();
+    const esperados = Object.keys(boVerif && boVerif.competencias || {}).filter(k => k !== LN_SEM_DATA && agVig.some(a => a.data && a.data.slice(0,7) === k) || novos[k] && novos[k].dias > 0);
+    const faltando = esperados.filter(k => !mesesNoFiltro.includes(k));
+    if (faltando.length) throw new Error(`Verificação pós-gravação falhou: competência(s) ausente(s) na leitura vigente: ${faltando.join(', ')}.`);
+
+    // 4) Snapshots antigos que nenhum mês aponta mais ficam 'substituido' (nunca são apagados).
+    const emUso = new Set(Object.values((boVerif && boVerif.competencias) || {}).map(e => e.snapshotId));
+    for (const id of new Set(anterioresSubstituidos)) if (!emUso.has(id)) await db.collection('ligacaonova_base_snapshots').doc(id).update({ status:'substituido' }).catch(()=>{});
+    // Snapshots criados mas cujo ponteiro não foi trocado (outra importação mais nova venceu) ficam marcados.
+    for (const comp of puladas) await db.collection('ligacaonova_base_snapshots').doc(novos[comp].snapshotId).update({ status:'descartado_mais_antigo' }).catch(()=>{});
+
+    const linhasRel = plano.linhas.map(l => {
+      let resultadoL = l.acao;
+      if (puladas.includes(l.competencia)) resultadoL = 'pulada_mais_nova';
+      const e = boVerif && boVerif.competencias && boVerif.competencias[l.competencia];
+      const gravouAgora = aplicadas.includes(l.competencia);
+      return { competencia:l.competencia, resultado:resultadoL, extracao: e ? e.dataExtracao : null, casosGravados: gravouAgora ? novos[l.competencia].qtd : 0, dias: gravouAgora ? novos[l.competencia].dias : 0, snapshotId: e ? e.snapshotId : '—' };
+    });
+    const rel = { linhas: linhasRel, mesesNoFiltro };
 
     await db.collection('ligacaonova_importacoes').add({
       tipo:'base_oficial', arquivo: resultado.arquivoNome, usuario: currentUser.email,
-      dataHora: firebase.firestore.FieldValue.serverTimestamp(), dataExtracao: resultado.dataExtracao, competencia,
+      dataHora: firebase.firestore.FieldValue.serverTimestamp(), dataExtracao: resultado.dataExtracao, competencias: aplicadas, extracoesPorCompetencia: extArq,
+      consolidacao: plano.linhas.map(l => ({ competencia:l.competencia, acao:l.acao, extracaoArquivo:l.extracaoArquivo, extracaoAtual:l.extracaoAtual, casosArquivo:l.casosArquivo })),
+      workerVersao: resultado.workerVersao || null,
       linhasAnalisadas: resultado.totais.linhasRealEncontradas, validos: resultado.totais.elegiveis, ignorados: 0,
       duplicados: resultado.totais.duplicidadeIdentica + resultado.totais.duplicidadeConflito,
       pendencias: resultado.totais.pendenciaMatricula, resultado:'sucesso', erro:null
     }).catch(e=>console.error('[LigNova] falha ao registrar diagnóstico (não afeta a importação):', e));
 
-    toast(`✅ Base Oficial importada — extração ${lnFmtData(resultado.dataExtracao)}, período ${lnFmtData(lnMenorData(casosValidos))} a ${lnFmtData(lnMaiorData(casosValidos))}`, 'ok');
+    toast(aplicadas.length ? `✅ Base Oficial atualizada — ${aplicadas.map(k=>lnRotuloCompetenciaImport(k)+' (extr. '+lnFmtData(novos[k].dataExtracao)+')').join(' · ')}` : 'Nada a gravar: todas as competências do arquivo já estavam atualizadas.', 'ok');
     _lnPreviaBaseAtual = null;
-    await lnCarregarConfig();
     lnRenderStatusBases();
     lnRenderFiltros();
-    const prevEl = document.getElementById('ln-preview-base'); if (prevEl) prevEl.innerHTML = '';
-    lnMudarAba('resultado');
+    const prevEl = document.getElementById('ln-preview-base'); if (prevEl) prevEl.innerHTML = lnHtmlRelatorioGravacao(rel);
+    const stEl = document.getElementById('ln-import-base-status'); if (stEl) stEl.textContent = '';
   } catch (e) {
     console.error('[LigNova] erro ao confirmar importação da Base Oficial:', e);
+    for (const id of criados) db.collection('ligacaonova_base_snapshots').doc(id).update({ status:'falhou' }).catch(()=>{});
     const _msgVerif = String(e.message||'').startsWith('Verificação pós-gravação');
-    toast(_msgVerif ? ('Erro ao confirmar a importação. ' + e.message) : ('Erro ao gravar a importação — o snapshot anterior continua vigente. ' + e.message), 'err');
+    toast(_msgVerif ? ('Erro ao confirmar a importação. ' + e.message) : ('Erro ao gravar a importação — a base vigente NÃO foi alterada. ' + e.message), 'err');
     db.collection('ligacaonova_importacoes').add({
       tipo:'base_oficial', usuario: currentUser.email, dataHora: firebase.firestore.FieldValue.serverTimestamp(),
       resultado:'falha', erro: String(e.message||e)
@@ -29020,7 +29238,7 @@ async function lnConfirmarImportacaoControle() {
 // ── Conferência do Controle — cruzamento Número do Caso × CASO ──
 async function lnCarregarConferencia() {
   if (!_lnConfig || !_lnConfig.baseOficial || !_lnConfig.controle) return null;
-  const snapBase = _lnConfig.baseOficial.snapshotVigenteId;
+  const snapBase = lnTemBaseOficial(_lnConfig) ? lnChaveBaseVigente() : null;
   const snapControle = _lnConfig.controle.snapshotVigenteId;
   if (!snapBase || !snapControle) return null;
 
@@ -29037,12 +29255,12 @@ async function lnCarregarConferencia() {
   if (_lnFiltros.dataFim && _lnFiltros.dataFim < fimComum) fimComum = _lnFiltros.dataFim;
   if (inicioComum > fimComum) return { semIntersecao:true, periodoDisponivel:{inicio:inicioDisponivel,fim:fimDisponivel} };
 
-  const casosSnap = await db.collection('ligacaonova_base_casos').where('snapshotId','==',snapBase).get();
+  const casosBaseVigente = await lnCarregarCasosVigentes();
   // Universo da Conferência: elegível (com posto) OU pendência de matrícula
   // (dentro do universo GERENTE, só sem posto resolvido) — o cruzamento por
   // Número do caso não depende do posto estar resolvido. Sede e conflito
   // ficam de fora, conforme já definido.
-  let casos = casosSnap.docs.map(d=>d.data()).filter(c=>(c.situacao==='elegivel'||c.situacao==='pendencia_matricula') && (_lnCalcCancelados || c.classificacao!=='CANCELADO') && c.dataAbertura>=inicioComum && c.dataAbertura<=fimComum);
+  let casos = casosBaseVigente.filter(c=>(c.situacao==='elegivel'||c.situacao==='pendencia_matricula') && (_lnCalcCancelados || c.classificacao!=='CANCELADO') && c.dataAbertura>=inicioComum && c.dataAbertura<=fimComum);
   if (_lnFiltros.posto) casos = casos.filter(c=>c.posto===_lnFiltros.posto);
   else if (_lnFiltros.supervisor) {
     const postosSup = lnPostosDoSupervisorNorm(_lnFiltros.supervisor);
@@ -29350,10 +29568,9 @@ async function lnDetalharSecao(secao) {
   if (!corpo) return;
   corpo.innerHTML = `<div style="text-align:center;padding:30px;color:var(--text3)">⏳ Carregando...</div>`;
   let linhas = [], colunas = [];
-  if (secao==='pendencias' && _lnConfig && _lnConfig.baseOficial && _lnConfig.baseOficial.snapshotVigenteId) {
+  if (secao==='pendencias' && lnTemBaseOficial(_lnConfig)) {
     try {
-      const snap = await db.collection('ligacaonova_base_casos').where('snapshotId','==',_lnConfig.baseOficial.snapshotVigenteId).where('situacao','in',['pendencia_matricula','conflito','conflito_matricula']).get();
-      linhas = snap.docs.map(d=>d.data()); colunas = ['numeroCaso','situacao','matricula','dataAbertura','postoUsers','postoFallback'];
+      linhas = await lnCarregarCasosVigentes(null, q => q.where('situacao','in',['pendencia_matricula','conflito','conflito_matricula'])); colunas = ['numeroCaso','situacao','matricula','dataAbertura','postoUsers','postoFallback'];
     } catch(e) { console.error('[LigNova] erro ao carregar pendências:', e); }
   }
 
@@ -29372,17 +29589,15 @@ async function lnDetalharSecao(secao) {
 
 // ── Exportação — respeita os filtros ativos ──
 async function lnExportar() {
-  if (!_lnConfig || !_lnConfig.baseOficial || !_lnConfig.baseOficial.snapshotVigenteId) { toast('Nenhuma Base Oficial importada ainda.', 'err'); return; }
+  if (!lnTemBaseOficial(_lnConfig)) { toast('Nenhuma Base Oficial importada ainda.', 'err'); return; }
   toast('Preparando exportação...', 'ok');
   try {
-    const snapshotId = _lnConfig.baseOficial.snapshotVigenteId;
     const agregTodos = await lnObterAgregadosVigentes();
     const agregados = lnFiltrarAgregados(agregTodos);
     const mensalExport = lnCalcMensal(agregTodos);
     const linhasCmpExport = _lnFiltros.competencias.length >= 2 ? lnLinhasComparativas(mensalExport) : [];
 
-    const casosSnap = await db.collection('ligacaonova_base_casos').where('snapshotId','==',snapshotId).get();
-    let casos = casosSnap.docs.map(d=>d.data());
+    let casos = await lnCarregarCasosVigentes();
     const compsExp = lnCompetenciasDetalhe();
     if (compsExp.length) casos = casos.filter(c=>c.dataAbertura && compsExp.includes(c.dataAbertura.slice(0,7)));
     if (_lnFiltros.posto) casos = casos.filter(c=>c.posto===_lnFiltros.posto);
