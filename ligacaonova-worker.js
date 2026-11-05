@@ -21,7 +21,7 @@
 // Este Worker NÃO resolve matrícula→posto nem Sede (não tem acesso ao Firestore/cache de
 // usuários da thread principal) — devolve os casos com GERENTE e matrícula normalizados.
 
-const LN_WORKER_VERSAO = 'ln-worker-3.0-stream';
+const LN_WORKER_VERSAO = 'ln-worker-3.1-stream';
 
 const LN_ABA_BASE = 'base';
 const LN_GERENTE_OPERACAO = 'MARCELO PORTUGAL';
@@ -87,6 +87,14 @@ function lnDataParaISO(v) {
   m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
   if (m) return `${m[1]}-${m[2]}-${m[3]}`;
   return null;
+}
+
+// Troca undefined por null, em qualquer nível (objetos e arrays aninhados), no próprio objeto.
+function lnLimparUndefined(o) {
+  if (o === null || typeof o !== 'object') return o;
+  if (Array.isArray(o)) { for (let i = 0; i < o.length; i++) { if (o[i] === undefined) o[i] = null; else lnLimparUndefined(o[i]); } return o; }
+  for (const k of Object.keys(o)) { if (o[k] === undefined) o[k] = null; else lnLimparUndefined(o[k]); }
+  return o;
 }
 
 function lnNormalizarMatricula(v) {
@@ -424,10 +432,10 @@ async function lnProcessarBase(blob) {
         competencia: comp,
         subStatus: String(v[idx.sub] == null ? '' : v[idx.sub]).trim(),
         pf: String(v[idx.pf] == null ? '' : v[idx.pf]).trim(),
-        dataAberturaRaw: v[idx.ab],
+        dataAberturaRaw: v[idx.ab] === undefined ? null : v[idx.ab], // Firestore NÃO aceita undefined: ausente = null
         matricula: lnNormalizarMatricula(v[idx.mat]),
         validacaoEmail: String(v[idx.val] == null ? '' : v[idx.val]).trim().toUpperCase(),
-        gerente: gerenteRaw,
+        gerente: gerenteRaw === undefined ? null : gerenteRaw,   // célula GERENTE vazia/ausente = null (não undefined)
         atendenteNome: idx.atend >= 0 ? String(v[idx.atend] == null ? '' : v[idx.atend]).trim() : ''
       };
       const arr = rc.casos.get(numeroCaso);
@@ -509,6 +517,7 @@ async function lnProcessarBase(blob) {
     });
   }
 
+  resultado.forEach(lnLimparUndefined);
   post({ etapa: 'duplicidades_avaliadas' });
   post({
     etapa: 'concluido',

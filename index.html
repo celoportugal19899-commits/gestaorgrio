@@ -27135,7 +27135,7 @@ function lnHtmlToggleCancelados(lista) {
 // Cada mês aponta pro SEU snapshot; importar um mês só troca o ponteiro daquele mês
 // (numa transação). Configs antigas (sem o mapa) continuam funcionando: um único
 // snapshot com todas as competências (grupo sem filtro de competência).
-const LN_WORKER_VERSAO_ESPERADA = 'ln-worker-3.0-stream';
+const LN_WORKER_VERSAO_ESPERADA = 'ln-worker-3.1-stream';
 let _lnUltimoWorkerInfo = null;
 function lnGruposSnapshots(bo) {
   if (!bo) return [];
@@ -28609,6 +28609,9 @@ function lnRenderImportarAba() {
         <button class="btn btn-primary" id="ln-btn-importar-base" onclick="document.getElementById('ln-input-base').click()">📁 Importar Base Oficial</button>
         <div id="ln-import-base-status" style="margin-top:10px;font-size:13px;color:var(--text2)"></div>
         <div id="ln-preview-base" style="margin-top:14px"></div>
+        <details style="margin-top:12px;font-size:12px"><summary style="cursor:pointer;color:var(--text3)">🔎 Verificar snapshots órfãos / parciais (somente leitura)</summary>
+          <div style="margin:6px 0"><button class="btn btn-secondary btn-sm" onclick="lnDiagnosticarSnapshotsOrfaos()">Verificar agora</button></div>
+          <div id="ln-orfaos"></div></details>
       </div>
       <div class="card" style="padding:18px">
         <h3 style="margin:0 0 6px;font-size:15px">Controle Interno</h3>
@@ -28933,6 +28936,84 @@ function lnRenderPreviaBaseOficial(resultado) {
   `;
 }
 
+// ── Higiene de documentos antes de gravar no Firestore ─────────────────────
+// O Firestore rejeita `undefined` (em qualquer nível, inclusive objetos/arrays aninhados, como
+// linhasEnvolvidas dos conflitos). Campo opcional ausente vira `null` (valor válido, mantém a chave);
+// o que não tem representação possível (função, símbolo) aborta ANTES de gravar qualquer coisa.
+function lnSanearParaFirestore(v, caminho, trocas) {
+  if (v === undefined) { trocas.push(caminho); return null; }
+  if (v === null) return null;
+  const t = typeof v;
+  if (t === 'number') { if (!isFinite(v)) { trocas.push(caminho + ' (número inválido)'); return null; } return v; }
+  if (t === 'string' || t === 'boolean') return v;
+  if (t === 'function' || t === 'symbol' || t === 'bigint') throw Object.assign(new Error(`tipo ${t} não é aceito pelo Firestore`), { campo: caminho });
+  if (v instanceof Date) return v;
+  if (Array.isArray(v)) return v.map((x, i) => lnSanearParaFirestore(x, `${caminho}[${i}]`, trocas));
+  const o = {};
+  Object.keys(v).forEach(k => { o[k] = lnSanearParaFirestore(v[k], caminho ? `${caminho}.${k}` : k, trocas); });
+  return o;
+}
+// Devolve o caminho do 1º valor inválido (undefined/função/NaN) ou null se o documento está limpo.
+function lnAcharCampoInvalido(v, caminho) {
+  if (v === undefined) return caminho || '(raiz)';
+  if (v === null || typeof v === 'string' || typeof v === 'boolean' || v instanceof Date) return null;
+  if (typeof v === 'number') return isFinite(v) ? null : caminho;
+  if (typeof v !== 'object') return caminho;
+  const ks = Array.isArray(v) ? v.map((_, i) => i) : Object.keys(v);
+  for (const k of ks) { const r = lnAcharCampoInvalido(v[k], Array.isArray(v) ? `${caminho}[${k}]` : (caminho ? `${caminho}.${k}` : k)); if (r) return r; }
+  return null;
+}
+function lnValidarDocFirestore(doc, rotulo) {
+  const p = lnAcharCampoInvalido(doc, '');
+  if (p) throw new Error(`${rotulo}: o campo "${p}" tem valor inválido para o Firestore (undefined). Importação abortada, nada vigente foi alterado.`);
+}
+// Prepara todos os casos de todas as competências ANTES de qualquer gravação (pré-voo).
+function lnPrepararCasosParaGravar(porComp) {
+  const trocasPorCampo = {}; const preparado = {};
+  Object.keys(porComp).forEach(comp => {
+    preparado[comp] = porComp[comp].map(c => {
+      const trocas = [];
+      let limpo;
+      try { limpo = lnSanearParaFirestore(c, '', trocas); }
+      catch (e) { throw new Error(`Importação abortada antes de gravar: caso ${c.numeroCaso} — campo "${e.campo}": ${e.message}. Nada foi gravado.`); }
+      trocas.forEach(p => { const k = p.replace(/\[\d+\]/g, '[]'); trocasPorCampo[k] = (trocasPorCampo[k] || 0) + 1; });
+      const inv = lnAcharCampoInvalido(limpo, '');
+      if (inv) throw new Error(`Importação abortada antes de gravar: caso ${c.numeroCaso} — campo "${inv}" inválido. Nada foi gravado.`);
+      return limpo;
+    });
+  });
+  return { preparado, trocasPorCampo };
+}
+
+// Diagnóstico SOMENTE LEITURA: snapshots que nenhum mês aponta (tentativas que falharam/abortaram).
+// Nunca exclui nada — só lista, com a contagem do que cada um deixou gravado.
+async function lnDiagnosticarSnapshotsOrfaos() {
+  const el = document.getElementById('ln-orfaos'); if (!el) return;
+  el.innerHTML = '<span style="color:var(--text3)">⏳ Verificando...</span>';
+  try {
+    const cfg = await db.collection('ligacaonova_config').doc('geral').get();
+    const bo = (cfg.exists && cfg.data().baseOficial) || {};
+    const emUso = new Set(lnGruposSnapshots(bo).map(g => g.snapshotId));
+    if (bo.snapshotVigenteId) emUso.add(bo.snapshotVigenteId);
+    const snaps = await db.collection('ligacaonova_base_snapshots').get();
+    const lista = [];
+    for (const d of snaps.docs) {
+      const x = d.data(); if (emUso.has(d.id)) continue;
+      const [ag, cs] = await Promise.all([
+        db.collection('ligacaonova_base_agregados_dia').where('snapshotId','==',d.id).get(),
+        db.collection('ligacaonova_base_casos').where('snapshotId','==',d.id).get()
+      ]);
+      lista.push({ id: d.id, status: x.status || '—', competencia: x.competencia || '—', extracao: x.dataExtracao || null, agregados: ag.size, casos: cs.size, importadoPor: x.importadoPor || '—' });
+    }
+    lista.sort((a,b)=>a.id.localeCompare(b.id));
+    const rot = { gravando:'⚠️ interrompido durante a gravação', falhou:'❌ falhou (marcado)', pronto:'🛡️ completo, mas não apontado', substituido:'📦 substituído por versão mais nova', descartado_mais_antigo:'📦 descartado (havia mais novo)' };
+    el.innerHTML = lista.length
+      ? `<table style="border-collapse:collapse;font-size:12px;width:100%"><thead><tr style="text-align:left;color:var(--text3)"><th style="padding:3px 8px">Snapshot</th><th style="padding:3px 8px">Mês</th><th style="padding:3px 8px">Situação</th><th style="padding:3px 8px;text-align:right">Agregados</th><th style="padding:3px 8px;text-align:right">Casos</th></tr></thead><tbody>${lista.map(o=>`<tr style="border-top:1px solid var(--border)"><td style="padding:3px 8px">${o.id}</td><td style="padding:3px 8px">${o.competencia}</td><td style="padding:3px 8px">${rot[o.status]||o.status}</td><td style="padding:3px 8px;text-align:right">${o.agregados}</td><td style="padding:3px 8px;text-align:right">${o.casos}</td></tr>`).join('')}</tbody></table><div style="color:var(--text3);font-size:12px;margin-top:4px">Nenhum desses é lido pelo sistema (só os apontados em Base Oficial valem). Nada foi excluído — a exclusão, se desejada, é manual e decisão sua.</div>`
+      : '<span style="color:#22c55e">✅ Nenhum snapshot órfão: tudo que existe está em uso ou é histórico apontado.</span>';
+    return lista;
+  } catch (e) { el.innerHTML = '<span style="color:#ef4444">Erro ao verificar: ' + e.message + '</span>'; }
+}
+
 function lnAgregarCasosCompetencia(casos) {
   const agregados = {};
   // Elegível com posto resolvido -> posto real. Pendência de matrícula -> bucket "(Pendente)":
@@ -28958,6 +29039,7 @@ function lnHtmlRelatorioGravacao(rel) {
       <th style="padding:3px 8px">Competência</th><th style="padding:3px 8px">Resultado</th><th style="padding:3px 8px">Extração apontada</th><th style="padding:3px 8px;text-align:right">Casos gravados agora</th><th style="padding:3px 8px;text-align:right">Dias (agregados)</th><th style="padding:3px 8px">Snapshot</th></tr></thead><tbody>
       ${rel.linhas.map(l => `<tr style="border-top:1px solid var(--border)"><td style="padding:3px 8px"><strong>${lnRotuloCompetenciaImport(l.competencia)}</strong></td><td style="padding:3px 8px">${rot[l.resultado]||l.resultado}</td><td style="padding:3px 8px">${l.extracao ? lnFmtData(l.extracao) : '—'}</td><td style="padding:3px 8px;text-align:right">${l.casosGravados}</td><td style="padding:3px 8px;text-align:right">${l.dias}</td><td style="padding:3px 8px;color:var(--text3)">${l.snapshotId}</td></tr>`).join('')}
     </tbody></table>
+    ${rel.camposNormalizados && Object.keys(rel.camposNormalizados).length ? `<div style="color:var(--text3);margin-top:6px">Campos opcionais ausentes na planilha, gravados como vazio (null): ${Object.keys(rel.camposNormalizados).map(k=>`<strong>${k}</strong> ×${rel.camposNormalizados[k]}`).join(', ')}</div>` : ''}
     Meses que o filtro de competências passa a listar: <strong>${rel.mesesNoFiltro.length ? rel.mesesNoFiltro.map(lnFmtCompetencia).join(', ') : '—'}</strong>
     <div style="margin-top:8px"><button class="btn btn-primary btn-sm" onclick="lnMudarAba('resultado')">Ver Resultado Oficial</button></div></div>`;
 }
@@ -28991,6 +29073,10 @@ async function lnConfirmarImportacaoBaseOficial() {
     Object.values(porComp).forEach(arr => arr.forEach(c => { if (vistos.has(c.numeroCaso)) duplicados.push(c.numeroCaso); vistos.add(c.numeroCaso); }));
     if (duplicados.length) throw new Error(`Importação abortada: o caso ${duplicados[0]} apareceria mais de uma vez (${duplicados.length} duplicidade(s)). Nada foi gravado.`);
 
+    // Pré-voo: nenhum `undefined` pode chegar ao Firestore. Opcional ausente → null; inválido → aborta aqui, sem gravar nada.
+    const prep = lnPrepararCasosParaGravar(porComp);
+    Object.keys(prep.preparado).forEach(k => { porComp[k] = prep.preparado[k]; });
+    const camposNormalizados = prep.trocasPorCampo;
     const extArq = resultado.extracoesPorCompetencia || {};
     const ts = Date.now();
     const novos = {}; // competência -> dados do snapshot novo
@@ -29000,7 +29086,7 @@ async function lnConfirmarImportacaoBaseOficial() {
     for (const comp of aplicarOrd) {
       const casos = porComp[comp] || [];
       const snapshotId = `bc_${comp}_${ts}`;
-      const agregadosArr = lnAgregarCasosCompetencia(casos);
+      const agregadosArr = lnAgregarCasosCompetencia(casos).map(a => { const t = []; const l = lnSanearParaFirestore(a, `agregado[${a.posto}|${a.data}]`, t); return l; });
       const ext = extArq[comp] || null;
       await db.collection('ligacaonova_base_snapshots').doc(snapshotId).set({
         id: snapshotId, modelo:'por_competencia', competencia: comp, competencias:[comp], extracoesPorCompetencia:{ [comp]: ext }, dataExtracao: ext,
@@ -29009,14 +29095,14 @@ async function lnConfirmarImportacaoBaseOficial() {
       criados.push(snapshotId);
       for (let i=0;i<agregadosArr.length;i+=400) {
         const batch = db.batch();
-        agregadosArr.slice(i,i+400).forEach(a => batch.set(db.collection('ligacaonova_base_agregados_dia').doc(`${snapshotId}_${a.posto}_${a.data}`), { snapshotId, operacaoId, ...a }));
+        agregadosArr.slice(i,i+400).forEach(a => { const doc = { snapshotId, operacaoId: operacaoId === undefined ? null : operacaoId, ...a }; lnValidarDocFirestore(doc, `agregado ${a.posto} ${a.data}`); batch.set(db.collection('ligacaonova_base_agregados_dia').doc(`${snapshotId}_${a.posto}_${a.data}`), doc); });
         await batch.commit();
       }
       let gravados = 0;
       for (let i=0;i<casos.length;i+=400) {
         const lote = casos.slice(i,i+400);
         const batch = db.batch();
-        lote.forEach(c => batch.set(db.collection('ligacaonova_base_casos').doc(`${snapshotId}_${c.numeroCaso}`), { snapshotId, operacaoId, ...c }));
+        lote.forEach(c => { const doc = { snapshotId, operacaoId: operacaoId === undefined ? null : operacaoId, ...c }; lnValidarDocFirestore(doc, `Caso ${c.numeroCaso}`); batch.set(db.collection('ligacaonova_base_casos').doc(`${snapshotId}_${c.numeroCaso}`), doc); });
         await batch.commit();
         gravados += lote.length;
       }
@@ -29103,13 +29189,13 @@ async function lnConfirmarImportacaoBaseOficial() {
       const gravouAgora = aplicadas.includes(l.competencia);
       return { competencia:l.competencia, resultado:resultadoL, extracao: e ? e.dataExtracao : null, casosGravados: gravouAgora ? novos[l.competencia].qtd : 0, dias: gravouAgora ? novos[l.competencia].dias : 0, snapshotId: e ? e.snapshotId : '—' };
     });
-    const rel = { linhas: linhasRel, mesesNoFiltro };
+    const rel = { linhas: linhasRel, mesesNoFiltro, camposNormalizados };
 
     await db.collection('ligacaonova_importacoes').add({
       tipo:'base_oficial', arquivo: resultado.arquivoNome, usuario: currentUser.email,
       dataHora: firebase.firestore.FieldValue.serverTimestamp(), dataExtracao: resultado.dataExtracao, competencias: aplicadas, extracoesPorCompetencia: extArq,
       consolidacao: plano.linhas.map(l => ({ competencia:l.competencia, acao:l.acao, extracaoArquivo:l.extracaoArquivo, extracaoAtual:l.extracaoAtual, casosArquivo:l.casosArquivo })),
-      workerVersao: resultado.workerVersao || null,
+      workerVersao: resultado.workerVersao || null, camposNormalizados,
       linhasAnalisadas: resultado.totais.linhasRealEncontradas, validos: resultado.totais.elegiveis, ignorados: 0,
       duplicados: resultado.totais.duplicidadeIdentica + resultado.totais.duplicidadeConflito,
       pendencias: resultado.totais.pendenciaMatricula, resultado:'sucesso', erro:null
@@ -29126,9 +29212,10 @@ async function lnConfirmarImportacaoBaseOficial() {
     for (const id of criados) db.collection('ligacaonova_base_snapshots').doc(id).update({ status:'falhou' }).catch(()=>{});
     const _msgVerif = String(e.message||'').startsWith('Verificação pós-gravação');
     toast(_msgVerif ? ('Erro ao confirmar a importação. ' + e.message) : ('Erro ao gravar a importação — a base vigente NÃO foi alterada. ' + e.message), 'err');
+    const _stF = document.getElementById('ln-import-base-status'); if (_stF) _stF.textContent = '❌ ' + e.message + (criados.length ? ` (snapshots parciais: ${criados.join(', ')} — marcados "falhou", nada excluído; veja "Verificar snapshots órfãos")` : '');
     db.collection('ligacaonova_importacoes').add({
       tipo:'base_oficial', usuario: currentUser.email, dataHora: firebase.firestore.FieldValue.serverTimestamp(),
-      resultado:'falha', erro: String(e.message||e)
+      resultado:'falha', erro: String(e.message||e), snapshotsParciais: criados
     }).catch(e2=>console.error('[LigNova] falha ao registrar erro no diagnóstico:', e2));
   } finally {
     if (btn) btn.disabled = false;
