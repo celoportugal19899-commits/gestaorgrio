@@ -3032,16 +3032,20 @@ let unsubIncidencias = null;
 const TIPOS_INCIDENCIA = ['Queda Link','Erro Salesforce','Erro SAP','Totem Senhas Inoperante','AutoAtendimento Inoperante','Scanner Inoperante','Falta de Luz','BR Bloqueado','Outro'];
 const PRIORIDADES = {baixa: '🟢', media: '🟡', alta: '🟠', critica: '🔴'};
 
-async function initIncidencias() {
+async function initIncidencias(modo) {
   if (unsubIncidencias) unsubIncidencias();
-  unsubIncidencias = db.collection('incidencias').onSnapshot(snap => {
+  // 'todas': visão completa (ADM/supervisão); 'proprias': só as abertas pelo próprio usuário
+  const _proprias = modo === 'proprias';
+  const _qI = _proprias ? db.collection('incidencias').where('abertoBy','==',currentUser.id) : db.collection('incidencias');
+  unsubIncidencias = _qI.onSnapshot(snap => {
     // Exclusão LÓGICA: incidência com excluida:true nunca entra em allIncidencias —
     // portanto não participa de cards, badge, gráficos, rankings, listas nem exportação.
     allIncidencias = snap.docs.map(d => ({id: d.id, ...d.data()})).filter(inc => inc.excluida !== true);
     const active = document.querySelector('.view.active');
     if (active && active.id === 'view-col-incidencias') renderColIncidencias();
     if (active && active.id === 'view-adm-incidencias') renderDashboardIncidencias();
-    updateIncBadge();
+    if (!_proprias) updateIncBadge();
+    _lzOk(_proprias ? 'inc:proprias' : 'inc:todas');
   });
 }
 
@@ -3083,8 +3087,7 @@ async function abrirModalNovaIncidencia() {
   sel.innerHTML = '<option value="">Carregando postos...</option>';
   
   // Buscar postos da collection 'postos'
-  const postosSnap = await db.collection('postos').get();
-  const postos = postosSnap.docs.map(d => ({id: d.id, ...d.data()})).sort((a,b) => a.nome.localeCompare(b.nome));
+  const postos = (allPostos.length ? allPostos.map(p => ({...p})) : (await db.collection('postos').get()).docs.map(d => ({id: d.id, ...d.data()}))).sort((a,b) => a.nome.localeCompare(b.nome));
   
   if (postos.length === 0) {
     sel.innerHTML = '<option value="">Nenhum posto cadastrado</option>';
@@ -4250,6 +4253,7 @@ async function doLogout() {
   if (unsubTasks) unsubTasks();
   if (unsubPontos) unsubPontos();
   if (unsubIndevidos) unsubIndevidos();
+  lzEncerrar();
   currentUser = null; allUsers = []; allTasks = [];
   _readyUsers = false; _readyTasks = false; _readyPostos = false;
   _indevidosTab = 'painel'; _indFiltroPosto = ''; _indFiltroServico = ''; _indPagina = 1;
@@ -4260,7 +4264,200 @@ async function doLogout() {
   document.getElementById('login-pass').value = '';
 }
 
+// ══════════════════════════════════════════════════════════════════
+// ECONOMIA DE LEITURAS DO FIRESTORE (plano Spark: 50 mil leituras/dia)
+// • Listeners de coleções grandes só são ligados quando a tela que os usa é aberta
+// • Colaborador/supervisor leem só os PRÓPRIOS pontos/tarefas/RH; posto lê só os próprios registros
+// • Cada coleção é lida no máximo 1x por sessão (nada de releitura a cada render/filtro)
+// • Cache com TTL + compartilhamento de leitura em andamento (evita leituras duplicadas)
+// Nenhuma regra de negócio é alterada — só QUANDO e O QUANTO se lê.
+// ══════════════════════════════════════════════════════════════════
+const _lz = { ativos: {}, prontos: {} };
+const _LZ_VIEWS = {
+  qual:          ['adm-indevidos','adm-qualidade','adm-qualidade-reclamacoes','adm-qualidade-trocas','adm-diag-import'],
+  csat:          ['adm-csat'],
+  comb:          ['sup-combustivel','adm-combustivel','adm-relatorio-comb'],
+  caixaLanc:     ['sup-caixa','adm-caixas'],
+  rh:            ['adm-rh-holerite','adm-rh-atestado','adm-rh-folha','adm-medidas-disciplinares','sup-medidas-disciplinares','sup-demandas-equipe','adm-ponto'],
+  pontosFull:    ['adm-ponto','adm-team','sup-demandas-equipe'],
+  tasksFull:     ['adm-dashboard','adm-tasks','adm-team','sup-demandas-equipe'],
+  registrosFull: ['adm-postos','supervisor-postos'],
+  incTodas:      ['adm-incidencias'],
+  incProprias:   ['col-incidencias']
+};
+const _lzInit = {
+  qual()          { initIndevidos(); initReclamacoes(); initTrocaOficial(); initEsforcoTroca(); },
+  csat()          { initCsatAcoes(); },
+  comb()          { if (unsubCombBadge) { unsubCombBadge(); unsubCombBadge = null; } initCombustivel(); },
+  caixaLanc()     { initCaixaLancamentos(); },
+  rh()            { _lzDesligarBadgesRH(); initRH(false); initFolhaPonto(false); },
+  pontosFull()    { initPonto(true); },
+  tasksFull()     { _iniciarTasks(true); },
+  registrosFull() { _iniciarRegistros(true); },
+  incTodas()      { if (unsubBadgeInc) { unsubBadgeInc(); unsubBadgeInc = null; } initIncidencias('todas'); },
+  incProprias()   { if (_lz.ativos.incTodas) return; initIncidencias('proprias'); }
+};
+function _lzAplica(g) {
+  if (!currentUser || currentUser.role === 'posto') return false;
+  if (g === 'tasksFull' && currentUser.role === 'admin') return false; // admin já nasce com todas as tarefas
+  return true;
+}
+function lzGarantir(g) {
+  if (_lz.ativos[g] || !_lzInit[g]) return;
+  _lz.ativos[g] = true;
+  try { _lzInit[g](); } catch (e) { console.error('[Leituras] falha ao ligar', g, e); _lz.ativos[g] = false; }
+}
+function lzParaView(v) {
+  if (!currentUser) return;
+  Object.keys(_LZ_VIEWS).forEach(g => { if (_LZ_VIEWS[g].includes(v) && _lzAplica(g)) lzGarantir(g); });
+}
+// Primeira carga de um grupo: re-renderiza a tela ativa uma única vez
+function _lzOk(g) {
+  if (_lz.prontos[g]) return;
+  _lz.prontos[g] = true;
+  refreshCurrentView();
+}
+function _lzTs(v) { if (!v) return 0; if (typeof v.toMillis === 'function') return v.toMillis(); if (typeof v === 'number') return v; const t = Date.parse(v); return isNaN(t) ? 0 : t; }
+function _lzCmpDesc(campo) { return (a, b) => _lzTs(b[campo]) - _lzTs(a[campo]); }
+
+// Cache com TTL (10 min) para leituras de coleção inteira + compartilhamento de leitura em andamento
+const _CACHE_TTL_MS = 10 * 60 * 1000;
+const _cacheTs = {};
+function _cacheFresco(k, ttl) { return !!_cacheTs[k] && (Date.now() - _cacheTs[k] < (ttl || _CACHE_TTL_MS)); }
+function _cacheMarca(k) { _cacheTs[k] = Date.now(); }
+function _cacheInvalida(k) { if (k) delete _cacheTs[k]; else Object.keys(_cacheTs).forEach(x => delete _cacheTs[x]); }
+const _emVoo = {};
+function _compartilhar(k, fn) {
+  if (_emVoo[k]) return _emVoo[k];
+  const p = Promise.resolve().then(fn).finally(() => { delete _emVoo[k]; });
+  _emVoo[k] = p; return p;
+}
+
+// Badges do ADM sem carregar a coleção inteira (só os docs pendentes)
+let unsubBadgeInc = null;
+function initBadgeIncAdmin() {
+  if (unsubBadgeInc) unsubBadgeInc();
+  unsubBadgeInc = db.collection('incidencias').where('status', '==', 'aberta').onSnapshot(snap => {
+    if (_lz.ativos.incTodas) return; // listener completo assume o badge
+    const n = snap.docs.filter(d => d.data().excluida !== true).length;
+    const badge = document.getElementById('inc-badge');
+    if (badge) { if (n > 0) { badge.textContent = n; badge.style.display = 'inline'; } else badge.style.display = 'none'; }
+  });
+}
+let unsubCombBadge = null, unsubBadgeHol = null, unsubBadgeAtest = null, unsubBadgeFolha = null;
+function initCombBadgeAdmin() {
+  if (unsubCombBadge) unsubCombBadge();
+  unsubCombBadge = db.collection('recargas').where('status', '==', 'aguarda_aprovacao').onSnapshot(snap => {
+    if (_lz.ativos.comb) return; // listener completo assume o badge
+    const badge = document.getElementById('comb-badge');
+    if (badge) { badge.textContent = snap.size; badge.style.display = snap.size > 0 ? 'inline' : 'none'; }
+  });
+}
+function _lzDesligarBadgesRH() {
+  if (unsubBadgeHol)   { unsubBadgeHol();   unsubBadgeHol = null; }
+  if (unsubBadgeAtest) { unsubBadgeAtest(); unsubBadgeAtest = null; }
+  if (unsubBadgeFolha) { unsubBadgeFolha(); unsubBadgeFolha = null; }
+}
+function initBadgesRHAdmin() {
+  _lzDesligarBadgesRH();
+  if (currentUser && currentUser.role === 'admin') {
+    unsubBadgeHol = db.collection('holerites').where('status', '==', 'assinado').onSnapshot(snap => {
+      if (_lz.ativos.rh) return;
+      const n = snap.docs.filter(d => !d.data().vistoAdm).length;
+      const b = document.getElementById('holerite-badge-adm');
+      if (b) { b.textContent = n; b.style.display = n > 0 ? 'inline' : 'none'; }
+    });
+    unsubBadgeAtest = db.collection('atestados').where('vistoAdm', '==', false).onSnapshot(snap => {
+      if (_lz.ativos.rh) return;
+      const b = document.getElementById('atestado-badge-adm');
+      if (b) { b.textContent = snap.size; b.style.display = snap.size > 0 ? 'inline' : 'none'; }
+    });
+  }
+  if (isRHManager()) {
+    unsubBadgeFolha = db.collection('folhasPonto').where('status', '==', 'assinado').onSnapshot(snap => {
+      if (_lz.ativos.rh) return;
+      const n = snap.docs.filter(d => !d.data().vistoManager).length;
+      const b = document.getElementById('folha-badge-adm');
+      if (b) { b.textContent = n; b.style.display = n > 0 ? 'inline' : 'none'; }
+    });
+  }
+}
+
+let unsubPostos = null;
+function _iniciarTasks(todas) {
+  if (unsubTasks) unsubTasks();
+  const q = todas ? db.collection('tasks').orderBy('createdAt','desc')
+                  : db.collection('tasks').where('assignedTo','==',currentUser.id);
+  unsubTasks = q.onSnapshot(snap => {
+    allTasks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (!todas) allTasks.sort(_lzCmpDesc('createdAt'));
+    _readyTasks = true;
+    if (todas) _lzOk('tasksFull');
+    refreshCurrentView();
+  });
+}
+function _iniciarRegistros(todos) {
+  if (unsubRegistros) unsubRegistros();
+  // todos: só o mês corrente (hoje + exportação do mês); meses anteriores são buscados sob demanda na exportação
+  const q = todos ? db.collection('registros').where('data','>=',todayKey().substr(0,7)+'-01') : db.collection('registros').where('postoId','==',currentUser.id);
+  unsubRegistros = q.onSnapshot(snap => {
+    allRegistros = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (todos) _lzOk('registrosFull');
+    refreshCurrentView();
+  });
+}
+// Encerra TODOS os listeners e limpa os dados em memória (logout / troca de usuário)
+function lzEncerrar() {
+  try { if (unsubUsers) { unsubUsers(); unsubUsers = null; } } catch (e) {}
+  try { if (unsubTasks) { unsubTasks(); unsubTasks = null; } } catch (e) {}
+  try { if (unsubRegistros) { unsubRegistros(); unsubRegistros = null; } } catch (e) {}
+  try { if (unsubPostos) { unsubPostos(); unsubPostos = null; } } catch (e) {}
+  try { if (unsubPontos) { unsubPontos(); unsubPontos = null; } } catch (e) {}
+  try { if (unsubIncidencias) { unsubIncidencias(); unsubIncidencias = null; } } catch (e) {}
+  try { if (unsubCaixas) { unsubCaixas(); unsubCaixas = null; } } catch (e) {}
+  try { if (unsubCaixaLancamentos) { unsubCaixaLancamentos(); unsubCaixaLancamentos = null; } } catch (e) {}
+  try { if (unsubRecargas) { unsubRecargas(); unsubRecargas = null; } } catch (e) {}
+  try { if (unsubUsos) { unsubUsos(); unsubUsos = null; } } catch (e) {}
+  try { if (unsubPropostas) { unsubPropostas(); unsubPropostas = null; } } catch (e) {}
+  try { if (unsubHolerites) { unsubHolerites(); unsubHolerites = null; } } catch (e) {}
+  try { if (unsubAtestados) { unsubAtestados(); unsubAtestados = null; } } catch (e) {}
+  try { if (unsubMedidas) { unsubMedidas(); unsubMedidas = null; } } catch (e) {}
+  try { if (unsubFolhas) { unsubFolhas(); unsubFolhas = null; } } catch (e) {}
+  try { if (unsubCsatPlanosAcao) { unsubCsatPlanosAcao(); unsubCsatPlanosAcao = null; } } catch (e) {}
+  try { if (unsubCsatMotivosDetectados) { unsubCsatMotivosDetectados(); unsubCsatMotivosDetectados = null; } } catch (e) {}
+  try { if (unsubIndevidos) { unsubIndevidos(); unsubIndevidos = null; } } catch (e) {}
+  try { if (unsubReclamacoes) { unsubReclamacoes(); unsubReclamacoes = null; } } catch (e) {}
+  try { if (unsubTrocaOficial) { unsubTrocaOficial(); unsubTrocaOficial = null; } } catch (e) {}
+  try { if (unsubEsforcoTroca) { unsubEsforcoTroca(); unsubEsforcoTroca = null; } } catch (e) {}
+  try { if (unsubNotifs) { unsubNotifs(); unsubNotifs = null; } } catch (e) {}
+  try { if (unsubCombBadge) { unsubCombBadge(); unsubCombBadge = null; } } catch (e) {}
+  try { if (unsubBadgeInc) { unsubBadgeInc(); unsubBadgeInc = null; } } catch (e) {}
+  try { if (unsubBadgeHol) { unsubBadgeHol(); unsubBadgeHol = null; } } catch (e) {}
+  try { if (unsubBadgeAtest) { unsubBadgeAtest(); unsubBadgeAtest = null; } } catch (e) {}
+  try { if (unsubBadgeFolha) { unsubBadgeFolha(); unsubBadgeFolha = null; } } catch (e) {}
+  allRegistros = [];
+  allPontos = [];
+  allIncidencias = [];
+  allCaixas = [];
+  allCaixaLancamentos = [];
+  allRecargas = [];
+  allUsos = [];
+  allPropostas = [];
+  allHolerites = [];
+  allAtestados = [];
+  allMedidas = [];
+  allFolhas = [];
+  allCsatPlanosAcao = [];
+  allCsatMotivosDetectados = [];
+  allReclamacoes = [];
+  allTrocasOficial = [];
+  allEsforcoTroca = [];
+  _lz.ativos = {}; _lz.prontos = {};
+  _cacheInvalida(); _lnCasosCache = {};
+}
+
 function startApp() {
+  _lz.ativos = {}; _lz.prontos = {};
   showPage('app');
   const av = document.getElementById('sb-avatar');
   const isPosto = currentUser.role === 'posto';
@@ -4312,39 +4509,35 @@ function startApp() {
       _readyUsers = true;
       refreshCurrentView();
     });
-    unsubTasks = db.collection('tasks').orderBy('createdAt','desc').onSnapshot(snap => {
-      allTasks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      _readyTasks = true;
-      refreshCurrentView();
-    });
+    // Admin: todas as tarefas. Demais: só as atribuídas a si (todas, sob demanda, nas telas de equipe).
+    _iniciarTasks(isAdmin);
   } else {
     // Posto não precisa de users/tasks — marcar como pronto imediatamente
     _readyUsers = true;
     _readyTasks = true;
   }
-  db.collection('postos').onSnapshot(snap => {
+  if (unsubPostos) unsubPostos();
+  unsubPostos = db.collection('postos').onSnapshot(snap => {
     allPostos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     _readyPostos = true;
     refreshCurrentView();
   });
-  unsubRegistros = db.collection('registros').onSnapshot(snap => {
-    allRegistros = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    refreshCurrentView();
-  });
+  // Posto: só os próprios registros. Demais perfis: todos, sob demanda (telas de postos).
+  if (isPosto) _iniciarRegistros(false);
   if (isAdmin) showView('adm-dashboard');
   else if (isPosto) showView('posto-registro');
   else if (isSupervisor) showView('supervisor-postos');
   else showView('col-tasks');
-  if (!isPosto) initPonto();
-  if (!isPosto) initIncidencias();
-  if (!isPosto) initRH();
-  if (!isPosto) initFolhaPonto();
-  initCaixas();
-  initCombustivel();
+  // Perfis não-admin: só o que é deles (barato). Admin: nada pesado no login — liga ao abrir a tela.
+  if (!isPosto && !isAdmin) { initPonto(false); initRH(true); initFolhaPonto(true); }
+  if (isAdmin) initBadgeIncAdmin();
+  if (!isPosto) initCaixas();
+  if (isAdmin) { initCombBadgeAdmin(); initBadgesRHAdmin(); }
   initNotificacoes();
-  initPropostas();
-  if (!isPosto) { initCsatAcoes(); if (isAdmin) seedCsatSugestoesSeNecessario(); }
-  if (!isPosto) { initIndevidos(); initReclamacoes(); initTrocaOficial(); initEsforcoTroca(); }
+  if (!isPosto) initPropostas();
+  if (!isPosto && isAdmin) seedCsatSugestoesSeNecessario();
+  // Qualidade (Indevidos/Reclamações/Trocas/Esforço), CSAT-ações, Combustível, lançamentos de Caixa,
+  // RH completo, pontos/tarefas/registros completos: ligados por lzParaView() ao abrir cada tela.
   setTimeout(verificarAlertas, 5000);
 }
 
@@ -4597,6 +4790,8 @@ function _doRefreshCurrentView() {
 function showView(name, el) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById('view-' + name).classList.add('active');
+  lzParaView(name);
+  if (name !== 'adm-ligacaonova') _lnCasosCache = {}; // libera memória/cache dos casos ao sair da Ligação Nova
   document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
   if (el) el.classList.add('active');
   if (name === 'adm-postos' || name === 'adm-indicadores' || name === 'adm-csat' || name === 'adm-pos' || name === 'adm-indevidos' || name === 'adm-ligacaonova') {
@@ -5085,13 +5280,16 @@ function validarHorarioPonto(tipo) {
   return { valido: true };
 }
 
-async function initPonto() {
+async function initPonto(todos) {
   if (unsubPontos) unsubPontos();
-  unsubPontos = db.collection('pontos').onSnapshot(snap => {
+  // todos=false: só os pontos do próprio usuário (colaborador); todos=true: ADM/equipe, sob demanda
+  const _qP = todos ? db.collection('pontos') : db.collection('pontos').where('userId','==',currentUser.id);
+  unsubPontos = _qP.onSnapshot(snap => {
     allPontos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     const active = document.querySelector('.view.active');
     if (active && active.id === 'view-adm-ponto') renderAdmPonto();
     if (active && active.id === 'view-col-ponto') renderColPonto();
+    _lzOk(todos ? 'pontos:todos' : 'pontos:proprio');
   });
 }
 
@@ -6340,6 +6538,7 @@ async function carregarTodosIndicadores() {
   const snap=await db.collection('indicadores').get();
   allIndicadores=snap.docs.map(d=>({id:d.id,...d.data()}));
   indicadoresCarregados=true;
+  _cacheMarca('ind');
   try {
     const cfg = await db.collection('indicadores_config').doc('geral').get();
     if (cfg.exists && cfg.data().ultimoImport) _indicadoresUltimoImportTxt = cfg.data().ultimoImport;
@@ -6347,12 +6546,19 @@ async function carregarTodosIndicadores() {
 }
 
 // ── Init completo ──
-async function initIndicadoresMesFiltro() {
+async function initIndicadoresMesFiltro() { return _compartilhar('ind', _initIndicadoresMesFiltroImpl); }
+async function _initIndicadoresMesFiltroImpl() {
+  if (indicadoresCarregados && allIndicadores.length && _cacheFresco('ind')) {
+    // Dados já em memória (leitura recente): não relê o Firestore
+    const _lt = document.getElementById('ind-import-log-txt');
+    if (_lt && _indicadoresUltimoImportTxt) _lt.textContent = _indicadoresUltimoImportTxt;
+  } else {
   // 0. Restaurar info do último import
   try {
     const cfg = await db.collection('indicadores_config').doc('geral').get();
     if (cfg.exists) {
       const logTxt = document.getElementById('ind-import-log-txt');
+      if(cfg.data().ultimoImport) _indicadoresUltimoImportTxt = cfg.data().ultimoImport;
       if(logTxt && cfg.data().ultimoImport) logTxt.textContent = cfg.data().ultimoImport;
     }
   } catch(e){}
@@ -6360,6 +6566,8 @@ async function initIndicadoresMesFiltro() {
   const snap=await db.collection('indicadores').get();
   allIndicadores=snap.docs.map(d=>({id:d.id,...d.data()}));
   indicadoresCarregados=true;
+  _cacheMarca('ind');
+  }
 
   // 2. Se vazio → importar histórico automaticamente
   if(!allIndicadores.length) {
@@ -7025,10 +7233,18 @@ async function renderSupervisorPostos() {
   document.getElementById('supervisor-postos-body').innerHTML = `<div class="ponto-team-table"><div style="display:grid;grid-template-columns:1.8fr 1fr 1fr 1fr;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border)"><span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-weight:700">Posto</span><span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-weight:700">Prev. Abertura</span><span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-weight:700">Abertura</span><span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-weight:700">Status</span></div>${rows}</div>`;
 }
 
-function exportarPostosExcel() {
+// Registros de um mês: o mês corrente já está em memória; meses anteriores são lidos 1x (cache) só quando exportados
+const _regMesCache = {};
+async function _registrosDoMes(mes) {
+  if (mes >= todayKey().substr(0,7)) return allRegistros.filter(r=>r.data&&r.data.startsWith(mes));
+  if (_regMesCache[mes]) return _regMesCache[mes];
+  const snap = await db.collection('registros').where('data','>=',mes+'-01').where('data','<=',mes+'-31').get();
+  return (_regMesCache[mes] = snap.docs.map(d => ({ id: d.id, ...d.data() })));
+}
+async function exportarPostosExcel() {
   const sel = document.getElementById('postos-mes-filtro');
   const mes = sel?sel.value:todayKey().substr(0,7);
-  const regs = allRegistros.filter(r=>r.data&&r.data.startsWith(mes));
+  const regs = await _registrosDoMes(mes);
   if (!regs.length){toast('Nenhum registro neste mês','err');return;}
   const header=['Posto','Supervisor','Data','Abertura','Prev. Abertura','Atraso (min)','Fechamento','Justificativa'];
   const rows=regs.map(r=>[r.postoNome||'',r.supervisor||'',r.data,fmtHHMM(r.abertura),allPostos.find(p=>p.id===r.postoId)?.abre||'',r.atrasoAbertura||0,fmtHHMM(r.fechamento),r.justificativa||'']);
@@ -7038,11 +7254,11 @@ function exportarPostosExcel() {
   toast('Exportado!','ok');
 }
 
-function exportarPostosPDF() {
+async function exportarPostosPDF() {
   const sel = document.getElementById('postos-mes-filtro');
   const mes = sel?sel.value:todayKey().substr(0,7);
   const [ano,numMes] = mes.split('-');
-  const regs = allRegistros.filter(r=>r.data&&r.data.startsWith(mes));
+  const regs = await _registrosDoMes(mes);
   let html=`<html><head><meta charset="UTF-8"><style>body{font-family:Arial,sans-serif;padding:24px;font-size:12px}h1{font-size:16px}h2{font-size:13px;color:#555;margin:16px 0 6px}table{width:100%;border-collapse:collapse}th{background:#1a1a2e;color:#fff;padding:6px 8px;text-align:left}td{padding:6px 8px;border-bottom:1px solid #eee}.atrasado{color:#dc2626;font-weight:bold}</style></head><body>`;
   html+=`<h1>Gestão Conect@ — Relatório de Postos</h1><p style="color:#666">${nomeMes(parseInt(numMes)-1)} ${ano} • ${new Date().toLocaleDateString('pt-BR')}</p>`;
   ['Leonardo','Victor'].forEach(sup=>{
@@ -7115,9 +7331,13 @@ function initCaixas() {
     if (active?.id === 'view-adm-caixas') renderAdmCaixas();
     if (active?.id === 'view-sup-caixa') renderSupCaixa();
   });
+}
+
+function initCaixaLancamentos() {
   if (unsubCaixaLancamentos) unsubCaixaLancamentos();
   unsubCaixaLancamentos = db.collection('caixa_lancamentos').orderBy('createdAt','desc').onSnapshot(snap => {
     allCaixaLancamentos = snap.docs.map(d => ({id:d.id,...d.data()}));
+    _lzOk('caixaLanc');
     const active = document.querySelector('.view.active');
     if (active?.id === 'view-sup-caixa') renderSupCaixa();
     // Correção: a Visão Gestão Financeira (e a "última movimentação" da
@@ -8589,6 +8809,7 @@ function initCombustivel() {
   if (unsubUsos) unsubUsos();
   unsubRecargas = db.collection('recargas').onSnapshot(snap => {
     allRecargas = snap.docs.map(d=>({id:d.id,...d.data()}));
+    _lzOk('comb');
     const pend = allRecargas.filter(r=>r.status==='aguarda_aprovacao').length;
     const badge = document.getElementById('comb-badge');
     if (badge) { badge.textContent=pend; badge.style.display=pend>0?'inline':'none'; }
@@ -12516,25 +12737,29 @@ let holeriteModoEnvio = 'completo'; // 'completo' | 'seletivo'
 let atestadoFileBase64 = null;
 let assinadoFileBase64 = null;
 
-async function initRH() {
+async function initRH(proprio) {
   if (unsubHolerites) unsubHolerites();
   if (unsubAtestados) unsubAtestados();
   if (unsubMedidas)   unsubMedidas();
-  unsubHolerites = db.collection('holerites').orderBy('enviadoEm','desc').onSnapshot(snap => {
+  // proprio=true: colaborador lê só os próprios; false: visão completa (ADM/RH/supervisão), sob demanda
+  unsubHolerites = (proprio ? db.collection('holerites').where('colaboradorId','==',currentUser.id) : db.collection('holerites').orderBy('enviadoEm','desc')).onSnapshot(snap => {
     allHolerites = snap.docs.map(d => ({id: d.id, ...d.data()}));
+    if (proprio) allHolerites.sort(_lzCmpDesc('enviadoEm'));
+    _lzOk(proprio ? 'rh:proprio' : 'rh:todos');
     updateHoleriteBadges();
     const active = document.querySelector('.view.active');
     if (active && active.id === 'view-adm-rh-holerite') renderAdmRhHolerite();
     if (active && active.id === 'view-col-rh-holerite') renderColRhHolerite();
   });
-  unsubAtestados = db.collection('atestados').orderBy('enviadoEm','desc').onSnapshot(snap => {
+  unsubAtestados = (proprio ? db.collection('atestados').where('colaboradorId','==',currentUser.id) : db.collection('atestados').orderBy('enviadoEm','desc')).onSnapshot(snap => {
     allAtestados = snap.docs.map(d => ({id: d.id, ...d.data()}));
+    if (proprio) allAtestados.sort(_lzCmpDesc('enviadoEm'));
     updateAtestadoBadge();
     const active = document.querySelector('.view.active');
     if (active && active.id === 'view-adm-rh-atestado') renderAdmRhAtestado();
     if (active && active.id === 'view-col-rh-atestado') renderColRhAtestado();
   });
-  unsubMedidas = db.collection('medidas_disciplinares').orderBy('createdAt','desc').onSnapshot(snap => {
+  unsubMedidas = proprio ? null : db.collection('medidas_disciplinares').orderBy('createdAt','desc').onSnapshot(snap => {
     allMedidas = snap.docs.map(d => ({id: d.id, ...d.data()}));
     const active = document.querySelector('.view.active');
     if (active && (active.id === 'view-adm-medidas-disciplinares' || active.id === 'view-sup-medidas-disciplinares')) md_renderTudo();
@@ -14351,10 +14576,11 @@ function isRHManager() {
   return currentUser.email === 'plicila.silva@gruporgbrasil.com';
 }
 
-function initFolhaPonto() {
+function initFolhaPonto(proprio) {
   if (unsubFolhas) unsubFolhas();
-  unsubFolhas = db.collection('folhasPonto').orderBy('enviadoEm','desc').onSnapshot(snap => {
+  unsubFolhas = (proprio ? db.collection('folhasPonto').where('colaboradorId','==',currentUser.id) : db.collection('folhasPonto').orderBy('enviadoEm','desc')).onSnapshot(snap => {
     allFolhas = snap.docs.map(d => ({id:d.id,...d.data()}));
+    if (proprio) allFolhas.sort(_lzCmpDesc('enviadoEm'));
     updateFolhaBadges();
     const active = document.querySelector('.view.active');
     if (active?.id==='view-adm-rh-folha' && document.getElementById('folha-tab-historico')?.classList.contains('active')) renderHistoricoFolhas();
@@ -14971,15 +15197,18 @@ function initCsatAcoes() {
   if (unsubCsatPlanosAcao) unsubCsatPlanosAcao();
   unsubCsatPlanosAcao = db.collection('csat_planos_acao').onSnapshot(snap => {
     allCsatPlanosAcao = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    _lzOk('csat:planos');
   }, err => console.error('initCsatAcoes (planos)', err));
 
   if (unsubCsatMotivosDetectados) unsubCsatMotivosDetectados();
   unsubCsatMotivosDetectados = db.collection('csat_motivos_detectados').onSnapshot(snap => {
     allCsatMotivosDetectados = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    _lzOk('csat:motivos');
   }, err => console.error('initCsatAcoes (motivos)', err));
 
   db.collection('csat_acao_sugestoes').get().then(snap => {
     allCsatAcaoSugestoes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    _lzOk('csat:sugestoes');
   }).catch(err => console.error('initCsatAcoes (sugestoes)', err));
 }
 
@@ -15990,10 +16219,15 @@ function csatBgNota(n) {
 }
 function csatLabelMes(m){ const[,mo]=m.split('-'); return `${CSAT_MESES_NOME[+mo]}/${m.slice(2,4)}`; }
 
-async function initCsatMesFiltro() {
+async function initCsatMesFiltro() { return _compartilhar('csat', _initCsatMesFiltroImpl); }
+async function _initCsatMesFiltroImpl() {
   try {
-    const snap = await db.collection('csat').get();
     const mesesSet = new Set();
+    if (csatAllData.length && _cacheFresco('csat')) {
+      // Dados já em memória (leitura recente): não relê o Firestore
+      csatAllData.forEach(d => { if (d.mesRef) mesesSet.add(d.mesRef); });
+    } else {
+    const snap = await db.collection('csat').get();
     csatAllData = [];
     snap.forEach(doc => {
       const d = doc.data();
@@ -16004,6 +16238,8 @@ async function initCsatMesFiltro() {
       const cfg = await db.collection('csat_config').doc('geral').get();
       if (cfg.exists) csatUltimaAtualizacao = cfg.data().ultimaAtualizacao || '';
     } catch(e){}
+    _cacheMarca('csat');
+    }
     // Atualizar subtitle do topbar com data
     const subtitleEl = document.getElementById('csat-subtitle');
     if (subtitleEl) {
@@ -16943,6 +17179,7 @@ async function importarCSAT(input) {
     if(logEl) logEl.textContent=`✅ ${count} registros + comentários importados em ${new Date().toLocaleString('pt-BR')} — ${file.name}`;
     input.value='';
     csatMesesSelecionados=[];
+    _cacheInvalida('csat'); // importou: força releitura
     await initCsatMesFiltro();
     renderCSAT();
   } catch(e){
@@ -17015,6 +17252,7 @@ async function corrigirMaioOficial() {
       });
     });
     await batch.commit();
+    _cacheInvalida('pos');
     toast('✅ Maio corrigido com dados oficiais (R$ 151.517,73)', 'ok');
     if(btn){ btn.textContent = '✅ Corrigido'; }
     renderPOS();
@@ -17091,8 +17329,14 @@ function getPOSMeta(posto, mesRef){
   return posMetasCustom[k] ?? POS_METAS_FIXAS[k] ?? 1500;
 }
 
-async function initPOS() {
+async function initPOS() { return _compartilhar('pos', _initPOSImpl); }
+async function _initPOSImpl() {
   try {
+    const mesesSet = new Set();
+    if (posAllResultados.length && _cacheFresco('pos')) {
+      // Dados já em memória (leitura recente): não relê o Firestore
+      posAllResultados.forEach(d => { if(d.mesRef) mesesSet.add(d.mesRef); });
+    } else {
     // Carregar metas customizadas
     try {
       const mc = await db.collection('pos_config').doc('metas').get();
@@ -17110,8 +17354,9 @@ async function initPOS() {
     // Carregar resultados
     const snap = await db.collection('pos_resultados').get();
     posAllResultados = [];
-    const mesesSet = new Set();
     snap.forEach(doc=>{ const d=doc.data(); posAllResultados.push(d); if(d.mesRef) mesesSet.add(d.mesRef); });
+    _cacheMarca('pos');
+    }
     posMesesDisponiveis = [...mesesSet].sort();
     if(!posMesSelecionado && posMesesDisponiveis.length) posMesSelecionado = posMesesDisponiveis[posMesesDisponiveis.length-1];
     // Preencher select
@@ -17686,6 +17931,7 @@ async function confirmarImportPOS(){
     posAtualizarBadge(dataFormatada);
     document.getElementById('modal-pos-import').classList.remove('open');
     fileInput.value='';
+    _cacheInvalida('pos'); // importou: força releitura
     await initPOS();
     toast(`Histórico importado: ${mesesLabel}!`,'ok');
   } catch(e){ alert('Erro: '+e.message); console.error(e); }
@@ -22934,12 +23180,16 @@ let _opAllIndicadores = [], _opAllCsat = [], _opAllPos = [];
 // Oficial aqui, nunca grava nada de volta.
 let _opLnAgregados = [], _opLnDataExtracao = '', _opLnCompetenciaVigente = '', _opLnSnapshotId = '';
 
-async function _opGarantirDadosCarregados() {
+async function _opGarantirDadosCarregados() { return _compartilhar('opdados', _opGarantirDadosCarregadosImpl); }
+async function _opGarantirDadosCarregadosImpl() {
   if (!indicadoresCarregados) await carregarTodosIndicadores();
   if (!csatAllData.length) await initCsatMesFiltro();
   if (!posAllResultados.length) await initPOS();
-  try { const c = await db.collection('indicadores_config').doc('geral').get(); if (c.exists) _opUltimaAtualizacaoIndicadores = c.data().ultimoImport || ''; } catch(e){}
-  try { const c = await db.collection('pos_config').doc('geral').get(); if (c.exists) _opUltimaAtualizacaoPos = c.data().ultimoImport || ''; } catch(e){}
+  if (!_cacheFresco('opcfg')) {
+    try { const c = await db.collection('indicadores_config').doc('geral').get(); if (c.exists) _opUltimaAtualizacaoIndicadores = c.data().ultimoImport || ''; } catch(e){}
+    try { const c = await db.collection('pos_config').doc('geral').get(); if (c.exists) _opUltimaAtualizacaoPos = c.data().ultimoImport || ''; } catch(e){}
+    _cacheMarca('opcfg');
+  }
   // Espelhos só de leitura, com mesRef normalizado — nunca gravados de volta,
   // nunca substituem os arrays originais usados pelos módulos homologados.
   _opAllIndicadores = allIndicadores.map(d => ({...d, mesRef:_opNormMesRef(d.mesRef)}));
@@ -22950,16 +23200,26 @@ async function _opGarantirDadosCarregados() {
   // posto/dia (já prontos, nunca os casos individuais) — mesma fonte que o
   // próprio submódulo usa pro Resultado Oficial, garantindo os mesmos números.
   try {
+    if (_cacheFresco('opln')) return; // ponteiro + agregados da Ligação Nova já em memória
     const cfgSnap = await db.collection('ligacaonova_config').doc('geral').get();
     const bo = cfgSnap.exists ? cfgSnap.data().baseOficial : null;
     if (bo && lnGruposSnapshots(bo).length) {
       _opLnSnapshotId = lnChaveGrupos(lnGruposSnapshots(bo));
       _opLnDataExtracao = bo.dataExtracaoReal || '';
       _opLnCompetenciaVigente = bo.competenciaVigente || '';
-      const agDocs = await lnCarregarDocsGrupos('ligacaonova_base_agregados_dia', bo, lnCompDoAgregado);
-      _opLnAgregados = agDocs.map(lnNormalizarAgregado);
+      // Reaproveita os agregados que o submódulo Ligação Nova já tem em memória (mesma fonte, mesma normalização)
+      if (_lnAgregadosCache.snapshotId === _opLnSnapshotId && _lnAgregadosCache.lista) {
+        _opLnAgregados = _lnAgregadosCache.lista;
+      } else {
+        const agDocs = await lnCarregarDocsGrupos('ligacaonova_base_agregados_dia', bo, lnCompDoAgregado);
+        _opLnAgregados = agDocs.map(lnNormalizarAgregado);
+        _lnAgregadosCache = { snapshotId: _opLnSnapshotId, lista: _opLnAgregados };
+        _lnCompetenciasDisponiveis = Array.from(new Set(_opLnAgregados.filter(a=>a.data).map(a=>a.data.slice(0,7)))).sort();
+      }
+      _cacheMarca('opln');
     } else {
       _opLnAgregados = []; _opLnDataExtracao=''; _opLnCompetenciaVigente='';
+      _cacheMarca('opln');
     }
   } catch(e) { console.error('[Dashboard Operacional] erro ao carregar Email Ligação Nova (indicador fica indisponível):', e); _opLnAgregados=[]; _opLnDataExtracao=''; _opLnCompetenciaVigente=''; }
 }
@@ -27163,9 +27423,20 @@ async function lnCarregarDocsGrupos(colecao, bo, compDoDoc, ajustarQuery) {
   return [].concat(...partes);
 }
 function lnCompDoAgregado(a) { return a && a.data ? String(a.data).slice(0,7) : LN_SEM_DATA; }
+// Cache em memória dos casos vigentes (por conjunto de snapshots + filtro), 10 min, liberado ao sair do módulo.
+let _lnCasosCache = {};
 async function lnCarregarCasosVigentes(boOpc, ajustarQuery) {
   const bo = boOpc || (_lnConfig && _lnConfig.baseOficial);
-  return lnCarregarDocsGrupos('ligacaonova_base_casos', bo, lnCompDoCaso, ajustarQuery);
+  const chave = lnChaveGrupos(lnGruposSnapshots(bo));
+  const k = chave + '|' + (ajustarQuery ? String(ajustarQuery) : '*');
+  const c = _lnCasosCache[k];
+  if (chave && c && (Date.now() - c.quando) < _CACHE_TTL_MS) return c.linhas.slice();
+  const linhas = await lnCarregarDocsGrupos('ligacaonova_base_casos', bo, lnCompDoCaso, ajustarQuery);
+  if (chave) {
+    Object.keys(_lnCasosCache).forEach(x => { if (x.split('|')[0] !== chave) delete _lnCasosCache[x]; });
+    _lnCasosCache[k] = { quando: Date.now(), linhas };
+  }
+  return linhas.slice();
 }
 async function lnObterAgregadosVigentes() {
   const bo = _lnConfig && _lnConfig.baseOficial;
@@ -29170,6 +29441,7 @@ async function lnConfirmarImportacaoBaseOficial() {
     });
     _lnConfig = cfgVerif.exists ? cfgVerif.data() : _lnConfig;
     _lnAgregadosCache = { snapshotId: null, lista: null };
+    _cacheInvalida('opln'); _lnCasosCache = {};
     const agVig = aplicarOrd.length || boVerif ? await lnObterAgregadosVigentes() : [];
     const mesesNoFiltro = _lnCompetenciasDisponiveis.slice();
     const esperados = Object.keys(boVerif && boVerif.competencias || {}).filter(k => k !== LN_SEM_DATA && agVig.some(a => a.data && a.data.slice(0,7) === k) || novos[k] && novos[k].dias > 0);
