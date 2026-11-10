@@ -3,6 +3,8 @@
 // interceptada abaixo continua sendo entregue por env.ATIVOS.fetch(request),
 // exatamente como antes desta alteração.
 
+import { tratarRotasAuth, identidadeDaRequisicao, autorizarModulo } from './worker-auth.js';
+
 const ORIGEM_PERMITIDA = 'https://gestaorgrio.celoportugal19899.workers.dev';
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -82,45 +84,16 @@ function montarPathArquivo(operacaoId, modulo, categoria, uuid, nomeSanitizado) 
 // AUTENTICAÇÃO — reutilizada, sem alteração de comportamento em relação à
 // Etapa 2A. Retorna dados mínimos e normalizados do usuário, nunca o token.
 // ══════════════════════════════════════════════════════════════════════════
+// Verifica o ID token localmente (assinatura RS256 via JWKS) e carrega o usuário
+// do Firestore (conta de serviço). Usuário desativado ou inexistente = não autenticado.
 async function autenticarFirebase(request, env) {
-  const authHeader = request.headers.get('Authorization') || '';
-  const match = authHeader.match(/^Bearer\s+(.+)$/i);
-  if (!match) return null;
-
-  const idToken = match[1].trim();
-  if (!idToken) return null;
-
-  if (!env.FIREBASE_API_KEY) {
-    throw new Error('firebase_api_key_missing');
-  }
-
-  const resp = await fetch(
-    `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${env.FIREBASE_API_KEY}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken })
-    }
-  );
-
-  if (resp.status !== 200) return null;
-
-  const data = await resp.json();
-  const user = data && Array.isArray(data.users) ? data.users[0] : null;
-  if (!user) return null;
-  if (user.disabled) return null;
-
-  return {
-    uid: user.localId,
-    email: user.email || null,
-    emailVerified: !!user.emailVerified,
-    displayName: user.displayName || null
-  };
+  const ident = await identidadeDaRequisicao(request, env);
+  if (!ident.ok) return null;
+  return { uid: ident.uid, email: ident.email, emailVerified: true, displayName: (ident.usuario && (ident.usuario.name || ident.usuario.nome)) || null, origem: ident.origem, usuario: ident.usuario };
 }
 
 // Helper único usado por TODAS as rotas protegidas — distingue "sem
-// autenticação válida" (401) de "falha interna ao validar" (500), sem
-// duplicar essa lógica em cada rota.
+// autenticação válida" (401) de "falha interna ao validar" (500).
 async function exigirAutenticacao(request, env) {
   try {
     const user = await autenticarFirebase(request, env);
@@ -130,6 +103,25 @@ async function exigirAutenticacao(request, env) {
     console.warn('[auth] erro ao validar token:', e && e.message);
     return { ok: false, status: 500 };
   }
+}
+
+// Autorização por MÓDULO nas rotas de arquivos (matriz de acesso avaliada no servidor).
+// Escrita em "central-conhecimento": nível ≥ gestão; sem matriz → legado (admin ou Plicila).
+// Leitura: qualquer autenticado (postos inclusive) salvo matriz que negue.
+// Qualquer outro módulo: só usuários (não postos) escrevem; leitura para autenticados.
+async function podeAcessarArquivo(env, user, moduloPath, acao) {
+  if (acao === 'escrever' && user.origem !== 'users') return false;
+  // Apresentações & PDCA: leitura, escrita e exclusão SOMENTE admin (mesmo critério adminLegado() das regras do Firestore).
+  // Postos e usuários não-admin recebem 403. Os demais módulos seguem exatamente como antes.
+  if (moduloPath === 'apresentacoes-pdca') {
+    return user.origem === 'users' && !!user.usuario && user.usuario.role === 'admin';
+  }
+  if (moduloPath === 'central-conhecimento') {
+    const legadoGestao = user.origem === 'users' && (user.usuario.role === 'admin' || user.email === 'plicila.silva@gruporgbrasil.com');
+    if (user.origem === 'postos') return acao === 'ler';
+    return autorizarModulo(env, { uid: user.uid }, 'central_conhecimento', acao === 'escrever' ? 2 : 1, acao === 'escrever' ? legadoGestao : true);
+  }
+  return true;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -166,7 +158,8 @@ async function handleStorageAuthCheck(request, env) {
     if (authResult.status === 500) return jsonError(request, 'internal_error', 500);
     return jsonResponse(request, 401, { ok: false, authenticated: false, error: 'unauthorized' });
   }
-  return jsonResponse(request, 200, { ok: true, authenticated: true, user: authResult.user });
+  const { usuario, ...publico } = authResult.user;
+  return jsonResponse(request, 200, { ok: true, authenticated: true, user: publico });
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -236,6 +229,7 @@ async function handleUploadMultipart(request, env, user) {
   if (!moduloRaw || !categoriaRaw || !operacaoIdRaw) return jsonError(request, 'invalid_request', 400);
 
   const modulo = sanitizarSegmentoPath(moduloRaw);
+  if (!(await podeAcessarArquivo(env, user, modulo, 'escrever'))) return jsonError(request, 'forbidden', 403);
   const categoria = sanitizarSegmentoPath(categoriaRaw);
   const operacaoId = sanitizarSegmentoPath(operacaoIdRaw);
   if (!modulo || !categoria || !operacaoId) return jsonError(request, 'invalid_request', 400);
@@ -290,6 +284,7 @@ async function handleUploadStreamVideo(request, env, user) {
   if (!moduloRaw || !categoriaRaw || !operacaoIdRaw) return jsonError(request, 'invalid_request', 400);
 
   const modulo = sanitizarSegmentoPath(moduloRaw);
+  if (!(await podeAcessarArquivo(env, user, modulo, 'escrever'))) return jsonError(request, 'forbidden', 403);
   const categoria = sanitizarSegmentoPath(categoriaRaw);
   const operacaoId = sanitizarSegmentoPath(operacaoIdRaw);
   if (!modulo || !categoria || !operacaoId) return jsonError(request, 'invalid_request', 400);
@@ -393,6 +388,7 @@ async function handleFileRead(request, env, opts) {
   const url = new URL(request.url);
   const path = url.searchParams.get('path');
   if (!pathValido(path)) return jsonError(request, 'invalid_path', 400);
+  if (!(await podeAcessarArquivo(env, authResult.user, path.split('/')[1] || '', 'ler'))) return jsonError(request, 'forbidden', 403);
 
   let head;
   try {
@@ -475,6 +471,7 @@ async function handleMetadata(request, env) {
   const url = new URL(request.url);
   const path = url.searchParams.get('path');
   if (!pathValido(path)) return jsonError(request, 'invalid_path', 400);
+  if (!(await podeAcessarArquivo(env, authResult.user, path.split('/')[1] || '', 'ler'))) return jsonError(request, 'forbidden', 403);
 
   let obj;
   try {
@@ -529,6 +526,7 @@ async function handleDelete(request, env) {
   if (!pathValido(path)) return jsonError(request, 'invalid_path', 400);
   if (!operacaoId || typeof operacaoId !== 'string') return jsonError(request, 'invalid_request', 400);
   if (!path.startsWith(operacaoId + '/')) return jsonError(request, 'invalid_request', 400);
+  if (!(await podeAcessarArquivo(env, authResult.user, path.split('/')[1] || '', 'escrever'))) return jsonError(request, 'forbidden', 403);
 
   let existe;
   try {
@@ -558,6 +556,10 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
+
+    // Autenticação / credenciais / migração (worker-auth.js)
+    const rAuth = await tratarRotasAuth(request, env, { origem: ORIGEM_PERMITIDA });
+    if (rAuth) return rAuth;
 
     if (path === '/api/storage/health') return handleStorageHealth(request, env);
     if (path === '/api/storage/auth-check') return handleStorageAuthCheck(request, env);
