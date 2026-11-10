@@ -30268,7 +30268,8 @@ const PDCA_ENG = (function () {
     if (seq) return a0 === a1 ? MESES_CURTO[+n0 - 1] + '–' + MESES_CURTO[+n1 - 1] + '/' + a1 : fmtMes(ms[0]) + '–' + fmtMes(ms[ms.length - 1]);
     return ms.map(fmtMes).join(', ');
   }
-  const perTxt = (d, mod) => (d.sel && d.sel[mod] && d.sel[mod].length > 1) ? ' no período selecionado (' + fmtPeriodo(d.sel[mod]) + ')' : '';
+  // v3+: resultados são sempre da competência (sem texto de período). Snapshots antigos (v1/v2) mantêm o texto original.
+  const perTxt = (d, mod) => (d.versao >= 3) ? '' : ((d.sel && d.sel[mod] && d.sel[mod].length > 1) ? ' no período selecionado (' + fmtPeriodo(d.sel[mod]) + ')' : '');
   function fmtData(iso) { if (!iso) return '—'; const p = String(iso).slice(0, 10).split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : String(iso); }
   function nomePosto(s) {
     return String(s || '').toLowerCase().replace(/(^|\s)([a-zà-ú])/g, (m, a, b) => a + b.toUpperCase()).replace(/\b(De|Da|Do|Dos|Das|E)\b/g, x => x.toLowerCase());
@@ -30342,40 +30343,50 @@ const PDCA_ENG = (function () {
   // ═════════ ANÁLISES (texto) ═════════
   // Cada item: {id, grupo, tipo:'fato'|'hipotese'|'investigar', texto, incluir}
   let _seq = 0; const mk = (grupo, tipo, texto, aspecto) => ({ id: 'a' + (++_seq) + '_' + grupo, grupo, aspecto: aspecto || 'geral', tipo, texto, incluir: true });
-  const parcial = d => d.tipo === 'parcial';
-  const vsAnt = (d) => d.comparativo === 'ant' || d.comparativo === 'ambos';
-  const vsAno = (d) => d.comparativo === 'ano' || d.comparativo === 'ambos';
-  const rotuloAnt = d => 'em relação ao mês anterior' + (parcial(d) ? ' (taxa comparável)' : '');
+  // Status e comparativo são POR MÓDULO (d.mod[m], d.refc[m]); snapshots antigos caem no valor global.
+  const MI = (d, mod) => (d.mod && d.mod[mod]) || { status: d.tipo === 'parcial' ? 'parcial' : 'fechado', duDec: d.duDec, duTotal: d.duTotal, ate: d.corte, f: d.fatorJornada };
+  const parcial = (d, mod) => MI(d, mod || 'op').status === 'parcial';
+  const indef = (d, mod) => MI(d, mod).status === 'indefinido';   // data da base desconhecida: não normalizar nem comparar volume
+  const refDe = (d, mod) => d.refc ? d.refc[mod] : d.comparativo;
+  const vsAnt = (d, mod) => { const c = refDe(d, mod); return c === 'ant' || c === 'ambos'; };
+  const vsAno = (d, mod) => { const c = refDe(d, mod); return c === 'ano' || c === 'ambos'; };
+  const rotuloAnt = (d, mod) => 'em relação ao mês anterior' + (parcial(d, mod) ? ' (taxa comparável)' : '');
+  // fração da jornada do POS (meta proporcional): só quando a base do POS está parcial
+  const FJ = d => { const i = d.mod && d.mod.pos; if (i) return i.status === 'parcial' && i.f > 0 ? i.f : 1; return (d.tipo === 'parcial' && d.fatorJornada > 0) ? d.fatorJornada : 1; };
+  const MODDE = { NS30: 'op', CSAT: 'csat' };
 
   function frasePP(nome, atual, ant, d, fmtv, mediaAno, sufRef) {
     const partes = [];
-    if (vsAnt(d) && isNum(ant)) { const v = atual - ant; partes.push(fmtSinal(v, nome === 'CSAT' ? 2 : 1, nome === 'CSAT' ? '' : ' p.p.') + ' ' + rotuloAnt(d)); }
-    if (vsAno(d) && isNum(mediaAno)) { const v = atual - mediaAno; partes.push(fmtSinal(v, nome === 'CSAT' ? 2 : 1, nome === 'CSAT' ? '' : ' p.p.') + ' frente à média do ano (' + fmtv(mediaAno) + ')'); }
+    const mod = MODDE[nome] || 'op';
+    if (vsAnt(d, mod) && isNum(ant)) { const v = atual - ant; partes.push(fmtSinal(v, nome === 'CSAT' ? 2 : 1, nome === 'CSAT' ? '' : ' p.p.') + ' ' + rotuloAnt(d, mod)); }
+    if (vsAno(d, mod) && isNum(mediaAno)) { const v = atual - mediaAno; partes.push(fmtSinal(v, nome === 'CSAT' ? 2 : 1, nome === 'CSAT' ? '' : ' p.p.') + ' frente à média do ano (' + fmtv(mediaAno) + ')'); }
     return partes.join('; ');
   }
 
   function analisesOp(d) {
     const o = d.op; if (!o || !o.atual) return [];
     const r = [], a = o.atual, p = o.ant || {}, M = d.metas;
-    const par = parcial(d);
+    const par = parcial(d, 'op');
     // Volume
     if (isNum(a.atendidas)) {
       const partes = [];
-      if (vsAnt(d) && isNum(p.atendidas)) {
+      if (vsAnt(d, 'op') && isNum(p.atendidas) && indef(d, 'op') && d.tipo === 'parcial') {
+        partes.push('comparação de volume com o mês anterior não calculada: a data de atualização da base não foi identificada, então não dá para saber se os períodos são equivalentes');
+      } else if (vsAnt(d, 'op') && isNum(p.atendidas)) {
         if (par && isNum(a.atendidasDia) && isNum(p.atendidasDia)) {
           const v = variacao(a.atendidasDia, p.atendidasDia);
-          partes.push('ritmo de ' + fmtN(a.atendidasDia, 0) + ' atendimentos por dia útil (' + d.duDec + ' dias úteis decorridos) contra ' + fmtN(p.atendidasDia, 0) + ' no mês anterior completo (' + fmtSinal(v.pct, 1, '%') + ')');
+          partes.push('ritmo de ' + fmtN(a.atendidasDia, 0) + ' atendimentos por dia útil (' + MI(d, 'op').duDec + ' dias úteis decorridos) contra ' + fmtN(p.atendidasDia, 0) + ' no mês anterior completo (' + fmtSinal(v.pct, 1, '%') + ')');
         } else { const v = variacao(a.atendidas, p.atendidas); partes.push(fmtSinal(v.pct, 1, '%') + ' em relação ao mês anterior (' + fmtN(p.atendidas) + ')'); }
       }
-      if (vsAno(d) && isNum(o.mediaAno && o.mediaAno.atendidasDia) && isNum(a.atendidasDia)) {
+      if (vsAno(d, 'op') && isNum(o.mediaAno && o.mediaAno.atendidasDia) && isNum(a.atendidasDia)) {
         const v = variacao(a.atendidasDia, o.mediaAno.atendidasDia); partes.push(fmtSinal(v.pct, 1, '%') + ' no ritmo diário frente à média dos meses fechados do ano');
       }
-      r.push(mk('op', 'fato', 'Volume: ' + fmtN(a.atendidas) + ' senhas atendidas' + (par ? ' até ' + fmtData(d.corte) : '') + (partes.length ? ' — ' + partes.join('; ') + '.' : '.'), 'volume'));
+      r.push(mk('op', 'fato', 'Volume: ' + fmtN(a.atendidas) + ' senhas atendidas' + (par ? ' até ' + fmtData(MI(d, 'op').ate) : '') + (partes.length ? ' — ' + partes.join('; ') + '.' : '.'), 'volume'));
     }
     // Painel executivo de atendimento (período selecionado)
     if (o.painel) {
-      const pn = o.painel, multi = d.sel && d.sel.op && d.sel.op.length > 1;
-      r.push(mk('op', 'fato', 'Painel de atendimento' + (multi ? ' (' + fmtPeriodo(d.sel.op) + ')' : '') + ': ' + fmtN(pn.atendidas) + ' senhas atendidas em ' + fmtN(pn.postosN) + ' postos, ' + fmtN(pn.mediaDU, 0) + ' por dia útil' + (isNum(pn.senhasHora) ? ' e ' + fmtN(pn.senhasHora, 1) + ' por hora de funcionamento' : '') + '; ' + fmtN(pn.canceladas) + ' canceladas' + (isNum(pn.pctCanc) ? ' (' + fmtPct(pn.pctCanc, 1) + ' do volume atendido)' : '') + '. NS10 ' + fmtPct(pn.ns10, 2) + ', NS15 ' + fmtPct(pn.ns15, 2) + ', NS30 ' + fmtPct(pn.ns30, 2) + '; ' + fmtN(pn.apos30) + ' atendimentos após 30 minutos; ' + fmtN(pn.perdidas) + ' senhas perdidas.', 'painel'));
+      const pn = o.painel, multi = d.versao < 3 && d.sel && d.sel.op && d.sel.op.length > 1;
+      r.push(mk('op', 'fato', 'Painel de atendimento de ' + fmtMes(d.comp) + (multi ? ' (' + fmtPeriodo(d.sel.op) + ')' : '') + ': ' + fmtN(pn.atendidas) + ' senhas atendidas em ' + fmtN(pn.postosN) + ' postos, ' + fmtN(pn.mediaDU, 0) + ' por dia útil' + (isNum(pn.senhasHora) ? ' e ' + fmtN(pn.senhasHora, 1) + ' por hora de funcionamento' : '') + '; ' + fmtN(pn.canceladas) + ' canceladas' + (isNum(pn.pctCanc) ? ' (' + fmtPct(pn.pctCanc, 1) + ' do volume atendido)' : '') + '. NS10 ' + fmtPct(pn.ns10, 2) + ', NS15 ' + fmtPct(pn.ns15, 2) + ', NS30 ' + fmtPct(pn.ns30, 2) + '; ' + fmtN(pn.apos30) + ' atendimentos após 30 minutos; ' + fmtN(pn.perdidas) + ' senhas perdidas.', 'painel'));
       if (isNum(a.projecao) && o.mediaAno && isNum(o.mediaAno.atendidas)) { const v = variacao(a.projecao, o.mediaAno.atendidas); r.push(mk('op', 'hipotese', 'Projeção linear do mês: ' + fmtN(a.projecao) + ' senhas (' + fmtSinal(v.pct, 1, '%') + ' frente à média mensal dos meses fechados do ano, ' + fmtN(o.mediaAno.atendidas) + ') — estimativa que assume o ritmo diário atual constante até o fim do mês.', 'painel')); }
     }
     // NS30
@@ -30386,15 +30397,15 @@ const PDCA_ENG = (function () {
     // Tempos
     if (isNum(a.tmaSeg) || isNum(a.tmeSeg)) {
       const t = [];
-      if (isNum(a.tmaSeg)) t.push('TMA ' + fmtSeg(a.tmaSeg) + ' (meta ' + fmtSeg(M.tmaSeg) + '; ' + (a.tmaSeg <= M.tmaSeg ? 'dentro' : 'acima em ' + fmtN(a.tmaSeg - M.tmaSeg) + 's') + (vsAnt(d) && isNum(p.tmaSeg) ? '; ' + fmtSinal(a.tmaSeg - p.tmaSeg, 0, 's') + ' vs. mês anterior' : '') + ')');
-      if (isNum(a.tmeSeg)) t.push('TME ' + fmtSeg(a.tmeSeg) + ' (meta ' + fmtSeg(M.tmeSeg) + '; ' + (a.tmeSeg <= M.tmeSeg ? 'dentro' : 'acima em ' + fmtN(a.tmeSeg - M.tmeSeg) + 's') + (vsAnt(d) && isNum(p.tmeSeg) ? '; ' + fmtSinal(a.tmeSeg - p.tmeSeg, 0, 's') + ' vs. mês anterior' : '') + ')');
+      if (isNum(a.tmaSeg)) t.push('TMA ' + fmtSeg(a.tmaSeg) + ' (meta ' + fmtSeg(M.tmaSeg) + '; ' + (a.tmaSeg <= M.tmaSeg ? 'dentro' : 'acima em ' + fmtN(a.tmaSeg - M.tmaSeg) + 's') + (vsAnt(d, 'op') && isNum(p.tmaSeg) ? '; ' + fmtSinal(a.tmaSeg - p.tmaSeg, 0, 's') + ' vs. mês anterior' : '') + ')');
+      if (isNum(a.tmeSeg)) t.push('TME ' + fmtSeg(a.tmeSeg) + ' (meta ' + fmtSeg(M.tmeSeg) + '; ' + (a.tmeSeg <= M.tmeSeg ? 'dentro' : 'acima em ' + fmtN(a.tmeSeg - M.tmeSeg) + 's') + (vsAnt(d, 'op') && isNum(p.tmeSeg) ? '; ' + fmtSinal(a.tmeSeg - p.tmeSeg, 0, 's') + ' vs. mês anterior' : '') + ')');
       r.push(mk('op', 'fato', 'Tempos de atendimento: ' + t.join('; ') + '.', 'tempos'));
     }
     // Senhas perdidas
     if (isNum(a.perdidas)) {
       const c = concentracao(o.postos, 'perdidas', 3);
       let t = 'Senhas perdidas: ' + fmtN(a.perdidas) + ' (' + fmtPct(a.pctPerdidas, 2) + ' do total de senhas)';
-      if (vsAnt(d) && isNum(p.pctPerdidas)) t += '; variação de ' + fmtSinal(a.pctPerdidas - p.pctPerdidas, 2, ' p.p.') + ' no percentual ' + rotuloAnt(d);
+      if (vsAnt(d, 'op') && isNum(p.pctPerdidas)) t += '; variação de ' + fmtSinal(a.pctPerdidas - p.pctPerdidas, 2, ' p.p.') + ' no percentual ' + rotuloAnt(d, 'op');
       if (c.share != null && c.top.length) t += '. Os ' + c.top.length + ' postos com mais perdas (' + lista(c.top, x => nomePosto(x.posto) + ' ' + fmtN(x.perdidas)) + ') concentram ' + fmtPct(c.share, 0) + ' do total';
       r.push(mk('op', 'fato', t + '.', 'perdidas'));
     }
@@ -30426,7 +30437,7 @@ const PDCA_ENG = (function () {
     if (ev && ev.rows && ev.rows.length >= 2 && ev.refRot) {
       const comVar = ev.rows.filter(x => isNum(x.varPct)), altas = rank(comVar, 'varPct', true).filter(x => x.varPct > 0).slice(0, 3), quedas = rank(comVar, 'varPct', false).filter(x => x.varPct < 0).slice(0, 3);
       const tv = ev.totais && isNum(ev.totais.varPct) ? ' No total da operação, o ritmo diário variou ' + fmtSinal(ev.totais.varPct, 1, '%') + '.' : '';
-      r.push(mk('op', 'fato', 'Evolução de senhas por posto — ritmo por dia útil em ' + fmtMes(d.comp) + (parcial(d) ? ' (parcial)' : '') + ' contra ' + ev.refRot + '.' + (altas.length ? ' Maiores altas: ' + lista(altas, x => nomePosto(x.posto) + ' ' + fmtSinal(x.varPct, 1, '%')) + '.' : '') + (quedas.length ? ' Maiores quedas: ' + lista(quedas, x => nomePosto(x.posto) + ' ' + fmtSinal(x.varPct, 1, '%')) + '.' : '') + tv, 'evolposto'));
+      r.push(mk('op', 'fato', 'Evolução de senhas por posto — ritmo por dia útil em ' + fmtMes(d.comp) + (parcial(d, 'op') ? ' (parcial)' : '') + ' contra ' + ev.refRot + '.' + (altas.length ? ' Maiores altas: ' + lista(altas, x => nomePosto(x.posto) + ' ' + fmtSinal(x.varPct, 1, '%')) + '.' : '') + (quedas.length ? ' Maiores quedas: ' + lista(quedas, x => nomePosto(x.posto) + ' ' + fmtSinal(x.varPct, 1, '%')) + '.' : '') + tv, 'evolposto'));
       const forte = quedas.filter(x => x.varPct <= -20);
       if (forte.length) r.push(mk('op', 'investigar', 'Investigar a queda de volume (≥ 20% no ritmo diário) em ' + lista(forte, x => nomePosto(x.posto)) + ': verificar mudança de horário, fechamento temporário, migração de canal ou falha de registro das senhas.', 'evolposto'));
     }
@@ -30438,7 +30449,7 @@ const PDCA_ENG = (function () {
     const c = d.csat; if (!c || !c.atual) return [];
     const r = [], a = c.atual, p = c.ant || {}, M = d.metas;
     const ref = frasePP('CSAT', a.nota, p.nota, d, v => fmtN(v, 2), c.mediaAno && c.mediaAno.nota);
-    r.push(mk('csat', 'fato', 'Nota CSAT geral: ' + fmtN(a.nota, 2) + ' (meta ' + fmtN(M.csat, 2) + '; ' + (a.nota >= M.csat ? 'meta atingida' : 'distância de ' + fmtSinal(a.nota - M.csat, 2, '')) + ') em ' + fmtN(a.pesq) + ' pesquisas' + (vsAnt(d) && isNum(p.pesq) ? (par(d) && d.duDec > 0 && d.duTotalAnt > 0 ? ' (' + fmtN(a.pesq / d.duDec, 1) + ' pesquisas por dia útil contra ' + fmtN(p.pesq / d.duTotalAnt, 1) + ' no mês anterior completo)' : ' (' + fmtSinal(variacao(a.pesq, p.pesq).pct, 1, '%') + ' no volume de pesquisas vs. mês anterior)') : '') + (ref ? ' — ' + ref : '') + '. ' + tendencia(c.serieNota, 0.003).texto.replace(/^./, x => x.toUpperCase()) + '.', 'nota'));
+    r.push(mk('csat', 'fato', 'Nota CSAT geral: ' + fmtN(a.nota, 2) + ' (meta ' + fmtN(M.csat, 2) + '; ' + (a.nota >= M.csat ? 'meta atingida' : 'distância de ' + fmtSinal(a.nota - M.csat, 2, '')) + ') em ' + fmtN(a.pesq) + ' pesquisas' + (vsAnt(d, 'csat') && isNum(p.pesq) ? (parcial(d, 'csat') && MI(d, 'csat').duDec > 0 && d.duTotalAnt > 0 ? ' (' + fmtN(a.pesq / MI(d, 'csat').duDec, 1) + ' pesquisas por dia útil contra ' + fmtN(p.pesq / d.duTotalAnt, 1) + ' no mês anterior completo)' : ' (' + fmtSinal(variacao(a.pesq, p.pesq).pct, 1, '%') + ' no volume de pesquisas vs. mês anterior)') : '') + (ref ? ' — ' + ref : '') + '. ' + tendencia(c.serieNota, 0.003).texto.replace(/^./, x => x.toUpperCase()) + '.', 'nota'));
     const vz = c.visao;
     if (vz && vz.comp) {
       const k = vz.comp;
@@ -30470,29 +30481,28 @@ const PDCA_ENG = (function () {
     if (a.nota < M.csat && rk.length) r.push(mk('csat', 'investigar', 'Investigar os comentários e motivos das notas baixas nos postos ' + lista(rk.filter(x => x.nota < M.csat).slice(0, 3), x => nomePosto(x.posto)) + ' (dados de comentário não fazem parte desta consolidação).', 'postos'));
     return r;
   }
-  const par = d => parcial(d);
-
+  
   function analisesPos(d) {
     const s = d.pos; if (!s || !s.atual) return [];
     const r = [], a = s.atual, p = s.ant || {};
-    const f = d.fatorJornada; // dias úteis decorridos / dias úteis do mês (parcial) ou 1
-    let t = 'POS: ' + fmtRS(a.valor) + ' negociados' + (parcial(d) ? ' até ' + fmtData(d.corte) : '') + ' sobre meta mensal cadastrada de ' + fmtRS(a.meta) + ' (' + fmtPct(a.pct, 1) + ' da meta do mês).';
-    if (parcial(d) && isNum(f) && f > 0 && f < 1) {
+    const f = MI(d, 'pos').f; // dias úteis decorridos / dias úteis do mês (parcial) ou 1
+    let t = 'POS: ' + fmtRS(a.valor) + ' negociados' + (parcial(d, 'pos') ? ' até ' + fmtData(MI(d, 'pos').ate) : '') + ' sobre meta mensal cadastrada de ' + fmtRS(a.meta) + ' (' + fmtPct(a.pct, 1) + ' da meta do mês).';
+    if (parcial(d, 'pos') && isNum(f) && f > 0 && f < 1) {
       const metaProp = a.meta * f, pctProp = metaProp > 0 ? a.valor / metaProp * 100 : null;
-      t += ' Proporcional à jornada (' + d.duDec + ' de ' + d.duTotal + ' dias úteis → meta proporcional ' + fmtRS(metaProp) + '): ' + fmtPct(pctProp, 1) + ' de atingimento no ritmo.';
+      t += ' Proporcional à jornada (' + MI(d, 'pos').duDec + ' de ' + MI(d, 'pos').duTotal + ' dias úteis → meta proporcional ' + fmtRS(metaProp) + '): ' + fmtPct(pctProp, 1) + ' de atingimento no ritmo.';
       if (isNum(a.projecao)) t += ' Projeção linear para o mês: ' + fmtRS(a.projecao) + ' (' + fmtPct(a.meta > 0 ? a.projecao / a.meta * 100 : null, 1) + ' da meta) — estimativa que assume ritmo constante.';
     }
-    if (vsAnt(d) && isNum(p.valor)) {
-      if (parcial(d) && isNum(a.valorDia) && isNum(p.valorDia)) t += ' Ritmo diário de ' + fmtRS(a.valorDia) + '/dia útil contra ' + fmtRS(p.valorDia) + ' no mês anterior completo (' + fmtSinal(variacao(a.valorDia, p.valorDia).pct, 1, '%') + ').';
+    if (vsAnt(d, 'pos') && isNum(p.valor)) {
+      if (parcial(d, 'pos') && isNum(a.valorDia) && isNum(p.valorDia)) t += ' Ritmo diário de ' + fmtRS(a.valorDia) + '/dia útil contra ' + fmtRS(p.valorDia) + ' no mês anterior completo (' + fmtSinal(variacao(a.valorDia, p.valorDia).pct, 1, '%') + ').';
       else t += ' Variação de ' + fmtSinal(variacao(a.valor, p.valor).pct, 1, '%') + ' sobre o mês anterior (' + fmtRS(p.valor) + ').';
     }
-    if (vsAno(d) && s.mediaAno && isNum(s.mediaAno.pct)) t += ' Atingimento médio dos meses fechados do ano: ' + fmtPct(s.mediaAno.pct, 1) + '.';
+    if (vsAno(d, 'pos') && s.mediaAno && isNum(s.mediaAno.pct)) t += ' Atingimento médio dos meses fechados do ano: ' + fmtPct(s.mediaAno.pct, 1) + '.';
     r.push(mk('pos', 'fato', t, 'resumo'));
-    const base = (s.postos || []).map(x => ({ ...x, pctRef: x.pctRef != null ? x.pctRef : (parcial(d) && f > 0 && f < 1 && x.meta > 0 ? x.valor / (x.meta * f) * 100 : x.pct) }));
+    const base = (s.postos || []).map(x => ({ ...x, pctRef: x.pctRef != null ? x.pctRef : (parcial(d, 'pos') && f > 0 && f < 1 && x.meta > 0 ? x.valor / (x.meta * f) * 100 : x.pct) }));
     const rk = rank(base, 'pctRef', true);
     if (rk.length >= 2) {
       const baixos = rk.filter(x => x.pctRef < 90);
-      r.push(mk('pos', 'fato', 'Ranking por atingimento' + perTxt(d, 'pos') + (parcial(d) ? ' (meta proporcional à jornada no mês parcial)' : '') + ': melhores ' + lista(rk.slice(0, 3), x => nomePosto(x.posto) + ' ' + fmtPct(x.pctRef, 0)) + '; piores ' + lista(rk.slice(-3).reverse(), x => nomePosto(x.posto) + ' ' + fmtPct(x.pctRef, 0)) + '. ' + baixos.length + ' de ' + rk.length + ' postos abaixo de 90% da meta de referência.', 'ranking'));
+      r.push(mk('pos', 'fato', 'Ranking por atingimento' + perTxt(d, 'pos') + (parcial(d, 'pos') ? ' (meta proporcional à jornada no mês parcial)' : '') + ': melhores ' + lista(rk.slice(0, 3), x => nomePosto(x.posto) + ' ' + fmtPct(x.pctRef, 0)) + '; piores ' + lista(rk.slice(-3).reverse(), x => nomePosto(x.posto) + ' ' + fmtPct(x.pctRef, 0)) + '. ' + baixos.length + ' de ' + rk.length + ' postos abaixo de 90% da meta de referência.', 'ranking'));
       if (baixos.length) r.push(mk('pos', 'investigar', 'Investigar a baixa conversão em ' + lista(baixos.slice(-3).reverse(), x => nomePosto(x.posto)) + ': conferir disponibilidade de máquina, abordagem do atendente e perfil de pagamentos no período.', 'ranking'));
     }
     return r;
@@ -30502,8 +30512,8 @@ const PDCA_ENG = (function () {
     const l = d.ln; if (!l || !l.atual) return [];
     const r = [], a = l.atual, p = l.ant || {}, M = d.metas;
     let t = 'Ligação Nova: ' + fmtN(a.total) + ' ingressos (' + fmtN(a.com) + ' com e-mail e ' + fmtN(a.sem) + ' sem e-mail) — ' + fmtPct(a.pct, 1) + ' sem e-mail contra referência de ' + fmtPct(M.lnSemEmailPct, 0) + ' (' + (a.pct <= M.lnSemEmailPct ? 'dentro da referência' : 'acima em ' + fmtN(a.pct - M.lnSemEmailPct, 1) + ' p.p.') + ').';
-    if (vsAnt(d) && isNum(p.pct)) t += ' ' + fmtSinal(a.pct - p.pct, 1, ' p.p.') + ' ' + (parcial(d) ? 'frente ao mesmo período do mês anterior (' + fmtPct(p.pct, 1) + ')' : 'frente ao mês anterior (' + fmtPct(p.pct, 1) + ')') + '.';
-    if (vsAno(d) && l.mediaAno && isNum(l.mediaAno.pct)) t += ' Média do ano: ' + fmtPct(l.mediaAno.pct, 1) + '.';
+    if (vsAnt(d, 'ln') && isNum(p.pct)) t += ' ' + fmtSinal(a.pct - p.pct, 1, ' p.p.') + ' ' + (parcial(d, 'ln') ? 'frente ao mesmo período do mês anterior (' + fmtPct(p.pct, 1) + ')' : 'frente ao mês anterior (' + fmtPct(p.pct, 1) + ')') + '.';
+    if (vsAno(d, 'ln') && l.mediaAno && isNum(l.mediaAno.pct)) t += ' Média do ano: ' + fmtPct(l.mediaAno.pct, 1) + '.';
     r.push(mk('ln', 'fato', t, 'resumo'));
     if (isNum(a.canc)) r.push(mk('ln', 'fato', 'Cancelados apresentados separadamente: ' + fmtN(a.canc) + ' ordens canceladas, fora do cálculo do percentual (metodologia oficial vigente: Total = Com e-mail + Sem e-mail).', 'resumo'));
     else r.push(mk('ln', 'fato', 'Parte da base foi importada antes do registro de cancelados; o campo de cancelados não está disponível para todos os dias deste período.', 'resumo'));
@@ -30524,10 +30534,10 @@ const PDCA_ENG = (function () {
     const bloco = (nome, o, meta, un, asp) => {
       if (!o || !o.atual || !isNum(o.atual.valor)) return;
       const a = o.atual, p = o.ant || {};
-      const pc = parcial(d) && un !== '%';
-      let t = nome + ': ' + fmtN(a.valor, un === '%' ? 1 : 0) + (un === '%' ? '%' : ' ocorrências' + (pc ? ' acumuladas no mês até ' + fmtData(d.corte) : '')) + ' contra meta de menos de ' + fmtN(meta, 0) + (un === '%' ? '%' : ' no mês') + ' (' + (pc ? (a.valor < meta ? 'dentro do limite até o momento' : 'limite do mês já atingido/ultrapassado') : (a.valor < meta ? 'dentro da meta' : 'fora da meta')) + ').';
-      if (vsAnt(d) && isNum(p.valor)) t += ' ' + (pc ? 'O mês anterior fechou com ' + fmtN(p.valor, 0) + ' (' + fmtSinal(a.valor - p.valor, 0, '') + ' na comparação direta, sem normalização: os registros não trazem data do evento).' : (un === '%' ? fmtSinal(a.valor - p.valor, 1, ' p.p.') : fmtSinal(a.valor - p.valor, 0, '') + ' ocorrências') + ' vs. mês anterior (' + fmtN(p.valor, un === '%' ? 1 : 0) + (un === '%' ? '%' : '') + ').');
-      if (vsAno(d) && isNum(o.mediaAno)) t += ' Média mensal do ano: ' + fmtN(o.mediaAno, 1) + (un === '%' ? '%' : '') + '.';
+      const pc = parcial(d, 'qual') && un !== '%';
+      let t = nome + ': ' + fmtN(a.valor, un === '%' ? 1 : 0) + (un === '%' ? '%' : ' ocorrências' + (pc ? ' acumuladas no mês até ' + fmtData(MI(d, 'qual').ate) : '')) + ' contra meta de menos de ' + fmtN(meta, 0) + (un === '%' ? '%' : ' no mês') + ' (' + (pc ? (a.valor < meta ? 'dentro do limite até o momento' : 'limite do mês já atingido/ultrapassado') : (a.valor < meta ? 'dentro da meta' : 'fora da meta')) + ').';
+      if (vsAnt(d, 'qual') && isNum(p.valor)) t += ' ' + (pc ? 'O mês anterior fechou com ' + fmtN(p.valor, 0) + ' (' + fmtSinal(a.valor - p.valor, 0, '') + ' na comparação direta, sem normalização: os registros não trazem data do evento).' : (un === '%' ? fmtSinal(a.valor - p.valor, 1, ' p.p.') : fmtSinal(a.valor - p.valor, 0, '') + ' ocorrências') + ' vs. mês anterior (' + fmtN(p.valor, un === '%' ? 1 : 0) + (un === '%' ? '%' : '') + ').');
+      if (vsAno(d, 'qual') && isNum(o.mediaAno)) t += ' Média mensal do ano: ' + fmtN(o.mediaAno, 1) + (un === '%' ? '%' : '') + '.';
       t += ' ' + tendencia(o.serieArr).texto.replace(/^./, x => x.toUpperCase()) + '.';
       r.push(mk('qual', 'fato', t, asp));
       if (o.postos && o.postos.length) {
@@ -30552,7 +30562,7 @@ const PDCA_ENG = (function () {
   function analisesOcorr(d) {
     const o = d.ocorr; if (!o || !o.atual) return [];
     const r = [], a = o.atual, p = o.ant;
-    let t = 'Incidências: ' + fmtN(a.total) + ' abertas no período' + (vsAnt(d) && p && isNum(p.total) ? ' (' + fmtSinal(a.total - p.total, 0, '') + ' vs. mês anterior' + (parcial(d) ? ', que fechou com ' + fmtN(p.total) : '') + ')' : '') + '.';
+    let t = 'Incidências: ' + fmtN(a.total) + ' abertas no período' + (vsAnt(d, 'op') && p && isNum(p.total) ? ' (' + fmtSinal(a.total - p.total, 0, '') + ' vs. mês anterior' + (parcial(d, 'op') ? ', que fechou com ' + fmtN(p.total) : '') + ')' : '') + '.';
     if (o.tipos && o.tipos.length) t += ' Principais tipos: ' + lista(o.tipos.slice(0, 3), x => x.tipo + ' ' + fmtN(x.n)) + '.';
     if (o.postos && o.postos.length) t += ' Postos com mais registros: ' + lista(o.postos.slice(0, 3), x => nomePosto(x.posto) + ' ' + fmtN(x.n)) + '.';
     r.push(mk('ocorr', 'fato', t, 'ocorr'));
@@ -30588,7 +30598,7 @@ const PDCA_ENG = (function () {
     }
     if (g.pos && d.pos && d.pos.atual && isNum(d.pos.atual.valor)) {
       const a = d.pos.atual, p = d.pos.ant || {}, m = d.pos.mediaAno || {};
-      const ref = (d.tipo === 'parcial' && d.fatorJornada > 0 && d.fatorJornada < 1) ? (a.meta > 0 ? a.valor / (a.meta * d.fatorJornada) * 100 : null) : a.pct;
+      const ref = (FJ(d) < 1) ? (a.meta > 0 ? a.valor / (a.meta * FJ(d)) * 100 : null) : a.pct;
       add('POS', 'Atingimento POS' + (ref !== a.pct ? ' (proporcional)' : ''), fmtPct(ref, 1), '≥ 100%', status(ref, 100), Math.max(0, 100 - (ref || 0)) / 2, isNum(p.pct) ? fmtSinal(ref - p.pct, 1, ' p.p.') : '—', isNum(m.pct) ? fmtSinal(ref - m.pct, 1, ' p.p.') : '—');
     }
     if (g.ln && d.ln && d.ln.atual && isNum(d.ln.atual.pct)) {
@@ -30626,7 +30636,7 @@ const PDCA_ENG = (function () {
       if (rk.length) r.push(ac('CSAT', rk.slice(0, 3).map(x => nomePosto(x.posto)).join(', '), 'Nota abaixo da meta de ' + fmtN(M.csat, 2) + ': ' + lista(rk.slice(0, 3), x => nomePosto(x.posto) + ' ' + fmtN(x.nota, 2)) + '.', 'Analisar as pesquisas com nota baixa nos postos listados, alinhar feedback com a equipe e acompanhar semanalmente.', 'CSAT ≥ ' + fmtN(M.csat, 2) + ' nos postos-alvo', 2));
     }
     if (g.pos && d.pos && d.pos.atual) {
-      const f = (d.tipo === 'parcial' && d.fatorJornada > 0 && d.fatorJornada < 1) ? d.fatorJornada : 1;
+      const f = (FJ(d) < 1) ? FJ(d) : 1;
       const rk = rank((d.pos.postos || []).filter(x => x.meta > 0).map(x => ({ ...x, ref: x.pctRef != null ? x.pctRef : x.valor / (x.meta * f) * 100 })).filter(x => x.ref < 90), 'ref', false);
       if (rk.length) r.push(ac('POS', rk.slice(0, 3).map(x => nomePosto(x.posto)).join(', '), 'Atingimento de POS abaixo de 90% da meta de referência: ' + lista(rk.slice(0, 3), x => nomePosto(x.posto) + ' ' + fmtPct(x.ref, 0)) + '.', 'Reforçar a oferta do pagamento via POS no atendimento e verificar disponibilidade/funcionamento das máquinas.', 'Atingimento ≥ 100% da meta', 2));
     }
@@ -30799,15 +30809,16 @@ function pdcaMontarQual(q, meses, comp, ant, sel) {
   const mkContagem = (rows, meta, campoMotivo) => {
     const pm = porMes(rows), mesesCom = Object.keys(pm).sort();
     if (!mesesCom.length) return null;
-    const val = m => pm[m] != null ? pm[m] : 0; // mês sem registro em coleção que tem histórico = 0 ocorrência
+    const ultimo = mesesCom[mesesCom.length - 1];
+    const val = m => pm[m] != null ? pm[m] : (m <= ultimo ? 0 : null); // sem registro em mês anterior ao último importado = 0 ocorrência; depois do último importado = sem dados
     const serie = {}; sel.forEach(m => { serie[m] = val(m); });
-    const doMes = rows.filter(r => sel.includes(r.mesRef));
+    const doMes = rows.filter(r => r.mesRef === comp);   // ofensores = competência
     const postos = _pdcaTopo(contagem(doMes, 'loja'), 'posto');
     const motivos = _pdcaTopo((() => { const r = {}; doMes.forEach(x => { const k = norm(campoMotivo.map(c => x[c]).find(Boolean)); if (k) r[k] = (r[k] || 0) + 1; }); return r; })(), 'motivo');
     const anteriores = meses.filter(m => m !== comp);
     const mediaAno = anteriores.length ? _PE.media(anteriores.map(m => val(m))) : null;
     const postoMes = {}; rows.forEach(x => { if (!x.loja) return; (postoMes[x.loja] || (postoMes[x.loja] = {}))[x.mesRef] = 1; });
-    return { atual: { valor: val(comp), semRegistro: pm[comp] == null }, ant: ant ? { valor: val(ant) } : null, meta, serie, serieArr: sel.map(m => serie[m]), postos, motivos, mediaAno, mesesComDados: mesesCom, _postoMes: postoMes };
+    return { atual: { valor: val(comp), semRegistro: pm[comp] == null, semDados: val(comp) == null }, ant: ant ? { valor: val(ant) } : null, meta, serie, serieArr: sel.map(m => serie[m]), postos, motivos, mediaAno, mesesComDados: mesesCom, _postoMes: postoMes };
   };
   const out = {};
   out.indevidos = mkContagem(q.indevidos, QUAL_META_INDEVIDOS, ['causaRaiz', 'motivoErro']);
@@ -30818,7 +30829,7 @@ function pdcaMontarQual(q, meses, comp, ant, sel) {
   if (Object.keys(pm).length) {
     const pct = m => { const o = pm[m]; if (!o) return null; const v = o.proc + o.improc; return v ? o.improc / v * 100 : null; };
     const serie = {}; sel.forEach(m => { serie[m] = pct(m); });
-    const doMes = rows.filter(r => sel.includes(r.mesRef)), pp = {};
+    const doMes = rows.filter(r => r.mesRef === comp), pp = {};
     doMes.forEach(r => { const k = norm(r.loja); if (!k) return; const o = pp[k] || (pp[k] = { posto: k, proc: 0, improc: 0 }); if (r.procedencia === 'PROCEDENTE') o.proc++; else if (r.procedencia === 'IMPROCEDENTE') o.improc++; });
     const motivos = {}; doMes.filter(r => r.procedencia === 'IMPROCEDENTE').forEach(r => { const k = norm(r.descricaoServico); if (k) motivos[k] = (motivos[k] || 0) + 1; });
     const anteriores = meses.filter(m => m !== comp);
@@ -30861,17 +30872,40 @@ async function pdcaOcorrCarregar(comp, ant) {
   return { atual: resumo(atualRows), ant: ant ? resumo(doMes(ant)) : null, tipos: cnt(atualRows, 'tipo'), postos: cnt(atualRows, 'posto') };
 }
 
-// ── Dias úteis / corte ─────────────────────────────────────────────────────
+// ── Datas de atualização por módulo (fonte oficial da base) e status parcial/fechado ──
 function pdcaParseDataBr(s) {
   const m = String(s || '').match(/(\d{2})\/(\d{2})\/(\d{4})/); if (m) return m[3] + '-' + m[2] + '-' + m[1];
   const n = String(s || '').match(/(\d{4})-(\d{2})-(\d{2})/); return n ? n[0] : '';
 }
-function pdcaCorteSugerido(comp) {
-  const dentro = d => d && d.slice(0, 7) === comp;
-  if (dentro(_opLnDataExtracao)) return _opLnDataExtracao;
-  const di = pdcaParseDataBr(_opUltimaAtualizacaoIndicadores); if (dentro(di)) return di;
-  const hoje = new Date().toISOString().slice(0, 10); if (dentro(hoje)) return hoje;
-  return comp + '-' + String(_PE.ultimoDia(comp)).padStart(2, '0');
+// Retorna {iso, txt, origem}. Nada é inventado: sem informação na base => iso ''.
+function pdcaFonteData(mod, comp, qrows) {
+  let txt = '', origem = '';
+  if (mod === 'op') { txt = _opUltimaAtualizacaoIndicadores || ''; origem = 'último import de Indicadores'; }
+  else if (mod === 'csat') { txt = (typeof csatUltimaAtualizacao !== 'undefined' && csatUltimaAtualizacao) || ''; origem = 'data de referência do CSAT'; }
+  else if (mod === 'pos') {
+    txt = _opUltimaAtualizacaoPos || ''; origem = 'último import de POS';
+    const m = txt.match(/dados at[eé]\s+(\d{2}\/\d{2}\/\d{4})/i); if (m) { txt = m[1]; origem = 'POS — "dados até" do último import'; }
+  }
+  else if (mod === 'ln') { txt = _opLnDataExtracao || ''; origem = 'data da extração da base de Ligação Nova'; }
+  else if (mod === 'qual') {
+    const dts = (qrows || []).filter(r => r.mesRef === comp && r.importadoEm).map(r => String(r.importadoEm).slice(0, 10)).sort();
+    if (dts.length) { txt = dts[dts.length - 1]; origem = 'importação mais recente de ' + _PE.fmtMes(comp) + ' (Qualidade)'; }
+    else { txt = (typeof _indevidosUltimoImport !== 'undefined' && _indevidosUltimoImport) || (typeof _reclUltimoImport !== 'undefined' && _reclUltimoImport) || ''; origem = 'último import de Qualidade'; }
+  }
+  return { iso: pdcaParseDataBr(txt), txt, origem: txt ? origem : '' };
+}
+// Status do dado de UM módulo na competência. Fechado/parcial vem da própria base; a escolha global "fechamento" só vale se a base não a contradiz.
+function pdcaStatusModulo(comp, iso, tipo, fer) {
+  const duTotal = _PE.diasUteis(comp, null, fer), isoMes = iso ? iso.slice(0, 7) : '';
+  let status, duDec = duTotal, nota = '';
+  if (tipo === 'fechado') {
+    status = 'fechado';
+    if (isoMes === comp && _PE.diasUteis(comp, +iso.slice(8, 10), fer) < duTotal) nota = 'Fechamento escolhido, mas a base indica dados somente até ' + iso.slice(8, 10) + '/' + iso.slice(5, 7) + '.';
+  } else if (!iso) { status = 'indefinido'; nota = 'Data de atualização não identificada na base.'; }
+  else if (isoMes > comp) status = 'fechado';
+  else if (isoMes === comp) { duDec = _PE.diasUteis(comp, +iso.slice(8, 10), fer); if (duDec <= 0) { status = 'indefinido'; duDec = duTotal; nota = 'Atualização no início do mês, sem dia útil decorrido.'; } else status = duDec >= duTotal ? 'fechado' : 'parcial'; }
+  else { status = 'indefinido'; nota = 'A última atualização da base é anterior à competência.'; }
+  return { status, duDec, duTotal, f: duTotal > 0 ? Math.min(1, duDec / duTotal) : 1, ate: iso || '', nota };
 }
 
 // ── Suficiência (fechamento) ───────────────────────────────────────────────
@@ -30886,22 +30920,28 @@ function pdcaSuficiencia(comp, grupos, linhas, cfg) {
 }
 
 
-// ═════════ SELEÇÃO DE MESES POR MÓDULO ═════════
-// A competência principal é sempre incluída (define o resultado de referência). Os demais meses vêm da seleção
-// de cada módulo e valem só para o conteúdo daquele bloco. Tudo é calculado sobre os arrays/caches já em memória.
+// ═════════ MESES POR MÓDULO: competência × evolução (gráficos) × comparativo ═════════
+// • Resultado principal (cartões, tabelas, rankings) = SOMENTE a competência.
+// • Evolução = meses exibidos individualmente nos gráficos (a competência NÃO é obrigatória aqui).
+// • Comparativo = 'nenhum' | 'ant' | 'ano' | 'ambos' (por módulo); nunca altera o valor da competência.
 const PDCA_MODS = ['op', 'csat', 'pos', 'ln', 'qual'];
 const PDCA_JANELA = 12;
 function pdcaJanela(comp, n) { const r = []; let m = comp; for (let i = 0; i < n; i++) { r.unshift(m); m = _PE.mesAnterior(m); } return r; }
-function pdcaSelNormalizar(comp, selMod) {
-  const ok = new Set(pdcaJanela(comp, PDCA_JANELA));
-  return Array.from(new Set([comp, ...(selMod || []).filter(m => ok.has(m))])).sort();
+function pdcaModCfgPadrao() { return { graf: 'ano', custom: [], ref: 'ant' }; }
+function pdcaGrafMeses(comp, cfg) {
+  cfg = cfg || pdcaModCfgPadrao();
+  if (cfg.graf === 'comp') return [comp];
+  if (cfg.graf === 'custom') {
+    const ok = new Set([...pdcaJanela(comp, PDCA_JANELA), ..._PE.mesesDoAno(comp)]);
+    const r = Array.from(new Set((cfg.custom || []).filter(m => ok.has(m)))).sort();
+    return r.length ? r : [comp];
+  }
+  return _PE.mesesDoAno(comp);
 }
-// Referência de comparação do bloco: demais meses selecionados; se só a competência foi marcada, mês anterior / média do ano (conforme o comparativo)
-function pdcaRefMeses(comp, ant, ano, selMod, comparativo) {
-  const outros = selMod.filter(m => m !== comp);
-  if (outros.length) return { tipo: 'sel', meses: outros, rot: 'demais meses selecionados (' + _PE.fmtPeriodo(outros) + ')' };
-  if (comparativo === 'ant' || comparativo === 'ambos') return { tipo: 'ant', meses: [ant], rot: 'mês anterior (' + _PE.fmtMes(ant) + ')' };
-  if (comparativo === 'ano') { const o = ano.filter(m => m !== comp); return { tipo: 'ano', meses: o, rot: 'média do ano (' + _PE.fmtPeriodo(o) + ')' }; }
+// Referência principal da comparação (usada nas variações por posto/loja); 'ambos' usa o mês anterior como principal
+function pdcaRefMeses(comp, ant, ano, ref) {
+  if (ref === 'ant' || ref === 'ambos') return { tipo: 'ant', meses: [ant], rot: 'mês anterior (' + _PE.fmtMes(ant) + ')' };
+  if (ref === 'ano') { const o = ano.filter(m => m !== comp); return { tipo: 'ano', meses: o, rot: 'média do ano (' + _PE.fmtPeriodo(o) + ')' }; }
   return { tipo: 'nenhum', meses: [], rot: '' };
 }
 const _pdcaSoma = (rows, c) => rows.reduce((t, d) => t + (parseInt(d[c]) || 0), 0);
@@ -30927,8 +30967,8 @@ function pdcaOpLinha(x, duMes) {
     carga, du, mediaDU: du > 0 ? at / du : null, horas: carga != null ? carga * du : null, senhasHora: carga != null && du > 0 ? at / (carga * du) : null
   };
 }
-function pdcaOpPeriodo(sel, duMes, ref, comp, parcial) {
-  const g = pdcaOpAgrupar(sel), gRef = ref.meses.length ? pdcaOpAgrupar(ref.meses) : {};
+function pdcaOpPeriodo(main, graf, duMes, ref, comp, parcial) {
+  const g = pdcaOpAgrupar(main), gRef = ref.meses.length ? pdcaOpAgrupar(ref.meses) : {};
   const linhas = Object.entries(g).map(([k, x]) => {
     const l = pdcaOpLinha(x, duMes), r = gRef[k] ? pdcaOpLinha(gRef[k], duMes) : null;
     return { ...l, refTmaSeg: r ? r.tmaSeg : null, refTmeSeg: r ? r.tmeSeg : null, varTmaSeg: r && _PE.isNum(l.tmaSeg) && _PE.isNum(r.tmaSeg) ? l.tmaSeg - r.tmaSeg : null, varTmeSeg: r && _PE.isNum(l.tmeSeg) && _PE.isNum(r.tmeSeg) ? l.tmeSeg - r.tmeSeg : null };
@@ -30942,21 +30982,24 @@ function pdcaOpPeriodo(sel, duMes, ref, comp, parcial) {
     painel = { atendidas: at, canceladas: canc, pctCanc: at > 0 ? canc / at * 100 : null, du, mediaDU: du > 0 ? at / du : null, senhasHora: horas > 0 ? atC / horas : null,
       tmaSeg: c.tmaSeg, tmeSeg: c.tmeSeg, ns10: indConsolidarNS(todas, 10), ns15: indConsolidarNS(todas, 15), ns30: c.ns30, apos30: _pdcaSoma(todas, 'apos30min'), perdidas: c.senhasPerdidas, postosN: linhas.length };
   }
-  // evolução de senhas por posto (colunas = meses selecionados)
+  // evolução de senhas por posto: colunas = meses da evolução (individuais); variação = ritmo diário da competência × referência
   const rateRef = rows => { const mm = Array.from(new Set(rows.map(r => r.mesRef))), du = mm.reduce((t, m) => t + duMes(m), 0); return du > 0 ? _pdcaSoma(rows, 'senhasAtendidas') / du : null; };
-  const evoRow = (nome, rows, rowsRef, carga) => {
-    const porMes = {}; rows.forEach(r => { porMes[r.mesRef] = (porMes[r.mesRef] || 0) + (parseInt(r.senhasAtendidas) || 0); });
+  const gEvo = pdcaOpAgrupar(graf);
+  const evoRow = (nome, rowsEvo, rowsComp, rowsRef, carga) => {
+    const porMes = {}; rowsEvo.forEach(r => { porMes[r.mesRef] = (porMes[r.mesRef] || 0) + (parseInt(r.senhasAtendidas) || 0); });
     const total = Object.values(porMes).reduce((t, v) => t + v, 0), comDados = Object.keys(porMes);
     const completos = comDados.filter(m => !(m === comp && parcial));
     const duT = comDados.reduce((t, m) => t + duMes(m), 0);
-    const taxaAtual = porMes[comp] != null && duMes(comp) > 0 ? porMes[comp] / duMes(comp) : null, taxaRef = rowsRef && rowsRef.length ? rateRef(rowsRef) : null;
+    const taxaAtual = rowsComp && rowsComp.length && duMes(comp) > 0 ? _pdcaSoma(rowsComp, 'senhasAtendidas') / duMes(comp) : null, taxaRef = rowsRef && rowsRef.length ? rateRef(rowsRef) : null;
     return { posto: nome, carga, porMes, total, mediaMes: completos.length ? completos.reduce((t, m) => t + porMes[m], 0) / completos.length : null,
       mediaDU: duT > 0 ? total / duT : null, varPct: taxaAtual != null && taxaRef > 0 ? (taxaAtual / taxaRef - 1) * 100 : null };
   };
-  const rowsEvo = Object.entries(g).map(([k, x]) => { const cad = allPostos.find(p => _opNormNome(p.nome) === k); return evoRow(x.nome, x.rows, gRef[k] ? gRef[k].rows : null, cad ? horasPosto(cad) : null); }).sort((a, b) => b.total - a.total);
+  const chaves = Array.from(new Set([...Object.keys(g), ...Object.keys(gEvo)]));
+  const rowsEvo = chaves.map(k => { const x = gEvo[k] || g[k], cad = allPostos.find(p => _opNormNome(p.nome) === k); return evoRow(x.nome, gEvo[k] ? gEvo[k].rows : [], g[k] ? g[k].rows : [], gRef[k] ? gRef[k].rows : null, cad ? horasPosto(cad) : null); })
+    .filter(r => r.total > 0 || r.varPct != null).sort((a, b) => (b.porMes[comp] || b.total) - (a.porMes[comp] || a.total));
   const refTodas = [].concat(...Object.values(gRef).map(x => x.rows));
-  const tot = evoRow('Total', todas, refTodas, null);
-  return { painel, postosTab: linhas, evoPostos: { meses: sel, rows: rowsEvo, totais: tot, refRot: ref.rot, refTipo: ref.tipo, parcialComp: parcial ? comp : null } };
+  const tot = evoRow('Total', [].concat(...Object.values(gEvo).map(x => x.rows)), todas, refTodas, null);
+  return { painel, postosTab: linhas, evoPostos: { meses: graf, rows: rowsEvo, totais: tot, refRot: ref.rot, refTipo: ref.tipo, parcialComp: parcial ? comp : null, comp } };
 }
 
 // ── CSAT ──
@@ -30967,36 +31010,36 @@ function pdcaCsatAgg(rows) {
   return pesq > 0 ? { pesq, nota: soma / pesq, cord: cp > 0 ? cs / cp : null, prom, neu, det, pctProm: prom / pesq * 100, pctNeu: neu / pesq * 100, pctDet: det / pesq * 100, postosAval: postos.size } : null;
 }
 // postosLista (opcional): nomes a listar mesmo sem pesquisa (ficam com "—"); sem lista = só os que têm registro
-function pdcaCsatPostoMes(rows, postosLista) {
+function pdcaCsatPostoMes(rows, postosLista, main) {
   const g = {};
   const touch = nome => { const k = _opNormNome(nome); return g[k] || (g[k] = { posto: nome, porMes: {}, pesq: 0, soma: 0 }); };
   (postosLista || []).forEach(n => touch(_opNomeCanonicoOficial(n)));
   rows.forEach(d => {
     const nome = _opNomeCanonicoOficial(d.postoNome); if (postosLista && !g[_opNormNome(nome)]) return;
     const o = touch(nome), n = d.pesquisas || 0, pm = o.porMes[d.mesRef] || (o.porMes[d.mesRef] = { pesq: 0, soma: 0 });
-    pm.pesq += n; pm.soma += (d.notaMedia || 0) * n; o.pesq += n; o.soma += (d.notaMedia || 0) * n;
+    pm.pesq += n; pm.soma += (d.notaMedia || 0) * n; if (!main || d.mesRef === main) { o.pesq += n; o.soma += (d.notaMedia || 0) * n; }
   });
   return Object.values(g).map(o => ({ posto: o.posto, pesq: o.pesq, nota: o.pesq > 0 ? o.soma / o.pesq : null, porMes: Object.fromEntries(Object.entries(o.porMes).filter(([, v]) => v.pesq > 0).map(([m, v]) => [m, { pesq: v.pesq, nota: v.soma / v.pesq }])) }));
 }
-function pdcaCsatSerie(rows, meses) { return meses.map(m => { const a = pdcaCsatAgg(rows.filter(d => d.mesRef === m)); return { mes: m, pesq: a ? a.pesq : 0, nota: a ? a.nota : null }; }); }
-function pdcaCsatSupervisores(sel, comp, anoMeses) {
-  const rowsSel = pdcaCsatRows(sel), rowsAno = pdcaCsatRows(anoMeses), vistos = new Set();
+// mês sem pesquisa => pesq/nota nulos (nunca zero): o gráfico deixa o mês vazio e o slide avisa
+function pdcaCsatSerie(rows, meses) { return meses.map(m => { const a = pdcaCsatAgg(rows.filter(d => d.mesRef === m)); return { mes: m, pesq: a ? a.pesq : null, nota: a ? a.nota : null, semDados: !a }; }); }
+function pdcaCsatSupervisores(graf, comp, anoMeses) {
+  const meses = Array.from(new Set([...graf, comp])), rowsSel = pdcaCsatRows(meses), rowsAno = pdcaCsatRows(anoMeses), vistos = new Set();
   return _opSupervisoresDisponiveis().filter(sup => { const k = csatNorm(sup).split(' ')[0].toLowerCase(); if (vistos.has(k)) return false; vistos.add(k); return true; }).map(sup => {
     const k1 = csatNorm(sup).split(' ')[0].toLowerCase(), cfg = CSAT_SUPERVISORES[k1], set = _opPostosSupervisorOficial(sup);
     const nomes = cfg ? cfg.postos : allPostos.filter(p => p.supervisor === sup).map(p => p.nome);
     const no = rows => rows.filter(d => set.has(_pdcaKeyPosto(d.postoNome)));
-    const rs = no(rowsSel), tot = pdcaCsatAgg(rs); if (!tot) return null;
-    const linhas = pdcaCsatPostoMes(rs, nomes), cmp = pdcaCsatAgg(no(rowsSel.filter(d => d.mesRef === comp)));
-    const porPosto = pdcaCsatPostoMes(no(rowsSel.filter(d => d.mesRef === comp)), nomes);
-    return { sup: (cfg && cfg.nome) || sup, key: k1, postosTotal: linhas.length, postosAval: linhas.filter(l => l.pesq > 0).length, linhas, total: tot, comp: cmp, ano: pdcaCsatAgg(no(rowsAno)),
-      serie: pdcaCsatSerie(no(rowsSel), sel), semPesquisaComp: porPosto.filter(l => !l.pesq).map(l => l.posto), pesq: tot.pesq, nota: tot.nota };
+    const rs = no(rowsSel), tot = pdcaCsatAgg(no(rowsSel.filter(d => d.mesRef === comp))); if (!tot) return null;   // resultado principal = competência
+    const linhas = pdcaCsatPostoMes(rs, nomes, comp);
+    return { sup: (cfg && cfg.nome) || sup, key: k1, postosTotal: linhas.length, postosAval: linhas.filter(l => l.pesq > 0).length, linhas, total: tot, comp: tot, ano: pdcaCsatAgg(no(rowsAno)),
+      serie: pdcaCsatSerie(no(rowsSel), graf), semPesquisaComp: linhas.filter(l => !l.pesq).map(l => l.posto), pesq: tot.pesq, nota: tot.nota, meses: graf };
   }).filter(Boolean);
 }
-function pdcaCsatIasc(sel, lista) {
+function pdcaCsatIasc(graf, comp, lista) {
   if (!lista || !lista.length) return null;
-  const set = new Set(lista.map(_pdcaKeyPosto)), rs = pdcaCsatRows(sel).filter(d => set.has(_pdcaKeyPosto(d.postoNome)));
-  const linhas = pdcaCsatPostoMes(rs, lista).sort((a, b) => b.pesq - a.pesq);
-  return { postosCfg: lista.slice(), meses: sel, linhas, total: pdcaCsatAgg(rs), serie: pdcaCsatSerie(rs, sel) };
+  const meses = Array.from(new Set([...graf, comp])), set = new Set(lista.map(_pdcaKeyPosto)), rs = pdcaCsatRows(meses).filter(d => set.has(_pdcaKeyPosto(d.postoNome)));
+  const linhas = pdcaCsatPostoMes(rs, lista, comp).sort((a, b) => b.pesq - a.pesq);
+  return { postosCfg: lista.slice(), meses: graf, linhas, total: pdcaCsatAgg(rs.filter(d => d.mesRef === comp)), serie: pdcaCsatSerie(rs, graf) };
 }
 function pdcaCsatAnual() {
   const g = {};
@@ -31015,111 +31058,120 @@ function pdcaPostosPosPeriodo(sel, fMes) {
 }
 
 // ═════════ MONTAGEM PRINCIPAL ═════════
+function pdcaMesesComDados() {
+  const u = a => Array.from(new Set(a.filter(Boolean))).sort();
+  return { op: u(_opAllIndicadores.map(d => d.mesRef)), csat: u(_opAllCsat.map(d => d.mesRef)), pos: u(_opAllPos.map(d => d.mesRef)), ln: u((_opLnAgregados || []).map(a => a.data ? a.data.slice(0, 7) : '')) };
+}
 async function pdcaColetar() {
-  const S = PDCA_ST, comp = S.comp, ant = _PE.mesAnterior(comp), anoMeses = _PE.mesesDoAno(comp), grupos = S.grupos;
-  const sel = {}; PDCA_MODS.forEach(m => { sel[m] = pdcaSelNormalizar(comp, S.sel && S.sel[m]); });
+  const S = PDCA_ST, comp = S.comp, ant = _PE.mesAnterior(comp), anoMeses = _PE.mesesDoAno(comp), grupos = S.grupos, fer = S.feriadosExtras;
+  const cfgM = mod => Object.assign(pdcaModCfgPadrao(), (S.mods && S.mods[mod]) || {});
+  const graf = {}, refc = {}, cfgMods = {};
+  PDCA_MODS.forEach(m => { cfgMods[m] = cfgM(m); graf[m] = pdcaGrafMeses(comp, cfgMods[m]); refc[m] = cfgMods[m].ref; });
   const precisaOp = grupos.op || grupos.csat || grupos.pos || grupos.ln;
   if (precisaOp) await _opGarantirDadosCarregados();
-  const mesesOp = Array.from(new Set([...anoMeses, ant, ...sel.op, ...sel.csat, ...sel.pos, ...sel.ln])).sort();
+  const mesesOp = Array.from(new Set([...anoMeses, ant, ...graf.op, ...graf.csat, ...graf.pos, ...graf.ln])).sort();
   const calc = {}; mesesOp.forEach(m => { calc[m] = pdcaCalcMesOp(m); });
-  const linhas = pdcaTemLinhas(comp);
-  const parcial = S.tipo === 'parcial';
-  const corte = S.corte || pdcaCorteSugerido(comp);
-  const diaCorte = +corte.slice(8, 10);
-  const duTotal = S.duTotal || _PE.diasUteis(comp, null, S.feriadosExtras);
-  const duDec = parcial ? (S.duDec || _PE.diasUteis(comp, diaCorte, S.feriadosExtras)) : duTotal;
-  const duTotalAnt = _PE.diasUteis(ant, null, S.feriadosExtras);
-  const f = duTotal > 0 ? Math.min(1, duDec / duTotal) : 1;
-  const duCheio = m => m === comp ? duTotal : _PE.diasUteis(m, null, S.feriadosExtras);
-  const duMes = m => m === comp ? duDec : duCheio(m);             // dias úteis efetivamente decorridos no mês
-  const fMes = m => m === comp ? (parcial ? f : 1) : 1;           // fração da meta mensal vigente no mês
-  const duDoMes = duCheio;
-  const refDe = mod => pdcaRefMeses(comp, ant, anoMeses, sel[mod], S.comparativo);
+  const linhas = pdcaTemLinhas(comp), comDados = pdcaMesesComDados();
+  // data de atualização e status (parcial/fechado) de CADA módulo, a partir da base oficial
+  const info = {};
+  ['op', 'csat', 'pos', 'ln'].forEach(m => { const f = pdcaFonteData(m, comp); info[m] = Object.assign(pdcaStatusModulo(comp, f.iso, S.tipo, fer), { txt: f.txt, origem: f.origem }); });
+  const duTotal = info.op.duTotal, duTotalAnt = _PE.diasUteis(ant, null, fer);
+  const duCheio = m => m === comp ? duTotal : _PE.diasUteis(m, null, fer);
+  const parcOp = info.op.status === 'parcial', parcPos = info.pos.status === 'parcial', parcLn = info.ln.status === 'parcial';
+  const duMesOp = m => m === comp ? info.op.duDec : duCheio(m);
+  const fMesPos = m => m === comp ? (parcPos ? info.pos.f : 1) : 1;
+  const refDe = mod => pdcaRefMeses(comp, ant, anoMeses, refc[mod]);
   const d = {
-    versao: 2, comp, ant, tipo: S.tipo, comparativo: S.comparativo, grupos: { ...grupos }, meses: anoMeses, sel, corte, duTotal, duDec, duTotalAnt, fatorJornada: f,
+    versao: 3, comp, ant, tipo: S.tipo, refc, grupos: { ...grupos }, meses: anoMeses, sel: graf, cfgMods, mod: info, mesesComDados: comDados,
+    corte: info.op.ate, duTotal, duDec: info.op.duDec, duTotalAnt, fatorJornada: info.op.f,
     geradoEm: new Date().toISOString(), metas: pdcaMetas(),
     bases: { indicadores: _opUltimaAtualizacaoIndicadores || '', pos: _opUltimaAtualizacaoPos || '', ligacaoNova: _opLnDataExtracao || '' },
     disponibilidade: { ...linhas }, avisos: []
   };
+  const nomeMod = { op: 'Operação', csat: 'CSAT', pos: 'POS', ln: 'Ligação Nova', qual: 'Qualidade' };
+  const semMes = (mod, base) => { const f = graf[mod].filter(m => !base.includes(m)); if (f.length) d.avisos.push(nomeMod[mod] + ': sem dados em ' + f.map(_PE.fmtMes).join(', ') + ' — esses meses ficam vazios nos gráficos (não são tratados como zero).'); };
+  const semComp = mod => d.avisos.push(nomeMod[mod] + ': sem registros em ' + _PE.fmtMes(comp) + (comDados[mod] && comDados[mod].length ? '. Meses com dados: ' + comDados[mod].slice(-6).map(_PE.fmtMes).join(', ') + '. Escolha outra competência ou desmarque o módulo.' : '.'));
   // ── Operação ──
   if (grupos.op) {
     const a = calc[comp].op, p = calc[ant].op, ref = refDe('op');
     const dia = (x, du) => x && _PE.isNum(x.atendidas) && du > 0 ? x.atendidas / du : null;
-    const serie = {}; sel.op.forEach(m => { serie[m] = calc[m].op; });
+    const serie = {}; graf.op.forEach(m => { serie[m] = calc[m].op; });
     const prev = anoMeses.filter(m => m !== comp).map(m => calc[m].op).filter(Boolean);
-    const per = pdcaOpPeriodo(sel.op, duMes, ref, comp, parcial);
+    const per = pdcaOpPeriodo([comp], graf.op, duMesOp, ref, comp, parcOp);
     d.op = a ? {
-      atual: { ...a, atendidasDia: dia(a, parcial ? duDec : duTotal), projecao: parcial && f > 0 && f < 1 ? a.atendidas / f : null }, ant: p ? { ...p, atendidasDia: dia(p, duTotalAnt) } : null,
-      serie, serieNs30: sel.op.map(m => serie[m] ? serie[m].ns30 : null),
-      mediaAno: prev.length ? { ns30: _PE.media(prev.map(x => x.ns30)), tmaSeg: _PE.media(prev.map(x => x.tmaSeg)), tmeSeg: _PE.media(prev.map(x => x.tmeSeg)), pctPerdidas: _PE.media(prev.map(x => x.pctPerdidas)), atendidas: _PE.media(prev.map(x => x.atendidas)), atendidasDia: _PE.media(anoMeses.filter(m => m !== comp && calc[m].op).map(m => dia(calc[m].op, duDoMes(m)))) } : null,
+      atual: { ...a, atendidasDia: dia(a, info.op.duDec), projecao: parcOp && info.op.f > 0 && info.op.f < 1 ? a.atendidas / info.op.f : null }, ant: p ? { ...p, atendidasDia: dia(p, duTotalAnt) } : null,
+      serie, serieNs30: graf.op.map(m => serie[m] ? serie[m].ns30 : null),
+      mediaAno: prev.length ? { ns30: _PE.media(prev.map(x => x.ns30)), tmaSeg: _PE.media(prev.map(x => x.tmaSeg)), tmeSeg: _PE.media(prev.map(x => x.tmeSeg)), pctPerdidas: _PE.media(prev.map(x => x.pctPerdidas)), atendidas: _PE.media(prev.map(x => x.atendidas)), atendidasDia: _PE.media(anoMeses.filter(m => m !== comp && calc[m].op).map(m => dia(calc[m].op, duCheio(m)))) } : null,
       referencia: ref, painel: per.painel, postosTab: per.postosTab, evoPostos: per.evoPostos,
       postos: per.postosTab, postosAnt: pdcaPostosOp(ant)
     } : null;
-    if (!a) d.avisos.push('Operação: sem registros em ' + _PE.fmtMes(comp));
-    else sel.op.filter(m => !calc[m].op).forEach(m => d.avisos.push('Operação: sem registros em ' + _PE.fmtMes(m) + ' (mês selecionado fica de fora dos gráficos).'));
+    if (!a) semComp('op'); else semMes('op', comDados.op);
   }
   // ── CSAT ──
   if (grupos.csat) {
     const a = calc[comp].csat, p = calc[ant].csat;
-    const serie = {}; sel.csat.forEach(m => { serie[m] = calc[m].csat; });
+    const serie = {}; graf.csat.forEach(m => { serie[m] = calc[m].csat; });
     const prev = anoMeses.filter(m => m !== comp && calc[m].csat).map(m => calc[m].csat), pesqTot = prev.reduce((s, x) => s + x.pesq, 0);
-    const rowsSel = pdcaCsatRows(sel.csat), supers = pdcaCsatSupervisores(sel.csat, comp, anoMeses);
+    const rowsComp = pdcaCsatRows([comp]), rowsGraf = pdcaCsatRows(graf.csat), supers = pdcaCsatSupervisores(graf.csat, comp, anoMeses);
     d.csat = a ? {
-      atual: a, ant: p, serie, serieNota: sel.csat.map(m => serie[m] ? serie[m].nota : null),
+      atual: a, ant: p, serie, serieNota: graf.csat.map(m => serie[m] ? serie[m].nota : null),
       mediaAno: prev.length && pesqTot > 0 ? { nota: prev.reduce((s, x) => s + x.nota * x.pesq, 0) / pesqTot, pesq: pesqTot } : null,
-      postos: pdcaCsatPostoMes(rowsSel).filter(o => o.pesq > 0).map(o => ({ posto: o.posto, pesq: o.pesq, nota: o.nota })), postosAnt: pdcaPostosCsat(ant),
+      postos: pdcaCsatPostoMes(rowsComp).filter(o => o.pesq > 0).map(o => ({ posto: o.posto, pesq: o.pesq, nota: o.nota })), postosAnt: pdcaPostosCsat(ant),
       supervisores: supers.map(x => ({ sup: x.sup, pesq: x.pesq, nota: x.nota })),
-      visao: { comp: pdcaCsatAgg(pdcaCsatRows([comp])), periodo: sel.csat.length > 1 ? pdcaCsatAgg(rowsSel) : null, ano: pdcaCsatAgg(pdcaCsatRows(anoMeses)), anual: pdcaCsatAnual(), serie: pdcaCsatSerie(rowsSel, sel.csat), postosTotal: _opPostosDisponiveis().length },
-      iasc: pdcaCsatIasc(sel.csat, (S.cfg && S.cfg.postosIasc) || []), supSlides: supers
+      visao: { comp: pdcaCsatAgg(rowsComp), periodo: null, ano: pdcaCsatAgg(pdcaCsatRows(anoMeses)), anual: pdcaCsatAnual(), serie: pdcaCsatSerie(rowsGraf, graf.csat), postosTotal: _opPostosDisponiveis().length },
+      iasc: pdcaCsatIasc(graf.csat, comp, (S.cfg && S.cfg.postosIasc) || []), supSlides: supers
     } : null;
-    if (!a) d.avisos.push('CSAT: sem registros em ' + _PE.fmtMes(comp));
-    else if (!(S.cfg && S.cfg.postosIasc && S.cfg.postosIasc.length)) d.avisos.push('CSAT — Postos IASC: lista de postos IASC não configurada; o slide foi omitido. Configure em "Postos IASC" na tela.');
+    if (!a) semComp('csat');
+    else { semMes('csat', comDados.csat); if (!(S.cfg && S.cfg.postosIasc && S.cfg.postosIasc.length)) d.avisos.push('CSAT — Postos IASC: lista de postos IASC não configurada; o slide foi omitido. Configure em "Postos IASC" na tela.'); }
   }
   // ── POS ──
   if (grupos.pos) {
     const a = calc[comp].pos, p = calc[ant].pos;
-    const serie = {}; sel.pos.forEach(m => { serie[m] = calc[m].pos; });
+    const serie = {}; graf.pos.forEach(m => { serie[m] = calc[m].pos; });
     const prev = anoMeses.filter(m => m !== comp && calc[m].pos).map(m => calc[m].pos);
     d.pos = a ? {
-      atual: { ...a, valorDia: (parcial ? duDec : duTotal) > 0 ? a.valor / (parcial ? duDec : duTotal) : null, projecao: parcial && f > 0 && f < 1 ? a.valor / f : null },
+      atual: { ...a, valorDia: info.pos.duDec > 0 ? a.valor / info.pos.duDec : null, projecao: parcPos && info.pos.f > 0 && info.pos.f < 1 ? a.valor / info.pos.f : null },
       ant: p ? { ...p, valorDia: duTotalAnt > 0 ? p.valor / duTotalAnt : null } : null, serie,
       mediaAno: prev.length ? { pct: _PE.media(prev.map(x => x.pct)), valor: _PE.media(prev.map(x => x.valor)) } : null,
-      postos: pdcaPostosPosPeriodo(sel.pos, fMes), postosAnt: pdcaPostosPos(ant)
+      postos: pdcaPostosPosPeriodo([comp], fMesPos), postosAnt: pdcaPostosPos(ant)
     } : null;
-    if (!a) d.avisos.push('POS: sem registros em ' + _PE.fmtMes(comp));
+    if (!a) semComp('pos'); else semMes('pos', comDados.pos);
   }
-  // ── Ligação Nova (dados diários → comparação equivalente no parcial) ──
+  // ── Ligação Nova (dados diários → comparação equivalente no parcial, usando a extração da própria base) ──
   if (grupos.ln) {
-    const diaMax = diaCorte, noCorte = x => !parcial || (x.data <= corte);
+    const corteLn = info.ln.ate, diaMax = corteLn ? +corteLn.slice(8, 10) : 31, noCorte = x => !parcLn || (x.data <= corteLn);
     const atualL = (calc[comp].lnDados || []).filter(noCorte);
-    const antL = (calc[ant].lnDados || []).filter(x => !parcial || +x.data.slice(8, 10) <= diaMax);
+    const antL = (calc[ant].lnDados || []).filter(x => !parcLn || +x.data.slice(8, 10) <= diaMax);
     const antFull = calc[ant].lnDados || [];
     const lnMes = m => m === comp ? atualL : (calc[m].lnDados || []);
-    const serie = {}; sel.ln.forEach(m => { serie[m] = pdcaLnResumo(lnMes(m)); });
+    const serie = {}; graf.ln.forEach(m => { serie[m] = pdcaLnResumo(lnMes(m)); });
     const a = pdcaLnResumo(atualL);
     const prev = anoMeses.filter(m => m !== comp).map(m => pdcaLnResumo(calc[m].lnDados)).filter(Boolean);
     const somaCom = prev.reduce((s, x) => s + x.com, 0), somaSem = prev.reduce((s, x) => s + x.sem, 0);
     const porDia = {}; atualL.forEach(x => { const o = porDia[x.data] || (porDia[x.data] = { com: 0, sem: 0 }); o.com += x.comEmail || 0; o.sem += x.semEmail || 0; });
     let ac = 0, as = 0; const evo = Object.keys(porDia).sort().map(dt => { ac += porDia[dt].com; as += porDia[dt].sem; return { dia: dt.slice(8, 10) + '/' + dt.slice(5, 7), pct: (ac + as) > 0 ? as / (ac + as) * 100 : null }; });
-    const periodoL = [].concat(...sel.ln.map(lnMes));
     d.ln = a ? {
-      atual: a, ant: pdcaLnResumo(parcial ? antL : antFull), antMesCompleto: pdcaLnResumo(antFull), serie,
-      periodo: sel.ln.length > 1 ? pdcaLnResumo(periodoL) : null,
+      atual: a, ant: pdcaLnResumo(parcLn ? antL : antFull), antMesCompleto: pdcaLnResumo(antFull), serie,
+      periodo: null,
       mediaAno: (somaCom + somaSem) > 0 ? { pct: somaSem / (somaCom + somaSem) * 100 } : null,
-      postos: pdcaLnPorPosto(periodoL), evolucao: evo
+      postos: pdcaLnPorPosto(atualL), evolucao: evo
     } : null;
-    if (!a) d.avisos.push('Ligação Nova: sem registros em ' + _PE.fmtMes(comp));
+    if (!a) semComp('ln'); else semMes('ln', comDados.ln);
   }
   // ── Qualidade ──
   if (grupos.qual) {
-    const meses2 = Array.from(new Set([...anoMeses, ant, ...sel.qual])).sort();
+    const meses2 = Array.from(new Set([...anoMeses, ant, ...graf.qual])).sort();
     const q = await pdcaQualCarregar(meses2);
-    d.qual = pdcaMontarQual(q, anoMeses, comp, ant, sel.qual);
+    d.qual = pdcaMontarQual(q, anoMeses, comp, ant, graf.qual);
     d.fonteQual = q.fonte;
+    const f = pdcaFonteData('qual', comp, [].concat(q.indevidos || [], q.reclamacoes || [], q.trocas || []));
+    info.qual = Object.assign(pdcaStatusModulo(comp, f.iso, S.tipo, fer), { txt: f.txt, origem: f.origem });
     if (!d.qual.indevidos && !d.qual.trocas && !d.qual.reclamacoes) { d.avisos.push('Qualidade: sem registros nas bases oficiais'); }
-    if (d.qual.indevidos && d.qual.indevidos.atual.semRegistro) d.avisos.push('Ordens indevidas: nenhum registro em ' + _PE.fmtMes(comp) + ' (tratado como 0 ocorrências por haver histórico em outros meses).');
-    if (d.qual.trocas && d.qual.trocas.atual.semRegistro) d.avisos.push('Trocas improcedentes: nenhum registro em ' + _PE.fmtMes(comp) + ' (tratado como 0 ocorrências por haver histórico em outros meses).');
+    if (d.qual.indevidos && d.qual.indevidos.atual.semRegistro) d.avisos.push('Ordens indevidas: nenhum registro em ' + _PE.fmtMes(comp) + (d.qual.indevidos.atual.semDados ? ' (competência posterior ao último mês importado: sem dados).' : ' (tratado como 0 ocorrências por haver histórico em outros meses).'));
+    if (d.qual.trocas && d.qual.trocas.atual.semRegistro) d.avisos.push('Trocas improcedentes: nenhum registro em ' + _PE.fmtMes(comp) + (d.qual.trocas.atual.semDados ? ' (competência posterior ao último mês importado: sem dados).' : ' (tratado como 0 ocorrências por haver histórico em outros meses).'));
   }
+  ['op', 'csat', 'pos', 'ln', 'qual'].forEach(m => { const i = info[m]; if (!grupos[m] || !i) return;
+    if (i.nota) d.avisos.push(nomeMod[m] + ': ' + i.nota + (i.status === 'indefinido' && S.tipo === 'parcial' && (m === 'op' || m === 'pos' || m === 'ln') ? ' Comparações de volume entre períodos não foram normalizadas.' : '')); });
   // ── Ocorrências ──
   if (grupos.ocorr) { d.ocorr = await pdcaOcorrCarregar(comp, ant); }
   d.scorecard = _PE.scorecard(d);
@@ -31160,8 +31212,8 @@ function pdcaConstruirPptx(snap) {
   pres.author = 'Gestão Conect@'; pres.company = 'Gestão Conect@'; pres.title = 'Apresentação PDCA — ' + F.fmtMesLongo(d.comp);
   const statusTxt = parcial ? 'Resultado parcial até ' + F.fmtData(d.corte) : 'Fechamento mensal';
   const atualizado = d.geradoEm ? F.fmtData(d.geradoEm) : F.fmtData(new Date().toISOString());
-  const chip = F.fmtMes(d.comp) + '  ·  ' + (parcial ? 'Parcial até ' + F.fmtData(d.corte).slice(0, 5) : 'Fechamento mensal') + '  ·  Atualizado em ' + atualizado;
-  let pag = 0, apxOpPostos = null, lnEvo = null, lnComSem = null;
+  const chip = F.fmtMes(d.comp) + '  ·  ' + (parcial ? 'Resultado parcial' : 'Fechamento mensal');
+  let pag = 0, apxOpPostos = null, lnEvo = null, lnComSem = null, curMod = null;
   const extras = []; // análises que não couberam — vão para o anexo
   const vistas = new Set();
 
@@ -31177,7 +31229,9 @@ function pdcaConstruirPptx(snap) {
     s.addText(chip, { x: 8.55, y: 0.1, w: 4.3, h: 0.65, fontFace: PDCA_FONT, fontSize: 10, color: 'F3E3A1', align: 'right', valign: 'middle' });
     if (mensagem) s.addText(mensagem, { x: 0.5, y: 1.02, w: 12.33, h: 0.5, fontFace: PDCA_FONT, fontSize: 14, bold: true, color: C.navy, valign: 'middle', fit: 'shrink' });
     s.addShape(pres.shapes.LINE, { x: 0.5, y: 7.02, w: 12.33, h: 0, line: { color: C.line, width: 0.75 } });
-    s.addText('Gestão Conect@  ·  Apresentação PDCA Enel  ·  ' + F.fmtMesLongo(d.comp) + (parcial ? ' (parcial)' : '') + (snap.rascunho ? '  ·  PRÉVIA — apresentação ainda não finalizada' : ''), { x: 0.5, y: 7.07, w: 9, h: 0.3, fontFace: PDCA_FONT, fontSize: 9, color: C.muted });
+    const tr = curMod ? trace(curMod) : '';
+    s.addText('Gestão Conect@  ·  PDCA  ·  ' + F.fmtMes(d.comp) + (snap.rascunho ? '  ·  PRÉVIA' : ''), { x: 0.5, y: 7.07, w: tr ? 3.3 : 9, h: 0.3, fontFace: PDCA_FONT, fontSize: 9, color: C.muted });
+    if (tr) s.addText(tr, { x: 3.85, y: 7.04, w: 7.9, h: 0.4, fontFace: PDCA_FONT, fontSize: 8, color: C.muted, valign: 'middle', fit: 'shrink' });
     s.addText(String(pag), { x: 11.83, y: 7.07, w: 1, h: 0.3, fontFace: PDCA_FONT, fontSize: 9, color: C.muted, align: 'right' });
     return s;
   }
@@ -31241,13 +31295,28 @@ function pdcaConstruirPptx(snap) {
   };
   const corSt = st => st === 'verde' ? C.green : st === 'vermelho' ? C.red : C.muted;
   const rotMes = ms => ms.map(m => F.fmtMes(m));
-  const lblAtual = (m) => F.fmtMes(m) + (m === d.comp && parcial ? ' (parcial)' : '');
-  const rotMesP = ms => ms.map(lblAtual);
 
-  // meses selecionados por módulo (snapshots antigos, sem d.sel, usam os meses do ano)
+  // v3: resultado principal = competência; d.sel[mod] = meses exibidos nos gráficos (evolução); d.refc[mod] = comparativo; d.mod[mod] = data/status da base.
+  // Snapshots antigos (v1/v2) mantêm o comportamento anterior.
+  const V3 = (d.versao || 0) >= 3;
+  const MIx = mod => (d.mod && d.mod[mod || curMod || 'op']) || null;
+  const par = mod => { const i = MIx(mod); return i ? i.status === 'parcial' : parcial; };
   const SEL = mod => (d.sel && d.sel[mod] && d.sel[mod].length) ? d.sel[mod] : d.meses;
-  const multi = mod => SEL(mod).length > 1;
-  const perRot = mod => SEL(mod).length === 1 ? F.fmtMes(d.comp) + (parcial ? ' (parcial)' : '') : F.fmtPeriodo(SEL(mod)) + (parcial ? ' (' + F.fmtMes(d.comp).slice(0, 3) + ' parcial)' : '');
+  const multi = mod => !V3 && SEL(mod).length > 1;
+  const lblAtual = (m, mod) => F.fmtMes(m) + (m === d.comp && par(mod) ? ' (parcial)' : '');
+  const rotMesP = (ms, mod) => ms.map(m => lblAtual(m, mod));
+  const perRot = mod => V3 ? F.fmtMes(d.comp) + (par(mod) ? ' (parcial)' : '') : (SEL(mod).length === 1 ? F.fmtMes(d.comp) + (parcial ? ' (parcial)' : '') : F.fmtPeriodo(SEL(mod)) + (parcial ? ' (' + F.fmtMes(d.comp).slice(0, 3) + ' parcial)' : ''));
+  const grafRot = mod => F.fmtPeriodo(SEL(mod));
+  const mesCurto = F.fmtMes(d.comp).slice(0, 3);
+  const refTxt = mod => { const r = d.refc && d.refc[mod]; return r === 'ant' ? 'mês anterior (' + F.fmtMes(d.ant) + ')' : r === 'ano' ? 'média do ano' : r === 'ambos' ? 'mês anterior (' + F.fmtMes(d.ant) + ') e média do ano' : 'sem comparação'; };
+  // rastreabilidade de cada bloco: competência, status, data de atualização da fonte, meses do gráfico e comparativo
+  function trace(mod) {
+    if (!V3) return '';
+    const i = MIx(mod), sd = d.mesesComDados && d.mesesComDados[mod], falta = sd ? SEL(mod).filter(m => !sd.includes(m)) : [];
+    const fonte = i ? (i.ate ? 'dados até ' + F.fmtData(i.ate) : 'data de atualização não identificada') : '';
+    const st = i ? (i.status === 'parcial' ? 'parcial (' + i.duDec + '/' + i.duTotal + ' d.u.)' : i.status === 'fechado' ? 'fechado' : 'status indefinido') : (parcial ? 'parcial' : 'fechado');
+    return 'Competência ' + F.fmtMes(d.comp) + ' · ' + st + (fonte ? ' · ' + fonte : '') + '  |  Gráficos: ' + grafRot(mod) + (falta.length ? ' (sem dados: ' + falta.map(m => F.fmtMes(m).slice(0, 3)).join(', ') + ')' : '') + '  |  Comparativo: ' + refTxt(mod);
+  }
   const HDR = (t, fs) => ({ text: t, options: { bold: true, color: C.white, fill: { color: C.navy }, align: 'center', valign: 'middle', fontSize: fs || 10, fontFace: PDCA_FONT } });
   const CEL = (t, o) => { o = o || {}; return { text: String(t == null ? '—' : t), options: { align: o.al || 'center', valign: 'middle', fontSize: o.fs || 10, fontFace: PDCA_FONT, color: o.cor || C.text, bold: !!o.b, fill: { color: o.fill || C.white } } }; };
   const zebra = i => i % 2 ? 'F8FAFC' : C.white, FILL_TOT = 'E3EAF5';
@@ -31282,12 +31351,14 @@ function pdcaConstruirPptx(snap) {
     s.addText('Reunião Executiva PDCA', { x: 0.9, y: 2.0, w: 11.5, h: 1.1, fontFace: PDCA_FONT, fontSize: 44, bold: true, color: C.white });
     s.addText(F.fmtMesLongo(d.comp), { x: 0.9, y: 3.1, w: 11.5, h: 0.7, fontFace: PDCA_FONT, fontSize: 28, color: 'DCE6F5' });
     s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: 0.9, y: 4.0, w: 6.3, h: 0.5, rectRadius: 0.08, fill: { color: parcial ? C.orange : C.green }, line: { color: parcial ? C.orange : C.green } });
-    s.addText((parcial ? 'RESULTADO PARCIAL — dados até ' + F.fmtData(d.corte) + ' (' + d.duDec + ' de ' + d.duTotal + ' dias úteis)' : 'FECHAMENTO MENSAL — mês concluído'), { x: 0.9, y: 4.0, w: 6.3, h: 0.5, fontFace: PDCA_FONT, fontSize: 13, bold: true, color: C.white, align: 'center', valign: 'middle' });
+    s.addText((parcial ? 'RESULTADO PARCIAL' : 'FECHAMENTO MENSAL'), { x: 0.9, y: 4.0, w: 6.3, h: 0.5, fontFace: PDCA_FONT, fontSize: 13, bold: true, color: C.white, align: 'center', valign: 'middle' });
     const linhas = [];
     if (snap.meta && snap.meta.dataReuniao) linhas.push('Data da reunião: ' + F.fmtData(snap.meta.dataReuniao));
     if (snap.meta && snap.meta.responsavel) linhas.push('Responsável: ' + snap.meta.responsavel);
-    linhas.push('Dados atualizados em ' + atualizado);
-    s.addText(linhas.join('\n'), { x: 0.9, y: 4.8, w: 11, h: 1.2, fontFace: PDCA_FONT, fontSize: 14, color: 'DCE6F5', valign: 'top' });
+    if (V3) { const NM = { op: 'Operação', csat: 'CSAT', pos: 'POS', ln: 'Ligação Nova', qual: 'Qualidade' };
+      ['op', 'csat', 'pos', 'ln', 'qual'].filter(m => d.grupos[m] && d.mod && d.mod[m]).forEach(m => { const i = d.mod[m]; linhas.push(NM[m] + ': ' + (i.ate ? 'atualizado até ' + F.fmtData(i.ate) : 'data de atualização não identificada') + ' · ' + (i.status === 'parcial' ? 'parcial' : i.status === 'fechado' ? 'fechado' : 'status indefinido')); }); }
+    else linhas.push('Dados atualizados em ' + atualizado);
+    s.addText(linhas.join('\n'), { x: 0.9, y: 4.75, w: 11.5, h: 2.0, fontFace: PDCA_FONT, fontSize: V3 ? 12 : 14, color: 'DCE6F5', valign: 'top' });
     s.addText('Gestão Conect@  ·  Operação e Qualidade', { x: 0.9, y: 6.7, w: 11, h: 0.4, fontFace: PDCA_FONT, fontSize: 12, color: C.gold });
   }
 
@@ -31301,17 +31372,18 @@ function pdcaConstruirPptx(snap) {
     const msgs = [];
     if (fora.length) msgs.push({ id: 'r1', tipo: 'fato', texto: 'Fora da meta (maior desvio primeiro): ' + fora.slice(0, 5).map(x => x.nome + ' ' + x.valor).join('; ') + (fora.length > 5 ? ' e mais ' + (fora.length - 5) : '') + '.' });
     if (dentro.length) msgs.push({ id: 'r2', tipo: 'fato', texto: 'Dentro da meta: ' + dentro.slice(0, 6).map(x => x.nome + ' ' + x.valor).join('; ') + '.' });
-    msgs.push({ id: 'r3', tipo: 'fato', texto: parcial ? 'Resultado parcial até ' + F.fmtData(d.corte) + ' (' + d.duDec + ' de ' + d.duTotal + ' dias úteis): volumes e POS comparados por dia útil; taxas comparadas diretamente.' : 'Fechamento mensal confirmado pela gestão; comparativos sobre o mês completo.' });
+    msgs.push({ id: 'r3', tipo: 'fato', texto: V3 ? 'Resultados de ' + F.fmtMesLongo(d.comp) + ' (somente a competência). Cada base indica sua data de atualização e se está parcial ou fechada; volumes e POS parciais são comparados por dia útil e taxas diretamente.' : (parcial ? 'Resultado parcial até ' + F.fmtData(d.corte) + ' (' + d.duDec + ' de ' + d.duTotal + ' dias úteis): volumes e POS comparados por dia útil; taxas comparadas diretamente.' : 'Fechamento mensal confirmado pela gestão; comparativos sobre o mês completo.') });
     if (acoes.length) msgs.push({ id: 'r4', tipo: 'fato', texto: acoes.length + ' ação(ões) aprovada(s) no plano PDCA desta reunião.' });
     caixaAnalises(s, msgs, 9.95, 1.65, 2.88, 5.2, 'Principais mensagens');
   }
 
   // ═════ OPERAÇÃO ═════
+  curMod = 'op';
   if (d.grupos.op && d.op) {
     const o = d.op, meses = SEL('op').filter(m => o.serie[m]), pn = o.painel, M = d.metas;
     // — A. Painel executivo de atendimento —
     if (pn) {
-      const s = slide('Operação — Painel executivo de atendimento', 'Período: ' + perRot('op') + ' · ' + F.fmtN(pn.atendidas) + ' senhas atendidas em ' + pn.postosN + ' postos · ' + pn.du + ' dias úteis' + (parcial ? ' (até ' + F.fmtData(d.corte) + ')' : ''));
+      const s = slide('Operação — Painel executivo de atendimento', 'Competência ' + perRot('op') + ' · ' + F.fmtN(pn.atendidas) + ' senhas atendidas em ' + pn.postosN + ' postos · ' + pn.du + ' dias úteis' + (par() && MIx('op') && MIx('op').ate ? ' (dados até ' + F.fmtData(MIx('op').ate) + ')' : ''));
       const cw = 1.78, ch = 0.98, gx = 0.1, gy = 0.1, x0 = 0.5, y0 = 1.62;
       const nsCor = v => v == null ? C.navy : (v >= M.ns30 ? C.green : C.red);
       const cards = [
@@ -31327,9 +31399,9 @@ function pdcaConstruirPptx(snap) {
       // evolução mensal + comparativo com a média do ano
       const mediaAno = o.mediaAno && F.isNum(o.mediaAno.atendidas) ? o.mediaAno.atendidas : null;
       kpi(s, 8.1, 1.62, 2.3, 1.0, 'MÉDIA MENSAL DO ANO', F.fmtN(mediaAno), 'meses fechados antes de ' + F.fmtMes(d.comp), C.navy2);
-      const proj = F.isNum(o.atual.projecao) ? o.atual.projecao : (parcial ? null : o.atual.atendidas), vp = proj != null && mediaAno ? F.variacao(proj, mediaAno) : null;
-      kpi(s, 10.53, 1.62, 2.3, 1.0, F.fmtMes(d.comp).toUpperCase() + (parcial ? ' (PROJEÇÃO)' : ''), F.fmtN(proj), vp && F.isNum(vp.pct) ? F.fmtSinal(vp.pct, 1, '%') + ' vs. média do ano' : (parcial ? 'sem base para projeção' : ''), vp && vp.pct < 0 ? C.red : C.green);
-      grafico(s, 'bar', rotMesP(meses), [{ name: 'Senhas atendidas', values: meses.map(m => o.serie[m].atendidas) }], 8.1, 2.72, 4.73, 4.23, { titulo: 'Evolução mensal do volume — meses selecionados', cores: meses.map(m => m === d.comp && parcial ? C.orange : C.navy2), lblSize: 9 });
+      const proj = F.isNum(o.atual.projecao) ? o.atual.projecao : (par() ? null : o.atual.atendidas), vp = proj != null && mediaAno ? F.variacao(proj, mediaAno) : null;
+      kpi(s, 10.53, 1.62, 2.3, 1.0, F.fmtMes(d.comp).toUpperCase() + (par() ? ' (PROJEÇÃO)' : ''), F.fmtN(proj), vp && F.isNum(vp.pct) ? F.fmtSinal(vp.pct, 1, '%') + ' vs. média do ano' : (par() ? 'sem base para projeção' : ''), vp && vp.pct < 0 ? C.red : C.green);
+      grafico(s, 'bar', rotMesP(meses), [{ name: 'Senhas atendidas', values: meses.map(m => o.serie[m].atendidas) }], 8.1, 2.72, 4.73, 4.23, { titulo: 'Evolução mensal do volume — cada barra = um mês', cores: meses.map(m => m === d.comp && par() ? C.orange : C.navy2), lblSize: 9 });
     }
     // — B. Indicadores completos por posto (tabela paginada, sem omitir postos) —
     { const lst = (o.postosTab || []).slice().sort((a, b) => b.atendidas - a.atendidas), pgs = paginas(lst, 1);
@@ -31388,23 +31460,23 @@ function pdcaConstruirPptx(snap) {
         const pgs = paginas(ev.rows, 1);
         pgs.forEach((pg, pi) => {
           const ult = pi === pgs.length - 1;
-          const s = slide('Operação — Evolução de senhas por posto' + (pgs.length > 1 ? ' (' + (pi + 1) + '/' + pgs.length + ')' : ''), 'Senhas atendidas · meses selecionados: ' + perRot('op') + (ev.refRot ? ' · variação contra ' + ev.refRot : ''));
-          const head = [HDR('Posto', fs), HDR('Carga', fs)].concat(ms.map(m => HDR(F.fmtMes(m) + (m === ev.parcialComp ? '*' : ''), fs))).concat([HDR('Total', fs), HDR('Média mês', fs), HDR('Média D.U', fs), HDR('Var. %', fs)]);
+          const s = slide('Operação — Evolução de senhas por posto' + (pgs.length > 1 ? ' (' + (pi + 1) + '/' + pgs.length + ')' : ''), 'Senhas atendidas · meses nos gráficos: ' + grafRot('op') + (ev.refRot ? ' · variação contra ' + ev.refRot : ''));
+          const head = [HDR('Posto', fs), HDR('Carga', fs)].concat(ms.map(m => HDR(F.fmtMes(m) + (m === ev.parcialComp ? '*' : ''), fs))).concat([HDR(V3 ? 'Acumulado*' : 'Total', fs), HDR('Média mês', fs), HDR('Média D.U', fs), HDR('Var. %', fs)]);
           const rows = [head];
           const linha = (r, op) => { const c = (t, o2) => CEL(t, Object.assign({ fs }, op, o2)); const vc = F.isNum(r.varPct) ? (r.varPct >= 0 ? C.green : C.red) : C.text;
             return [c(F.nomePosto(r.posto), { al: 'left' }), c(F.isNum(r.carga) ? F.fmtN(r.carga, 0) + 'h' : '—')].concat(ms.map(m => c(r.porMes[m] != null ? F.fmtN(r.porMes[m]) : '—'))).concat([c(F.fmtN(r.total), { b: true }), c(F.fmtN(r.mediaMes, 0)), c(F.fmtN(r.mediaDU, 0)), c(F.isNum(r.varPct) ? F.fmtSinal(r.varPct, 1, '%') : '—', { cor: vc, b: true })]); };
           pg.forEach((r, i) => rows.push(linha(r, { fill: zebra(i) })));
           if (ult) rows.push(linha(Object.assign({}, ev.totais, { posto: 'TOTAL', carga: null }), { fill: FILL_TOT, b: true }));
           s.addTable(rows, { x: 0.5, y: 1.65, w: wTab, colW: [cP, 0.6].concat(ms.map(() => mw)).concat([0.85, 0.85, 0.8, 0.85]), rowH: [0.34].concat(rows.slice(1).map(() => 0.29)), border: { type: 'solid', color: C.line, pt: 0.5 }, valign: 'middle' });
-          if (ult) s.addText((ev.parcialComp ? '* mês parcial: "Média mês" usa só meses fechados; "Média D.U" e "Var. %" comparam o ritmo diário (senhas por dia útil). ' : '"Var. %" compara o ritmo diário (senhas por dia útil) de ' + F.fmtMes(d.comp) + ' ') + (ev.refRot ? 'com ' + ev.refRot + '.' : 'Sem período de referência selecionado.'), { x: 0.5, y: 6.68, w: 12.33, h: 0.3, fontFace: PDCA_FONT, fontSize: 8.5, italic: true, color: C.muted });
+          if (ult) s.addText((V3 ? '* Acumulado = soma dos meses exibidos (resultado acumulado, não é o resultado da competência). ' : '') + (ev.parcialComp ? 'Mês parcial: "Média mês" usa só meses fechados; "Média D.U" e "Var. %" comparam o ritmo diário (senhas por dia útil). ' : '"Var. %" compara o ritmo diário (senhas por dia útil) de ' + F.fmtMes(d.comp) + ' ') + (ev.refRot ? 'com ' + ev.refRot + '.' : 'Sem período de referência selecionado.'), { x: 0.5, y: 6.68, w: 12.33, h: 0.3, fontFace: PDCA_FONT, fontSize: 8.5, italic: true, color: C.muted });
         });
         const cv = ev.rows.filter(r => F.isNum(r.varPct));
-        if (cv.length >= 2) { const s = slide('Operação — Evolução de senhas por posto: destaques', 'Variação do ritmo diário de ' + F.fmtMes(d.comp) + (parcial ? ' (parcial)' : '') + ' contra ' + ev.refRot);
+        if (cv.length >= 2) { const s = slide('Operação — Evolução de senhas por posto: destaques', 'Variação do ritmo diário de ' + F.fmtMes(d.comp) + (par() ? ' (parcial)' : '') + ' contra ' + ev.refRot);
           const altas = F.rank(cv.filter(r => r.varPct > 0), 'varPct', true).slice(0, 8), quedas = F.rank(cv.filter(r => r.varPct < 0), 'varPct', false).slice(0, 8);
           const mkc = (arr, x, tit) => { if (!arr.length) { s.addShape(pres.shapes.RECTANGLE, { x, y: 1.58, w: 4.0, h: 3.6, fill: { color: C.bg }, line: { color: C.line, width: 0.75 } }); s.addText(tit + ': nenhum posto no período.', { x: x + 0.2, y: 2.9, w: 3.6, h: 0.8, fontFace: PDCA_FONT, fontSize: 12, italic: true, color: C.muted, align: 'center', valign: 'middle' }); return; } const r = arr.slice().reverse(), lo = Math.min(0, ...r.map(p => p.varPct)), hi = Math.max(0, ...r.map(p => p.varPct)), un = Math.max(1, Math.round((hi - lo) / 4 / 5) * 5); grafico(s, 'bar', r.map(p => F.nomePosto(p.posto)), [{ name: 'Variação (%)', values: r.map(p => p.varPct) }], x, 1.58, 4.0, 3.6, { titulo: tit, dir: 'bar', fmt: '+0.0"%";-0.0"%"', axisFmt: '0"%"', cores: r.map(p => p.varPct >= 0 ? C.green : C.red), catSize: 9, lblSize: 9, min: lo < 0 ? lo * 1.3 : 0, max: hi > 0 ? hi * 1.3 : 0, extra: { valAxisMajorUnit: un } }); };
           mkc(altas, 0.5, 'Maiores altas no ritmo diário'); mkc(quedas, 4.65, 'Maiores quedas no ritmo diário');
           caixaAnalises(s, pegar('op', ['evolposto']), 8.8, 1.65, 4.03, 5.3, 'Análise');
-          const ptot = ev.totais; if (ptot) kpi(s, 0.5, 5.3, 8.15, 1.1, 'TOTAL DA OPERAÇÃO — SENHAS ATENDIDAS NO PERÍODO', F.fmtN(ptot.total), 'Média por dia útil: ' + F.fmtN(ptot.mediaDU, 0) + (F.isNum(ptot.varPct) ? '  ·  ritmo diário ' + F.fmtSinal(ptot.varPct, 1, '%') + ' vs. ' + ev.refRot : ''), F.isNum(ptot.varPct) && ptot.varPct < 0 ? C.red : C.navy2); }
+          const ptot = ev.totais; if (ptot) kpi(s, 0.5, 5.3, 8.15, 1.1, V3 ? 'SENHAS ATENDIDAS — ' + F.fmtMes(d.comp).toUpperCase() : 'TOTAL DA OPERAÇÃO — SENHAS ATENDIDAS NO PERÍODO', V3 ? F.fmtN((ptot.porMes || {})[d.comp]) : F.fmtN(ptot.total), (V3 ? 'Acumulado dos meses exibidos (' + grafRot('op') + '): ' + F.fmtN(ptot.total) + '  ·  ' : '') + 'Média por dia útil: ' + F.fmtN(ptot.mediaDU, 0) + (F.isNum(ptot.varPct) ? '  ·  ritmo diário ' + F.fmtSinal(ptot.varPct, 1, '%') + ' vs. ' + ev.refRot : ''), F.isNum(ptot.varPct) && ptot.varPct < 0 ? C.red : C.navy2); }
       } }
     // — Senhas perdidas —
     { const s = slide('Operação — Senhas perdidas', 'Senhas perdidas: ' + F.fmtN(o.atual.perdidas) + ' (' + F.fmtPct(o.atual.pctPerdidas, 2) + ' das senhas) em ' + F.fmtMes(d.comp) + (multi('op') ? ' · ranking por posto no período ' + perRot('op') : ''));
@@ -31421,11 +31493,12 @@ function pdcaConstruirPptx(snap) {
   }
 
   // ═════ CSAT ═════
+  curMod = 'csat';
   if (d.grupos.csat && d.csat) {
     const c = d.csat, ms = SEL('csat').filter(m => c.serie[m]), M = d.metas, vz = c.visao;
     // — A. Visão geral —
     if (vz && vz.comp) { const k = vz.comp;
-      const s = slide('CSAT — Visão geral', 'Resultado de ' + F.fmtMes(d.comp) + (parcial ? ' (parcial)' : '') + ': nota ' + F.fmtN(k.nota, 2) + ' · meta ' + F.fmtN(M.csat, 2) + ' · ' + F.fmtN(k.pesq) + ' pesquisas' + (multi('csat') ? ' · gráficos: ' + perRot('csat') : ''));
+      const s = slide('CSAT — Visão geral', 'Resultado de ' + F.fmtMes(d.comp) + (par() ? ' (parcial)' : '') + ': nota ' + F.fmtN(k.nota, 2) + ' · meta ' + F.fmtN(M.csat, 2) + ' · ' + F.fmtN(k.pesq) + ' pesquisas' + (multi('csat') ? ' · gráficos: ' + perRot('csat') : ''));
       const w = 1.7, g = 0.071, ycard = 1.6;
       const cs = [['TOTAL DE PESQUISAS', F.fmtN(k.pesq), F.fmtMes(d.comp), C.navy2], ['NOTA MÉDIA CSAT', F.fmtN(k.nota, 2), 'Meta ' + F.fmtN(M.csat, 2) + (k.nota >= M.csat ? ' ✓' : ' ✗'), corMeta(k.nota, M.csat)], ['NOTA CORDIALIDADE', F.isNum(k.cord) ? F.fmtN(k.cord, 2) : 'n/d', 'quando disponível', C.navy2], ['POSTOS AVALIADOS', k.postosAval + '/' + vz.postosTotal, 'com pesquisa no mês', C.navy2],
         ['PROMOTORES', F.fmtN(k.prom), F.fmtPct(k.pctProm, 1), C.green], ['NEUTROS', F.fmtN(k.neu), F.fmtPct(k.pctNeu, 1), C.amber], ['DETRATORES', F.fmtN(k.det), F.fmtPct(k.pctDet, 1), C.red]];
@@ -31439,7 +31512,7 @@ function pdcaConstruirPptx(snap) {
     if (c.iasc && c.iasc.total) { const ia = c.iasc, tot = ia.total, ms2 = ia.meses.filter(m => ia.linhas.some(l => l.porMes[m]));
       const s = slide('CSAT — Evolução do volume e nota: postos IASC', 'Resultado ' + perRot('csat') + ' · somente os postos configurados como IASC (' + ia.linhas.length + ')');
       const nM = Math.max(1, ms2.length), fs = nM > 8 ? 8 : nM > 6 ? 9 : 10, mw = Math.min(0.9, 5.2 / nM), rh = ia.linhas.length > 8 ? 0.28 : 0.36;
-      const rows = [[HDR('Posto', fs)].concat(ms2.map(m => HDR(F.fmtMes(m), fs))).concat([HDR('Total', fs), HDR('Nota', fs)])];
+      const rows = [[HDR('Posto', fs)].concat(ms2.map(m => HDR(F.fmtMes(m), fs))).concat([HDR('Pesq. ' + mesCurto, fs), HDR('Nota ' + mesCurto, fs)])];
       ia.linhas.forEach((l, i) => { const fill = zebra(i);
         rows.push([CEL(F.nomePosto(l.posto), { al: 'left', fs, fill, b: true })].concat(ms2.map(m => { const v = l.porMes[m]; return v ? CEL(v.pesq + 'p ' + F.fmtN(v.nota, 2), { fs, fill, cor: corMeta(v.nota, M.csat), b: true }) : CEL('—', { fs, fill, cor: C.grey }); })).concat([CEL(F.fmtN(l.pesq), { fs, fill, b: true }), CEL(F.isNum(l.nota) ? F.fmtN(l.nota, 2) : '—', { fs, fill, b: true, cor: corMeta(l.nota, M.csat) })])); });
       const wT = 2.3 + mw * nM + 1.4;
@@ -31454,11 +31527,11 @@ function pdcaConstruirPptx(snap) {
     // — C. Resultado por supervisor (um slide por supervisor) —
     (c.supSlides || []).forEach(sp => { const tot = sp.total, ms3 = SEL('csat').filter(m => sp.linhas.some(l => l.porMes[m]) || m === d.comp);
       const s = slide('CSAT — Supervisor ' + sp.sup + ' · ' + perRot('csat'), 'Resultado por posto e evolução mensal de volume e nota');
-      kpi(s, 0.5, 1.6, 2.95, 0.95, 'PESQUISAS', F.fmtN(tot.pesq), perRot('csat'), C.navy2); kpi(s, 3.55, 1.6, 2.95, 0.95, 'NOTA MÉDIA DO PERÍODO', F.fmtN(tot.nota, 2), 'Meta ' + F.fmtN(M.csat, 2) + (tot.nota >= M.csat ? ' ✓' : ' ✗'), corMeta(tot.nota, M.csat));
+      kpi(s, 0.5, 1.6, 2.95, 0.95, 'PESQUISAS', F.fmtN(tot.pesq), perRot('csat'), C.navy2); kpi(s, 3.55, 1.6, 2.95, 0.95, 'NOTA MÉDIA — ' + F.fmtMes(d.comp).toUpperCase(), F.fmtN(tot.nota, 2), 'Meta ' + F.fmtN(M.csat, 2) + (tot.nota >= M.csat ? ' ✓' : ' ✗'), corMeta(tot.nota, M.csat));
       kpi(s, 6.6, 1.6, 2.95, 0.95, 'ACUMULADO ' + d.comp.slice(0, 4), sp.ano ? F.fmtN(sp.ano.nota, 2) : 'n/d', sp.ano ? F.fmtN(sp.ano.pesq) + ' pesquisas · ' + (sp.ano.nota >= M.csat ? 'meta atingida' : 'abaixo da meta') : '', sp.ano ? corMeta(sp.ano.nota, M.csat) : C.muted);
-      kpi(s, 9.65, 1.6, 3.18, 0.95, 'POSTOS AVALIADOS', sp.postosAval + '/' + sp.postosTotal, 'com pesquisa no período', C.navy2);
+      kpi(s, 9.65, 1.6, 3.18, 0.95, 'POSTOS AVALIADOS', sp.postosAval + '/' + sp.postosTotal, 'com pesquisa em ' + F.fmtMes(d.comp), C.navy2);
       const nM = Math.max(1, ms3.length), linhas = sp.linhas.slice().sort((a, b) => b.pesq - a.pesq), rh = Math.min(0.3, 3.95 / Math.max(1, linhas.length)), fs = (nM > 8 || rh < 0.26) ? 7.5 : nM > 6 ? 8 : 9, wT = nM > 8 ? 8.4 : 8.2, mw = (wT - 3.2) / nM;
-      const rows = [[HDR('#', fs), HDR('Posto', fs)].concat(ms3.map(m => HDR(F.fmtMes(m), fs))).concat([HDR('Total', fs), HDR('Nota', fs)])];
+      const rows = [[HDR('#', fs), HDR('Posto', fs)].concat(ms3.map(m => HDR(F.fmtMes(m), fs))).concat([HDR('Pesq. ' + mesCurto, fs), HDR('Nota ' + mesCurto, fs)])];
       linhas.forEach((l, i) => { const fill = zebra(i);
         rows.push([CEL(i + 1, { fs, fill }), CEL(F.nomePosto(l.posto), { al: 'left', fs, fill, b: true })].concat(ms3.map(m => { const v = l.porMes[m]; return v ? CEL(v.pesq + 'p ' + F.fmtN(v.nota, 2), { fs, fill, cor: corMeta(v.nota, M.csat), b: true }) : CEL('—', { fs, fill, cor: C.grey }); })).concat([CEL(l.pesq ? F.fmtN(l.pesq) : '—', { fs, fill, b: true }), CEL(F.isNum(l.nota) ? F.fmtN(l.nota, 2) : '—', { fs, fill, b: true, cor: corMeta(l.nota, M.csat) })])); });
       s.addTable(rows, { x: 0.5, y: 2.68, w: wT, colW: [0.4, 1.6].concat(ms3.map(() => mw)).concat([0.6, 0.6]), rowH: [0.3].concat(rows.slice(1).map(() => rh)), margin: [1, 3, 1, 3], border: { type: 'solid', color: C.line, pt: 0.5 }, valign: 'middle' });
@@ -31475,12 +31548,13 @@ function pdcaConstruirPptx(snap) {
   }
 
   // ═════ POS ═════
+  curMod = 'pos';
   if (d.grupos.pos && d.pos) {
-    const p = d.pos, ms = SEL('pos').filter(m => p.serie[m]), f = parcial && d.fatorJornada < 1 ? d.fatorJornada : 1;
+    const p = d.pos, ms = SEL('pos').filter(m => p.serie[m]), f = par() && (MIx('pos') ? MIx('pos').f : d.fatorJornada) < 1 ? (MIx('pos') ? MIx('pos').f : d.fatorJornada) : 1;
     const refPct = f < 1 ? (p.atual.meta > 0 ? p.atual.valor / (p.atual.meta * f) * 100 : null) : p.atual.pct;
     { const s = slide('POS — Volume negociado e atingimento de meta', F.fmtRS(p.atual.valor) + ' negociados · ' + F.fmtPct(p.atual.pct, 1) + ' da meta mensal' + (f < 1 ? ' · ' + F.fmtPct(refPct, 1) + ' da meta proporcional à jornada' : ''));
       grafico(s, 'bar', rotMesP(ms), [{ name: 'Resultado (R$ mil)', values: ms.map(m => p.serie[m].valor / 1000) }, { name: 'Meta cadastrada (R$ mil)', values: ms.map(m => p.serie[m].meta / 1000) }], 0.5, 1.6, 7.8, 5.3, { titulo: 'Resultado x meta mensal (R$ mil)', cores: [C.navy2, C.gold], lblSize: 9, gap: 40 });
-      if (f < 1) { kpi(s, 8.5, 1.65, 4.33, 1.1, 'Meta proporcional à jornada (' + d.duDec + '/' + d.duTotal + ' dias úteis)', F.fmtRS(p.atual.meta * f), 'Atingimento proporcional: ' + F.fmtPct(refPct, 1), refPct >= 100 ? C.green : C.red); }
+      if (f < 1) { kpi(s, 8.5, 1.65, 4.33, 1.1, 'Meta proporcional à jornada (' + (MIx('pos') ? MIx('pos').duDec + '/' + MIx('pos').duTotal : d.duDec + '/' + d.duTotal) + ' dias úteis)', F.fmtRS(p.atual.meta * f), 'Atingimento proporcional: ' + F.fmtPct(refPct, 1), refPct >= 100 ? C.green : C.red); }
       caixaAnalises(s, pegar('pos', ['resumo']), 8.5, f < 1 ? 2.9 : 1.65, 4.33, f < 1 ? 4.0 : 5.2, 'Análise'); }
     { const s = slide('POS — Ranking dos postos', 'Atingimento da meta cadastrada' + (f < 1 ? ' (proporcional à jornada no mês parcial)' : '') + ', por posto' + (multi('pos') ? ' · período ' + perRot('pos') : ''));
       const lst = F.rank((p.postos || []).filter(x => x.meta > 0).map(x => ({ ...x, ref: x.pctRef != null ? x.pctRef : x.valor / (x.meta * f) * 100 })), 'ref', true), top = lst.slice(0, 16).reverse();
@@ -31489,6 +31563,7 @@ function pdcaConstruirPptx(snap) {
   }
 
   // ═════ LIGAÇÃO NOVA ═════
+  curMod = 'ln';
   if (d.grupos.ln && d.ln) {
     const l = d.ln, ms = SEL('ln').filter(m => l.serie[m]);
     const s = slide('Ligação Nova — Ingressos sem e-mail', F.fmtPct(l.atual.pct, 1) + ' sem e-mail (referência ' + F.fmtPct(d.metas.lnSemEmailPct, 0) + ') · ' + F.fmtN(l.atual.sem) + ' de ' + F.fmtN(l.atual.total) + ' ingressos · cancelados à parte: ' + (F.isNum(l.atual.canc) ? F.fmtN(l.atual.canc) : 'n/d'));
@@ -31502,9 +31577,10 @@ function pdcaConstruirPptx(snap) {
   }
 
   // ═════ QUALIDADE ═════
+  curMod = 'qual';
   if (d.grupos.qual && d.qual && (d.qual.indevidos || d.qual.trocas || d.qual.reclamacoes)) {
     const q = d.qual;
-    { const s = slide('Qualidade — Visão geral', 'Indicadores oficiais de Qualidade em ' + F.fmtMes(d.comp) + (parcial ? ' (parcial)' : ''));
+    { const s = slide('Qualidade — Visão geral', 'Indicadores oficiais de Qualidade em ' + F.fmtMes(d.comp) + (par() ? ' (parcial)' : ''));
       const blocos = [['Ordens indevidas (meta < ' + d.metas.indevidos + ')', q.indevidos, d.metas.indevidos, '0', 0], ['Trocas improcedentes (meta < ' + d.metas.trocas + ')', q.trocas, d.metas.trocas, '0', 0], ['Reclamações improcedentes (% — meta < ' + d.metas.reclImprocPct + '%)', q.reclamacoes, d.metas.reclImprocPct, '0.0', 1]].filter(b => b[1]);
       const w = (12.33 - 0.2 * (blocos.length - 1)) / blocos.length;
       blocos.forEach((b, i) => { const o = b[1], ms = SEL('qual').filter(m => F.isNum(o.serie[m])), vals = ms.map(m => o.serie[m]), x = 0.5 + i * (w + 0.2);
@@ -31529,6 +31605,7 @@ function pdcaConstruirPptx(snap) {
   }
 
   // ═════ DIAGNÓSTICO ═════
+  curMod = null;
   { const sc = (d.scorecard || []).slice().sort((a, b) => (b.dist - a.dist));
     if (sc.length) {
       const s = slide('Diagnóstico — Principais desvios e distância das metas', sc.filter(x => x.status === 'vermelho').length + ' indicador(es) fora da meta · ordenados do maior para o menor desvio relativo');
@@ -31574,17 +31651,17 @@ function pdcaConstruirPptx(snap) {
   // ═════ ANEXOS ═════
   if (lnComSem) { const s = slide('Anexo — Ligação Nova: ingressos com e sem e-mail por mês', 'Cancelados ficam fora do cálculo do percentual (metodologia oficial) e não entram nestas quantidades');
     grafico(s, 'bar', rotMesP(lnComSem.ms), [{ name: 'Com e-mail', values: lnComSem.com }, { name: 'Sem e-mail', values: lnComSem.sem }], 0.5, 1.6, 12.33, 5.3, { cores: [C.navy2, C.orange], gap: 40 }); }
-  if (lnEvo) { const s = slide('Anexo — Ligação Nova: evolução diária acumulada do % sem e-mail', 'Percentual acumulado no mês, até ' + F.fmtData(d.corte || d.geradoEm));
+  if (lnEvo) { const s = slide('Anexo — Ligação Nova: evolução diária acumulada do % sem e-mail', 'Percentual acumulado no mês' + (MIx('ln') && MIx('ln').ate ? ', dados até ' + F.fmtData(MIx('ln').ate) : ''));
     grafico(s, 'line', lnEvo.map(x => x.dia), [{ name: '% sem e-mail acumulado', values: lnEvo.map(x => x.pct) }], 0.5, 1.6, 12.33, 5.3, { fmt: '0.0', axisFmt: '0"%"', lblSize: 9, min: 0 }); }
   if (extras.length) {
     for (let i = 0; i < extras.length; i += 4) { const s = slide('Anexo — Análises complementares' + (i ? ' (cont.)' : ''), 'Textos completos que não couberam nos slides de origem');
       caixaAnalises(s, extras.slice(i, i + 4), 0.5, 1.65, 12.33, 5.2, null); } }
   { const s = slide('Anexo — Fontes, metodologia e observações', 'Todos os números vêm dos módulos oficiais do Gestão Conect@; nenhum indicador foi estimado fora deles');
     const L = [
-      'Meses selecionados por módulo — Operação: ' + perRot('op') + '; CSAT: ' + perRot('csat') + '; POS: ' + perRot('pos') + '; Ligação Nova: ' + perRot('ln') + '; Qualidade: ' + perRot('qual') + '. A competência de referência (' + F.fmtMes(d.comp) + ') está sempre incluída; gráficos, tabelas e rankings de cada bloco usam apenas os meses selecionados para ele.',
+      V3 ? 'Resultado principal (cartões, tabelas, rankings): somente ' + F.fmtMesLongo(d.comp) + '. Meses dos gráficos — Operação: ' + grafRot('op') + '; CSAT: ' + grafRot('csat') + '; POS: ' + grafRot('pos') + '; Ligação Nova: ' + grafRot('ln') + '; Qualidade: ' + grafRot('qual') + '. Comparativos — Operação: ' + refTxt('op') + '; CSAT: ' + refTxt('csat') + '; POS: ' + refTxt('pos') + '; Ligação Nova: ' + refTxt('ln') + '; Qualidade: ' + refTxt('qual') + '. Valores acumulados de vários meses só aparecem quando identificados como acumulados.' : 'Meses selecionados por módulo — Operação: ' + perRot('op') + '; CSAT: ' + perRot('csat') + '; POS: ' + perRot('pos') + '; Ligação Nova: ' + perRot('ln') + '; Qualidade: ' + perRot('qual') + '. A competência de referência (' + F.fmtMes(d.comp) + ') está sempre incluída; gráficos, tabelas e rankings de cada bloco usam apenas os meses selecionados para ele.',
       'Fontes: Operação (Indicadores/Dashboard Operacional), CSAT, POS (Máquina Cartão), Ligação Nova (Resultado Oficial) e Qualidade (Ordens Indevidas, Reclamações e Trocas Improcedentes — Base Oficial).',
-      'Competência: ' + F.fmtMesLongo(d.comp) + '. Tipo: ' + (parcial ? 'resultado parcial até ' + F.fmtData(d.corte) + ' — ' + d.duDec + ' de ' + d.duTotal + ' dias úteis decorridos; comparativos de volume normalizados por dia útil; taxas (NS30, TMA, TME, CSAT, % sem e-mail) comparadas diretamente' : 'fechamento mensal confirmado pela gestão'),
-      'Dias úteis: segunda a sexta, excluindo feriados nacionais e móveis (Carnaval, Sexta-feira Santa, Corpus Christi). Ajustável antes da geração.',
+      'Competência: ' + F.fmtMesLongo(d.comp) + '. Tipo escolhido: ' + (parcial ? 'resultado parcial' : 'fechamento mensal') + (V3 ? ' — status e data de atualização por base: ' + ['op', 'csat', 'pos', 'ln', 'qual'].filter(m => d.grupos[m] && d.mod && d.mod[m]).map(m => ({ op: 'Operação', csat: 'CSAT', pos: 'POS', ln: 'Ligação Nova', qual: 'Qualidade' })[m] + ' ' + (d.mod[m].ate ? F.fmtData(d.mod[m].ate) : 'sem data identificada') + ' (' + d.mod[m].status + ')').join('; ') + '. Volumes e POS de bases parciais são comparados por dia útil; taxas (NS30, TMA, TME, CSAT, % sem e-mail) diretamente' : (parcial ? ' — dados até ' + F.fmtData(d.corte) + ', ' + d.duDec + ' de ' + d.duTotal + ' dias úteis decorridos; comparativos de volume normalizados por dia útil; taxas comparadas diretamente' : '')),
+      'Dias úteis (uso interno para projeções e comparativos): segunda a sexta, excluindo feriados nacionais e móveis (Carnaval, Sexta-feira Santa, Corpus Christi).',
       'Metas: NS30 ≥ ' + F.fmtPct(d.metas.ns30, 1) + '; TMA ≤ ' + F.fmtSeg(d.metas.tmaSeg) + '; TME ≤ ' + F.fmtSeg(d.metas.tmeSeg) + '; CSAT ≥ ' + F.fmtN(d.metas.csat, 2) + '; Ligação Nova ≤ ' + d.metas.lnSemEmailPct + '% sem e-mail; Ordens indevidas < ' + d.metas.indevidos + '; Trocas improcedentes < ' + d.metas.trocas + '; Reclamações improcedentes < ' + d.metas.reclImprocPct + '%; POS conforme metas cadastradas por posto/mês.',
       'Ligação Nova: Total = Com e-mail + Sem e-mail (metodologia oficial); cancelados apresentados separadamente e fora do percentual.',
       'Bases atualizadas em — Indicadores: ' + (d.bases.indicadores || 'n/d') + ' · POS: ' + (d.bases.pos || 'n/d') + ' · Ligação Nova (extração): ' + (d.bases.ligacaoNova ? F.fmtData(d.bases.ligacaoNova) : 'n/d') + '.',
@@ -31608,10 +31685,10 @@ async function pdcaPptxBlob(snap) {
    (config 1 doc, histórico ≤ 12 docs) e os dados do mês só na hora de "Montar prévia".
    ═══════════════════════════════════════════════════════════════════════════ */
 const PDCA_ST = {
-  iniciado: false, comp: '', tipo: 'parcial', comparativo: 'ambos',
+  iniciado: false, comp: '', tipo: 'parcial',
   grupos: { op: true, csat: true, pos: true, ln: true, qual: true, ocorr: false },
-  sel: { op: [], csat: [], pos: [], ln: [], qual: [] }, baseAlterada: false, leiturasMontar: null,
-  corte: '', duTotal: null, duDec: null, feriadosExtras: [],
+  mods: {}, baseAlterada: false, leiturasMontar: null,   // mods[mod] = {graf:'comp'|'ano'|'custom', custom:[meses], ref:'nenhum'|'ant'|'ano'|'ambos'}
+  feriadosExtras: [],
   dataReuniao: '', responsavel: '',
   dados: null, suf: null, analises: [], acoes: [], cfg: null, historico: null, acoesAnteriores: null, incluirAnteriores: true,
   rascunho: null, sujo: false, ocupado: '', leituras: 0, ultimaFinalizada: null, abertos: { op: true }
@@ -31624,7 +31701,7 @@ const PDCA_STATUS_ACAO = ['Pendente', 'Em andamento', 'Concluída', 'Cancelada']
 function pdcaPodeUsar() { return !!(currentUser && currentUser.role === 'admin'); }
 function pdcaMesesOpcoes() {
   const r = [], h = new Date();
-  for (let i = 0; i < 14; i++) { const dt = new Date(h.getFullYear(), h.getMonth() - i, 1); r.push(dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0')); }
+  for (let i = 0; i < 24; i++) { const dt = new Date(h.getFullYear(), h.getMonth() - i, 1); r.push(dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0')); }
   return r;
 }
 function pdcaRascunhoId() { return PDCA_ST.comp + '_' + PDCA_ST.tipo; }
@@ -31637,7 +31714,7 @@ async function renderPdca() {
   const S = PDCA_ST;
   if (!S.iniciado) {
     S.iniciado = true;
-    S.comp = pdcaMesesOpcoes()[0]; pdcaSelReiniciar();
+    S.comp = pdcaMesesOpcoes()[0]; pdcaModsPadrao();
     S.responsavel = (currentUser && currentUser.name) || '';
     S.dataReuniao = pdcaHoje();
     pdcaRender();
@@ -31667,9 +31744,10 @@ async function pdcaCarregarRascunho() {
     const s = await db.collection('pdca_rascunhos').doc(pdcaRascunhoId()).get(); pdcaContaLeituras(1);
     if (s.exists) {
       const r = s.data(); S.rascunho = r;
-      S.comparativo = r.comparativo || S.comparativo; S.grupos = { ...S.grupos, ...(r.grupos || {}) };
-      S.corte = r.corte || ''; S.duTotal = r.duTotal || null; S.duDec = r.duDec || null;
-      if (r.sel) PDCA_MODS.forEach(m => { S.sel[m] = pdcaSelNormalizar(S.comp, r.sel[m]).filter(x => x !== S.comp); });
+      S.grupos = { ...S.grupos, ...(r.grupos || {}) };
+      if (r.mods) PDCA_MODS.forEach(m => { S.mods[m] = Object.assign(pdcaModCfgPadrao(), r.mods[m] || {}); });
+      else if (r.sel || r.comparativo) PDCA_MODS.forEach(m => { // rascunho de versão anterior: converte meses extras + comparativo global
+        const ex = (r.sel && r.sel[m]) || []; S.mods[m] = { graf: ex.length ? 'custom' : 'comp', custom: Array.from(new Set([S.comp, ...ex])).sort(), ref: r.comparativo || 'ant' }; });
       S.dataReuniao = r.dataReuniao || S.dataReuniao; S.responsavel = r.responsavel || S.responsavel;
       S.analises = r.analises || []; S.acoes = r.acoes || []; S.sujo = false;
     }
@@ -31679,7 +31757,7 @@ async function pdcaCarregarRascunho() {
 // ═════ AÇÕES DE CONTROLE ═════
 async function pdcaSetComp(v) {
   const S = PDCA_ST; if (S.sujo && !confirm('Há alterações não salvas nesta apresentação. Trocar de mês mesmo assim?')) { pdcaRender(); return; }
-  S.comp = v; pdcaSelReiniciar(); S.dados = null; S.suf = null; S.analises = []; S.acoes = []; S.corte = ''; S.duTotal = null; S.duDec = null; S.sujo = false; S.ultimaFinalizada = null;
+  S.comp = v; PDCA_MODS.forEach(m => { S.mods[m].custom = []; if (S.mods[m].graf === 'custom') S.mods[m].graf = 'ano'; }); S.dados = null; S.suf = null; S.analises = []; S.acoes = []; S.sujo = false; S.ultimaFinalizada = null;
   if (S.tipo === 'fechado') S.tipo = 'parcial';
   pdcaRender(); await pdcaCarregarRascunho(); pdcaRender();
 }
@@ -31692,27 +31770,21 @@ async function pdcaSetTipo(v) {
 }
 function pdcaSetCampo(campo, v) {
   const S = PDCA_ST;
-  if (campo === 'comparativo') S.comparativo = v;
-  else if (campo === 'corte') S.corte = v;
-  else if (campo === 'duTotal' || campo === 'duDec') S[campo] = v ? Math.max(1, parseInt(v, 10) || 0) || null : null;
-  else S[campo] = v;
+  S[campo] = v;
   S.sujo = true;
-  if (['comparativo', 'corte', 'duTotal', 'duDec'].includes(campo) && S.dados) { S.dados = null; S.baseAlterada = true; pdcaRender(); }
 }
 function pdcaSetGrupo(g, v) { const S = PDCA_ST; S.grupos[g] = !!v; S.dados = null; S.sujo = true; pdcaRender(); }
-// ── Meses por módulo (a competência é sempre incluída; o restante fica em S.sel[mod]) ──
-function pdcaSelReiniciar() { const S = PDCA_ST; PDCA_MODS.forEach(m => { S.sel[m] = []; }); }
-function pdcaSelMeses(mod) { return pdcaSelNormalizar(PDCA_ST.comp, PDCA_ST.sel[mod]); }
-function pdcaSelMudou() { const S = PDCA_ST; S.sujo = true; if (S.dados) { S.dados = null; S.baseAlterada = true; } pdcaRender(); }
-function pdcaSelToggle(mod, m, on) { const S = PDCA_ST; if (m === S.comp) return; const a = new Set(S.sel[mod]); if (on) a.add(m); else a.delete(m); S.sel[mod] = Array.from(a).sort(); pdcaSelMudou(); }
-function pdcaSelPreset(mod, tipo) {
-  const S = PDCA_ST, jan = pdcaJanela(S.comp, PDCA_JANELA); let r = [];
-  if (tipo === 'mes') r = [];
-  else if (tipo === 'ano') r = jan.filter(m => m.slice(0, 4) === S.comp.slice(0, 4) && m !== S.comp);
-  else { const n = +tipo; r = jan.slice(-n).filter(m => m !== S.comp); }
-  S.sel[mod] = r; pdcaSelMudou();
+// ── Por módulo: meses exibidos nos gráficos (evolução) e comparativo. O resultado principal é SEMPRE a competência. ──
+function pdcaModsPadrao() { const S = PDCA_ST; PDCA_MODS.forEach(m => { S.mods[m] = pdcaModCfgPadrao(); }); }
+function pdcaModMudou() { const S = PDCA_ST; S.sujo = true; if (S.dados) { S.dados = null; S.baseAlterada = true; } pdcaRender(); }
+function pdcaModSetGraf(mod, v) {
+  const S = PDCA_ST, c = S.mods[mod]; c.graf = v;
+  if (v === 'custom' && !(c.custom || []).length) c.custom = pdcaJanela(S.comp, 3);   // ponto de partida editável: últimos 3 meses
+  pdcaModMudou();
 }
-function pdcaSelCopiarParaTodos(mod) { const S = PDCA_ST; PDCA_MODS.forEach(m => { S.sel[m] = S.sel[mod].slice(); }); pdcaSelMudou(); }
+function pdcaModToggle(mod, m, on) { const S = PDCA_ST, a = new Set(S.mods[mod].custom || []); if (on) a.add(m); else a.delete(m); S.mods[mod].custom = Array.from(a).sort(); pdcaModMudou(); }
+function pdcaModSetRef(mod, v) { PDCA_ST.mods[mod].ref = v; pdcaModMudou(); }
+function pdcaModCopiar(mod) { const S = PDCA_ST; PDCA_MODS.forEach(m => { S.mods[m] = JSON.parse(JSON.stringify(S.mods[mod])); }); pdcaModMudou(); }
 // ── Postos IASC: configuração do módulo (não existe cadastro oficial no sistema) ──
 function pdcaIascLista() { return (PDCA_ST.cfg && PDCA_ST.cfg.postosIasc) || []; }
 async function pdcaSalvarIasc() {
@@ -31741,8 +31813,7 @@ async function pdcaMontar() {
     S.suf = d.suficiencia;
     if (S.tipo === 'fechado' && !S.suf.fechamentoLiberado) { S.tipo = 'parcial'; toast('Fechamento indisponível para este mês — voltou para Resultado parcial.', 'err'); S.ocupado = ''; await pdcaMontar(); return; }
     S.dados = d;
-    if (!S.corte) S.corte = d.corte;
-    if (S.analises.length && S.baseAlterada && confirm('Os meses, o comparativo ou o corte mudaram desde que as análises foram geradas.\n\nOK = gerar as análises novamente com a nova base (descarta edições)\nCancelar = manter os textos atuais (podem não refletir a nova seleção)')) { S.analises = PDCA_ENG.gerarAnalises(d); S.acoes = PDCA_ENG.sugerirAcoes(d); }
+    if (S.analises.length && S.baseAlterada && confirm('Os meses dos gráficos ou o comparativo mudaram desde que as análises foram geradas.\n\nOK = gerar as análises novamente com a nova base (descarta edições)\nCancelar = manter os textos atuais (podem não refletir a nova seleção)')) { S.analises = PDCA_ENG.gerarAnalises(d); S.acoes = PDCA_ENG.sugerirAcoes(d); }
     S.baseAlterada = false;
     if (!S.analises.length) S.analises = PDCA_ENG.gerarAnalises(d);
     else { // mantém as editadas e acrescenta só grupos novos sem nenhuma análise
@@ -31823,7 +31894,7 @@ async function pdcaSalvarRascunho() {
   const S = PDCA_ST; if (!S.dados && !S.analises.length) { toast('Monte a prévia antes de salvar o rascunho.', 'err'); return; }
   try {
     const doc = {
-      competencia: S.comp, tipo: S.tipo, comparativo: S.comparativo, grupos: S.grupos, sel: JSON.parse(JSON.stringify(S.sel)), corte: S.corte || '', duTotal: S.duTotal || null, duDec: S.duDec || null,
+      competencia: S.comp, tipo: S.tipo, grupos: S.grupos, mods: JSON.parse(JSON.stringify(S.mods)),
       dataReuniao: S.dataReuniao || '', responsavel: S.responsavel || '', analises: JSON.parse(JSON.stringify(S.analises)), acoes: JSON.parse(JSON.stringify(S.acoes)),
       atualizadoEm: new Date().toISOString(), atualizadoPor: (currentUser && (currentUser.name || currentUser.email)) || ''
     };
@@ -31838,7 +31909,6 @@ async function pdcaFinalizar() {
   const S = PDCA_ST, ENG = PDCA_ENG;
   if (!S.dados) { toast('Monte a prévia antes de finalizar.', 'err'); return; }
   if (S.dados.tipo === 'fechado' && !(S.suf && S.suf.fechamentoLiberado)) { toast('Fechamento não confirmado para este mês.', 'err'); return; }
-  if (!S.dataReuniao) { toast('Informe a data da reunião.', 'err'); return; }
   if (!String(S.responsavel || '').trim()) { toast('Informe o responsável pela apresentação.', 'err'); return; }
   const an = S.analises.filter(a => a.incluir !== false && String(a.texto || '').trim());
   if (!an.length) { toast('Inclua ao menos uma análise.', 'err'); return; }
@@ -31863,7 +31933,7 @@ async function pdcaFinalizar() {
     const agora = new Date().toISOString();
     const dadosGravar = JSON.parse(JSON.stringify(S.dados)); delete dadosGravar.suficiencia;
     const reg = JSON.parse(JSON.stringify({
-      id, competencia: S.comp, tipo: S.dados.tipo, comparativo: S.comparativo, grupos: S.grupos, dataReuniao: S.dataReuniao, responsavel: S.responsavel.trim(),
+      id, competencia: S.comp, tipo: S.dados.tipo, refc: S.dados.refc || null, mods: S.dados.cfgMods || null, status: S.dados.mod || null, grupos: S.grupos, dataReuniao: S.dataReuniao || '', responsavel: S.responsavel.trim(),
       corte: S.dados.corte, duTotal: S.dados.duTotal, duDec: S.dados.duDec, versao, finalizadoEm: agora,
       finalizadoPor: { id: currentUser.id || '', nome: currentUser.name || '', email: currentUser.email || '' },
       resumo: S.dados.scorecard || [], selecao: S.dados.sel || null, postosIasc: pdcaIascLista(), indicadores: dadosGravar,
@@ -31873,13 +31943,13 @@ async function pdcaFinalizar() {
       pptx: pptx || null
     }));
     const kb = Math.round(JSON.stringify(reg).length / 1024);
-    if (kb > 900) { toast('O registro ficou com ' + kb + ' KB (limite do Firestore ≈ 1 MB). Reduza os meses selecionados e tente novamente.', 'err'); S.ocupado = ''; pdcaRender(); return; }
+    if (kb > 900) { toast('O registro ficou com ' + kb + ' KB (limite do Firestore ≈ 1 MB). Reduza os meses dos gráficos e tente novamente.', 'err'); S.ocupado = ''; pdcaRender(); return; }
     const batch = db.batch();
     batch.set(ref, reg);
     ap.forEach(a => {
       const aid = id + '_' + a.id;
       batch.set(db.collection('pdca_acoes').doc(aid), {
-        id: aid, apresentacaoId: id, competencia: S.comp, tipoApresentacao: S.dados.tipo, dataReuniao: S.dataReuniao,
+        id: aid, apresentacaoId: id, competencia: S.comp, tipoApresentacao: S.dados.tipo, dataReuniao: S.dataReuniao || '',
         indicador: a.indicador || '', posto: a.posto || '', problema: a.problema || '', acao: a.acao, responsavel: a.responsavel || '', prazo: a.prazo || '', resultado: a.resultado || '',
         status: a.status || 'Pendente', criadoEm: agora, atualizadoEm: agora, historico: []
       });
@@ -31929,7 +31999,7 @@ function pdcaVerHistorico(id) {
   const h = (PDCA_ST.historico || []).find(x => x.id === id), esc = PDCA_ENG.esc; if (!h) return;
   const el = document.getElementById('pdca-det-corpo'); if (!el) return;
   el.innerHTML = `<div style="font-size:13px;color:var(--text2);margin-bottom:10px">${esc(PDCA_ENG.fmtMesLongo(h.competencia))} · ${h.tipo === 'fechado' ? 'Fechamento mensal' : 'Resultado parcial' + (h.corte ? ' até ' + PDCA_ENG.fmtData(h.corte) : '')} · reunião ${PDCA_ENG.fmtData(h.dataReuniao)} · responsável: ${esc(h.responsavel)} · versão ${h.versao || 1}</div>
-    ${h.selecao ? '<div style="font-size:12px;color:var(--text2);margin-bottom:6px"><b>Meses por módulo:</b> ' + ['op', 'csat', 'pos', 'ln', 'qual'].filter(m => h.selecao[m] && (h.grupos || {})[m] !== false).map(m => esc(PDCA_GRUPO_NOME[m]) + ' ' + esc(PDCA_ENG.fmtPeriodo(h.selecao[m]))).join(' · ') + (h.postosIasc && h.postosIasc.length ? ' · <b>Postos IASC:</b> ' + h.postosIasc.map(x => esc(PDCA_ENG.nomePosto(x))).join(', ') : '') + '</div>' : ''}
+    ${h.selecao ? '<div style="font-size:12px;color:var(--text2);margin-bottom:6px"><b>Meses nos gráficos:</b> ' + ['op', 'csat', 'pos', 'ln', 'qual'].filter(m => h.selecao[m] && (h.grupos || {})[m] !== false).map(m => esc(PDCA_GRUPO_NOME[m]) + ' ' + esc(PDCA_ENG.fmtPeriodo(h.selecao[m]))).join(' · ') + (h.postosIasc && h.postosIasc.length ? ' · <b>Postos IASC:</b> ' + h.postosIasc.map(x => esc(PDCA_ENG.nomePosto(x))).join(', ') : '') + '</div>' : ''}
     <div style="font-weight:700;margin:10px 0 6px">Indicadores consolidados</div>
     <div style="overflow-x:auto"><table class="pdca-tab"><thead><tr><th>Grupo</th><th>Indicador</th><th>Resultado</th><th>Meta</th><th>vs. mês ant.</th></tr></thead><tbody>${(h.resumo || []).map(r => `<tr><td>${esc(r.grupo)}</td><td>${esc(r.nome)}</td><td style="font-weight:700;color:${r.status === 'verde' ? 'var(--green)' : 'var(--red)'}">${esc(r.valor)}</td><td>${esc(r.meta)}</td><td>${esc(r.varAnt)}</td></tr>`).join('')}</tbody></table></div>
     <div style="font-weight:700;margin:14px 0 6px">Análises aprovadas</div>
@@ -31940,15 +32010,32 @@ function pdcaVerHistorico(id) {
 }
 
 // ═════ RENDER ═════
-function pdcaSelHtml() {
-  const S = PDCA_ST, ENG = PDCA_ENG, jan = pdcaJanela(S.comp, PDCA_JANELA), mods = PDCA_MODS.filter(m => S.grupos[m]);
+function pdcaModInfoTxt(m) {
+  const d = PDCA_ST.dados, i = d && d.mod && d.mod[m], ENG = PDCA_ENG; if (!i) return '';
+  const ate = i.ate ? ENG.fmtData(i.ate) : '';
+  if (!ate) return '<span class="pdca-chip pdca-chip-o">data de atualização não identificada</span>';
+  const st = i.status === 'fechado' ? 'fechado' : (i.status === 'parcial' ? 'parcial · ' + i.duDec + '/' + i.duTotal + ' dias úteis' : 'status indefinido');
+  return '<span class="pdca-chip ' + (i.status === 'fechado' ? 'pdca-chip-g' : 'pdca-chip-o') + '" title="' + ENG.esc(i.origem || '') + '">atualizado até ' + ate.slice(0, 5) + ' · ' + st + '</span>';
+}
+function pdcaModsHtml() {
+  const S = PDCA_ST, ENG = PDCA_ENG, jan = pdcaJanela(S.comp, PDCA_JANELA), mods = PDCA_MODS.filter(m => S.grupos[m]), d = S.dados;
   if (!mods.length) return '';
   const nome = { op: 'Operação', csat: 'CSAT', pos: 'POS', ln: 'Ligação Nova', qual: 'Qualidade' };
-  return `<div style="margin-top:14px"><label class="pdca-lb">Meses de cada módulo <span style="text-transform:none;font-weight:400">(a competência ${ENG.fmtMes(S.comp)} é sempre incluída e define o resultado de referência; os demais meses valem só para o bloco)</span></label>
-    ${mods.map(m => { const sel = pdcaSelMeses(m); return `<div class="pdca-sel-row"><div class="pdca-sel-mod">${nome[m]}<div class="pdca-sel-res">${esc2(ENG.fmtPeriodo(sel))}</div></div>
-      <div class="pdca-sel-chips">${jan.map(x => `<label class="pdca-mes ${sel.includes(x) ? 'on' : ''} ${x === S.comp ? 'lock' : ''}" title="${x === S.comp ? 'Competência de referência (sempre incluída)' : ''}"><input type="checkbox" ${sel.includes(x) ? 'checked' : ''} ${x === S.comp ? 'disabled' : ''} onchange="pdcaSelToggle('${m}','${x}',this.checked)">${ENG.fmtMes(x)}</label>`).join('')}</div>
-      <div class="pdca-sel-pre"><button class="btn btn-sm btn-secondary" onclick="pdcaSelPreset('${m}','mes')">Só a competência</button><button class="btn btn-sm btn-secondary" onclick="pdcaSelPreset('${m}',2)">2 meses</button><button class="btn btn-sm btn-secondary" onclick="pdcaSelPreset('${m}',3)">3 meses</button><button class="btn btn-sm btn-secondary" onclick="pdcaSelPreset('${m}','ano')">Ano até aqui</button><button class="btn btn-sm btn-secondary" title="Copia esta seleção para todos os módulos" onclick="pdcaSelCopiarParaTodos('${m}')">⇉ todos</button></div></div>`; }).join('')}
-    <div class="pdca-nota">Com um único mês, o bloco mostra só a competência (comparada com o <b>Comparativo</b> acima). Com mais meses, aparecem a comparação entre eles e a evolução histórica. Mudar os meses não faz novas leituras: usa os dados já carregados (a Qualidade só consulta meses que ainda não estão em cache).</div></div>`;
+  const cd = d && d.mesesComDados;
+  return `<div style="margin-top:14px"><label class="pdca-lb">Configuração por módulo <span style="text-transform:none;font-weight:400">— o <b>resultado principal</b> (cartões, tabelas, rankings) é sempre de <b>${ENG.fmtMesLongo(S.comp)}</b>. Os meses dos gráficos aparecem um a um, sem somar; o comparativo só alimenta análises e variações.</span></label>
+    ${mods.map(m => { const c = S.mods[m] || pdcaModCfgPadrao(), graf = pdcaGrafMeses(S.comp, c), sd = cd && cd[m];
+      return `<div class="pdca-sel-row"><div class="pdca-sel-mod">${nome[m]}<div class="pdca-sel-res">${esc2(ENG.fmtPeriodo(graf))}</div><div style="margin-top:4px">${pdcaModInfoTxt(m)}</div></div>
+      <div style="flex:1;min-width:260px">
+        <div class="pdca-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px">
+          <div><label class="pdca-lb">Meses nos gráficos</label><select class="form-select" onchange="pdcaModSetGraf('${m}',this.value)">
+            <option value="comp" ${c.graf === 'comp' ? 'selected' : ''}>Somente a competência</option><option value="ano" ${c.graf === 'ano' ? 'selected' : ''}>Evolução do ano até a competência</option><option value="custom" ${c.graf === 'custom' ? 'selected' : ''}>Personalizado (escolher meses)</option></select></div>
+          <div><label class="pdca-lb">Comparativo</label><select class="form-select" onchange="pdcaModSetRef('${m}',this.value)">
+            <option value="nenhum" ${c.ref === 'nenhum' ? 'selected' : ''}>Sem comparação</option><option value="ant" ${c.ref === 'ant' ? 'selected' : ''}>Mês anterior</option><option value="ano" ${c.ref === 'ano' ? 'selected' : ''}>Média do ano</option><option value="ambos" ${c.ref === 'ambos' ? 'selected' : ''}>Ambos</option></select></div>
+        </div>
+        ${c.graf === 'custom' ? `<div class="pdca-sel-chips" style="margin-top:6px">${jan.map(x => { const falta = sd && !sd.includes(x) && m !== 'qual'; return `<label class="pdca-mes ${(c.custom || []).includes(x) ? 'on' : ''}" title="${falta ? 'Sem dados neste módulo' : ''}" style="${falta ? 'opacity:.55;border-style:dashed' : ''}"><input type="checkbox" ${(c.custom || []).includes(x) ? 'checked' : ''} onchange="pdcaModToggle('${m}','${x}',this.checked)"> ${ENG.fmtMes(x)}${x === S.comp ? ' ★' : ''}</label>`; }).join('')}</div>` : ''}
+        <div style="margin-top:4px"><button class="btn btn-sm btn-secondary" onclick="pdcaModCopiar('${m}')">Copiar esta configuração para todos os módulos</button></div>
+      </div></div>`; }).join('')}
+    <div class="pdca-nota">Mudar meses ou comparativo não faz novas leituras: reaproveita os dados já carregados (a Qualidade só consulta meses que ainda não estão em cache). ★ = competência. Meses sem dados ficam vazios no gráfico — nunca viram zero.</div></div>`;
 }
 function esc2(t) { return PDCA_ENG.esc(t); }
 function pdcaIascHtml() {
@@ -31975,18 +32062,11 @@ function pdcaRender() {
         <label><input type="radio" name="pdca-tipo" ${S.tipo === 'parcial' ? 'checked' : ''} onchange="pdcaSetTipo('parcial')"> Resultado parcial</label>
         <label class="${liberado ? '' : 'pdca-off'}" title="${liberado ? '' : 'Disponível quando houver dados suficientes e o fechamento do mês estiver confirmado'}"><input type="radio" name="pdca-tipo" ${S.tipo === 'fechado' ? 'checked' : ''} ${liberado ? '' : 'disabled'} onchange="pdcaSetTipo('fechado')"> Fechamento mensal</label>
       </div></div>
-    <div><label class="pdca-lb">Comparativo</label><select class="form-select" onchange="pdcaSetCampo('comparativo',this.value)">
-      <option value="ant" ${S.comparativo === 'ant' ? 'selected' : ''}>Mês anterior</option><option value="ano" ${S.comparativo === 'ano' ? 'selected' : ''}>Média do ano</option><option value="ambos" ${S.comparativo === 'ambos' ? 'selected' : ''}>Ambos</option><option value="nenhum" ${S.comparativo === 'nenhum' ? 'selected' : ''}>Sem referência (só os meses selecionados)</option></select></div>
-    <div><label class="pdca-lb">Data da reunião</label><input type="date" class="form-input" value="${esc(S.dataReuniao)}" oninput="pdcaSetCampo('dataReuniao',this.value)"></div>
-    <div><label class="pdca-lb">Responsável pela apresentação</label><input type="text" class="form-input" value="${esc(S.responsavel)}" oninput="pdcaSetCampo('responsavel',this.value)"></div>
+    <div><label class="pdca-lb">Data da reunião <span style="text-transform:none;font-weight:400">(opcional · só identifica a reunião no histórico)</span></label><input type="date" class="form-input" value="${esc(S.dataReuniao)}" oninput="pdcaSetCampo('dataReuniao',this.value)"></div>
+        <div><label class="pdca-lb">Responsável pela apresentação</label><input type="text" class="form-input" value="${esc(S.responsavel)}" oninput="pdcaSetCampo('responsavel',this.value)"></div>
   </div>
-  ${S.tipo === 'parcial' ? `<div class="pdca-grid" style="margin-top:10px">
-    <div><label class="pdca-lb">Data de corte (resultado parcial)</label><input type="date" class="form-input" value="${esc(S.corte || (d ? d.corte : ''))}" oninput="pdcaSetCampo('corte',this.value)"></div>
-    <div><label class="pdca-lb">Dias úteis do mês (auto${d ? ': ' + d.duTotal : ''})</label><input type="number" min="1" max="31" class="form-input" placeholder="automático" value="${S.duTotal || ''}" oninput="pdcaSetCampo('duTotal',this.value)"></div>
-    <div><label class="pdca-lb">Dias úteis decorridos (auto${d ? ': ' + d.duDec : ''})</label><input type="number" min="1" max="31" class="form-input" placeholder="automático" value="${S.duDec || ''}" oninput="pdcaSetCampo('duDec',this.value)"></div>
-  </div><div class="pdca-nota">No resultado parcial, volumes e POS são comparados por <b>dia útil</b> e pela meta proporcional à jornada; taxas (NS30, TMA, TME, CSAT, % sem e-mail) são comparadas diretamente. Dias úteis = segunda a sexta, sem feriados nacionais.</div>` : ''}
   <div style="margin-top:12px"><label class="pdca-lb">Grupos de indicadores</label><div class="pdca-chks">${PDCA_GRUPOS.map(([g, n]) => `<label><input type="checkbox" ${S.grupos[g] ? 'checked' : ''} onchange="pdcaSetGrupo('${g}',this.checked)"> ${n}</label>`).join('')}</div></div>
-  ${pdcaSelHtml()}
+  ${pdcaModsHtml()}
   ${pdcaIascHtml()}
   <div class="pdca-botoes">
     <button class="btn btn-primary" ${ocupado ? 'disabled' : ''} onclick="pdcaMontar()">🔎 ${d ? 'Atualizar prévia' : 'Montar prévia'}</button>
@@ -32017,7 +32097,8 @@ function pdcaRender() {
     h += `<div class="card pdca-card"><div class="empty" style="padding:24px"><p>Escolha o mês, o tipo de resultado e os grupos, depois clique em <b>Montar prévia</b>.<br><span style="font-size:12px;color:var(--text3)">Nada é carregado antes desse clique — a tela abre leve.</span></p></div></div>`;
   } else {
     // — Prévia —
-    h += `<div class="card pdca-card"><div class="pdca-titulo">2 · Prévia dos resultados <span class="pdca-chip ${d.tipo === 'parcial' ? 'pdca-chip-o' : 'pdca-chip-g'}">${d.tipo === 'parcial' ? 'PARCIAL até ' + ENG.fmtData(d.corte) + ' · ' + d.duDec + '/' + d.duTotal + ' dias úteis' : 'FECHAMENTO MENSAL'}</span></div>`;
+    h += `<div class="card pdca-card"><div class="pdca-titulo">2 · Prévia dos resultados <span class="pdca-chip ${d.tipo === 'parcial' ? 'pdca-chip-o' : 'pdca-chip-g'}">${d.tipo === 'parcial' ? 'RESULTADO PARCIAL' : 'FECHAMENTO MENSAL'}</span></div>
+      <div style="font-size:12px;color:var(--text2);margin:2px 0 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><b>Bases:</b> ${['op', 'csat', 'pos', 'ln', 'qual'].filter(m => d.grupos[m] && d.mod && d.mod[m]).map(m => PDCA_GRUPO_NOME[m] + ' ' + pdcaModInfoTxt(m)).join(' ')}</div>`;
     if (d.avisos && d.avisos.length) h += `<div class="pdca-aviso">${d.avisos.map(a => '⚠️ ' + esc(a)).join('<br>')}</div>`;
     h += d.scorecard.length ? `<div class="pdca-cards">${d.scorecard.map(c => `<div class="pdca-kpi" style="border-left-color:${c.status === 'verde' ? 'var(--green)' : 'var(--red)'}"><div class="pdca-kpi-r">${esc(c.grupo)} · ${esc(c.nome)}</div><div class="pdca-kpi-v" style="color:${c.status === 'verde' ? 'var(--green)' : 'var(--red)'}">${esc(c.valor)}</div><div class="pdca-kpi-s">Meta ${esc(c.meta)} · mês ant.: ${esc(c.varAnt)} · média ano: ${esc(c.varAno)}</div></div>`).join('')}</div>` : '<div class="empty"><p>Nenhum indicador disponível para este recorte.</p></div>';
     h += `<div class="pdca-nota">Fontes de leitura nesta prévia: ${d.fonteQual ? esc(d.fonteQual.join(' · ')) : 'sem Qualidade'} · bases operacionais compartilham o cache do Dashboard Operacional.</div></div>`;
