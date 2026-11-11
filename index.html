@@ -4346,7 +4346,8 @@ const _LZ_VIEWS = {
   csat:          ['adm-csat'],
   comb:          ['sup-combustivel','adm-combustivel','adm-relatorio-comb'],
   caixaLanc:     ['sup-caixa','adm-caixas'],
-  rh:            ['adm-rh-holerite','adm-rh-atestado','adm-rh-folha','adm-medidas-disciplinares','sup-medidas-disciplinares','sup-demandas-equipe','adm-ponto'],
+  rh:            ['adm-rh-holerite','adm-rh-atestado','adm-rh-folha','adm-medidas-disciplinares','sup-medidas-disciplinares'],
+  atestadosPonto:['sup-demandas-equipe','adm-ponto'],
   pontosFull:    ['adm-ponto','adm-team','sup-demandas-equipe'],
   tasksFull:     ['adm-dashboard','adm-tasks','adm-team','sup-demandas-equipe'],
   registrosFull: ['adm-postos','supervisor-postos'],
@@ -4358,7 +4359,8 @@ const _lzInit = {
   csat()          { initCsatAcoes(); },
   comb()          { if (unsubCombBadge) { unsubCombBadge(); unsubCombBadge = null; } initCombustivel(); },
   caixaLanc()     { initCaixaLancamentos(); },
-  rh()            { _lzDesligarBadgesRH(); initRH(false); initFolhaPonto(false); },
+  rh()            { if (!isRHManager()) _lzDesligarBadgesRH(); initRH(false); initFolhaPonto(false); }, // v53: gestor de RH mantém os badges exatos (listas são limitadas)
+  atestadosPonto(){ initAtestadosPonto(); },
   pontosFull()    { initPonto(true); },
   tasksFull()     { _iniciarTasks(true); },
   registrosFull() { _iniciarRegistros(true); },
@@ -4430,20 +4432,20 @@ function initBadgesRHAdmin() {
   _lzDesligarBadgesRH();
   if (currentUser && currentUser.role === 'admin') {
     unsubBadgeHol = db.collection('holerites').where('status', '==', 'assinado').onSnapshot(snap => {
-      if (_lz.ativos.rh) return;
+      if (_lz.ativos.rh && !_rhTrunc('holerites', allHolerites)) return;
       const n = snap.docs.filter(d => !d.data().vistoAdm).length;
       const b = document.getElementById('holerite-badge-adm');
       if (b) { b.textContent = n; b.style.display = n > 0 ? 'inline' : 'none'; }
     });
     unsubBadgeAtest = db.collection('atestados').where('vistoAdm', '==', false).onSnapshot(snap => {
-      if (_lz.ativos.rh) return;
+      if (_lz.ativos.rh && !_rhTrunc('atestados', allAtestados)) return;
       const b = document.getElementById('atestado-badge-adm');
       if (b) { b.textContent = snap.size; b.style.display = snap.size > 0 ? 'inline' : 'none'; }
     });
   }
   if (isRHManager()) {
     unsubBadgeFolha = db.collection('folhasPonto').where('status', '==', 'assinado').onSnapshot(snap => {
-      if (_lz.ativos.rh) return;
+      if (_lz.ativos.rh && !_rhTrunc('folhas', allFolhas)) return;
       const n = snap.docs.filter(d => !d.data().vistoManager).length;
       const b = document.getElementById('folha-badge-adm');
       if (b) { b.textContent = n; b.style.display = n > 0 ? 'inline' : 'none'; }
@@ -4490,6 +4492,8 @@ function lzEncerrar() {
   try { if (unsubHolerites) { unsubHolerites(); unsubHolerites = null; } } catch (e) {}
   try { if (unsubAtestados) { unsubAtestados(); unsubAtestados = null; } } catch (e) {}
   try { if (unsubMedidas) { unsubMedidas(); unsubMedidas = null; } } catch (e) {}
+  try { if (unsubAtestadosPonto) { unsubAtestadosPonto(); unsubAtestadosPonto = null; } } catch (e) {}
+  _pontosJanelaIni = ''; _pontosPendAntigos = [];
   try { if (unsubFolhas) { unsubFolhas(); unsubFolhas = null; } } catch (e) {}
   try { if (unsubCsatPlanosAcao) { unsubCsatPlanosAcao(); unsubCsatPlanosAcao = null; } } catch (e) {}
   try { if (unsubCsatMotivosDetectados) { unsubCsatMotivosDetectados(); unsubCsatMotivosDetectados = null; } } catch (e) {}
@@ -4572,7 +4576,7 @@ function startApp() {
       // Auto-repair: executa uma única vez por sessão, somente para ADM
       if (!_autoRepairTriggered && currentUser && currentUser.role === 'admin') {
         _autoRepairTriggered = true;
-        autoRepairUsersDuplicados();
+        autoRepairUsersDuplicados(snap);
       }
       _readyUsers = true;
       refreshCurrentView();
@@ -4623,7 +4627,7 @@ async function renderAdmDashboardExtras() {
 // Proteção dupla: window.__usersAutoRepairRunning + localStorage('users_repair_done_v1')
 // Nunca toca em módulos funcionais: Ponto, Time, Folha, RH, Caixa, etc.
 // ─────────────────────────────────────────────────────────────────────────────
-async function autoRepairUsersDuplicados() {
+async function autoRepairUsersDuplicados(snapPronto) {
   if (window.__usersAutoRepairRunning) return;
   if (localStorage.getItem('users_repair_done_v1') === '1') return;
   if (!currentUser || currentUser.role !== 'admin') return;
@@ -4633,7 +4637,7 @@ async function autoRepairUsersDuplicados() {
 
   try {
     // 1. Carregar toda a collection users
-    const snap = await db.collection('users').get();
+    const snap = snapPronto || await db.collection('users').get(); // v53: reaproveita a leitura do listener (sem 2ª leitura de users)
 
     // 2. Agrupar por email
     const porEmail = {};
@@ -5349,12 +5353,49 @@ function validarHorarioPonto(tipo) {
   return { valido: true };
 }
 
+// v53: o listener do ADM/equipe não lê mais o histórico inteiro de pontos — só a janela que as telas realmente
+// usam (mês atual + 5 anteriores = as 6 opções do filtro de mês). Justificativas PENDENTES mais antigas que a janela
+// continuam aparecendo (consulta pontual só dos pendentes). Colaborador segue lendo os próprios pontos, sem janela.
+let _pontosJanelaIni = '';          // 'AAAA-MM-01' enquanto o listener do ADM estiver ativo; '' = sem janela
+let _pontosPendAntigos = [];
+function _pontosJanelaInicio() {
+  const n = new Date(), d = new Date(n.getFullYear(), n.getMonth() - 5, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+}
+function _pontosMesclarAntigos(lista) {
+  if (!_pontosJanelaIni || !_pontosPendAntigos.length) return lista;
+  const ids = new Set(lista.map(p => p.id));
+  return lista.concat(_pontosPendAntigos.filter(p => !ids.has(p.id) && p.data && p.data < _pontosJanelaIni));
+}
+async function _pontosCarregarPendAntigos() {
+  if (!_pontosJanelaIni) return;
+  const ini = _pontosJanelaIni, tipos = ['entrada', 'saida_almoco', 'retorno_almoco', 'saida'];
+  try {
+    const partes = await Promise.all(tipos.map(t => db.collection('pontos').where('statusJustificativa.' + t, '==', 'pendente').get()));
+    const por = {};
+    partes.forEach(sn => sn.docs.forEach(d => { const x = { id: d.id, ...d.data() }; if (x.data && x.data < ini) por[x.id] = x; }));
+    _pontosPendAntigos = Object.values(por);
+    allPontos = _pontosMesclarAntigos(allPontos);
+    const active = document.querySelector('.view.active');
+    if (active && active.id === 'view-adm-ponto') renderAdmPonto();
+  } catch (e) { console.warn('[Ponto] não foi possível ler pendências antigas:', e && e.message); }
+}
+// Registro de um colaborador num dia (usado ao lançar/abonar manualmente): se a data está fora da janela, consulta só aquele dia.
+async function _pontoDoDia(userId, data) {
+  const e = allPontos.find(p => p.userId === userId && p.data === data);
+  if (e || !_pontosJanelaIni || !data || data >= _pontosJanelaIni) return e;
+  const sn = await db.collection('pontos').where('userId', '==', userId).where('data', '==', data).limit(1).get();
+  return sn.empty ? undefined : { id: sn.docs[0].id, ...sn.docs[0].data() };
+}
 async function initPonto(todos) {
   if (unsubPontos) unsubPontos();
   // todos=false: só os pontos do próprio usuário (colaborador); todos=true: ADM/equipe, sob demanda
-  const _qP = todos ? db.collection('pontos') : db.collection('pontos').where('userId','==',currentUser.id);
+  _pontosJanelaIni = todos ? _pontosJanelaInicio() : '';
+  const _qP = todos ? db.collection('pontos').where('data', '>=', _pontosJanelaIni) : db.collection('pontos').where('userId','==',currentUser.id);
+  let _primeiroPonto = true;
   unsubPontos = _qP.onSnapshot(snap => {
-    allPontos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    allPontos = _pontosMesclarAntigos(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    if (_primeiroPonto && todos) { _primeiroPonto = false; _pontosCarregarPendAntigos(); }
     const active = document.querySelector('.view.active');
     if (active && active.id === 'view-adm-ponto') renderAdmPonto();
     if (active && active.id === 'view-col-ponto') renderColPonto();
@@ -5763,6 +5804,7 @@ async function decidirJustificativa(decisao) {
     
     closeModal('modal-aprovar-justificativa');
     document.getElementById('aj-obs').value = '';
+    if (_pontosJanelaIni && ponto.data && ponto.data < _pontosJanelaIni) _pontosCarregarPendAntigos();
     toast(decisao === 'aprovado' ? 'Justificativa aprovada!' : 'Justificativa recusada', 'ok');
   } catch(e) {
     console.error(e);
@@ -5824,7 +5866,7 @@ async function confirmarAbonoFalta() {
   if (!user) return;
   
   try {
-    const existing = allPontos.find(p => p.userId === userId && p.data === data);
+    const existing = await _pontoDoDia(userId, data);
     
     if (existing) {
       await db.collection('pontos').doc(existing.id).update({ 
@@ -6039,7 +6081,7 @@ async function confirmarBaterPontoAdm() {
   };
 
   try {
-    const existing = allPontos.find(p => p.userId === userId && p.data === data);
+    const existing = await _pontoDoDia(userId, data);
     if (existing) {
       if (existing[tipo]) {
         if (!confirm(`Já existe uma marcação de "${tipoLabels[tipo]}" para ${user.name} em ${data.split('-').reverse().join('/')}. Deseja sobrescrever com este registro administrativo?`)) return;
@@ -12582,7 +12624,8 @@ function getDestinatariosPermitidos(user) {
 
 function initPropostas() {
   if (unsubPropostas) unsubPropostas();
-  unsubPropostas = db.collection('propostas_demanda').onSnapshot(snap => {
+  // v53: só as PENDENTES (badge, fila do ADM, "minhas pendentes" e Demandas da Equipe só usam pendentes; aprovada/reprovada saem da lista como antes)
+  unsubPropostas = db.collection('propostas_demanda').where('status','==','pendente').onSnapshot(snap => {
     allPropostas = snap.docs.map(d=>({id:d.id,...d.data()}));
     // Badge no ADM nav demandas
     const pendAdm = allPropostas.filter(p=>p.status==='pendente').length;
@@ -12806,11 +12849,80 @@ let holeriteModoEnvio = 'completo'; // 'completo' | 'seletivo'
 let atestadoFileBase64 = null;
 let assinadoFileBase64 = null;
 
+// v53: Ponto/Equipe só precisam saber quem está afastado em cada dia da janela (mês atual + 5 anteriores):
+// atestados cujo fim alcança a janela. Não liga holerites/folhas/medidas. Se o RH completo já está ligado, ele cobre isto.
+let unsubAtestadosPonto = null;
+function initAtestadosPonto() {
+  if (unsubAtestadosPonto) { unsubAtestadosPonto(); unsubAtestadosPonto = null; }
+  if (_lz.ativos.rh) return;
+  unsubAtestadosPonto = db.collection('atestados').where('dataFim', '>=', _pontosJanelaInicio()).onSnapshot(snap => {
+    if (_lz.ativos.rh) return;
+    allAtestados = snap.docs.map(d => ({id: d.id, ...d.data()}));
+    _lzOk('atestadosPonto');
+    const active = document.querySelector('.view.active');
+    if (active && active.id === 'view-adm-ponto') renderAdmPonto();
+  });
+}
+// v53: listas de RH do ADM limitadas aos mais recentes, com "carregar mais" (mesmo listener, só muda o limite).
+const _rhLim = { holerites: 400, atestados: 300, folhas: 400, medidas: 300 };
+const _RH_PASSO = { holerites: 400, atestados: 300, folhas: 400, medidas: 300 };
+const _RH_ROTULO = { holerites: 'holerites', atestados: 'atestados', folhas: 'folhas de ponto', medidas: 'medidas disciplinares' };
+const _RH_VIEWS = { holerites: ['view-adm-rh-holerite'], atestados: ['view-adm-rh-atestado'], folhas: ['view-adm-rh-folha'], medidas: ['view-adm-medidas-disciplinares', 'view-sup-medidas-disciplinares'] };
+// Limite só pra quem administra o RH (ADM / gestora de RH); demais perfis seguem exatamente como antes.
+// Lista truncada pelo limite? Então o badge NÃO pode ser calculado dela (subcontaria) — fica com o contador exato do listener de badge.
+function _rhTrunc(k, arr) { return isRHManager() && arr.length >= _rhLim[k]; }
+function _rhQ(q, k) { return isRHManager() ? q.limit(_rhLim[k]) : q; }
+function _rhBarra(chave, n) {
+  if (!isRHManager()) return;
+  (_RH_VIEWS[chave] || []).forEach(vid => {
+    const el = document.getElementById(vid); if (!el) return;
+    let bar = el.querySelector('.rh-mais-bar[data-k="' + chave + '"]');
+    if (n < _rhLim[chave]) { if (bar) bar.remove(); return; }
+    if (!bar) { bar = document.createElement('div'); bar.className = 'rh-mais-bar'; bar.dataset.k = chave; bar.style.cssText = 'margin:14px 0;padding:10px 14px;border:1px dashed var(--border);border-radius:8px;font-size:13px;color:var(--text3);display:flex;gap:12px;align-items:center;flex-wrap:wrap'; el.appendChild(bar); }
+    bar.innerHTML = `<span>Mostrando os <strong>${n}</strong> ${_RH_ROTULO[chave]} mais recentes.</span><button type="button" class="btn btn-sm btn-secondary" onclick="rhCarregarMais('${chave}')">Carregar mais ${_RH_PASSO[chave]}</button>`;
+  });
+}
+function rhCarregarMais(chave) {
+  _rhLim[chave] += _RH_PASSO[chave];
+  if (chave === 'holerites') _rhSubHolerites(); else if (chave === 'atestados') _rhSubAtestados(); else if (chave === 'medidas') _rhSubMedidas(); else if (chave === 'folhas') initFolhaPonto(false);
+}
+function _rhSubHolerites() {
+  if (unsubHolerites) unsubHolerites();
+  unsubHolerites = _rhQ(db.collection('holerites').orderBy('enviadoEm','desc'), 'holerites').onSnapshot(snap => {
+    allHolerites = snap.docs.map(d => ({id: d.id, ...d.data()}));
+    _lzOk('rh:todos');
+    updateHoleriteBadges(); _rhBarra('holerites', snap.size);
+    const active = document.querySelector('.view.active');
+    if (active && active.id === 'view-adm-rh-holerite') renderAdmRhHolerite();
+    if (active && active.id === 'view-col-rh-holerite') renderColRhHolerite();
+  });
+}
+function _rhSubAtestados() {
+  if (unsubAtestados) unsubAtestados();
+  unsubAtestados = _rhQ(db.collection('atestados').orderBy('enviadoEm','desc'), 'atestados').onSnapshot(snap => {
+    allAtestados = snap.docs.map(d => ({id: d.id, ...d.data()}));
+    updateAtestadoBadge(); _rhBarra('atestados', snap.size);
+    const active = document.querySelector('.view.active');
+    if (active && active.id === 'view-adm-rh-atestado') renderAdmRhAtestado();
+    if (active && active.id === 'view-col-rh-atestado') renderColRhAtestado();
+  });
+}
+function _rhSubMedidas() {
+  if (unsubMedidas) unsubMedidas();
+  unsubMedidas = _rhQ(db.collection('medidas_disciplinares').orderBy('createdAt','desc'), 'medidas').onSnapshot(snap => {
+    allMedidas = snap.docs.map(d => ({id: d.id, ...d.data()}));
+    _rhBarra('medidas', snap.size);
+    const active = document.querySelector('.view.active');
+    if (active && (active.id === 'view-adm-medidas-disciplinares' || active.id === 'view-sup-medidas-disciplinares')) md_renderTudo();
+  });
+}
 async function initRH(proprio) {
   if (unsubHolerites) unsubHolerites();
   if (unsubAtestados) unsubAtestados();
   if (unsubMedidas)   unsubMedidas();
+  if (unsubAtestadosPonto) { unsubAtestadosPonto(); unsubAtestadosPonto = null; } // o RH completo cobre os atestados
   // proprio=true: colaborador lê só os próprios; false: visão completa (ADM/RH/supervisão), sob demanda
+  if (!proprio) { _rhSubHolerites(); _rhSubAtestados(); _rhSubMedidas(); return; }
   unsubHolerites = (proprio ? db.collection('holerites').where('colaboradorId','==',currentUser.id) : db.collection('holerites').orderBy('enviadoEm','desc')).onSnapshot(snap => {
     allHolerites = snap.docs.map(d => ({id: d.id, ...d.data()}));
     if (proprio) allHolerites.sort(_lzCmpDesc('enviadoEm'));
@@ -13561,7 +13673,7 @@ async function md_downloadAnexo(anexoId, medidaId) {
 function updateHoleriteBadges() {
   // Badge ADM: holerites assinados pendentes de visualização
   const assinados = allHolerites.filter(h => h.status === 'assinado' && !h.vistoAdm).length;
-  const badgeAdm = document.getElementById('holerite-badge-adm');
+  const badgeAdm = _rhTrunc('holerites', allHolerites) ? null : document.getElementById('holerite-badge-adm');
   if (badgeAdm) { badgeAdm.textContent = assinados; badgeAdm.style.display = assinados > 0 ? 'inline' : 'none'; }
   // Badge colaborador: holerites novos não vistos
   if (currentUser && currentUser.role !== 'admin') {
@@ -13574,7 +13686,7 @@ function updateHoleriteBadges() {
 function updateAtestadoBadge() {
   if (currentUser && currentUser.role === 'admin') {
     const novos = allAtestados.filter(a => !a.vistoAdm).length;
-    const badge = document.getElementById('atestado-badge-adm');
+    const badge = _rhTrunc('atestados', allAtestados) ? null : document.getElementById('atestado-badge-adm');
     if (badge) { badge.textContent = novos; badge.style.display = novos > 0 ? 'inline' : 'none'; }
   }
 }
@@ -14647,9 +14759,10 @@ function isRHManager() {
 
 function initFolhaPonto(proprio) {
   if (unsubFolhas) unsubFolhas();
-  unsubFolhas = (proprio ? db.collection('folhasPonto').where('colaboradorId','==',currentUser.id) : db.collection('folhasPonto').orderBy('enviadoEm','desc')).onSnapshot(snap => {
+  unsubFolhas = (proprio ? db.collection('folhasPonto').where('colaboradorId','==',currentUser.id) : _rhQ(db.collection('folhasPonto').orderBy('enviadoEm','desc'), 'folhas')).onSnapshot(snap => {
     allFolhas = snap.docs.map(d => ({id:d.id,...d.data()}));
     if (proprio) allFolhas.sort(_lzCmpDesc('enviadoEm'));
+    if (!proprio) _rhBarra('folhas', snap.size);
     updateFolhaBadges();
     const active = document.querySelector('.view.active');
     if (active?.id==='view-adm-rh-folha' && document.getElementById('folha-tab-historico')?.classList.contains('active')) renderHistoricoFolhas();
@@ -14660,7 +14773,7 @@ function initFolhaPonto(proprio) {
 function updateFolhaBadges() {
   if (isRHManager()) {
     const n = allFolhas.filter(f=>f.status==='assinado'&&!f.vistoManager).length;
-    const b = document.getElementById('folha-badge-adm');
+    const b = _rhTrunc('folhas', allFolhas) ? null : document.getElementById('folha-badge-adm');
     if (b) { b.textContent=n; b.style.display=n>0?'inline':'none'; }
   }
   if (currentUser?.role!=='admin') {
@@ -23533,7 +23646,14 @@ let _opAllIndicadores = [], _opAllCsat = [], _opAllPos = [];
 // Email Ligação Nova — espelho só de leitura dos agregados já produzidos
 // pelo próprio submódulo (snapshot vigente). Nunca reprocessa a Base
 // Oficial aqui, nunca grava nada de volta.
-let _opLnAgregados = [], _opLnDataExtracao = '', _opLnCompetenciaVigente = '', _opLnSnapshotId = '';
+let _opLnAgregados = [], _opLnDataExtracao = '', _opLnCompetenciaVigente = '', _opLnSnapshotId = '', _opLnBo = null;
+// v53: garante dado DIÁRIO real das competências que a tela vai usar (seleção do Dash + extras: PDCA comp/anterior,
+// competência da Campanha). Meses fora disso seguem como resumo por posto. `todos` = histórico diário completo.
+async function _opLnGarantir(extra, todos) {
+  if (!_opLnBo) return;
+  const c = Array.from(new Set([..._opMesesSel.map(m => _opNormMesRef(m)), ...(extra || [])].filter(Boolean)));
+  _opLnAgregados = await lnCarregarListaVigente(_opLnBo, todos ? { todos: true } : { comps: c });
+}
 
 async function _opGarantirDadosCarregados() { return _compartilhar('opdados', _opGarantirDadosCarregadosImpl); }
 async function _opGarantirDadosCarregadosImpl() {
@@ -23562,15 +23682,9 @@ async function _opGarantirDadosCarregadosImpl() {
       _opLnSnapshotId = lnChaveGrupos(lnGruposSnapshots(bo));
       _opLnDataExtracao = bo.dataExtracaoReal || '';
       _opLnCompetenciaVigente = bo.competenciaVigente || '';
-      // Reaproveita os agregados que o submódulo Ligação Nova já tem em memória (mesma fonte, mesma normalização)
-      if (_lnAgregadosCache.snapshotId === _opLnSnapshotId && _lnAgregadosCache.lista) {
-        _opLnAgregados = _lnAgregadosCache.lista;
-      } else {
-        const agDocs = await lnCarregarDocsGrupos('ligacaonova_base_agregados_dia', bo, lnCompDoAgregado);
-        _opLnAgregados = agDocs.map(lnNormalizarAgregado);
-        _lnAgregadosCache = { snapshotId: _opLnSnapshotId, lista: _opLnAgregados };
-        _lnCompetenciasDisponiveis = Array.from(new Set(_opLnAgregados.filter(a=>a.data).map(a=>a.data.slice(0,7)))).sort();
-      }
+      // v53: lê só as competências selecionadas (+ a mais recente) em dado diário; os demais meses vêm do resumo.
+      _opLnBo = bo;
+      _opLnAgregados = await lnCarregarListaVigente(bo, { comps: _opMesesSel.map(m => _opNormMesRef(m)) });
       _cacheMarca('opln');
     } else {
       _opLnAgregados = []; _opLnDataExtracao=''; _opLnCompetenciaVigente='';
@@ -23878,7 +23992,8 @@ async function opVerificarConsistenciaExecutar(onProgress){
   const t0 = Date.now();
   await _opGarantirDadosCarregados();
   const fe = await _audCarregarFontes();
-  const lista = await lnObterAgregadosVigentes();
+  const lista = await lnObterAgregadosVigentes({ todos: true });
+  await _opLnGarantir(null, true);
   const diag = _audDiagnosticos(fe);
 
   const mesesBase = new Set(_opMesesTodos());
@@ -24277,6 +24392,7 @@ async function renderCampanhaMensal() {
     return;
   }
   if (!_campMesSel || !competenciasDisp.includes(_campMesSel)) _campMesSel = competenciasDisp[competenciasDisp.length-1];
+  try { await _opLnGarantir([_campMesSel]); } catch(e) { console.error('[Campanha] erro ao carregar dias da competência:', e); }
 
   const postosDisp = _opDedupPostos(allPostos.filter(p=>p.nome!=='Posto Teste').map(p=>p.nome));
   const supervisoresDisp = _opSupervisoresDisponiveis();
@@ -24667,13 +24783,14 @@ function _opCalcAlertasEResumo(cardPos,cardCsat,cardNs30,cardPerd,blocoTempos,ra
 }
 
 // ── Controles de filtro ──
-function _opToggleMes(m, evt) {
+async function _opToggleMes(m, evt) {
   if (!_opMesesTodos().includes(m)) return;
   if (evt?.shiftKey) { const i=_opMesesSel.indexOf(m); if(i>=0) _opMesesSel.splice(i,1); else _opMesesSel.push(m); }
   else _opMesesSel = (_opMesesSel.length===1 && _opMesesSel[0]===m) ? [] : [m];
+  try { await _opLnGarantir(); } catch(e) { console.error('[Dashboard Operacional] erro ao carregar dias da competência:', e); }
   renderDashboardOperacional();
 }
-function _opLimparFiltros() { _opMesesSel=[]; _opFiltroPosto=''; _opFiltroSupervisor=''; renderDashboardOperacional(); }
+async function _opLimparFiltros() { _opMesesSel=[]; _opFiltroPosto=''; _opFiltroSupervisor=''; try { await _opLnGarantir(); } catch(e) { console.error(e); } renderDashboardOperacional(); }
 function _opAplicarFiltroSupervisor() {
   _opFiltroSupervisor = document.getElementById('op-fil-supervisor')?.value || '';
   _opFiltroPosto = ''; // trocar supervisor reseta o posto (mostra só os postos daquele supervisor)
@@ -24696,6 +24813,7 @@ async function renderDashboardOperacional() {
   { const _b = document.getElementById('op-aud-btn'); if (_b) _b.style.display = (currentUser?.role==='admin') ? '' : 'none'; }
   wrap.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text3)">⏳ Carregando dados operacionais...</div>';
   await _opGarantirDadosCarregados();
+  try { await _opLnGarantir(); } catch(e) { console.error('[Dashboard Operacional] erro ao carregar dias da competência:', e); }
 
   const mesesTodos = _opMesesTodos();
   if (!mesesTodos.length) {
@@ -27793,16 +27911,194 @@ async function lnCarregarCasosVigentes(boOpc, ajustarQuery) {
   }
   return linhas.slice();
 }
-async function lnObterAgregadosVigentes() {
-  const bo = _lnConfig && _lnConfig.baseOficial;
-  const chave = lnChaveGrupos(lnGruposSnapshots(bo));
+// ═══ v53 — Carga por competência + resumos (reduz leituras do Firestore) ═══
+// O que mudou: em vez de ler TODOS os agregados diários de todos os meses, lê só os
+// dias das competências que a tela precisa (detalhe/diário) e usa, pros demais meses,
+// o RESUMO por posto (ligacaonova_resumos) — os mesmos totais COM/SEM/cancelados.
+// Nada é apagado nem reimportado: base antiga sem resumo faz UMA leitura completa
+// (igual à v52) e o admin grava os resumos faltantes (1 doc por competência, uma vez).
+const LN_RESUMOS_COL = 'ligacaonova_resumos';
+let _lnRealCache = { chave: null, porComp: {}, grupos: {} };   // porComp[comp] = agregados reais (normalizados)
+let _lnResumosCache = { chave: null, mapa: null };            // mapa['snap__AAAA-MM'] = resumo
+let _lnIndiceAusente = false;                                  // consulta snapshotId+data sem índice composto
+const _lnBackfillTentado = {};
+function _lnResetCargas() {
+  _lnAgregadosCache = { snapshotId: null, lista: null };
+  _lnRealCache = { chave: null, porComp: {}, grupos: {} };
+  _lnResumosCache = { chave: null, mapa: null };
+}
+function lnConstruirResumo(snapshotId, comp, lista, origem, compsSnapshot) {
+  const por = {}; let ult = '', pri = '';
+  lista.forEach(a => {
+    const k = String(a.posto);
+    const o = por[k] || (por[k] = { p: a.posto === undefined ? null : a.posto, c: 0, s: 0, x: 0, cx: 0, n: 0, nx: 0 });
+    o.c += a.comEmail || 0; o.s += a.semEmail || 0;
+    if (a.cancelados !== null && a.cancelados !== undefined) { o.x += a.cancelados; o.cx++; }
+    if (a.naoClassificados !== null && a.naoClassificados !== undefined) { o.n += a.naoClassificados; o.nx++; }
+    if (a.data) { if (a.data > ult) ult = a.data; if (!pri || a.data < pri) pri = a.data; }
+  });
+  return { id: `${snapshotId}__${comp}`, snapshotId, comp, versao: 1, origem, qtd: lista.length, ultimo: ult, primeiro: pri,
+    postos: Object.values(por), compsSnapshot: compsSnapshot || [comp], criadoEm: new Date().toISOString() };
+}
+// Registro "sintético" por posto/competência, no mesmo formato do agregado normalizado.
+function lnSinteticosDoResumo(r) {
+  return (r.postos || []).map(o => ({ snapshotId: r.snapshotId, operacaoId: null, posto: o.p, data: r.ultimo,
+    comEmail: o.c, semEmail: o.s, total: o.c + o.s, totalGravado: null,
+    cancelados: o.cx > 0 ? o.x : null, naoClassificados: o.nx > 0 ? o.n : null, _resumo: true }));
+}
+async function lnCarregarResumos(gs, chave) {
+  if (_lnResumosCache.chave === chave && _lnResumosCache.mapa) return _lnResumosCache.mapa;
+  return _compartilhar('lnres|' + chave, async () => {
+    const mapa = {}, ids = gs.map(g => g.snapshotId);
+    for (let i = 0; i < ids.length; i += 10) {
+      try {
+        const sn = await db.collection(LN_RESUMOS_COL).where('snapshotId', 'in', ids.slice(i, i + 10)).get();
+        sn.docs.forEach(d => { const r = d.data(); if (r && r.versao === 1 && r.snapshotId && r.comp) mapa[r.snapshotId + '__' + r.comp] = r; });
+      } catch (e) { console.warn('[LigNova] resumos indisponíveis (segue com leitura completa):', e && e.message); }
+    }
+    _lnResumosCache = { chave, mapa };
+    return mapa;
+  });
+}
+// O grupo é "coberto" quando TODAS as suas competências têm resumo válido (e, quando a config
+// informa a quantidade de dias da competência, o resumo bate com ela).
+function lnCompsDoGrupoCoberto(g, mapa, bo) {
+  const pref = g.snapshotId + '__';
+  if (g.comps) {
+    if (g.comps.includes(LN_SEM_DATA)) return null;
+    const ok = g.comps.every(c => {
+      const r = mapa[pref + c]; if (!r) return false;
+      const d = bo && bo.competencias && bo.competencias[c] && bo.competencias[c].dias;
+      return d === undefined || d === null || r.qtd === d;
+    });
+    return ok ? g.comps : null;
+  }
+  const rs = Object.keys(mapa).filter(k => k.startsWith(pref)).map(k => mapa[k]);
+  if (!rs.length) return null;
+  const todas = rs[0].compsSnapshot;
+  if (!Array.isArray(todas) || !todas.length || todas.includes(LN_SEM_DATA)) return null;
+  return todas.every(c => mapa[pref + c]) ? todas : null;
+}
+function _lnChaveGrupo(g) { return g.snapshotId + ':' + (g.comps ? g.comps.join('+') : '*'); }
+function _lnGuardarReais(g, docsNorm) {
+  const por = _lnRealCache.porComp;
+  (g.comps || []).forEach(c => { if (!por[c]) por[c] = []; });
+  docsNorm.forEach(a => { const c = lnCompDoAgregado(a); (por[c] || (por[c] = [])).push(a); });
+}
+// Leitura completa de UM grupo (um snapshot) — o que a v52 fazia pra todos.
+async function lnLerGrupoCompleto(g, chave) {
+  const k = _lnChaveGrupo(g);
+  if (_lnRealCache.grupos[k]) return;
+  await _compartilhar('lngrp|' + chave + '|' + k, async () => {
+    if (_lnRealCache.grupos[k]) return;
+    const sn = await db.collection('ligacaonova_base_agregados_dia').where('snapshotId', '==', g.snapshotId).get();
+    const docs = sn.docs.map(d => d.data()).filter(x => !g.comps || g.comps.includes(lnCompDoAgregado(x))).map(lnNormalizarAgregado);
+    // legado: zera o que já tinha de partes deste snapshot e regrava completo (sem duplicar)
+    if (!g.comps) { const vistos = new Set(docs.map(lnCompDoAgregado)); vistos.forEach(c => { delete _lnRealCache.porComp[c]; }); }
+    _lnGuardarReais(g, docs);
+    _lnRealCache.grupos[k] = true;
+  });
+}
+// Uma competência de um grupo coberto: snapshot por competência → ele inteiro (já é só o mês);
+// snapshot legado compartilhado → consulta por faixa de datas (precisa do índice snapshotId+data;
+// se não existir, cai na leitura completa do snapshot, igual à v52).
+async function lnLerCompDoGrupo(g, comp, chave) {
+  if (_lnRealCache.porComp[comp]) return;
+  if (g.comps || _lnIndiceAusente) { await lnLerGrupoCompleto(g, chave); return; }
+  await _compartilhar('lncmp|' + chave + '|' + g.snapshotId + '|' + comp, async () => {
+    if (_lnRealCache.porComp[comp]) return;
+    try {
+      const sn = await db.collection('ligacaonova_base_agregados_dia').where('snapshotId', '==', g.snapshotId)
+        .where('data', '>=', comp + '-01').where('data', '<=', comp + '-31').get();
+      _lnRealCache.porComp[comp] = sn.docs.map(d => d.data()).filter(x => lnCompDoAgregado(x) === comp).map(lnNormalizarAgregado);
+    } catch (e) {
+      const msg = String(e && (e.code || e.message) || '');
+      if (/failed-precondition|index/i.test(msg)) {
+        _lnIndiceAusente = true;
+        console.warn('[LigNova] índice composto (snapshotId + data) ausente em ligacaonova_base_agregados_dia — usando leitura completa do snapshot. Crie o índice pelo link do erro para reduzir leituras.', e && e.message);
+        await lnLerGrupoCompleto(g, chave);
+      } else throw e;
+    }
+  });
+}
+// Quais competências precisam de dado DIÁRIO real (as demais usam resumo).
+function lnCompsNecessarias(disp, opts) {
+  const set = new Set();
+  const explicitas = (opts.comps || []).filter(c => disp.includes(c));
+  if (opts.usarFiltrosLn) {
+    const sel = _lnFiltros.competencias.filter(c => disp.includes(c));
+    sel.forEach(c => set.add(c));
+    const ini = _lnFiltros.dataInicio, fim = _lnFiltros.dataFim;
+    if ((ini || fim) && !lnModoIntervaloEquivalente()) disp.forEach(c => { if ((!ini || c >= ini.slice(0,7)) && (!fim || c <= fim.slice(0,7))) set.add(c); });
+  }
+  explicitas.forEach(c => set.add(c));
+  if (!set.size && disp.length) set.add(disp[disp.length - 1]); // sem seleção = competência mais recente
+  (opts.extra || []).forEach(c => { if (disp.includes(c)) set.add(c); });
+  return Array.from(set);
+}
+async function lnBackfillResumos(g, chave) {
+  const k = _lnChaveGrupo(g);
+  if (_lnBackfillTentado[k] || !currentUser || currentUser.role !== 'admin') return;
+  _lnBackfillTentado[k] = true;
+  try {
+    const por = _lnRealCache.porComp;
+    const comps = g.comps ? g.comps.slice() : Object.keys(por);
+    if (!comps.length || comps.includes(LN_SEM_DATA) || comps.some(c => (por[c] || []).some(a => !a.data))) return;
+    const batch = db.batch();
+    const gravados = [];
+    comps.forEach(c => { const r = lnConstruirResumo(g.snapshotId, c, por[c] || [], 'backfill_leitura', comps); gravados.push(r); batch.set(db.collection(LN_RESUMOS_COL).doc(r.id), r); });
+    await batch.commit();
+    if (_lnResumosCache.chave === chave && _lnResumosCache.mapa) gravados.forEach(r => { _lnResumosCache.mapa[r.snapshotId + '__' + r.comp] = r; }); // já em memória: sem reler
+  } catch (e) { console.warn('[LigNova] não foi possível gravar os resumos (segue funcionando sem eles):', e && e.message); }
+}
+// opts: { comps:[...] (obrigatórias além das dos filtros), usarFiltrosLn, todos }
+async function lnCarregarListaVigente(bo, opts) {
+  opts = opts || {};
+  const gs = lnGruposSnapshots(bo), chave = lnChaveGrupos(gs);
   if (!chave) return [];
-  if (_lnAgregadosCache.snapshotId === chave && _lnAgregadosCache.lista) return _lnAgregadosCache.lista;
-  const docs = await lnCarregarDocsGrupos('ligacaonova_base_agregados_dia', bo, lnCompDoAgregado);
-  const lista = docs.map(lnNormalizarAgregado);
-  _lnAgregadosCache = { snapshotId: chave, lista }; // `snapshotId` guarda a CHAVE do conjunto de snapshots vigentes
-  _lnCompetenciasDisponiveis = Array.from(new Set(lista.filter(a=>a.data).map(a=>a.data.slice(0,7)))).sort();
-  return lista;
+  const fKey = opts.usarFiltrosLn ? JSON.stringify([_lnFiltros.competencias, _lnFiltros.dataInicio, _lnFiltros.dataFim]) : '-';
+  const kv = 'lnlista|' + chave + '|' + (opts.todos ? '*' : (opts.comps || []).slice().sort().join(',')) + '|' + fKey;
+  return _compartilhar(kv, async () => {
+    if (_lnRealCache.chave !== chave) _lnRealCache = { chave, porComp: {}, grupos: {} };
+    const mapa = opts.todos ? {} : await lnCarregarResumos(gs, chave);
+    const cob = gs.map(g => opts.todos ? null : lnCompsDoGrupoCoberto(g, mapa, bo));
+    // grupos sem resumo completo (ou pedido "todos"): leitura completa do snapshot
+    await Promise.all(gs.map((g, i) => cob[i] ? null : lnLerGrupoCompleto(g, chave)));
+    const compsGrupo = gs.map((g, i) => cob[i] || (g.comps || Object.keys(_lnRealCache.porComp)));
+    const temDados = (g, i, c) => {
+      const r = mapa[g.snapshotId + '__' + c];
+      if (cob[i] && !(_lnRealCache.porComp[c] && _lnRealCache.porComp[c].length)) return !!(r && r.qtd > 0 && r.ultimo);
+      return (_lnRealCache.porComp[c] || []).some(a => a.data);
+    };
+    const dispSet = new Set();
+    gs.forEach((g, i) => (g.comps ? g.comps : compsGrupo[i]).forEach(c => { if (c !== LN_SEM_DATA && temDados(g, i, c)) dispSet.add(c); }));
+    const disp = Array.from(dispSet).sort();
+    const need = opts.todos ? disp : lnCompsNecessarias(disp, opts);
+    await Promise.all(need.map(c => {
+      const i = gs.findIndex((g, ix) => (g.comps ? g.comps.includes(c) : compsGrupo[ix].includes(c)));
+      return (i >= 0 && cob[i]) ? lnLerCompDoGrupo(gs[i], c, chave) : null;
+    }));
+    const lista = [];
+    gs.forEach((g, i) => {
+      const comps = g.comps ? g.comps : compsGrupo[i];
+      comps.forEach(c => {
+        const real = _lnRealCache.porComp[c];
+        if (real) lista.push(...real);
+        else if (cob[i]) { const r = mapa[g.snapshotId + '__' + c]; if (r && r.qtd > 0 && r.ultimo) lista.push(...lnSinteticosDoResumo(r)); }
+      });
+    });
+    _lnAgregadosCache = { snapshotId: chave, lista, reais: Object.keys(_lnRealCache.porComp) };
+    _lnCompetenciasDisponiveis = disp;
+    // base antiga sem resumo: depois da leitura completa (que já aconteceu), o admin grava os resumos faltantes
+    if (!opts.todos) gs.forEach((g, i) => { if (!cob[i]) lnBackfillResumos(g, chave); });
+    return lista;
+  });
+}
+async function lnObterAgregadosVigentes(opts) {
+  const bo = _lnConfig && _lnConfig.baseOficial;
+  if (!lnGruposSnapshots(bo).length) return [];
+  const o = Object.assign({ usarFiltrosLn: true }, opts || {});
+  return lnCarregarListaVigente(bo, o);
 }
 // Competências usadas pelas visões DETALHADAS (cards, tabela, gráficos
 // diário/acumulado/volume, ranking, análises): a seleção explícita, ou — sem
@@ -29625,19 +29921,32 @@ async function lnDiagnosticarSnapshotsOrfaos() {
     const lista = [];
     for (const d of snaps.docs) {
       const x = d.data(); if (emUso.has(d.id)) continue;
-      const [ag, cs] = await Promise.all([
-        db.collection('ligacaonova_base_agregados_dia').where('snapshotId','==',d.id).get(),
-        db.collection('ligacaonova_base_casos').where('snapshotId','==',d.id).get()
-      ]);
-      lista.push({ id: d.id, status: x.status || '—', competencia: x.competencia || '—', extracao: x.dataExtracao || null, agregados: ag.size, casos: cs.size, importadoPor: x.importadoPor || '—' });
+      // v53: NÃO lê mais os documentos do snapshot só pra contar. Usa o que o próprio snapshot guardou
+      // (quantidadeGravadaConfirmada); a contagem exata é opcional, por snapshot, no botão "Contar".
+      lista.push({ id: d.id, status: x.status || '—', competencia: x.competencia || '—', extracao: x.dataExtracao || null, agregados: null,
+        casos: (typeof x.quantidadeGravadaConfirmada === 'number') ? x.quantidadeGravadaConfirmada : null, importadoPor: x.importadoPor || '—' });
     }
     lista.sort((a,b)=>a.id.localeCompare(b.id));
     const rot = { gravando:'⚠️ interrompido durante a gravação', falhou:'❌ falhou (marcado)', pronto:'🛡️ completo, mas não apontado', substituido:'📦 substituído por versão mais nova', descartado_mais_antigo:'📦 descartado (havia mais novo)' };
     el.innerHTML = lista.length
-      ? `<table style="border-collapse:collapse;font-size:12px;width:100%"><thead><tr style="text-align:left;color:var(--text3)"><th style="padding:3px 8px">Snapshot</th><th style="padding:3px 8px">Mês</th><th style="padding:3px 8px">Situação</th><th style="padding:3px 8px;text-align:right">Agregados</th><th style="padding:3px 8px;text-align:right">Casos</th></tr></thead><tbody>${lista.map(o=>`<tr style="border-top:1px solid var(--border)"><td style="padding:3px 8px">${o.id}</td><td style="padding:3px 8px">${o.competencia}</td><td style="padding:3px 8px">${rot[o.status]||o.status}</td><td style="padding:3px 8px;text-align:right">${o.agregados}</td><td style="padding:3px 8px;text-align:right">${o.casos}</td></tr>`).join('')}</tbody></table><div style="color:var(--text3);font-size:12px;margin-top:4px">Nenhum desses é lido pelo sistema (só os apontados em Base Oficial valem). Nada foi excluído — a exclusão, se desejada, é manual e decisão sua.</div>`
+      ? `<table style="border-collapse:collapse;font-size:12px;width:100%"><thead><tr style="text-align:left;color:var(--text3)"><th style="padding:3px 8px">Snapshot</th><th style="padding:3px 8px">Mês</th><th style="padding:3px 8px">Situação</th><th style="padding:3px 8px;text-align:right">Agregados</th><th style="padding:3px 8px;text-align:right">Casos</th><th></th></tr></thead><tbody>${lista.map(o=>`<tr style="border-top:1px solid var(--border)"><td style="padding:3px 8px">${o.id}</td><td style="padding:3px 8px">${o.competencia}</td><td style="padding:3px 8px">${rot[o.status]||o.status}</td><td style="padding:3px 8px;text-align:right" id="ln-orf-ag-${o.id}">${o.agregados === null ? '—' : o.agregados}</td><td style="padding:3px 8px;text-align:right" id="ln-orf-cs-${o.id}">${o.casos === null ? '—' : o.casos}</td><td style="padding:3px 8px"><button class="btn btn-secondary btn-sm" onclick="lnContarSnapshotOrfao('${o.id}',this)">Contar (lê o snapshot)</button></td></tr>`).join('')}</tbody></table><div style="color:var(--text3);font-size:12px;margin-top:4px">Nenhum desses é lido pelo sistema (só os apontados em Base Oficial valem). Nada foi excluído — a exclusão, se desejada, é manual e decisão sua.</div>`
       : '<span style="color:#22c55e">✅ Nenhum snapshot órfão: tudo que existe está em uso ou é histórico apontado.</span>';
     return lista;
   } catch (e) { el.innerHTML = '<span style="color:#ef4444">Erro ao verificar: ' + e.message + '</span>'; }
+}
+
+// Contagem exata e sob demanda de UM snapshot órfão (lê os documentos dele, só quando clicado).
+async function lnContarSnapshotOrfao(id, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+  try {
+    const [ag, cs] = await Promise.all([
+      db.collection('ligacaonova_base_agregados_dia').where('snapshotId','==',id).get(),
+      db.collection('ligacaonova_base_casos').where('snapshotId','==',id).get()
+    ]);
+    const a = document.getElementById('ln-orf-ag-' + id), c = document.getElementById('ln-orf-cs-' + id);
+    if (a) a.textContent = ag.size; if (c) c.textContent = cs.size;
+    if (btn) btn.textContent = 'Contado';
+  } catch (e) { if (btn) { btn.disabled = false; btn.textContent = 'Erro — tentar de novo'; } }
 }
 
 function lnAgregarCasosCompetencia(casos) {
@@ -29724,6 +30033,8 @@ async function lnConfirmarImportacaoBaseOficial() {
         agregadosArr.slice(i,i+400).forEach(a => { const doc = { snapshotId, operacaoId: operacaoId === undefined ? null : operacaoId, ...a }; lnValidarDocFirestore(doc, `agregado ${a.posto} ${a.data}`); batch.set(db.collection('ligacaonova_base_agregados_dia').doc(`${snapshotId}_${a.posto}_${a.data}`), doc); });
         await batch.commit();
       }
+      try { const rs = lnConstruirResumo(snapshotId, comp, agregadosArr.map(lnNormalizarAgregado), 'importacao', [comp]); await db.collection(LN_RESUMOS_COL).doc(rs.id).set(rs); }
+      catch (eRes) { console.warn('[LigNova] resumo da competência não gravado (será criado na próxima leitura completa):', eRes && eRes.message); }
       let gravados = 0;
       for (let i=0;i<casos.length;i+=400) {
         const lote = casos.slice(i,i+400);
@@ -29795,9 +30106,9 @@ async function lnConfirmarImportacaoBaseOficial() {
         throw new Error(`Verificação pós-gravação falhou: o ponteiro de ${comp} não corresponde ao snapshot importado.`);
     });
     _lnConfig = cfgVerif.exists ? cfgVerif.data() : _lnConfig;
-    _lnAgregadosCache = { snapshotId: null, lista: null };
+    _lnResetCargas();
     _cacheInvalida('opln'); _lnCasosCache = {};
-    const agVig = aplicarOrd.length || boVerif ? await lnObterAgregadosVigentes() : [];
+    const agVig = aplicarOrd.length || boVerif ? await lnObterAgregadosVigentes({ todos: true }) : [];
     const mesesNoFiltro = _lnCompetenciasDisponiveis.slice();
     const esperados = Object.keys(boVerif && boVerif.competencias || {}).filter(k => k !== LN_SEM_DATA && agVig.some(a => a.data && a.data.slice(0,7) === k) || novos[k] && novos[k].dias > 0);
     const faltando = esperados.filter(k => !mesesNoFiltro.includes(k));
@@ -30342,7 +30653,7 @@ async function lnExportar() {
   if (!lnTemBaseOficial(_lnConfig)) { toast('Nenhuma Base Oficial importada ainda.', 'err'); return; }
   toast('Preparando exportação...', 'ok');
   try {
-    const agregTodos = await lnObterAgregadosVigentes();
+    const agregTodos = await lnObterAgregadosVigentes({ todos: true });
     const agregados = lnFiltrarAgregados(agregTodos);
     const mensalExport = lnCalcMensal(agregTodos);
     const linhasCmpExport = _lnFiltros.competencias.length >= 2 ? lnLinhasComparativas(mensalExport) : [];
@@ -31354,6 +31665,7 @@ async function pdcaColetar() {
   PDCA_MODS.forEach(m => { cfgMods[m] = cfgM(m); graf[m] = pdcaGrafMeses(comp, cfgMods[m]); refc[m] = cfgMods[m].ref; });
   const precisaOp = grupos.op || grupos.csat || grupos.pos || grupos.ln;
   if (precisaOp) await _opGarantirDadosCarregados();
+  if (grupos.ln) { try { await _opLnGarantir([comp, ant]); } catch(e) { console.error('[PDCA] erro ao carregar dias da Ligação Nova:', e); } }
   const mesesOp = Array.from(new Set([...anoMeses, ant, ...graf.op, ...graf.csat, ...graf.pos, ...graf.ln])).sort();
   const calc = {}; mesesOp.forEach(m => { calc[m] = pdcaCalcMesOp(m); });
   const linhas = pdcaTemLinhas(comp), comDados = pdcaMesesComDados();
