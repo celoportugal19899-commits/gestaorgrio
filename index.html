@@ -1423,6 +1423,7 @@ const PosCanalLabels = {
           </div>
           <button class="btn btn-secondary" style="font-size:12px" onclick="verHistoricoPOS()">📅 Histórico</button>
           <button class="btn btn-primary" style="font-size:12px" onclick="abrirModalImportPOS()">📥 Importar</button>
+          <button class="btn btn-secondary" id="btn-metas-pos" style="font-size:12px;display:none" onclick="abrirModalMetaPOS()">🎯 Metas POS</button>
         </div>
       </div>
       <div id="pos-kpis"></div>
@@ -1595,18 +1596,16 @@ const PosCanalLabels = {
       </div>
     </div>
 
-    <!-- MODAL: METAS POS -->
-    <div id="modal-pos-meta" class="modal-overlay">
-      <div class="modal" style="max-width:480px;max-height:80vh;overflow-y:auto">
-        <div class="modal-header"><span class="modal-title">⚙️ Ajustar Metas da Campanha</span></div>
-        <p style="color:var(--text3);font-size:12px;margin:0 0 14px">Valores individuais por posto (R$). Sobrescreve as metas padrão da campanha.</p>
-        <div id="pos-meta-lista"></div>
-        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
-          <button class="btn btn-secondary" onclick="document.getElementById('modal-pos-meta').classList.remove('open')">Cancelar</button>
-          <button class="btn btn-primary" onclick="salvarMetaPOS()">Salvar Metas</button>
-        </div>
+    <!-- MODAL: GESTÃO DE METAS POS (admin) -->
+    <div id="modal-pos-metas" class="modal-overlay">
+      <div class="modal" style="max-width:980px;width:96vw;max-height:92vh;overflow-y:auto">
+        <div class="modal-header"><span class="modal-title">🎯 Gestão de Metas POS</span><button class="btn btn-secondary btn-sm" onclick="fecharModalMetaPOS()">✕ Fechar</button></div>
+        <p style="color:var(--text3);font-size:12px;margin:0 0 10px">Meta individual por posto e competência. É a única fonte de meta do POS, Dashboard Operacional e Apresentações &amp; PDCA. Alterar metas não altera valores negociados.</p>
+        <input type="file" id="pm-file" accept=".xlsx" style="display:none" onchange="posMetaImportarArquivo(this.files[0])">
+        <div id="pm-corpo"></div>
       </div>
     </div>
+    <style>.pm-tb{width:100%;border-collapse:collapse;font-size:13px}.pm-tb th,.pm-tb td{padding:5px 8px;border-bottom:1px solid var(--border)}.pm-tb th{position:sticky;top:0;background:var(--surface2);text-align:left;font-size:11px;text-transform:uppercase}.pm-bn{border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin:8px 0;font-size:12px}</style>
 
     <!-- MODAL: HISTÓRICO POS -->
     <div id="modal-pos-historico" class="modal-overlay">
@@ -17391,12 +17390,296 @@ let posChartEvo = null;
 let posChartCanal = null;
 
 function posNormKey(s){ return (s||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim(); }
-function getPOSMeta(posto, mesRef){
-  const k = posNormKey(posto);
-  // Prioridade: 1) meta do mês específico; 2) custom do admin; 3) fixa global
-  if(mesRef && POS_METAS_POR_MES[mesRef] && POS_METAS_POR_MES[mesRef][k] !== undefined)
-    return POS_METAS_POR_MES[mesRef][k];
+// getPOSMeta e Gestão de Metas POS: ver bloco "GESTÃO DE METAS POS" logo abaixo
+// ═══════════════════════════════════════════════════════════════════════════
+// GESTÃO DE METAS POS — fonte única: Firestore pos_metas/{ano}.meses[YYYY-MM]
+// Legado (código/pos_config) só vale para competências SEM cadastro e é sinalizado.
+// ═══════════════════════════════════════════════════════════════════════════
+const POS_META_NOMES = {
+  'APERIBE':'Aperibé','AREAL':'Areal','BOM JARDIM':'Bom Jardim','BOM JESUS DO ITABAPOANA':'Bom Jesus do Itabapoana','CAMBUCI':'Cambuci','CANTAGALO':'Cantagalo','CARAPEBUS':'Carapebus','CARDOSO MOREIRA':'Cardoso Moreira','CONCEICAO DE MACABU':'Conceição de Macabu','DUAS BARRAS':'Duas Barras','GUARUS':'Guarus','ITALVA':'Italva','LAJE DO MURIAE':'Laje do Muriaé','MACUCO':'Macuco','MIRACEMA':'Miracema','NATIVIDADE':'Natividade','NOVA FRIBURGO':'Nova Friburgo','PARQUE MAMBUCABA':'Parque Mambucaba','PORCIUNCULA':'Porciúncula','PORTO REAL':'Porto Real','QUISSAMA':'Quissamã','SANTA MARIA MADALENA':'Santa Maria Madalena','SAO JOSE DE UBA':'São José de Ubá','SAO JOSE DO VALE DO RIO PRETO':'São José do Vale do Rio Preto','SAO SEBASTIAO DO ALTO':'São Sebastião do Alto','SILVA JARDIM':'Silva Jardim','SUMIDOURO':'Sumidouro','TANGUA':'Tanguá','TRAJANO DE MORAES':'Trajano de Moraes','VARRE-SAI':'Varre-Sai'
+};
+const POS_META_ALIAS = { 'SAO JOSE DO V. DO RIO PRETO':'SAO JOSE DO VALE DO RIO PRETO', 'S. J. DO VALE DO RIO PRETO':'SAO JOSE DO VALE DO RIO PRETO', 'VARRE SAI':'VARRE-SAI' };
+let posMetasAnos = {};        // { '2026': {versao?, meses:{ 'YYYY-MM': {metas,v,atualizadoEm,atualizadoPor,semente} } } }
+let posMetasAnosOk = {};      // anos já lidos nesta sessão (cache)
+let posMetasErro = null;
+const POS_META_CHAVES = () => TODOS_POSTOS_RG.slice().sort((a,b)=>POS_META_NOMES[a].localeCompare(POS_META_NOMES[b],'pt-BR'));
+const posMetaCents = v => Math.round(v * 100);
+const _pmEsc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const _pmRS = v => (v == null || isNaN(v)) ? '—' : 'R$ ' + Number(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+function posMetaMesDoc(mesRef){ const a = posMetasAnos[(mesRef||'').slice(0,4)]; return a && a.meses && a.meses[mesRef] || null; }
+function posMetaLegado(k, mesRef){
+  if (mesRef && POS_METAS_POR_MES[mesRef] && POS_METAS_POR_MES[mesRef][k] !== undefined) return POS_METAS_POR_MES[mesRef][k];
   return posMetasCustom[k] ?? POS_METAS_FIXAS[k] ?? 1500;
+}
+function posMetaOrigem(mesRef){ return posMetaMesDoc(mesRef) ? 'cadastrada' : 'legado'; }
+function posMetaResolverPosto(nome){
+  let k = posNormKey(nome).replace(/\s+/g,' ');
+  if (!k) return null;
+  if (TODOS_POSTOS_RG.includes(k)) return k;
+  if (POS_META_ALIAS[k]) return POS_META_ALIAS[k];
+  if (typeof CSAT_NOME_MAP !== 'undefined') { const a = CSAT_NOME_MAP[csatNorm(nome)]; if (a && TODOS_POSTOS_RG.includes(posNormKey(a))) return posNormKey(a); }
+  if (rgEhMambucaba(k)) return POSTO_MAMBUCABA;
+  return null;
+}
+// Única porta de leitura de meta POS (substitui a antiga): cadastrada > legado (sinalizado)
+function getPOSMeta(posto, mesRef){
+  const k = posNormKey(posto), d = posMetaMesDoc(mesRef);
+  if (d && d.metas && d.metas[k] !== undefined) return d.metas[k];
+  return posMetaLegado(k, mesRef);
+}
+// 1 leitura por ANO envolvido (não por mês), só quando ainda não está em cache
+async function posMetasCarregar(meses, forcar){
+  const anos = [...new Set((meses||[]).map(m => String(m||'').slice(0,4)).filter(a => /^\d{4}$/.test(a)))];
+  for (const a of anos) {
+    if (!forcar && posMetasAnosOk[a] && _cacheFresco('posmetas:' + a)) continue;
+    try { const s = await db.collection('pos_metas').doc(a).get(); posMetasAnos[a] = s.exists ? s.data() : {meses:{}}; posMetasAnosOk[a] = true; _cacheMarca('posmetas:' + a); posMetasErro = null; }
+    catch(e){ posMetasErro = e.message || String(e); console.warn('pos_metas', e); }
+  }
+}
+function posMetaParse(v){
+  if (v == null || String(v).trim() === '') return {erro:'vazio'};
+  let n;
+  if (typeof v === 'number') n = v;
+  else {
+    let s = String(v).replace(/R\$/gi,'').replace(/\s/g,'');
+    if (!/^[-+]?[\d.,]+$/.test(s)) return {erro:'valor inválido'};
+    if (s.includes(',')) s = s.replace(/\./g,'').replace(',','.');
+    else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g,'');
+    n = Number(s);
+  }
+  if (!isFinite(n)) return {erro:'valor inválido'};
+  if (n < 0) return {erro:'valor negativo'};
+  if (n === 0) return {erro:'meta deve ser maior que zero'};
+  if (n > 10000000) return {erro:'valor absurdo (> R$ 10 milhões)'};
+  if (Math.abs(n*100 - Math.round(n*100)) > 1e-6) return {erro:'mais de 2 casas decimais'};
+  return {v: Math.round(n*100)/100};
+}
+function posMetaMesFechado(m){ const h = new Date(), at = h.getFullYear() + '-' + String(h.getMonth()+1).padStart(2,'0'); return m < at; }
+function posMetaMesAnt(m){ const [a,mo] = m.split('-').map(Number); const d = new Date(a, mo-2, 1); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); }
+function posMetaMesLabel(m){ const [a,mo] = m.split('-'); return ['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][+mo] + '/' + a; }
+function posMetaMesesOpcoes(){
+  const h = new Date(), at = h.getFullYear() + '-' + String(h.getMonth()+1).padStart(2,'0'), prox = (()=>{ const d = new Date(h.getFullYear(), h.getMonth()+1, 1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); })();
+  const s = new Set([at, prox]); (posMesesDisponiveis||[]).forEach(m => s.add(m));
+  Object.values(posMetasAnos).forEach(a => Object.keys(a.meses||{}).forEach(m => s.add(m)));
+  if (PM.mes) s.add(PM.mes);
+  return [...s].sort().reverse();
+}
+
+// ── Estado da tela ──
+const PM = { mes:null, v:0, base:{}, origemBase:'legado', pend:{}, origem:'manual', arquivo:'', step:'edit', erros:[], hist:null, seed:false };
+function posMetaAdmin(){ return currentUser && currentUser.role === 'admin'; }
+function posMetaBaseDe(mes){
+  const d = posMetaMesDoc(mes), b = {};
+  TODOS_POSTOS_RG.forEach(k => { b[k] = d && d.metas && d.metas[k] !== undefined ? d.metas[k] : posMetaLegado(k, mes); });
+  return b;
+}
+async function abrirModalMetaPOS(){
+  if (!posMetaAdmin()) { toast('Apenas administradores podem gerenciar metas POS.', 'err'); return; }
+  document.getElementById('modal-pos-metas').classList.add('open');
+  await posMetaSelecionar(PM.mes || posMesSelecionado || posMetaMesesOpcoes()[0]);
+}
+function fecharModalMetaPOS(){ document.getElementById('modal-pos-metas').classList.remove('open'); }
+async function posMetaSelecionar(mes){
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(mes || '')) { toast('Competência inválida.', 'err'); return; }
+  if (Object.keys(PM.pend).length && PM.mes !== mes && !confirm('Há alterações pendentes que serão descartadas. Trocar de competência?')) { posMetaRender(); return; }
+  PM.mes = mes; PM.pend = {}; PM.origem = 'manual'; PM.arquivo = ''; PM.step = 'edit'; PM.erros = []; PM.hist = null;
+  await posMetasCarregar([mes], true); // leitura fresca (1 doc) ao abrir a competência: base real, sem dado velho
+  const d = posMetaMesDoc(mes);
+  PM.v = d ? (d.v || 0) : 0; PM.origemBase = d ? 'cadastrada' : 'legado'; PM.base = posMetaBaseDe(mes);
+  posMetaRender();
+}
+function posMetaEditar(k, txt){
+  const t = String(txt).trim();
+  if (t === '' || posMetaCents(PM.base[k]) === (posMetaParse(t).v != null ? posMetaCents(posMetaParse(t).v) : -1)) delete PM.pend[k];
+  else PM.pend[k] = {txt: t};
+  posMetaAtualizarLinha(k); posMetaAtualizarTotais();
+}
+function posMetaPendenteValido(k){ const p = PM.pend[k]; if (!p) return null; const r = posMetaParse(p.txt); return r.erro ? {erro: r.erro} : {v: r.v}; }
+function posMetaDif(k){ const r = posMetaPendenteValido(k); if (!r || r.erro) return null; const a = PM.base[k]; return {rs: Math.round((r.v - a)*100)/100, pct: a ? (r.v - a)/a*100 : null}; }
+function posMetaAtualizarLinha(k){
+  const tr = document.getElementById('pm-tr-' + k.replace(/[^A-Z0-9]/g,'_')); if (!tr) return;
+  const r = posMetaPendenteValido(k), df = posMetaDif(k);
+  tr.querySelector('.pm-dif').innerHTML = df ? `<span style="color:${df.rs>0?'#22c55e':df.rs<0?'#ef4444':'inherit'}">${df.rs>0?'+':''}${_pmRS(df.rs)} (${df.pct==null?'—':(df.pct>0?'+':'')+df.pct.toFixed(1)+'%'})</span>` : '—';
+  tr.querySelector('.pm-flag').innerHTML = !r ? '' : r.erro ? `<span style="color:#ef4444;font-weight:700">⚠ ${_pmEsc(r.erro)}</span>` : '<span style="color:#f59e0b;font-weight:700">● pendente</span>';
+  tr.style.background = r ? (r.erro ? 'rgba(239,68,68,.08)' : 'rgba(245,158,11,.08)') : '';
+}
+function posMetaTotais(){
+  let antes = 0, depois = 0, n = 0, erros = 0;
+  TODOS_POSTOS_RG.forEach(k => { antes += posMetaCents(PM.base[k]); const r = posMetaPendenteValido(k); if (r && r.erro) erros++; if (r && !r.erro) { depois += posMetaCents(r.v); n++; } else depois += posMetaCents(PM.base[k]); });
+  return {antes: antes/100, depois: depois/100, n, erros};
+}
+function posMetaAtualizarTotais(){
+  const t = posMetaTotais(), el = document.getElementById('pm-totais'); if (!el) return;
+  el.innerHTML = `Meta total da operação: <b>${_pmRS(t.antes)}</b>` + (t.n || t.erros ? ` → <b>${_pmRS(t.depois)}</b> · ${t.n} alteração(ões) pendente(s)${t.erros ? ` · <span style="color:#ef4444">${t.erros} com erro</span>` : ''}` : '');
+  const b = document.getElementById('pm-btn-rev'); if (b) b.disabled = !t.n || t.erros > 0;
+}
+function posMetaRender(){
+  const el = document.getElementById('pm-corpo'); if (!el) return;
+  const aba = (id, t) => `<button class="ind-tab-btn ${PM.step === id || (id==='edit' && PM.step==='rev') ? 'active' : ''}" onclick="posMetaAba('${id}')">${t}</button>`;
+  const opts = posMetaMesesOpcoes().map(m => `<option value="${m}" ${m===PM.mes?'selected':''}>${posMetaMesLabel(m)}${posMetaMesDoc(m)?' ✓':''}</option>`).join('');
+  const d = posMetaMesDoc(PM.mes);
+  let banner;
+  if (posMetasErro) banner = `<div class="pm-bn" style="border-color:#ef4444;color:#ef4444">⚠ Não foi possível ler as metas cadastradas (${_pmEsc(posMetasErro)}). Os valores abaixo são LEGADO e não devem ser gravados.</div>`;
+  else if (d) banner = `<div class="pm-bn" style="border-color:rgba(34,197,94,.5)">✅ Metas cadastradas para ${posMetaMesLabel(PM.mes)} · versão ${d.v||1} · atualizado por <b>${_pmEsc(d.atualizadoPor && d.atualizadoPor.nome || '—')}</b> em ${_pmEsc(d.atualizadoEm ? new Date(d.atualizadoEm).toLocaleString('pt-BR') : '—')}${d.semente ? ' · base inicial herdada do legado' : ''}</div>`;
+  else banner = `<div class="pm-bn" style="border-color:#f59e0b;color:#f59e0b">⚠ <b>${posMetaMesLabel(PM.mes)} ainda não tem metas cadastradas.</b> Os valores mostrados vêm do LEGADO (código do sistema) e estão sendo usados nos cálculos até você importar ou salvar metas desta competência. Importe o Excel, copie do mês anterior ou edite e salve.${posMetaMesFechado(PM.mes) ? ' <b>Competência fechada.</b>' : ''}</div>`;
+  let corpo = '';
+  if (PM.step === 'hist') corpo = posMetaHistHtml();
+  else if (PM.step === 'rev') corpo = posMetaRevisaoHtml();
+  else {
+    const linhas = POS_META_CHAVES().map(k => {
+      const id = 'pm-tr-' + k.replace(/[^A-Z0-9]/g,'_'), p = PM.pend[k];
+      return `<tr id="${id}"><td>${_pmEsc(POS_META_NOMES[k])}</td><td style="color:var(--text3)" title="Cluster/jornada ainda não cadastrado no sistema">—</td><td style="text-align:right">${_pmRS(PM.base[k])}</td><td><input class="form-input pm-in" style="width:120px;text-align:right" inputmode="decimal" placeholder="nova meta" value="${p ? _pmEsc(p.txt) : ''}" oninput="posMetaEditar('${k}',this.value)"></td><td class="pm-dif" style="text-align:right">—</td><td class="pm-flag"></td></tr>`;
+    }).join('');
+    corpo = `<div style="overflow:auto;max-height:46vh"><table class="pm-tb"><thead><tr><th>Posto</th><th>Cluster/jornada</th><th style="text-align:right">Meta atual</th><th>Nova meta (R$)</th><th style="text-align:right">Diferença</th><th></th></tr></thead><tbody>${linhas}</tbody></table></div>
+    <div id="pm-totais" style="margin:10px 0;font-size:13px"></div>
+    ${PM.erros.length ? `<div class="pm-bn" style="border-color:#ef4444;color:#ef4444;max-height:120px;overflow:auto"><b>Problemas na importação (nada foi gravado):</b><br>${PM.erros.map(e => '• ' + _pmEsc(e)).join('<br>')}</div>` : ''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:space-between"><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-secondary" onclick="document.getElementById('pm-file').click()">📥 Importar Metas POS</button><button class="btn btn-secondary" onclick="posMetaModelo()">⬇ Baixar modelo</button><button class="btn btn-secondary" onclick="posMetaCopiarAnterior()">📋 Copiar metas do mês anterior</button><button class="btn btn-secondary" onclick="posMetaLimpar()">↩ Descartar alterações</button></div><button id="pm-btn-rev" class="btn btn-primary" onclick="posMetaRevisar()" disabled>Revisar e salvar…</button></div>`;
+  }
+  el.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><label style="font-size:12px;font-weight:700;color:var(--text3)">Competência de vigência:</label><select class="form-select" style="width:150px" onchange="posMetaSelecionar(this.value)">${opts}</select><input type="month" class="form-input" style="width:150px" title="Outra competência" onchange="if(this.value)posMetaSelecionar(this.value)"><div style="display:flex;gap:4px;margin-left:auto">${aba('edit','🎯 Metas')}${aba('hist','🕘 Histórico')}</div></div>${banner}${corpo}`;
+  if (PM.step === 'edit') { Object.keys(PM.pend).forEach(posMetaAtualizarLinha); posMetaAtualizarTotais(); }
+}
+function posMetaAba(a){ PM.step = a; if (a === 'hist') posMetaHistCarregar(); else posMetaRender(); }
+function posMetaLimpar(){ PM.pend = {}; PM.erros = []; PM.origem = 'manual'; PM.arquivo = ''; posMetaRender(); }
+
+// ── Cópia do mês anterior (só preenche pendências; nada é gravado aqui) ──
+async function posMetaCopiarAnterior(){
+  const ant = posMetaMesAnt(PM.mes);
+  await posMetasCarregar([ant]);
+  const dAnt = posMetaMesDoc(ant), orig = dAnt ? 'cadastradas em ' + posMetaMesLabel(ant) : 'LEGADO (código) de ' + posMetaMesLabel(ant) + ' — competência sem cadastro';
+  if (!confirm(`Copiar as metas ${orig} para ${posMetaMesLabel(PM.mes)}?\n\nNada será gravado agora: os valores entram como alterações pendentes para você revisar e confirmar.`)) return;
+  const b = posMetaBaseDe(ant); PM.pend = {};
+  TODOS_POSTOS_RG.forEach(k => { if (posMetaCents(b[k]) !== posMetaCents(PM.base[k])) PM.pend[k] = {txt: String(b[k]).replace('.', ',')}; });
+  PM.origem = 'copia'; PM.arquivo = 'cópia de ' + ant; PM.erros = [];
+  if (!Object.keys(PM.pend).length) toast('As metas já são idênticas às de ' + posMetaMesLabel(ant) + '.', 'ok');
+  posMetaRender();
+}
+
+// ── Importação Excel ──
+function posMetaModelo(){
+  const ws = XLSX.utils.aoa_to_sheet([['POSTO','META INDIVIDUAL']].concat(POS_META_CHAVES().map(k => [POS_META_NOMES[k].toUpperCase(), PM.base[k]])));
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'METAS_POS');
+  XLSX.writeFile(wb, 'Modelo_Importacao_Metas_POS_' + PM.mes + '.xlsx');
+}
+function posMetaAnalisarLinhas(linhas){ // linhas: [[posto, valor], ...] já sem cabeçalho → {pend, erros, ignorados}
+  const erros = [], pend = {}, vistos = {};
+  linhas.forEach(([p, v], i) => {
+    const ln = i + 2;
+    if ((p == null || String(p).trim() === '') && (v == null || String(v).trim() === '')) return;
+    const k = posMetaResolverPosto(p);
+    if (!k) { erros.push(`Linha ${ln}: posto não reconhecido "${p}"`); return; }
+    if (vistos[k]) { erros.push(`Linha ${ln}: posto duplicado "${p}" (já informado na linha ${vistos[k]})`); return; }
+    vistos[k] = ln;
+    const r = posMetaParse(v);
+    if (r.erro) { erros.push(`Linha ${ln}: ${POS_META_NOMES[k]} — ${r.erro}${v != null && v !== '' ? ' ("' + v + '")' : ''}`); return; }
+    pend[k] = r.v;
+  });
+  return {pend, erros};
+}
+async function posMetaImportarArquivo(file){
+  if (!file) return;
+  if (!/\.xlsx$/i.test(file.name)) { toast('Selecione um arquivo .xlsx.', 'err'); return; }
+  try {
+    const wb = XLSX.read(await file.arrayBuffer(), {type:'array'});
+    const ws = wb.Sheets['METAS_POS'];
+    if (!ws) { PM.erros = ['Aba obrigatória "METAS_POS" não encontrada. Abas do arquivo: ' + wb.SheetNames.join(', ')]; PM.pend = {}; posMetaRender(); return; }
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:null});
+    const cab = (rows[0] || []).map(c => String(c || '').trim().toUpperCase());
+    if (cab[0] !== 'POSTO' || cab[1] !== 'META INDIVIDUAL') { PM.erros = ['Cabeçalhos obrigatórios: A = POSTO e B = META INDIVIDUAL. Encontrado: ' + (cab.slice(0,2).join(' | ') || 'vazio')]; PM.pend = {}; posMetaRender(); return; }
+    const {pend, erros} = posMetaAnalisarLinhas(rows.slice(1).map(r => [r[0], r[1]]));
+    if (!Object.keys(pend).length && !erros.length) erros.push('Nenhum posto encontrado na aba METAS_POS.');
+    PM.erros = erros; PM.pend = {}; PM.origem = 'excel'; PM.arquivo = file.name;
+    if (!erros.length) {
+      let iguais = 0;
+      Object.entries(pend).forEach(([k, v]) => { if (posMetaCents(v) === posMetaCents(PM.base[k])) iguais++; else PM.pend[k] = {txt: String(v).replace('.', ',')}; });
+      PM.iguais = iguais; PM.nArquivo = Object.keys(pend).length;
+      toast(Object.keys(PM.pend).length ? `Prévia: ${Object.keys(PM.pend).length} alteração(ões)${iguais ? ', ' + iguais + ' idêntica(s) ignorada(s)' : ''}. Nada foi gravado.` : 'Todos os valores do arquivo já estão cadastrados. Nada a gravar.', 'ok');
+    }
+    posMetaRender();
+  } catch(e){ PM.erros = ['Não foi possível ler o arquivo: ' + e.message]; posMetaRender(); }
+  document.getElementById('pm-file').value = '';
+}
+
+// ── Revisão e gravação ──
+function posMetaRevisar(){ if (posMetaTotais().erros) return; PM.step = 'rev'; posMetaRender(); }
+function posMetaItens(){ return TODOS_POSTOS_RG.filter(k => PM.pend[k]).map(k => ({posto:k, ant:PM.base[k], novo:posMetaPendenteValido(k).v})); }
+function posMetaRevisaoHtml(){
+  const it = posMetaItens(), t = posMetaTotais(), fech = posMetaMesFechado(PM.mes), seed = !posMetaMesDoc(PM.mes);
+  const orig = {manual:'Edição manual', excel:'Importação Excel' + (PM.arquivo ? ' (' + PM.arquivo + ')' : ''), copia:'Cópia de mês anterior', reversao:'Reversão auditada'}[PM.origem] || PM.origem;
+  return `<h4 style="margin:6px 0">Resumo da alteração — ${posMetaMesLabel(PM.mes)} · ${_pmEsc(orig)}</h4>
+  <div style="overflow:auto;max-height:34vh"><table class="pm-tb"><thead><tr><th>Posto</th><th style="text-align:right">Anterior</th><th style="text-align:right">Nova</th><th style="text-align:right">Diferença</th></tr></thead><tbody>${it.map(x => { const d = Math.round((x.novo - x.ant)*100)/100; return `<tr><td>${_pmEsc(POS_META_NOMES[x.posto])}</td><td style="text-align:right">${_pmRS(x.ant)}</td><td style="text-align:right"><b>${_pmRS(x.novo)}</b></td><td style="text-align:right;color:${d>0?'#22c55e':'#ef4444'}">${d>0?'+':''}${_pmRS(d)} (${x.ant?((d/x.ant*100)>0?'+':'')+(d/x.ant*100).toFixed(1)+'%':'—'})</td></tr>`; }).join('')}</tbody></table></div>
+  <p style="font-size:13px;margin:10px 0">Meta total da operação: ${_pmRS(t.antes)} → <b>${_pmRS(t.depois)}</b> (${_pmRS(Math.round((t.depois - t.antes)*100)/100)}). Postos não listados acima permanecem inalterados. Os valores negociados <b>não</b> são alterados.</p>
+  ${seed ? `<div class="pm-bn" style="border-color:#f59e0b">Esta competência ainda não tem cadastro: ao gravar, os demais postos serão registrados com os valores hoje em uso (legado), para a competência ficar completa e auditável.</div>` : ''}
+  ${fech ? `<label class="pm-bn" style="border-color:#ef4444;display:block"><input type="checkbox" id="pm-ck-fech"> Confirmo que ${posMetaMesLabel(PM.mes)} é uma competência <b>fechada</b> e quero alterar suas metas (afeta resultados e rankings dessa competência; apresentações PDCA já finalizadas não mudam).</label>` : ''}
+  <input class="form-input" id="pm-motivo" placeholder="Motivo (opcional)" style="margin:8px 0">
+  <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn btn-secondary" onclick="PM.step='edit';posMetaRender()">Voltar</button><button class="btn btn-primary" id="pm-btn-grav" onclick="posMetaGravar()">Confirmar e gravar</button></div>`;
+}
+async function posMetaGravar(){
+  if (!posMetaAdmin()) { toast('Apenas administradores.', 'err'); return; }
+  if (posMetasErro) { toast('Leitura das metas falhou; recarregue antes de gravar.', 'err'); return; }
+  if (posMetaMesFechado(PM.mes) && !(document.getElementById('pm-ck-fech') || {}).checked) { toast('Marque a confirmação de competência fechada.', 'err'); return; }
+  const motivo = ((document.getElementById('pm-motivo') || {}).value || '').trim().slice(0, 300), b = document.getElementById('pm-btn-grav');
+  if (b) { b.disabled = true; b.textContent = 'Gravando…'; }
+  try {
+    const r = await posMetasGravarTx(PM.mes, PM.v, posMetaItens(), PM.origem, motivo, {arquivo: PM.arquivo, reverteId: PM.reverteId || null});
+    if (r.semMudanca) toast('Nada a gravar: os valores já estão iguais.', 'ok');
+    else toast(`✅ ${r.n} meta(s) gravada(s) em ${posMetaMesLabel(PM.mes)}.`, 'ok');
+    PM.reverteId = null; await posMetaSelecionar(PM.mes);
+  } catch(e){
+    if (e && e.message === 'POS_META_CONFLITO') { toast('Outro administrador alterou esta competência enquanto você editava. Nada foi gravado — recarreguei os valores atuais.', 'err'); PM.reverteId = null; await posMetaSelecionar(PM.mes); }
+    else { console.error(e); toast('Erro ao gravar: ' + (e.message || e), 'err'); PM.step = 'rev'; posMetaRender(); }
+  }
+}
+// Transação única: confere versão → grava metas da competência + 1 registro de auditoria (tudo ou nada)
+async function posMetasGravarTx(mes, vEsperada, itens, origem, motivo, extra){
+  const ano = mes.slice(0,4), ref = db.collection('pos_metas').doc(ano), hRef = db.collection('pos_metas_hist').doc();
+  const agora = new Date().toISOString(), usr = {id: currentUser.id, nome: currentUser.name || '', email: currentUser.email || ''};
+  let resultado;
+  await db.runTransaction(async tx => {
+    const s = await tx.get(ref), doc = s.exists ? s.data() : {ano, meses:{}}, atual = doc.meses && doc.meses[mes] || null;
+    if ((atual ? (atual.v || 0) : 0) !== vEsperada) throw new Error('POS_META_CONFLITO');
+    const seed = !atual, metas = {};
+    TODOS_POSTOS_RG.forEach(k => { metas[k] = atual && atual.metas && atual.metas[k] !== undefined ? atual.metas[k] : posMetaLegado(k, mes); });
+    const mudancas = [];
+    itens.forEach(x => { if (posMetaCents(metas[x.posto]) !== posMetaCents(x.novo)) { mudancas.push({posto:x.posto, ant:metas[x.posto], novo:Math.round(x.novo*100)/100}); metas[x.posto] = Math.round(x.novo*100)/100; } });
+    if (!mudancas.length) { resultado = {semMudanca:true}; return; }
+    const novoV = (atual ? (atual.v || 0) : 0) + 1;
+    tx.set(ref, {ano, meses: {...(doc.meses || {}), [mes]: {metas, v:novoV, atualizadoEm:agora, atualizadoPor:usr, semente: seed ? 'legado' : (atual.semente || null)}}}, {merge:true});
+    tx.set(hRef, {mesRef:mes, quando:agora, usuario:usr, origem, motivo: motivo || '', arquivo: (extra && extra.arquivo) || '', reverteId: (extra && extra.reverteId) || null, versao:novoV, semeouLegado:seed, itens:mudancas});
+    resultado = {n:mudancas.length, v:novoV};
+  });
+  if (resultado && !resultado.semMudanca) posMetaAposGravar(mes);
+  return resultado;
+}
+function posMetaAposGravar(mes){
+  posMetasAnosOk[mes.slice(0,4)] = false; // próxima leitura refaz (tela já recarrega o doc)
+  try { if (typeof PDCA_ST !== 'undefined' && PDCA_ST) { PDCA_ST.dados = null; PDCA_ST.analises = []; } } catch(e){}
+  try { _cacheInvalida('pdcaq:meta'); } catch(e){}
+  try { renderPOS(); } catch(e){}
+}
+
+// ── Histórico / reversão ──
+async function posMetaHistCarregar(){
+  PM.hist = 'carregando'; posMetaRender();
+  try { const s = await db.collection('pos_metas_hist').where('mesRef','==',PM.mes).limit(60).get(); PM.hist = s.docs.map(d => ({id:d.id, ...d.data()})).sort((a,b) => b.quando.localeCompare(a.quando)); }
+  catch(e){ PM.hist = {erro: e.message}; }
+  posMetaRender();
+}
+function posMetaHistHtml(){
+  const h = PM.hist;
+  if (h === 'carregando' || h == null) return '<p>Carregando histórico…</p>';
+  if (h.erro) return `<div class="pm-bn" style="border-color:#ef4444;color:#ef4444">Erro ao ler histórico: ${_pmEsc(h.erro)}</div>`;
+  if (!h.length) return `<p style="color:var(--text3)">Nenhuma alteração registrada para ${posMetaMesLabel(PM.mes)}.</p>`;
+  const revertidos = new Set(h.filter(x => x.reverteId).map(x => x.reverteId)), og = {manual:'Manual', excel:'Excel', copia:'Cópia', reversao:'Reversão'};
+  return `<div style="overflow:auto;max-height:52vh"><table class="pm-tb"><thead><tr><th>Quando</th><th>Usuário</th><th>Origem</th><th>Alterações</th><th>Motivo</th><th></th></tr></thead><tbody>${h.map(x => `<tr><td>${_pmEsc(new Date(x.quando).toLocaleString('pt-BR'))}</td><td>${_pmEsc(x.usuario && x.usuario.nome || '—')}</td><td>${og[x.origem] || _pmEsc(x.origem)}${x.arquivo ? '<br><small>' + _pmEsc(x.arquivo) + '</small>' : ''}</td><td style="font-size:12px">${x.itens.map(i => `${_pmEsc(POS_META_NOMES[i.posto] || i.posto)}: ${_pmRS(i.ant)} → <b>${_pmRS(i.novo)}</b>`).join('<br>')}</td><td>${_pmEsc(x.motivo)}</td><td>${revertidos.has(x.id) ? '<small>↩ revertida</small>' : x.origem === 'reversao' ? '' : `<button class="btn btn-sm btn-secondary" onclick="posMetaReverter('${x.id}')">↩ Reverter</button>`}</td></tr>`).join('')}</tbody></table></div>`;
+}
+function posMetaReverter(id){
+  const x = (PM.hist || []).find(h => h.id === id); if (!x) return;
+  const itens = x.itens.filter(i => posMetaCents(PM.base[i.posto]) === posMetaCents(i.novo)), pulados = x.itens.length - itens.length;
+  if (!itens.length) { toast('Nada a reverter: as metas já foram alteradas depois desta operação.', 'err'); return; }
+  PM.pend = {}; itens.forEach(i => { PM.pend[i.posto] = {txt: String(i.ant).replace('.', ',')}; });
+  PM.origem = 'reversao'; PM.arquivo = ''; PM.reverteId = id; PM.step = 'rev'; PM.erros = [];
+  if (pulados) toast(`${pulados} posto(s) já mudaram depois desta operação e NÃO serão revertidos.`, 'err');
+  posMetaRender();
 }
 
 async function initPOS() { return _compartilhar('pos', _initPOSImpl); }
@@ -17428,6 +17711,7 @@ async function _initPOSImpl() {
     _cacheMarca('pos');
     }
     posMesesDisponiveis = [...mesesSet].sort();
+    await posMetasCarregar(posMesesDisponiveis.concat([new Date().getFullYear()+'-01']));
     if(!posMesSelecionado && posMesesDisponiveis.length) posMesSelecionado = posMesesDisponiveis[posMesesDisponiveis.length-1];
     // Preencher select
     const sel = document.getElementById('pos-mes-select');
@@ -17436,6 +17720,7 @@ async function _initPOSImpl() {
         ? posMesesDisponiveis.map(m=>{ const[a,mo]=m.split('-'); return `<option value="${m}"${m===posMesSelecionado?' selected':''}>${['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][+mo]}/${a.slice(2)}</option>`; }).join('')
         : '<option value="">Nenhum dado</option>';
     }
+    { const bm = document.getElementById('btn-metas-pos'); if (bm) bm.style.display = (currentUser && currentUser.role === 'admin') ? '' : 'none'; }
     renderPOS();
   } catch(e){ console.error('initPOS',e); }
 }
@@ -31136,6 +31421,7 @@ async function pdcaColetar() {
       postos: pdcaPostosPosPeriodo([comp], fMesPos), postosAnt: pdcaPostosPos(ant)
     } : null;
     if (!a) semComp('pos'); else semMes('pos', comDados.pos);
+    if (a && d.pos) { d.pos.metaOrigem = posMetaOrigem(comp); if (d.pos.metaOrigem === 'legado') d.avisos.push('POS: as metas de ' + _PE.fmtMes(comp) + ' ainda não estão cadastradas em Gestão de Metas POS — usando as metas legadas do sistema.'); }
   }
   // ── Ligação Nova (dados diários → comparação equivalente no parcial, usando a extração da própria base) ──
   if (grupos.ln) {
