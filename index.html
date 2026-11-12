@@ -658,6 +658,80 @@ const PosCanalLabels = {
   .slider:before{position:absolute;content:"";height:20px;width:20px;left:3px;bottom:3px;background-color:var(--bg);border-radius:50%;transition:.3s;}
   input:checked + .slider{background-color:var(--accent);}
   input:checked + .slider:before{transform:translateX(22px);}
+
+  /* ═══ AGENDA OPERACIONAL ═══ */
+  :root{--ag-op:#38bdf8;--ag-q:#f59e0b;}
+  .ag-tabs{display:flex;gap:4px;margin-bottom:18px;border-bottom:1px solid var(--border);}
+  .ag-tab{background:none;border:none;border-bottom:3px solid transparent;color:var(--text2);padding:10px 18px;font-family:'Syne',sans-serif;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:-1px;}
+  .ag-tab:hover{color:var(--text);} .ag-tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+  .ag-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px;}
+  .ag-nav{display:flex;align-items:center;gap:6px;}
+  .ag-nav .ag-titulo{min-width:190px;text-align:center;font-size:17px;font-weight:700;}
+  .ag-btn-ico{width:36px;height:36px;padding:0;}
+  .ag-seg{display:inline-flex;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;}
+  .ag-seg button{background:var(--surface2);color:var(--text2);border:none;padding:8px 14px;font-family:'Syne',sans-serif;font-size:13px;font-weight:600;cursor:pointer;}
+  .ag-seg button.on{background:var(--accent);color:#fff;}
+  .ag-legenda{display:flex;gap:14px;font-size:12px;color:var(--text2);margin-left:auto;align-items:center;}
+  .ag-dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px;}
+  .c-op{--c:var(--ag-op);} .c-q{--c:var(--ag-q);}
+  .ag-dot.q{background:var(--ag-q);} .ag-dot.op{background:var(--ag-op);}
+  .ag-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:1px;background:var(--border);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+  .ag-dow{background:var(--surface2);padding:9px 6px;text-align:center;font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--text2);}
+  .ag-cel{background:var(--surface);min-height:124px;padding:6px;display:flex;flex-direction:column;gap:3px;cursor:pointer;min-width:0;}
+  .ag-cel:hover{background:var(--surface2);}
+  .ag-cel.fora{background:var(--bg);opacity:.45;cursor:default;pointer-events:none;}
+  .ag-cel.hoje{box-shadow:inset 0 0 0 2px var(--accent);}
+  .ag-cel .ag-num{font-size:12px;font-weight:700;color:var(--text2);display:flex;justify-content:space-between;align-items:center;}
+  .ag-cel.hoje .ag-num span:first-child{background:var(--accent);color:#fff;border-radius:10px;padding:1px 8px;}
+  .ag-cel .ag-dsem{display:none;font-weight:600;color:var(--text3);}
+  .ag-sem .ag-cel{min-height:300px;}
+  .ag-chip{display:block;border-left:3px solid var(--c,var(--ag-op));background:color-mix(in srgb,var(--c,var(--ag-op)) 16%,var(--surface));border-radius:5px;padding:3px 6px;font-size:12px;line-height:1.25;color:var(--text);cursor:pointer;overflow:hidden;text-align:left;border-top:none;border-right:none;border-bottom:none;font-family:'Syne',sans-serif;width:100%;}
+  .ag-chip:hover{filter:brightness(1.25);}
+  .ag-chip .ag-t{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;}
+  .ag-sem .ag-chip .ag-t{-webkit-line-clamp:unset;display:block;}
+  .ag-chip .ag-h{font-weight:700;color:var(--c,var(--ag-op));margin-right:4px;font-size:11px;}
+  .ag-chip.st-concluida{opacity:.62;} .ag-chip.st-concluida .ag-t::before{content:'✓ ';color:var(--green);font-weight:800;}
+  .ag-chip.st-cancelada{opacity:.5;} .ag-chip.st-cancelada .ag-t{text-decoration:line-through;} .ag-chip.st-cancelada .ag-t::before{content:'✕ ';color:var(--red);font-weight:800;text-decoration:none;display:inline-block;}
+  .ag-mais{background:none;border:none;color:var(--accent);font-family:'Syne',sans-serif;font-size:12px;font-weight:700;cursor:pointer;text-align:left;padding:2px 4px;}
+  .ag-filtros{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:14px;}
+  .ag-filtros .form-select{width:auto;min-width:150px;padding:8px 12px;font-size:13px;}
+  .ag-resumo{font-size:13px;color:var(--text2);margin-left:auto;}
+  .ag-dia-h{font-size:12px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--text2);margin:18px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border);}
+  .ag-dia-h:first-child{margin-top:0;}
+  .ag-lin{display:grid;grid-template-columns:78px minmax(0,1fr) 170px 150px auto;gap:12px;align-items:center;background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--c,var(--ag-op));border-radius:10px;padding:10px 14px;margin-bottom:6px;}
+  .ag-lin.st-concluida{opacity:.7;} .ag-lin.st-cancelada{opacity:.55;} .ag-lin.st-cancelada .ag-lt{text-decoration:line-through;}
+  .ag-lin .ag-lt{font-weight:600;font-size:14px;cursor:pointer;word-break:break-word;}
+  .ag-lin .ag-lt:hover{color:var(--accent);}
+  .ag-lin .ag-sub{font-size:12px;color:var(--text3);margin-top:2px;}
+  .ag-hora{font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--text2);}
+  .ag-lin .form-select{padding:6px 10px;font-size:12px;}
+  .ag-ar{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;color:var(--c);background:color-mix(in srgb,var(--c) 16%,transparent);border:1px solid color-mix(in srgb,var(--c) 40%,transparent);}
+  .ag-st{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;}
+  .ag-st.pendente{background:var(--yellow-bg);color:var(--yellow);} .ag-st.concluida{background:var(--green-bg);color:var(--green);} .ag-st.cancelada{background:var(--red-bg);color:var(--red);}
+  .ag-card{background:var(--surface2);border:1px solid var(--border);border-left:4px solid var(--c,var(--ag-op));border-radius:12px;padding:16px;margin-bottom:12px;}
+  .ag-card h3{font-size:16px;margin-bottom:8px;word-break:break-word;}
+  .ag-card.st-cancelada h3{text-decoration:line-through;}
+  .ag-kv{display:grid;grid-template-columns:120px minmax(0,1fr);gap:4px 10px;font-size:13px;margin:10px 0;}
+  .ag-kv dt{color:var(--text3);} .ag-kv dd{color:var(--text);word-break:break-word;white-space:pre-wrap;}
+  .ag-aud{font-size:12px;color:var(--text3);line-height:1.6;border-top:1px dashed var(--border);padding-top:8px;margin-top:8px;}
+  .ag-hist{font-size:12px;color:var(--text2);margin-top:6px;} .ag-hist summary{cursor:pointer;color:var(--text3);} .ag-hist li{margin:4px 0 0 16px;}
+  .ag-acoes{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;align-items:center;}
+  .ag-msg{padding:28px;text-align:center;color:var(--text3);}
+  #modal-agenda-dia .modal{width:640px;} #modal-agenda-form .modal{width:540px;}
+  @media(max-width:900px){
+    .ag-lin{grid-template-columns:64px minmax(0,1fr) auto;} .ag-lin .ag-resp,.ag-lin .ag-stsel{grid-column:2 / 4;}
+    .ag-legenda{margin-left:0;width:100%;}
+  }
+  @media(max-width:700px){
+    /* celular: vira lista por dia (só dias com atividade) */
+    .ag-grid{display:block;background:none;border:none;}
+    .ag-dow{display:none;} .ag-cel.fora,.ag-cel.vazio{display:none;}
+    .ag-cel{min-height:0;margin-bottom:8px;border:1px solid var(--border);border-radius:10px;}
+    .ag-cel .ag-dsem{display:inline;} .ag-sem .ag-cel{min-height:0;}
+    .ag-chip .ag-t{-webkit-line-clamp:unset;display:block;}
+    .ag-nav .ag-titulo{min-width:0;flex:1;}
+    .ag-kv{grid-template-columns:96px minmax(0,1fr);}
+  }
 </style>
   <style>
   .caixa-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px 24px;margin-bottom:16px;}
@@ -940,6 +1014,12 @@ const PosCanalLabels = {
         </div>
       </div>
     </div>
+    <div id="nav-agenda-section" style="display:none">
+      <div class="sidebar-section">
+        <div class="sidebar-section-label">Agenda</div>
+        <div class="sidebar-item" id="nav-agenda" onclick="showView('agenda-operacional',this)"><span class="icon">📅</span> Agenda Operacional</div>
+      </div>
+    </div>
     <div class="sidebar-footer">
       <div id="notif-panel" class="notif-panel">
         <div class="notif-header"><span class="notif-header-title">🔔 Notificações</span><button class="notif-clear" onclick="markAllRead()">Marcar todas lidas</button></div>
@@ -982,6 +1062,40 @@ const PosCanalLabels = {
       </div>
       <div id="adm-pending-demandas-wrap"></div>
       <div id="all-tasks-list"></div>
+    </div>
+
+    <!-- AGENDA OPERACIONAL -->
+    <div id="view-agenda-operacional" class="view">
+      <div class="topbar">
+        <div class="page-header" style="margin:0"><h1>Agenda Operacional</h1><p>Compromissos e atividades da equipe de gestão</p></div>
+        <div class="topbar-actions">
+          <button class="btn btn-primary" onclick="agendaNova()">+ Nova atividade</button>
+        </div>
+      </div>
+      <div class="ag-tabs">
+        <button class="ag-tab" id="ag-tab-tarefas" onclick="agendaAba('tarefas')">📝 Tarefas</button>
+        <button class="ag-tab active" id="ag-tab-calendario" onclick="agendaAba('calendario')">📅 Calendário</button>
+      </div>
+      <div class="ag-bar">
+        <div class="ag-nav">
+          <button class="btn btn-secondary ag-btn-ico" onclick="agendaNavegar(-1)" title="Anterior">‹</button>
+          <div class="ag-titulo" id="ag-titulo">—</div>
+          <button class="btn btn-secondary ag-btn-ico" onclick="agendaNavegar(1)" title="Próximo">›</button>
+          <button class="btn btn-secondary btn-sm" onclick="agendaHoje()">Hoje</button>
+        </div>
+        <div class="ag-seg" id="ag-seg"><button id="ag-modo-mes" class="on" onclick="agendaModo('mes')">Mês</button><button id="ag-modo-semana" onclick="agendaModo('semana')">Semana</button></div>
+        <button class="btn btn-secondary btn-sm" onclick="agendaAtualizar()" title="Buscar alterações feitas por outras pessoas">↻ Atualizar</button>
+        <div class="ag-legenda"><span><i class="ag-dot op"></i>Operação</span><span><i class="ag-dot q"></i>Qualidade</span></div>
+      </div>
+      <div id="ag-pane-tarefas" style="display:none">
+        <div class="ag-filtros">
+          <div><label class="form-label">Área</label><select class="form-select" id="ag-f-area" onchange="agendaFiltro()"><option value="">Todas</option><option value="operacao">Operação</option><option value="qualidade">Qualidade</option></select></div>
+          <div><label class="form-label">Situação</label><select class="form-select" id="ag-f-status" onchange="agendaFiltro()"><option value="">Todas</option><option value="pendente">Pendentes</option><option value="concluida">Concluídas</option><option value="cancelada">Canceladas</option></select></div>
+          <div class="ag-resumo" id="ag-resumo"></div>
+        </div>
+        <div id="ag-lista"></div>
+      </div>
+      <div id="ag-pane-calendario"><div id="ag-cal"></div></div>
     </div>
 
     <!-- SUPERVISOR — DEMANDAS DA EQUIPE -->
@@ -2673,6 +2787,31 @@ const PosCanalLabels = {
 </div>
 
 <!-- MODAL: ADM APROVAR JUSTIFICATIVA -->
+<div class="modal-overlay" id="modal-agenda-form">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title" id="ag-form-titulo">Nova atividade</div><button class="close-btn" onclick="closeModal('modal-agenda-form')">✕</button></div>
+    <div class="form-group"><label class="form-label">Título *</label><input class="form-input" id="ag-f-titulo" maxlength="120" placeholder="Ex.: Cobertura de falta — Quissamã" autocomplete="off"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group"><label class="form-label">Área *</label><select class="form-select" id="ag-f-area-form"><option value="">Selecione...</option><option value="operacao">Operação</option><option value="qualidade">Qualidade</option></select></div>
+      <div class="form-group"><label class="form-label">Responsável *</label><select class="form-select" id="ag-f-resp"></select></div>
+      <div class="form-group"><label class="form-label">Data *</label><input class="form-input" type="date" id="ag-f-data"></div>
+      <div class="form-group"><label class="form-label">Horário (opcional)</label><input class="form-input" type="time" id="ag-f-hora"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Descrição / observações (opcional)</label><textarea class="form-textarea" id="ag-f-desc" rows="3" maxlength="1500" placeholder="Detalhes da atividade..."></textarea></div>
+    <div id="ag-form-erro" style="color:var(--red);font-size:13px;margin-bottom:8px;display:none"></div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-agenda-form')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" id="ag-btn-salvar" onclick="agendaSalvar()">Salvar</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="modal-agenda-dia">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title" id="ag-dia-titulo">Dia</div><button class="close-btn" onclick="closeModal('modal-agenda-dia')">✕</button></div>
+    <div id="ag-dia-corpo"></div>
+    <div style="margin-top:6px"><button class="btn btn-secondary btn-sm" id="ag-dia-nova" onclick="agendaNova(_agDiaAberto)">+ Nova atividade neste dia</button></div>
+  </div>
+</div>
 <div class="modal-overlay" id="modal-aprovar-justificativa">
   <div class="modal" style="max-width:500px">
     <div class="modal-header"><div class="modal-title">Justificativa de Atraso</div><button class="close-btn" onclick="closeModal('modal-aprovar-justificativa')">✕</button></div>
@@ -4478,6 +4617,7 @@ function _iniciarRegistros(todos) {
 }
 // Encerra TODOS os listeners e limpa os dados em memória (logout / troca de usuário)
 function lzEncerrar() {
+  try { agendaReset(); } catch (e) {}
   try { if (unsubUsers) { unsubUsers(); unsubUsers = null; } } catch (e) {}
   try { if (unsubTasks) { unsubTasks(); unsubTasks = null; } } catch (e) {}
   try { if (unsubRegistros) { unsubRegistros(); unsubRegistros = null; } } catch (e) {}
@@ -4545,6 +4685,8 @@ function startApp() {
   document.getElementById('nav-supervisor').style.display = (!isAdmin && !isPosto && isSupervisor) ? 'block' : 'none';
   const _navCollabBko = document.getElementById('nav-collab-qualidade-section');
   if (_navCollabBko) _navCollabBko.style.display = (!isAdmin && !isPosto && !isSupervisor && podeVerControleBackoffice()) ? 'block' : 'none';
+  const _navAgenda = document.getElementById('nav-agenda-section');
+  if (_navAgenda) _navAgenda.style.display = podeVerAgenda() ? 'block' : 'none';
   if (!isPosto) {
     unsubUsers = db.collection('users').onSnapshot(snap => {
       allUsers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -4831,6 +4973,7 @@ function _doRefreshCurrentView() {
   if (id === 'adm-team') renderTeam();
   if (id === 'col-tasks') { renderCollabTasks(); renderColPropPendentes(); }
   if (id === 'adm-ponto') renderAdmPonto();
+  if (id === 'agenda-operacional') agendaRender();
   if (id === 'col-ponto') renderColPonto();
   if (id === 'adm-postos') renderAdmPostos();
   if (id === 'adm-indicadores') { (async()=>{ await initIndicadoresMesFiltro(); await renderIndicadores(); })(); }
@@ -4897,6 +5040,7 @@ function showView(name, el) {
   if (name === 'sup-medidas-disciplinares') md_renderTudo();
   if (name === 'adm-diag-import') renderDiagImport();
   if (name === 'adm-pdca') renderPdca();
+  if (name === 'agenda-operacional') agendaAbrir();
   if (name === 'adm-qualidade') renderQualidadeDashboard();
   if (name === 'adm-operacao-dashboard') renderDashboardOperacional();
   if (name === 'adm-qualidade-reclamacoes') renderReclamacoes();
@@ -32761,6 +32905,422 @@ function pdcaRender() {
 
   h += `<div class="pdca-nota" style="text-align:center">${S.leiturasMontar != null ? 'Última prévia: <b>' + S.leiturasMontar + '</b> leitura(s) nova(s) (0 = tudo veio da memória/cache). ' : ''}Leituras do Firestore feitas por este módulo nesta sessão: <b>${S.leituras}</b> · nada é carregado no login · prévia só sob demanda · Qualidade consulta apenas os meses do ano de referência e guarda em cache por 10 min.</div>`;
   const y = window.scrollY; wrap.innerHTML = h; if (y) window.scrollTo(0, y);
+}
+
+</script>
+<script>
+
+// ═══════════════════════════════════════════════════════════════════════
+// AGENDA OPERACIONAL — compromissos compartilhados da equipe de gestão
+// • Coleção própria: agenda_operacional (nenhuma coleção existente é tocada)
+// • Leitura: só o MÊS exibido (consulta por faixa em `data`, campo único → sem índice composto),
+//   cache de 5 min por mês; trocar de aba/voltar ao módulo reaproveita a memória; sem listener.
+// • Escritas aplicam na memória na hora; outras pessoas veem ao abrir/trocar de mês após o TTL
+//   ou pelo botão "Atualizar".
+// • Data da atividade (`data`) é independente da data real de cadastro (`criadoEm`, do servidor).
+// ═══════════════════════════════════════════════════════════════════════
+const AG_COL = 'agenda_operacional';
+const AG_TTL_MS = 5 * 60 * 1000;
+const AG_AREAS = { operacao: 'Operação', qualidade: 'Qualidade' };
+const AG_STATUS = { pendente: 'Pendente', concluida: 'Concluída', cancelada: 'Cancelada' };
+const AG_MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const AG_DOW = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+const AG_DOW_LONGO = ['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'];
+// Mesmos e-mails de confiança já usados pelo sistema (supervisores, Assistente de Treinamento e Backoffice Operação).
+// Preferencial: permissão declarativa no documento do usuário → permissoes.agendaOperacional = true.
+const AG_EMAILS_FALLBACK = ['victor.simoes@gruporgbrasil.com','leonardo.costa@gruporgbrasil.com','plicila.silva@gruporgbrasil.com','danielly.ribeiro@gruporgbrasil.com','supervisor.teste@gruporgbrasil.com','teste@gruporgbrasil.com'];
+
+let _agAba = 'calendario', _agModo = 'mes', _agMes = '', _agRef = '';
+let _agCache = {};            // 'AAAA-MM' -> { itens:[...], em:ms }
+let _agErro = '';
+let _agDiaAberto = '';
+let _agFormId = '', _agFormEdicao = null, _agSalvando = false;
+let _agFiltroArea = '', _agFiltroStatus = '';
+let _agConfirmaExcluir = null;
+
+function _agEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function _agPad(n) { return String(n).padStart(2, '0'); }
+function _agIso(d) { return `${d.getFullYear()}-${_agPad(d.getMonth() + 1)}-${_agPad(d.getDate())}`; }
+function _agHoje() { return _agIso(new Date()); }
+function _agPartes(s) { const [y, m, d] = s.split('-').map(Number); return { y, m, d }; }
+function _agDataValida(s) {
+  if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const { y, m, d } = _agPartes(s), dt = new Date(y, m - 1, d);
+  return y >= 2000 && y <= 2100 && dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
+}
+function _agHoraValida(s) { return s === '' || /^([01]\d|2[0-3]):[0-5]\d$/.test(s); }
+function _agFmt(s) { const p = _agPartes(s); return `${_agPad(p.d)}/${_agPad(p.m)}/${p.y}`; }
+function _agFmtCurto(s) { const p = _agPartes(s); return `${_agPad(p.d)}/${_agPad(p.m)}`; }
+function _agDow(s) { const p = _agPartes(s); return new Date(p.y, p.m - 1, p.d).getDay(); }
+function _agAddDias(s, n) { const p = _agPartes(s); return _agIso(new Date(p.y, p.m - 1, p.d + n)); }
+function _agMesDe(s) { return s.slice(0, 7); }
+function _agMesAdd(mes, n) { const [y, m] = mes.split('-').map(Number); const d = new Date(y, m - 1 + n, 1); return `${d.getFullYear()}-${_agPad(d.getMonth() + 1)}`; }
+function _agDiasNoMes(mes) { const [y, m] = mes.split('-').map(Number); return new Date(y, m, 0).getDate(); }
+function _agInicioSemana(s) { return _agAddDias(s, -_agDow(s)); }
+function _agTs(v) {
+  if (!v) return null;
+  if (typeof v.toDate === 'function') return v.toDate();
+  if (v instanceof Date) return v;
+  const d = new Date(v); return isNaN(d) ? null : d;
+}
+function _agFmtTs(v) {
+  const d = _agTs(v); if (!d) return '—';
+  return `${_agPad(d.getDate())}/${_agPad(d.getMonth() + 1)}/${d.getFullYear()} às ${_agPad(d.getHours())}h${_agPad(d.getMinutes())}`;
+}
+
+// ── Acesso ──────────────────────────────────────────────────────────────
+function _agendaAutorizado(u) {
+  if (!u || u.role === 'posto' || u.ativo === false) return false;
+  if (u.role === 'admin') return true;
+  if (u.permissoes && u.permissoes.agendaOperacional === true) return true;
+  return AG_EMAILS_FALLBACK.includes((u.email || '').toLowerCase());
+}
+function podeVerAgenda() { return _agendaAutorizado(typeof currentUser !== 'undefined' ? currentUser : null); }
+function agendaPodeExcluir() { return !!currentUser && currentUser.role === 'admin'; }
+function agendaReset() {
+  _agCache = {}; _agErro = ''; _agMes = ''; _agRef = ''; _agModo = 'mes'; _agAba = 'calendario';
+  _agFiltroArea = ''; _agFiltroStatus = ''; _agSalvando = false; _agDiaAberto = '';
+  Object.keys(_emVoo).forEach(k => { if (k.startsWith('agenda|')) delete _emVoo[k]; });
+}
+function _agResponsaveis(incluirId) {
+  const lista = (typeof allUsers !== 'undefined' ? allUsers : []).filter(u => _agendaAutorizado(u) || u.id === incluirId);
+  if (currentUser && !lista.some(u => u.id === currentUser.id)) lista.push(currentUser);
+  const vistos = new Set();
+  return lista.filter(u => { if (vistos.has(u.id)) return false; vistos.add(u.id); return true; })
+    .map(u => ({ id: u.id, nome: u.name || u.nome || u.email || u.id })).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+}
+
+// ── Carga de dados (por mês) ────────────────────────────────────────────
+function _agMesesVisiveis() {
+  if (_agModo === 'semana') {
+    const ini = _agInicioSemana(_agRef), fim = _agAddDias(ini, 6);
+    return Array.from(new Set([_agMesDe(ini), _agMesDe(fim)]));
+  }
+  return [_agMes];
+}
+function _agDocParaItem(d) { return { id: d.id, ...d.data() }; }
+async function agendaCarregarMes(mes, forcar) {
+  const c = _agCache[mes];
+  if (!forcar && c && Date.now() - c.em < AG_TTL_MS) return c.itens;
+  return _compartilhar('agenda|' + mes, async () => {
+    const sn = await db.collection(AG_COL).where('data', '>=', mes + '-01').where('data', '<=', mes + '-31').get();
+    const itens = sn.docs.map(_agDocParaItem);
+    _agCache[mes] = { itens, em: Date.now() };
+    return itens;
+  });
+}
+async function agendaGarantir(forcar) {
+  _agErro = '';
+  const faltam = _agMesesVisiveis().filter(m => forcar || !_agCache[m] || Date.now() - _agCache[m].em >= AG_TTL_MS);
+  if (!faltam.length) { agendaRender(); return; }
+  _agMsg('Carregando atividades...');
+  try { await Promise.all(faltam.map(m => agendaCarregarMes(m, forcar))); }
+  catch (e) { console.error('[Agenda] falha ao carregar:', e); _agErro = (e && e.code === 'permission-denied') ? 'Sem permissão para ler a agenda no Firebase.' : 'Não foi possível carregar a agenda. Verifique a conexão.'; }
+  agendaRender();
+}
+function _agItensDe(dataISO) {
+  const c = _agCache[_agMesDe(dataISO)];
+  return c ? c.itens.filter(i => i.data === dataISO).sort(_agOrdem) : [];
+}
+function _agOrdem(a, b) {
+  const ha = a.horario || '99:99', hb = b.horario || '99:99';
+  return ha.localeCompare(hb) || String(a.titulo || '').localeCompare(String(b.titulo || ''), 'pt-BR');
+}
+function _agMsg(t) {
+  const el = document.getElementById(_agAba === 'tarefas' ? 'ag-lista' : 'ag-cal');
+  if (el) el.innerHTML = `<div class="ag-msg">${_agEsc(t)}</div>`;
+}
+
+// ── Navegação ───────────────────────────────────────────────────────────
+function agendaAbrir() {
+  if (!podeVerAgenda()) { toast('Você não tem acesso à Agenda Operacional.', 'err'); return; }
+  const hoje = _agHoje();
+  if (!_agMes) { _agMes = _agMesDe(hoje); _agRef = hoje; }
+  agendaGarantir(false);
+}
+function agendaAba(a) {
+  _agAba = a;
+  document.getElementById('ag-tab-tarefas').classList.toggle('active', a === 'tarefas');
+  document.getElementById('ag-tab-calendario').classList.toggle('active', a === 'calendario');
+  document.getElementById('ag-pane-tarefas').style.display = a === 'tarefas' ? 'block' : 'none';
+  document.getElementById('ag-pane-calendario').style.display = a === 'calendario' ? 'block' : 'none';
+  agendaRender(); // reaproveita o que já está em memória
+}
+function agendaModo(m) {
+  _agModo = m;
+  if (m === 'semana') { const hoje = _agHoje(); _agRef = (_agMesDe(hoje) === _agMes) ? hoje : _agMes + '-01'; }
+  else _agMes = _agMesDe(_agRef);
+  agendaGarantir(false);
+}
+function agendaNavegar(n) {
+  if (_agModo === 'semana') { _agRef = _agAddDias(_agRef, 7 * n); _agMes = _agMesDe(_agRef); }
+  else { _agMes = _agMesAdd(_agMes, n); const hoje = _agHoje(); _agRef = (_agMesDe(hoje) === _agMes) ? hoje : _agMes + '-01'; }
+  agendaGarantir(false);
+}
+function agendaHoje() { const h = _agHoje(); _agMes = _agMesDe(h); _agRef = h; agendaGarantir(false); }
+function agendaAtualizar() { agendaGarantir(true); }
+function agendaFiltro() {
+  _agFiltroArea = document.getElementById('ag-f-area').value; _agFiltroStatus = document.getElementById('ag-f-status').value;
+  agendaRender();
+}
+
+// ── Renderização ────────────────────────────────────────────────────────
+function agendaRender() {
+  if (!document.getElementById('ag-titulo')) return;
+  if (!podeVerAgenda()) return;
+  const t = document.getElementById('ag-titulo');
+  if (_agModo === 'semana') {
+    const ini = _agInicioSemana(_agRef), fim = _agAddDias(ini, 6), a = _agPartes(ini), b = _agPartes(fim);
+    t.textContent = `${_agPad(a.d)} ${AG_MESES[a.m - 1].slice(0, 3)} – ${_agPad(b.d)} ${AG_MESES[b.m - 1].slice(0, 3)} ${b.y}`;
+  } else { const [y, m] = _agMes.split('-').map(Number); t.textContent = `${AG_MESES[m - 1]} ${y}`; }
+  document.getElementById('ag-modo-mes').classList.toggle('on', _agModo === 'mes');
+  document.getElementById('ag-modo-semana').classList.toggle('on', _agModo === 'semana');
+  if (_agErro) {
+    const el = document.getElementById(_agAba === 'tarefas' ? 'ag-lista' : 'ag-cal');
+    if (el) el.innerHTML = `<div class="ag-msg">${_agEsc(_agErro)}<div style="margin-top:12px"><button class="btn btn-secondary btn-sm" onclick="agendaAtualizar()">Tentar novamente</button></div></div>`;
+    return;
+  }
+  if (_agAba === 'tarefas') agendaRenderLista(); else agendaRenderCalendario();
+}
+function _agChip(i) {
+  const cls = i.area === 'qualidade' ? 'q' : 'op';
+  return `<button type="button" class="ag-chip c-${cls} st-${_agEsc(i.status || 'pendente')}" onclick="event.stopPropagation();agendaAbrirDia('${_agEsc(i.data)}')" title="${_agEsc(i.titulo)}"><span class="ag-t">${i.horario ? `<span class="ag-h">${_agEsc(i.horario)}</span>` : ''}${_agEsc(i.titulo)}</span></button>`;
+}
+function _agCelula(dataISO, mesRef, maxChips) {
+  const dentro = _agMesDe(dataISO) === mesRef, p = _agPartes(dataISO);
+  if (!dentro) return `<div class="ag-cel fora"><div class="ag-num"><span>${p.d}</span></div></div>`;
+  const itens = _agItensDe(dataISO), hoje = dataISO === _agHoje();
+  const vis = maxChips ? itens.slice(0, maxChips) : itens, resto = itens.length - vis.length;
+  return `<div class="ag-cel${hoje ? ' hoje' : ''}${itens.length ? '' : ' vazio'}" onclick="agendaAbrirDia('${dataISO}')">
+    <div class="ag-num"><span>${p.d}<span class="ag-dsem"> · ${AG_DOW_LONGO[_agDow(dataISO)]}</span></span></div>
+    ${vis.map(_agChip).join('')}${resto > 0 ? `<button type="button" class="ag-mais" onclick="event.stopPropagation();agendaAbrirDia('${dataISO}')">+${resto} atividade${resto > 1 ? 's' : ''}</button>` : ''}</div>`;
+}
+function agendaRenderCalendario() {
+  const el = document.getElementById('ag-cal'); if (!el) return;
+  const cab = AG_DOW.map(d => `<div class="ag-dow">${d}</div>`).join('');
+  if (_agModo === 'semana') {
+    const ini = _agInicioSemana(_agRef);
+    const cels = Array.from({ length: 7 }, (_, k) => { const d = _agAddDias(ini, k); const it = _agItensDe(d), p = _agPartes(d), hoje = d === _agHoje();
+      return `<div class="ag-cel${hoje ? ' hoje' : ''}${it.length ? '' : ' vazio'}" onclick="agendaAbrirDia('${d}')"><div class="ag-num"><span>${p.d}/${_agPad(p.m)}<span class="ag-dsem"> · ${AG_DOW_LONGO[_agDow(d)]}</span></span></div>${it.map(_agChip).join('')}</div>`; }).join('');
+    el.innerHTML = `<div class="ag-grid ag-sem">${cab}${cels}</div>`; return;
+  }
+  const primeiro = _agMes + '-01', pad = _agDow(primeiro), total = pad + _agDiasNoMes(_agMes), semanas = Math.ceil(total / 7);
+  const ini = _agAddDias(primeiro, -pad);
+  const cels = Array.from({ length: semanas * 7 }, (_, k) => _agCelula(_agAddDias(ini, k), _agMes, 3)).join('');
+  el.innerHTML = `<div class="ag-grid">${cab}${cels}</div>`;
+}
+function _agVisiveisLista() {
+  let ini, fim;
+  if (_agModo === 'semana') { ini = _agInicioSemana(_agRef); fim = _agAddDias(ini, 6); }
+  else { ini = _agMes + '-01'; fim = _agMes + '-31'; }
+  const todos = [];
+  _agMesesVisiveis().forEach(m => { if (_agCache[m]) todos.push(...(_agCache[m].itens)); });
+  return todos.filter(i => i.data >= ini && i.data <= fim);
+}
+function agendaRenderLista() {
+  const el = document.getElementById('ag-lista'); if (!el) return;
+  const base = _agVisiveisLista();
+  const filtrados = base.filter(i => (!_agFiltroArea || i.area === _agFiltroArea) && (!_agFiltroStatus || (i.status || 'pendente') === _agFiltroStatus)).sort((a, b) => a.data.localeCompare(b.data) || _agOrdem(a, b));
+  const cont = s => base.filter(i => (i.status || 'pendente') === s && (!_agFiltroArea || i.area === _agFiltroArea)).length;
+  document.getElementById('ag-resumo').innerHTML = `Pendentes: <strong>${cont('pendente')}</strong> · Concluídas: <strong>${cont('concluida')}</strong> · Canceladas: <strong>${cont('cancelada')}</strong>`;
+  if (!filtrados.length) { el.innerHTML = `<div class="ag-msg">Nenhuma atividade neste período${(_agFiltroArea || _agFiltroStatus) ? ' com esses filtros' : ''}.</div>`; return; }
+  let html = '', dia = '';
+  filtrados.forEach(i => {
+    if (i.data !== dia) { dia = i.data; html += `<div class="ag-dia-h">${_agFmt(dia)} · ${AG_DOW_LONGO[_agDow(dia)]}</div>`; }
+    const st = i.status || 'pendente', cls = i.area === 'qualidade' ? 'q' : 'op';
+    html += `<div class="ag-lin c-${cls} st-${_agEsc(st)}">
+      <div class="ag-hora">${i.horario ? _agEsc(i.horario) : 'Sem hora'}</div>
+      <div><div class="ag-lt" onclick="agendaAbrirDia('${_agEsc(i.data)}')">${_agEsc(i.titulo)}</div><div class="ag-sub"><span class="ag-ar c-${cls}">${AG_AREAS[i.area] || _agEsc(i.area)}</span></div></div>
+      <div class="ag-resp" style="font-size:13px;color:var(--text2)">👤 ${_agEsc(i.responsavelNome || '—')}</div>
+      <div class="ag-stsel"><select class="form-select" onchange="agendaMudarStatus('${_agEsc(i.id)}',this.value,this)" title="Alterar situação">${Object.entries(AG_STATUS).map(([k, v]) => `<option value="${k}"${k === st ? ' selected' : ''}>${v}</option>`).join('')}</select></div>
+      <button class="btn btn-secondary btn-sm" onclick="agendaEditar('${_agEsc(i.id)}')">Editar</button></div>`;
+  });
+  el.innerHTML = html;
+}
+
+// ── Detalhe do dia ──────────────────────────────────────────────────────
+function agendaAbrirDia(dataISO) {
+  _agDiaAberto = dataISO; _agConfirmaExcluir = null;
+  document.getElementById('ag-dia-titulo').textContent = `${_agFmt(dataISO)} · ${AG_DOW_LONGO[_agDow(dataISO)]}`;
+  _agRenderDia();
+  document.getElementById('modal-agenda-dia').classList.add('open');
+}
+function _agCard(i) {
+  const st = i.status || 'pendente', cls = i.area === 'qualidade' ? 'q' : 'op';
+  const hist = Array.isArray(i.historico) ? i.historico : [];
+  const ed = i.atualizadoEm ? `Última alteração por <strong>${_agEsc(i.atualizadoPorNome || '—')}</strong> em ${_agFmtTs(i.atualizadoEm)}.` : 'Sem alterações após a criação.';
+  return `<div class="ag-card c-${cls} st-${_agEsc(st)}">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px"><span class="ag-ar c-${cls}">${AG_AREAS[i.area] || _agEsc(i.area)}</span><span class="ag-st ${_agEsc(st)}">${AG_STATUS[st] || _agEsc(st)}</span></div>
+    <h3>${_agEsc(i.titulo)}</h3>
+    <dl class="ag-kv"><dt>Data</dt><dd>${_agFmt(i.data)} (${AG_DOW_LONGO[_agDow(i.data)]})</dd>
+      <dt>Horário</dt><dd>${i.horario ? _agEsc(i.horario) : 'Sem horário definido'}</dd>
+      <dt>Responsável</dt><dd>${_agEsc(i.responsavelNome || '—')}</dd>
+      <dt>Descrição</dt><dd>${i.descricao ? _agEsc(i.descricao) : '—'}</dd></dl>
+    <div class="ag-aud">Cadastrada por <strong>${_agEsc(i.criadoPorNome || '—')}</strong> em ${_agFmtTs(i.criadoEm || (hist[0] && hist[0].em))}.<br>${ed}</div>
+    ${hist.length ? `<details class="ag-hist"><summary>Histórico (${hist.length})</summary><ul>${hist.slice().reverse().map(h => `<li>${_agFmtTs(h.em)} — ${_agEsc(h.porNome || '—')}: ${_agEsc(h.detalhe || h.acao || '')}</li>`).join('')}</ul></details>` : ''}
+    <div class="ag-acoes">
+      ${st !== 'concluida' ? `<button class="btn btn-sm" style="background:var(--green-bg);color:var(--green);border:1px solid rgba(34,197,94,.3)" onclick="agendaMudarStatus('${_agEsc(i.id)}','concluida')">✓ Concluir</button>` : ''}
+      ${st !== 'cancelada' ? `<button class="btn btn-danger btn-sm" onclick="agendaMudarStatus('${_agEsc(i.id)}','cancelada')">✕ Cancelar</button>` : ''}
+      ${st !== 'pendente' ? `<button class="btn btn-secondary btn-sm" onclick="agendaMudarStatus('${_agEsc(i.id)}','pendente')">↺ Reabrir</button>` : ''}
+      <button class="btn btn-secondary btn-sm" onclick="agendaEditar('${_agEsc(i.id)}')">Editar</button>
+      ${agendaPodeExcluir() ? `<button class="btn btn-danger btn-sm" id="ag-del-${_agEsc(i.id)}" onclick="agendaExcluir('${_agEsc(i.id)}')">${_agConfirmaExcluir === i.id ? 'Confirmar exclusão' : 'Excluir'}</button>` : ''}
+    </div></div>`;
+}
+function _agRenderDia() {
+  const itens = _agItensDe(_agDiaAberto);
+  document.getElementById('ag-dia-corpo').innerHTML = itens.length ? itens.map(_agCard).join('') : '<div class="ag-msg">Nenhuma atividade neste dia.</div>';
+}
+
+// ── Formulário (incluir / editar) ───────────────────────────────────────
+function agendaNova(dataISO) {
+  if (!podeVerAgenda()) return;
+  _agFormEdicao = null;
+  _agFormId = db.collection(AG_COL).doc().id; // id gerado ao abrir: cliques repetidos em Salvar não duplicam
+  _agPreencherForm({ titulo: '', area: '', data: dataISO || ((_agModo === 'semana') ? _agRef : (_agMesDe(_agHoje()) === _agMes ? _agHoje() : _agMes + '-01')), horario: '', responsavelId: currentUser.id, descricao: '' }, 'Nova atividade');
+}
+function agendaEditar(id) {
+  if (!podeVerAgenda()) return;
+  const it = Object.values(_agCache).flatMap(c => c.itens).find(x => x.id === id);
+  if (!it) { toast('Atividade não encontrada. Atualize a agenda.', 'err'); return; }
+  _agFormEdicao = it; _agFormId = id;
+  _agPreencherForm(it, 'Editar atividade');
+}
+function _agPreencherForm(v, titulo) {
+  document.getElementById('ag-form-titulo').textContent = titulo;
+  document.getElementById('ag-f-titulo').value = v.titulo || '';
+  document.getElementById('ag-f-area-form').value = v.area || '';
+  document.getElementById('ag-f-data').value = v.data || '';
+  document.getElementById('ag-f-hora').value = v.horario || '';
+  document.getElementById('ag-f-desc').value = v.descricao || '';
+  const resp = _agResponsaveis(v.responsavelId);
+  if (v.responsavelId && !resp.some(r => r.id === v.responsavelId)) resp.push({ id: v.responsavelId, nome: v.responsavelNome || '—' });
+  document.getElementById('ag-f-resp').innerHTML = resp.map(r => `<option value="${_agEsc(r.id)}">${_agEsc(r.nome)}</option>`).join('');
+  document.getElementById('ag-f-resp').value = v.responsavelId || currentUser.id;
+  const er = document.getElementById('ag-form-erro'); er.style.display = 'none'; er.textContent = '';
+  _agSalvando = false; const b = document.getElementById('ag-btn-salvar'); b.disabled = false; b.textContent = 'Salvar';
+  closeModal('modal-agenda-dia');
+  document.getElementById('modal-agenda-form').classList.add('open');
+  setTimeout(() => { const t = document.getElementById('ag-f-titulo'); if (t) t.focus(); }, 60);
+}
+function _agErroForm(m) { const er = document.getElementById('ag-form-erro'); er.textContent = m; er.style.display = 'block'; }
+function _agIdentidade() { return { id: currentUser.id, nome: currentUser.name || currentUser.nome || currentUser.email || currentUser.id }; }
+async function agendaSalvar() {
+  if (_agSalvando) return;
+  if (!podeVerAgenda()) { toast('Você não tem permissão para esta ação.', 'err'); return; }
+  const titulo = document.getElementById('ag-f-titulo').value.trim().replace(/\s+/g, ' ');
+  const area = document.getElementById('ag-f-area-form').value;
+  const data = document.getElementById('ag-f-data').value;
+  const horario = document.getElementById('ag-f-hora').value;
+  const respId = document.getElementById('ag-f-resp').value;
+  const descricao = document.getElementById('ag-f-desc').value.trim();
+  if (!titulo) return _agErroForm('Informe o título da atividade.');
+  if (!AG_AREAS[area]) return _agErroForm('Selecione a área (Operação ou Qualidade).');
+  if (!_agDataValida(data)) return _agErroForm('Informe uma data válida.');
+  if (!_agHoraValida(horario)) return _agErroForm('Horário inválido.');
+  const resp = _agResponsaveis(_agFormEdicao && _agFormEdicao.responsavelId).find(r => r.id === respId)
+    || (_agFormEdicao && _agFormEdicao.responsavelId === respId ? { id: respId, nome: _agFormEdicao.responsavelNome } : null);
+  if (!resp) return _agErroForm('Selecione um responsável da equipe autorizada.');
+  _agSalvando = true; const btn = document.getElementById('ag-btn-salvar'); btn.disabled = true; btn.textContent = 'Salvando...';
+  const quem = _agIdentidade(), agora = new Date().toISOString();
+  try {
+    let item;
+    if (!_agFormEdicao) {
+      item = await _agCriar(_agFormId, { titulo, area, data, horario, responsavelId: resp.id, responsavelNome: resp.nome, descricao }, quem, agora);
+    } else {
+      const novo = { titulo, area, data, horario, responsavelId: resp.id, responsavelNome: resp.nome, descricao };
+      const r = await _agTx(_agFormId, atual => {
+        const camp = { titulo: 'Título', area: 'Área', data: 'Data', horario: 'Horário', responsavelNome: 'Responsável', descricao: 'Descrição' };
+        const dif = [], campos = {};
+        Object.keys(camp).forEach(k => {
+          const a = atual[k] == null ? '' : atual[k], b = novo[k];
+          if (a !== b) { campos[k] = b; dif.push(k === 'descricao' ? 'Descrição alterada' : `${camp[k]}: ${_agFmtValor(k, a)} → ${_agFmtValor(k, b)}`); }
+        });
+        if (atual.responsavelId !== novo.responsavelId) campos.responsavelId = novo.responsavelId;
+        if (!dif.length && !campos.responsavelId) return null;
+        return { campos, entradas: [{ em: agora, porId: quem.id, porNome: quem.nome, acao: 'editada', detalhe: dif.join('; ') || 'Edição' }] };
+      }, quem);
+      if (!r.mudou) { closeModal('modal-agenda-form'); toast('Nenhuma alteração feita.', 'ok'); return; }
+      item = { id: _agFormId, ...r.novo };
+    }
+    _agAplicarLocal(item);
+    closeModal('modal-agenda-form');
+    toast(_agFormEdicao ? 'Atividade atualizada!' : 'Atividade criada!', 'ok');
+    if (_agMesDe(item.data) !== _agMes && _agModo === 'mes') { _agMes = _agMesDe(item.data); _agRef = item.data; agendaGarantir(false); } else agendaRender();
+  } catch (e) {
+    console.error('[Agenda] erro ao salvar:', e);
+    if (e && e.message === 'NAO_EXISTE') _agErroForm('Esta atividade foi excluída por outra pessoa. Atualize a agenda.');
+    else _agErroForm(e && e.code === 'permission-denied' ? 'Sem permissão no Firebase para gravar.' : 'Não foi possível salvar. Verifique a conexão e tente novamente.');
+    toast('Não foi possível salvar a atividade.', 'err');
+  } finally { _agSalvando = false; btn.disabled = false; btn.textContent = 'Salvar'; }
+}
+function _agFmtValor(k, v) {
+  if (k === 'area') return AG_AREAS[v] || v || '—';
+  if (k === 'data') return v ? _agFmt(v) : '—';
+  if (k === 'horario') return v || 'sem horário';
+  return v === '' || v == null ? '—' : v;
+}
+
+// ── Gravação (transações: o histórico é montado sobre a versão mais recente do servidor) ──
+async function _agCriar(id, campos, quem, agora) {
+  const ref = db.collection(AG_COL).doc(id);
+  const dados = { ...campos, status: 'pendente', criadoPorId: quem.id, criadoPorNome: quem.nome, criadoEm: firebase.firestore.FieldValue.serverTimestamp(),
+    historico: [{ em: agora, porId: quem.id, porNome: quem.nome, acao: 'criada', detalhe: 'Atividade criada' }] };
+  const r = await db.runTransaction(async tx => {
+    const s = await tx.get(ref);
+    if (s.exists) return { id, ...s.data() };          // clique repetido / reenvio: já existe, não regrava
+    tx.set(ref, dados);
+    return { id, ...dados, criadoEm: new Date() };
+  });
+  return r;
+}
+async function _agTx(id, aplicar, quem) {
+  const ref = db.collection(AG_COL).doc(id);
+  return db.runTransaction(async tx => {
+    const s = await tx.get(ref);
+    if (!s.exists) throw new Error('NAO_EXISTE');
+    const atual = s.data(), r = aplicar(atual);
+    if (!r) return { mudou: false, novo: atual };
+    const historico = (atual.historico || []).concat(r.entradas).slice(-200);
+    tx.update(ref, { ...r.campos, atualizadoPorId: quem.id, atualizadoPorNome: quem.nome, atualizadoEm: firebase.firestore.FieldValue.serverTimestamp(), historico });
+    return { mudou: true, novo: { ...atual, ...r.campos, atualizadoPorId: quem.id, atualizadoPorNome: quem.nome, atualizadoEm: new Date(), historico } };
+  });
+}
+function _agAplicarLocal(item) {
+  Object.keys(_agCache).forEach(m => { _agCache[m].itens = _agCache[m].itens.filter(x => x.id !== item.id); });
+  const c = _agCache[_agMesDe(item.data)];
+  if (c) c.itens.push(item);
+}
+async function agendaMudarStatus(id, novoStatus, selectEl) {
+  if (!podeVerAgenda()) { toast('Você não tem permissão para esta ação.', 'err'); return; }
+  if (!AG_STATUS[novoStatus]) return;
+  const quem = _agIdentidade(), agora = new Date().toISOString();
+  try {
+    const r = await _agTx(id, atual => {
+      const de = atual.status || 'pendente';
+      if (de === novoStatus) return null;
+      return { campos: { status: novoStatus }, entradas: [{ em: agora, porId: quem.id, porNome: quem.nome, acao: 'status', detalhe: `Situação: ${AG_STATUS[de] || de} → ${AG_STATUS[novoStatus]}` }] };
+    }, quem);
+    if (r.mudou) { _agAplicarLocal({ id, ...r.novo }); toast('Situação atualizada: ' + AG_STATUS[novoStatus], 'ok'); }
+    agendaRender(); if (document.getElementById('modal-agenda-dia').classList.contains('open')) _agRenderDia();
+  } catch (e) {
+    console.error('[Agenda] erro ao alterar situação:', e);
+    toast(e && e.message === 'NAO_EXISTE' ? 'Esta atividade foi excluída por outra pessoa. Atualize a agenda.' : 'Não foi possível alterar a situação.', 'err');
+    agendaRender();
+  }
+}
+async function agendaExcluir(id) {
+  if (!agendaPodeExcluir()) { toast('Somente o administrador pode excluir atividades.', 'err'); return; }
+  if (_agConfirmaExcluir !== id) { // 1º clique pede confirmação; 2º confirma
+    _agConfirmaExcluir = id; _agRenderDia();
+    setTimeout(() => { if (_agConfirmaExcluir === id) { _agConfirmaExcluir = null; if (document.getElementById('modal-agenda-dia').classList.contains('open')) _agRenderDia(); } }, 5000);
+    return;
+  }
+  _agConfirmaExcluir = null;
+  try {
+    await db.collection(AG_COL).doc(id).delete();
+    Object.keys(_agCache).forEach(m => { _agCache[m].itens = _agCache[m].itens.filter(x => x.id !== id); });
+    toast('Atividade excluída.', 'ok'); agendaRender(); _agRenderDia();
+  } catch (e) { console.error('[Agenda] erro ao excluir:', e); toast('Não foi possível excluir a atividade.', 'err'); _agRenderDia(); }
 }
 
 </script>
