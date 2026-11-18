@@ -732,6 +732,38 @@ const PosCanalLabels = {
     .ag-nav .ag-titulo{min-width:0;flex:1;}
     .ag-kv{grid-template-columns:96px minmax(0,1fr);}
   }
+
+  /* ═══ CSAT — RELATÓRIO POR SUPERVISÃO ═══ */
+  #modal-csat-relsup .modal{width:min(1560px,97vw);max-width:97vw;padding:20px 22px;}
+  .csr-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:14px;}
+  .csr-bar .form-select{min-width:150px;padding:8px 12px;font-size:13px;}
+  .csr-bar .sp{flex:1;}
+  .csr-wrap{background:#fff;border-radius:12px;overflow:auto;max-height:calc(90vh - 150px);}
+  .csr-load{padding:50px;text-align:center;color:#5a5a72;background:#fff;border-radius:12px;font-size:14px;}
+  .csr-rep{background:#fff;color:#1b1b2a;font-family:"Syne",sans-serif;width:max-content;min-width:100%;padding:0 0 14px;}
+  .csr-head{background:linear-gradient(90deg,#0a0a0f,#1f1f33);border-bottom:4px solid #C9A227;display:flex;justify-content:space-between;align-items:center;padding:10px 22px;gap:14px;}
+  .csr-head-l{display:flex;align-items:center;gap:16px;} .csr-head-l img{height:78px;width:auto;}
+  .csr-t{color:#fff;font-size:25px;font-weight:800;} .csr-s{color:#C9A227;font-size:14px;font-weight:600;margin-top:4px;}
+  .csr-head-r{color:#b8b8cc;font-size:11px;text-align:right;align-self:flex-start;padding-top:2px;}
+  .csr-bl{margin:16px 22px 0;}
+  .csr-bt{color:#fff;font-size:15px;font-weight:800;padding:8px 14px;}
+  .csr-tb{border-collapse:collapse;width:100%;table-layout:fixed;font-size:12px;}
+  .csr-tb col.c-lbl{width:262px;} .csr-tb col.c-n{width:54px;} .csr-tb col.c-v{width:62px;} .csr-tb col.c-an{width:64px;} .csr-tb col.c-av{width:74px;}
+  .csr-tb th,.csr-tb td{border:1px solid #e1e1ec;text-align:center;padding:5px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .csr-tb th{background:#ececf6;color:#2a2a3e;font-weight:700;} .csr-tb th.z1{background:#e4e4f3;} .csr-tb th.sb{font-size:10px;color:#5a5a72;font-weight:600;}
+  .csr-tb th.ac{background:#e9d58a;color:#4a3b05;font-weight:800;}
+  .csr-tb th.lbl,.csr-tb td.lbl{text-align:left;padding-left:12px;}
+  .csr-tb td{font-weight:500;} .csr-tb td.lbl{font-weight:600;}
+  .csr-tb td.z1{background:#f3f3fb;} .csr-tb td.ac{background:#fbf4d9;font-weight:800;}
+  .csr-tb td.red,.csr-card b.red{color:#dc2626;}
+  .csr-tb tr.r-cons1 td{background:var(--cl);font-weight:800;} .csr-tb tr.r-cons1 td.ac{background:#f1e3a6;}
+  .csr-tb tr.r-cons2 td{background:#f1f1f6;font-weight:800;} .csr-tb tr.r-cons2 td.ac{background:#f6ecbf;}
+  .csr-geral{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin:20px 22px 0;}
+  .csr-card{border-radius:6px;overflow:hidden;background:#e8e8ff;} .csr-card:nth-child(2){background:#f6ecbf;}
+  .csr-ct{background:#4a4aee;color:#fff;font-weight:800;font-size:15px;padding:8px 14px;} .csr-card:nth-child(2) .csr-ct{background:#8a6d0f;}
+  .csr-its{display:grid;grid-template-columns:repeat(4,1fr);text-align:center;padding:12px 6px 16px;}
+  .csr-its span{display:block;font-size:11px;font-weight:600;color:#4a4a60;margin-bottom:8px;} .csr-its b{font-size:24px;font-weight:800;color:#1b1b2a;}
+  .csr-foot{margin:14px 22px 0;font-size:11px;color:#5a5a72;line-height:1.5;}
 </style>
   <style>
   .caixa-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px 24px;margin-bottom:16px;}
@@ -1396,6 +1428,7 @@ const PosCanalLabels = {
             <button class="ind-tab-btn" id="csatTab-importar" onclick="switchCsatTab('importar')">📥 Importar</button>
             <button class="ind-tab-btn" id="csatTab-acoes" onclick="switchCsatTab('acoes')">📋 Planos de Ação</button>
           </div>
+          <button class="btn btn-sm btn-secondary" id="csr-btn-abrir" onclick="csrAbrir()">📑 Relatório por Supervisão</button>
         </div>
       </div>
 
@@ -2810,6 +2843,19 @@ const PosCanalLabels = {
     <div class="modal-header"><div class="modal-title" id="ag-dia-titulo">Dia</div><button class="close-btn" onclick="closeModal('modal-agenda-dia')">✕</button></div>
     <div id="ag-dia-corpo"></div>
     <div style="margin-top:6px"><button class="btn btn-secondary btn-sm" id="ag-dia-nova" onclick="agendaNova(_agDiaAberto)">+ Nova atividade neste dia</button></div>
+  </div>
+</div>
+<div class="modal-overlay" id="modal-csat-relsup">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">📑 Relatório por Supervisão</div><button class="close-btn" onclick="closeModal('modal-csat-relsup')">✕</button></div>
+    <div class="csr-bar">
+      <div><label class="form-label">Ano</label><select class="form-select" id="csr-ano" onchange="csrMudouAno()"></select></div>
+      <div><label class="form-label">Mês de referência</label><select class="form-select" id="csr-mes" onchange="csrAtualizar()"></select></div>
+      <div class="sp"></div>
+      <button class="btn btn-secondary" onclick="csrBaixarExcel()">⬇ Baixar Excel</button>
+      <button class="btn btn-primary" onclick="csrBaixarPng()">🖼 Baixar Imagem</button>
+    </div>
+    <div class="csr-wrap" id="csr-corpo"></div>
   </div>
 </div>
 <div class="modal-overlay" id="modal-aprovar-justificativa">
@@ -33194,6 +33240,399 @@ async function agendaExcluir(id) {
     Object.keys(_agCache).forEach(m => { _agCache[m].itens = _agCache[m].itens.filter(x => x.id !== id); });
     toast('Atividade excluída.', 'ok'); agendaRender(); _agRenderDia();
   } catch (e) { console.error('[Agenda] erro ao excluir:', e); toast('Não foi possível excluir a atividade.', 'err'); _agRenderDia(); }
+}
+
+</script>
+<script>
+
+// ══════════════════════════════════════════════════════════════════════
+// CSAT — RELATÓRIO POR SUPERVISÃO (somente leitura; nenhum dado é gravado)
+// Reaproveita: csatAllData (coleção csat) e allIndicadores (senhasAtendidas),
+// CSAT_SUPERVISORES (vínculo posto→supervisor do módulo), _opNomeCanonicoOficial
+// e _opNormMesRef. Mesma metodologia do módulo: nota = Σ(notaMedia×pesquisas) ÷ Σ pesquisas.
+// UMA estrutura de dados (csrCalc → csrGrade) alimenta prévia, Excel e PNG.
+// ══════════════════════════════════════════════════════════════════════
+const CSR_META = 4.55;                       // meta fixa SÓ deste relatório (não altera CSAT_META nem metas cadastradas)
+const CSR_MAMBUCABA_INICIO = '2026-11';      // início da gestão do Parque Mambucaba
+const CSR_SUPS = [
+  { key: 'victor',   titulo: 'Supervisão Victor Simões',   cor: '#4a4aee', clara: '#e8e8ff' },
+  { key: 'leonardo', titulo: 'Supervisão Leonardo Gabriel', cor: '#8a6d0f', clara: '#faf1d2' }
+];
+const CSR_MES_ABREV = ['', 'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+const CSR_MES_NOME = ['', 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+let _csrAtual = null;       // { model, grid } do que está na prévia (usado pelos dois downloads)
+let _csrOcupado = false;
+let _csrExcelJsPromessa = null;
+
+function csrCanon(n) { return _opNomeCanonicoOficial(n); }
+function csrR2(x) { return x == null || isNaN(x) ? null : Number(Number(x).toFixed(2)); }
+function csrNomeExibicao(canon) {
+  try {
+    const p = (typeof allPostos !== 'undefined' ? allPostos : []).find(x => x && x.nome && csrCanon(x.nome) === canon);
+    if (p && p.nome) return p.nome;
+  } catch (e) {}
+  return canon.toLowerCase().split(' ').map(w => (['de', 'do', 'da'].includes(w) ? w : w.charAt(0).toUpperCase() + w.slice(1))).join(' ').replace(/-([a-z])/g, (m, c) => '-' + c.toUpperCase());
+}
+
+// ── Cálculo (puro): recebe os arrays já carregados e devolve o modelo ──
+function csrCalc(ano, mes, csatArr, indArr, info) {
+  const refs = [];
+  for (let m = 1; m <= mes; m++) refs.push(ano + '-' + String(m).padStart(2, '0'));
+  const idx = {}; refs.forEach((r, i) => { idx[r] = i; });
+  const ca = {}, ia = {};          // por posto canônico → por mês {p, s} / {sen}
+  const csatMesTem = new Array(refs.length).fill(false);
+  (csatArr || []).forEach(d => {
+    const r = _opNormMesRef(d.mesRef); if (!(r in idx)) return;
+    const k = csrCanon(d.postoNome);
+    if (k === POSTO_MAMBUCABA && r < CSR_MAMBUCABA_INICIO) return;
+    const p = parseInt(d.pesquisas) || 0;
+    const o = ca[k] || (ca[k] = {}); const c = o[idx[r]] || (o[idx[r]] = { p: 0, s: 0 });
+    c.p += p; c.s += (d.notaMedia || 0) * p; csatMesTem[idx[r]] = true;
+  });
+  (indArr || []).forEach(d => {
+    const r = _opNormMesRef(d.mesRef); if (!(r in idx)) return;
+    const k = csrCanon(d.postoNome);
+    if (k === POSTO_MAMBUCABA && r < CSR_MAMBUCABA_INICIO) return;
+    const o = ia[k] || (ia[k] = {}); const c = o[idx[r]] || (o[idx[r]] = { sen: 0 });
+    c.sen += parseInt(d.senhasAtendidas) || 0;
+  });
+  // agrega um conjunto de postos num conjunto de meses
+  const agg = (postos, meses) => {
+    let p = 0, s = 0, sen = 0, temSen = false, temCsat = false;
+    postos.forEach(k => meses.forEach(i => {
+      const c = (ca[k] || {})[i]; if (c) { p += c.p; s += c.s; temCsat = true; }
+      const q = (ia[k] || {})[i]; if (q) { sen += q.sen; temSen = true; }
+    }));
+    return { p, s, sen, temSen, temCsat, nota: p > 0 ? s / p : null };
+  };
+  const todosMeses = refs.map((_, i) => i);
+  const pctDe = a => (a.temSen && a.sen > 0 && a.temCsat) ? a.p / a.sen * 100 : null;
+  const resumo = a => ({ nota: csrR2(a.nota), pesq: a.p > 0 ? a.p : null, sen: a.temSen && a.sen > 0 ? a.sen : null, pct: csrR2(pctDe(a)) });
+
+  const blocos = CSR_SUPS.map(sup => {
+    const cfg = CSAT_SUPERVISORES[sup.key];
+    const postos = (cfg ? cfg.postos : []).map(csrCanon).filter((v, i, a) => a.indexOf(v) === i);
+    const linhas = postos.map(k => {
+      const meses = refs.map((_, i) => { const a = agg([k], [i]); return { nota: csrR2(a.nota), pesq: a.p > 0 ? a.p : null }; });
+      const ac = agg([k], todosMeses);
+      return { chave: k, posto: csrNomeExibicao(k), meses, acum: { nota: csrR2(ac.nota), pesq: ac.p > 0 ? ac.p : null } };
+    });
+    linhas.sort((a, b) => {
+      const an = a.acum.nota, bn = b.acum.nota;
+      if (an === null && bn !== null) return 1; if (bn === null && an !== null) return -1;
+      if (an !== null && bn !== null && an !== bn) return bn - an;
+      const ap = a.acum.pesq || 0, bp = b.acum.pesq || 0; if (ap !== bp) return bp - ap;
+      return a.posto.localeCompare(b.posto, 'pt-BR');
+    });
+    const consMes = refs.map((_, i) => agg(postos, [i]));
+    const consAc = agg(postos, todosMeses);
+    return {
+      sup, linhas,
+      csat: { meses: consMes.map(a => ({ nota: csrR2(a.nota), pesq: a.p > 0 ? a.p : null })), acum: { nota: csrR2(consAc.nota), pesq: consAc.p > 0 ? consAc.p : null } },
+      senhas: { meses: consMes.map(a => ({ sen: a.temSen && a.sen > 0 ? a.sen : null, pct: csrR2(pctDe(a)) })), acum: { sen: consAc.temSen && consAc.sen > 0 ? consAc.sen : null, pct: csrR2(pctDe(consAc)) } }
+    };
+  });
+  const uniao = [...new Set(CSR_SUPS.flatMap(s => ((CSAT_SUPERVISORES[s.key] || {}).postos || []).map(csrCanon)))];
+  const geral = {
+    ano: resumo(agg(uniao, todosMeses)),
+    mes: resumo(agg(uniao, [refs.length - 1]))
+  };
+  const obs = [];
+  if (info && info.csat && info.ind && info.csat !== info.ind) obs.push(`Bases com datas de atualização diferentes: CSAT até ${info.csat} · Senhas (Indicadores) até ${info.ind}.`);
+  if (ano <= 2026) obs.push('Parque Mambucaba: considerados apenas os resultados do Gestão Conect@ a partir de 11/2026 (início da nossa gestão); competências anteriores sem dados.');
+  return { ano, mes, refs, blocos, geral, obs, info: info || {}, gerado: new Date().toLocaleString('pt-BR') };
+}
+
+// ── Grade única (texto/valores) usada pelos 3 formatos ──
+function csrGrade(model) {
+  const meses = model.refs.map((r, i) => ({ ref: r, lbl: CSR_MES_ABREV[i + 1] }));
+  const grade = { model, meses, blocos: [], geral: [], titulo: 'Acompanhamento CSAT — Supervisões',
+    sub: `Competência de referência: ${CSR_MES_NOME[model.mes]}/${model.ano}  ·  Ano ${model.ano}` };
+  model.blocos.forEach(b => {
+    const linhas = b.linhas.map(l => ({ tipo: 'posto', rot: l.posto,
+      cel: [...l.meses.map(m => [{ t: 'nota', v: m.nota }, { t: 'int', v: m.pesq }]).flat(), { t: 'nota', v: l.acum.nota }, { t: 'int', v: l.acum.pesq }] }));
+    linhas.push({ tipo: 'cons1', rot: 'Resultado CSAT',
+      cel: [...b.csat.meses.map(m => [{ t: 'nota', v: m.nota }, { t: 'int', v: m.pesq }]).flat(), { t: 'nota', v: b.csat.acum.nota }, { t: 'int', v: b.csat.acum.pesq }] });
+    linhas.push({ tipo: 'cons2', rot: 'Volume de senhas / %',
+      cel: [...b.senhas.meses.map(m => [{ t: 'int', v: m.sen }, { t: 'pct', v: m.pct }]).flat(), { t: 'int', v: b.senhas.acum.sen }, { t: 'pct', v: b.senhas.acum.pct }] });
+    grade.blocos.push({ titulo: b.sup.titulo, cor: b.sup.cor, clara: b.sup.clara, linhas });
+  });
+  const mk = (tit, r) => ({ titulo: tit, itens: [{ rot: 'Nota CSAT', t: 'nota', v: r.nota }, { rot: 'Pesquisas', t: 'int', v: r.pesq }, { rot: 'Senhas atendidas', t: 'int', v: r.sen }, { rot: '% participação', t: 'pct', v: r.pct }] });
+  grade.geral = [mk(`ACUMULADO DO ANO ${model.ano}`, model.geral.ano), mk(`PARCIAL DO MÊS ${CSR_MES_ABREV[model.mes]}/${model.ano}`, model.geral.mes)];
+  grade.rodape = [
+    `Meta CSAT deste relatório: ${CSR_META.toFixed(2).replace('.', ',')} — notas abaixo da meta em vermelho. Notas consolidadas ponderadas pelo volume de pesquisas (sem média simples). Participação = pesquisas ÷ senhas atendidas × 100; no acumulado usa os volumes acumulados.`,
+    ...model.obs
+  ];
+  const atu = [];
+  if (model.info.csat) atu.push('CSAT até ' + model.info.csat);
+  if (model.info.ind) atu.push('Senhas até ' + model.info.ind);
+  grade.atualizacao = (atu.length ? 'Dados: ' + atu.join(' · ') + '  |  ' : '') + 'Gerado em ' + model.gerado;
+  return grade;
+}
+function csrFmt(c) {
+  if (c.v === null || c.v === undefined || (typeof c.v === 'number' && isNaN(c.v))) return '—';
+  if (c.t === 'nota') return c.v.toFixed(2).replace('.', ',');
+  if (c.t === 'pct') return c.v.toFixed(2).replace('.', ',') + '%';
+  if (c.t === 'int') return Math.round(c.v).toLocaleString('pt-BR');
+  return String(c.v);
+}
+function csrVermelho(c) { return c.t === 'nota' && c.v !== null && c.v !== undefined && !isNaN(c.v) && c.v < CSR_META; }
+
+// ── Dados (reaproveita o que já está em memória; só consulta o que falta) ──
+function _csrDataIndTxt() { const m = String(typeof _indicadoresUltimoImportTxt !== 'undefined' ? _indicadoresUltimoImportTxt : '').match(/D-1:\s*(\d{2}\/\d{2}\/\d{4})/); return m ? m[1] : ''; }
+async function csrGarantirDados() {
+  await initCsatMesFiltro();   // compartilhado + TTL: só lê o Firestore se o CSAT ainda não está em memória
+  await _compartilhar('ind', async () => {
+    if (!(indicadoresCarregados && allIndicadores.length && _cacheFresco('ind'))) await carregarTodosIndicadores();
+  });
+}
+function csrCalcular(ano, mes) {
+  return csrCalc(ano, mes, csatAllData, allIndicadores, { csat: csatUltimaAtualizacao || '', ind: _csrDataIndTxt() });
+}
+
+// ── Prévia (HTML) ──
+function csrEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function csrLogoSrc() { try { const i = document.querySelector('.ll-logo img'); return i && i.src ? i.src : ''; } catch (e) { return ''; } }
+function csrHtml(g) {
+  const nm = g.meses.length;
+  const th = (txt, extra) => `<th ${extra || ''}>${csrEsc(txt)}</th>`;
+  const zona = i => (i % 2 ? 'z1' : 'z0');
+  let h = `<div class="csr-rep" id="csr-rep"><div class="csr-head"><div class="csr-head-l">${csrLogoSrc() ? `<img src="${csrLogoSrc()}" alt="Gestão Conect@">` : ''}<div><div class="csr-t">${csrEsc(g.titulo)}</div><div class="csr-s">${csrEsc(g.sub)}</div></div></div><div class="csr-head-r">${csrEsc(g.atualizacao)}</div></div>`;
+  g.blocos.forEach(b => {
+    h += `<div class="csr-bl"><div class="csr-bt" style="background:${b.cor}">${csrEsc(b.titulo)}</div><table class="csr-tb"><colgroup><col class="c-lbl">${g.meses.map(() => '<col class="c-n"><col class="c-v">').join('')}<col class="c-an"><col class="c-av"></colgroup><thead><tr>${th('Posto', 'rowspan="2" class="lbl"')}`;
+    g.meses.forEach((m, i) => { h += th(m.lbl, `colspan="2" class="${zona(i)}"`); });
+    h += th('Acumulado ' + g.model.ano, 'colspan="2" class="ac"') + '</tr><tr>';
+    g.meses.forEach((m, i) => { h += th('Nota', `class="${zona(i)} sb"`) + th('Pesq.', `class="${zona(i)} sb"`); });
+    h += th('Nota', 'class="ac sb"') + th('Pesq.', 'class="ac sb"') + '</tr></thead><tbody>';
+    b.linhas.forEach(l => {
+      h += `<tr class="r-${l.tipo}"${l.tipo !== 'posto' ? ` style="--cl:${b.clara}"` : ''}><td class="lbl">${csrEsc(l.rot)}</td>`;
+      l.cel.forEach((c, j) => { const z = j >= nm * 2 ? 'ac' : zona(Math.floor(j / 2)); h += `<td class="${z}${csrVermelho(c) ? ' red' : ''}">${csrEsc(csrFmt(c))}</td>`; });
+      h += '</tr>';
+    });
+    h += '</tbody></table></div>';
+  });
+  h += '<div class="csr-geral">' + g.geral.map(x => `<div class="csr-card"><div class="csr-ct">${csrEsc(x.titulo)}</div><div class="csr-its">${x.itens.map(it => `<div><span>${csrEsc(it.rot)}</span><b class="${csrVermelho(it) ? 'red' : ''}">${csrEsc(csrFmt(it))}</b></div>`).join('')}</div></div>`).join('') + '</div>';
+  h += '<div class="csr-foot">' + g.rodape.map(t => `<div>${csrEsc(t)}</div>`).join('') + '</div></div>';
+  return h;
+}
+
+// ── UI ──
+function csrPreencherSeletores(anoSel, mesSel) {
+  const hoje = new Date(); const anoH = hoje.getFullYear(), mesH = hoje.getMonth() + 1;
+  const anos = new Set([anoH]);
+  [...(csatAllData || []), ...(allIndicadores || [])].forEach(d => { const r = _opNormMesRef(d.mesRef); if (r) anos.add(+r.slice(0, 4)); });
+  const lista = [...anos].filter(a => a <= anoH).sort((a, b) => b - a);
+  const sa = document.getElementById('csr-ano'), sm = document.getElementById('csr-mes');
+  sa.innerHTML = lista.map(a => `<option value="${a}">${a}</option>`).join(''); sa.value = String(anoSel);
+  const maxM = anoSel === anoH ? mesH : 12;
+  sm.innerHTML = Array.from({ length: maxM }, (_, i) => `<option value="${i + 1}">${CSR_MES_NOME[i + 1]}</option>`).join('');
+  sm.value = String(Math.min(mesSel, maxM));
+}
+async function csrAbrir() {
+  const hoje = new Date();
+  document.getElementById('modal-csat-relsup').classList.add('open');
+  const corpo = document.getElementById('csr-corpo'); corpo.innerHTML = '<div class="csr-load">Carregando dados…</div>';
+  try {
+    await csrGarantirDados();
+    csrPreencherSeletores(hoje.getFullYear(), hoje.getMonth() + 1);
+    csrAtualizar();
+  } catch (e) { console.error('[Relatório por Supervisão]', e); corpo.innerHTML = '<div class="csr-load" style="color:#dc2626">Não foi possível carregar os dados. Verifique a conexão e tente novamente.</div>'; _csrAtual = null; }
+}
+function csrMudouAno() {
+  const sa = document.getElementById('csr-ano'); const anoH = new Date().getFullYear(), mesH = new Date().getMonth() + 1;
+  csrPreencherSeletores(+sa.value, +document.getElementById('csr-mes').value || 1); csrAtualizar();
+}
+function csrAtualizar() {
+  const ano = +document.getElementById('csr-ano').value, mes = +document.getElementById('csr-mes').value;
+  try {
+    const model = csrCalcular(ano, mes); const grid = csrGrade(model);
+    _csrAtual = { model, grid };
+    document.getElementById('csr-corpo').innerHTML = csrHtml(grid);
+  } catch (e) { console.error('[Relatório por Supervisão]', e); _csrAtual = null; document.getElementById('csr-corpo').innerHTML = '<div class="csr-load" style="color:#dc2626">Erro ao montar o relatório.</div>'; }
+}
+function csrNomeArquivo(ext) { const a = _csrAtual.model; return `Acompanhamento_CSAT_Supervisoes_${a.ano}-${String(a.mes).padStart(2, '0')}.${ext}`; }
+function csrBaixarBlob(blob, nome) {
+  const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = nome;
+  document.body.appendChild(a); a.click(); setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1500);
+}
+
+// ── PNG (canvas, alta resolução) ──
+function csrCarregarImg(src) { return new Promise(res => { if (!src) return res(null); const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; }); }
+async function csrDesenhar(g, escala) {
+  try { await Promise.all([document.fonts.load('700 14px Syne'), document.fonts.load('600 14px Syne'), document.fonts.load('500 14px "IBM Plex Mono"')]); } catch (e) {}
+  const logo = await csrCarregarImg(csrLogoSrc());
+  const F = 'Syne, "Segoe UI", Arial, sans-serif', M = 'Syne, "Segoe UI", Arial, sans-serif';
+  const nm = g.meses.length, PAD = 28, WL = 262, WN = 58, WV = 66, WAN = 66, WAV = 78, RH = 27, HH = 28;
+  const wTab = WL + nm * (WN + WV) + WAN + WAV, W = wTab + PAD * 2;
+  const headH = 104, blkTit = 36;
+  const hBloco = blkTit + HH * 2 + RH * (g.blocos[0] ? g.blocos[0].linhas.length : 0);
+  let H = headH + 18;
+  g.blocos.forEach(b => { H += blkTit + HH * 2 + RH * b.linhas.length + 20; });
+  H += 150 + 20 + g.rodape.length * 20 + 24;
+  const cv = document.createElement('canvas'); cv.width = Math.round(W * escala); cv.height = Math.round(H * escala);
+  const x = cv.getContext('2d'); x.scale(escala, escala); x.textBaseline = 'middle';
+  x.fillStyle = '#ffffff'; x.fillRect(0, 0, W, H);
+  // cabeçalho institucional
+  const gr = x.createLinearGradient(0, 0, W, 0); gr.addColorStop(0, '#0a0a0f'); gr.addColorStop(1, '#1f1f33'); x.fillStyle = gr; x.fillRect(0, 0, W, headH);
+  x.fillStyle = '#C9A227'; x.fillRect(0, headH - 4, W, 4);
+  let tx = PAD; if (logo) { const lh = 82, lw = lh * logo.width / logo.height; x.drawImage(logo, PAD, 9, lw, lh); tx = PAD + lw + 18; }
+  x.fillStyle = '#ffffff'; x.font = `800 27px ${F}`; x.textAlign = 'left'; x.fillText(g.titulo, tx, 38);
+  x.fillStyle = '#C9A227'; x.font = `600 15px ${F}`; x.fillText(g.sub, tx, 68);
+  x.fillStyle = '#b8b8cc'; x.font = `500 12px ${F}`; x.textAlign = 'right'; x.fillText(g.atualizacao, W - PAD, 20);
+  let y = headH + 18;
+  const cor = { z0: '#ffffff', z1: '#f3f3fb', ac: '#fbf4d9' };
+  const txt = (t, cx, cy, fonte, cl, al) => { x.font = fonte; x.fillStyle = cl; x.textAlign = al || 'center'; x.fillText(t, cx, cy); };
+  const linhaH = (yy) => { x.strokeStyle = '#e1e1ec'; x.lineWidth = 1; x.beginPath(); x.moveTo(PAD, yy + .5); x.lineTo(PAD + wTab, yy + .5); x.stroke(); };
+  g.blocos.forEach(b => {
+    x.fillStyle = b.cor; x.fillRect(PAD, y, wTab, blkTit); txt(b.titulo, PAD + 14, y + blkTit / 2, `800 16px ${F}`, '#ffffff', 'left'); y += blkTit;
+    // cabeçalho de colunas (2 linhas)
+    const colX = [PAD, PAD + WL]; for (let i = 0; i < nm; i++) { colX.push(colX[colX.length - 1] + WN); colX.push(colX[colX.length - 1] + WV); } colX.push(colX[colX.length - 1] + WAN); colX.push(colX[colX.length - 1] + WAV);
+    x.fillStyle = '#ececf6'; x.fillRect(PAD, y, WL, HH * 2); txt('Posto', PAD + 12, y + HH, `700 13px ${F}`, '#2a2a3e', 'left');
+    for (let i = 0; i < nm; i++) {
+      const x0 = colX[1 + i * 2], x1 = colX[3 + i * 2]; x.fillStyle = i % 2 ? '#e4e4f3' : '#ececf6'; x.fillRect(x0, y, x1 - x0, HH * 2);
+      txt(g.meses[i].lbl, (x0 + x1) / 2, y + HH / 2, `700 13px ${F}`, '#2a2a3e'); txt('Nota', (x0 + colX[2 + i * 2]) / 2, y + HH * 1.5, `600 11px ${F}`, '#5a5a72'); txt('Pesq.', (colX[2 + i * 2] + x1) / 2, y + HH * 1.5, `600 11px ${F}`, '#5a5a72');
+    }
+    const a0 = colX[1 + nm * 2], a1 = colX[3 + nm * 2]; x.fillStyle = '#e9d58a'; x.fillRect(a0, y, a1 - a0, HH * 2);
+    txt('Acumulado ' + g.model.ano, (a0 + a1) / 2, y + HH / 2, `800 13px ${F}`, '#4a3b05'); txt('Nota', (a0 + colX[2 + nm * 2]) / 2, y + HH * 1.5, `700 11px ${F}`, '#4a3b05'); txt('Pesq.', (colX[2 + nm * 2] + a1) / 2, y + HH * 1.5, `700 11px ${F}`, '#4a3b05');
+    y += HH * 2;
+    b.linhas.forEach(l => {
+      const destaque = l.tipo !== 'posto';
+      if (destaque) { x.fillStyle = l.tipo === 'cons1' ? b.clara : '#f1f1f6'; x.fillRect(PAD, y, wTab, RH); }
+      else { x.fillStyle = '#ffffff'; }
+      // zonas
+      for (let i = 0; i < nm; i++) { if (!destaque && i % 2) { x.fillStyle = cor.z1; x.fillRect(colX[1 + i * 2], y, colX[3 + i * 2] - colX[1 + i * 2], RH); } }
+      x.fillStyle = destaque ? (l.tipo === 'cons1' ? '#f1e3a6' : '#f6ecbf') : cor.ac; x.fillRect(a0, y, a1 - a0, RH);
+      let nome = l.rot; x.font = `${destaque ? 800 : 600} 13px ${F}`; while (nome.length > 3 && x.measureText(nome).width > WL - 20) nome = nome.slice(0, -2);
+      if (nome !== l.rot) nome = nome.trimEnd() + '…';
+      txt(nome, PAD + 12, y + RH / 2, `${destaque ? 800 : 600} 13px ${F}`, '#1b1b2a', 'left');
+      l.cel.forEach((c, j) => {
+        const cx = (colX[1 + j] + colX[2 + j]) / 2; const ac = j >= nm * 2;
+        txt(csrFmt(c), cx, y + RH / 2, `${(ac || destaque) ? 800 : 500} 13px ${M}`, csrVermelho(c) ? '#dc2626' : '#1b1b2a');
+      });
+      y += RH; linhaH(y);
+    });
+    y += 20;
+  });
+  // resultado geral
+  const cw = (wTab - 20) / 2; g.geral.forEach((cd, k) => {
+    const cx = PAD + k * (cw + 20); x.fillStyle = k ? '#f6ecbf' : '#e8e8ff'; x.fillRect(cx, y, cw, 150);
+    x.fillStyle = k ? '#8a6d0f' : '#4a4aee'; x.fillRect(cx, y, cw, 36); txt(cd.titulo, cx + 14, y + 18, `800 16px ${F}`, '#ffffff', 'left');
+    const iw = cw / 4; cd.itens.forEach((it, i) => {
+      const ix = cx + i * iw + iw / 2; txt(it.rot, ix, y + 62, `600 12px ${F}`, '#4a4a60');
+      txt(csrFmt(it), ix, y + 105, `800 28px ${M}`, csrVermelho(it) ? '#dc2626' : '#1b1b2a');
+    });
+  });
+  y += 150 + 20;
+  g.rodape.forEach(t => { // quebra simples
+    x.font = `500 11px ${F}`; x.fillStyle = '#5a5a72'; x.textAlign = 'left';
+    const pal = t.split(' '); let ln = ''; pal.forEach(p => { const tt = ln ? ln + ' ' + p : p; if (x.measureText(tt).width > wTab) { x.fillText(ln, PAD, y); y += 15; ln = p; } else ln = tt; }); x.fillText(ln, PAD, y); y += 19;
+  });
+  return cv;
+}
+async function csrBaixarPng() {
+  if (!_csrAtual || _csrOcupado) return; _csrOcupado = true;
+  try {
+    const cv = await csrDesenhar(_csrAtual.grid, 3);
+    await new Promise((res, rej) => cv.toBlob(b => { if (!b) return rej(new Error('toBlob vazio')); csrBaixarBlob(b, csrNomeArquivo('png')); res(); }, 'image/png'));
+    toast('Imagem gerada.', 'ok');
+  } catch (e) { console.error('[Relatório por Supervisão] PNG', e); toast('Não foi possível gerar a imagem.', 'err'); }
+  finally { _csrOcupado = false; }
+}
+
+// ── Excel (ExcelJS sob demanda: o SheetJS do sistema não grava cores/estilos) ──
+function csrCarregarExcelJS() {
+  if (window.ExcelJS) return Promise.resolve();
+  if (_csrExcelJsPromessa) return _csrExcelJsPromessa;
+  _csrExcelJsPromessa = new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+    s.onload = () => res(); s.onerror = () => { _csrExcelJsPromessa = null; rej(new Error('Falha ao carregar ExcelJS')); }; document.head.appendChild(s);
+  });
+  return _csrExcelJsPromessa;
+}
+function csrColLetra(n) { let s = ''; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
+async function csrMontarExcel(g, ExcelJS) {
+  const nm = g.meses.length, nCols = 1 + nm * 2 + 2;
+  const wb = new ExcelJS.Workbook(); wb.creator = 'Gestão Conect@'; wb.created = new Date();
+  const ws = wb.addWorksheet('Acompanhamento CSAT', { views: [{ showGridLines: false }], pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 } });
+  ws.getColumn(1).width = 34; for (let c = 2; c <= nCols; c++) ws.getColumn(c).width = (c - 2) % 2 === 0 ? 8.5 : 9.5;
+  ws.getColumn(nCols - 1).width = 9.5; ws.getColumn(nCols).width = 11;
+  const fill = rgb => ({ type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + rgb.replace('#', '') } });
+  const brd = { top: { style: 'thin', color: { argb: 'FFD9D9E6' } }, bottom: { style: 'thin', color: { argb: 'FFD9D9E6' } }, left: { style: 'thin', color: { argb: 'FFD9D9E6' } }, right: { style: 'thin', color: { argb: 'FFD9D9E6' } } };
+  const merge = (r, c1, c2) => { if (c2 > c1) ws.mergeCells(r, c1, r, c2); };
+  // cabeçalho institucional (linhas 1-3)
+  for (let r = 1; r <= 3; r++) { ws.getRow(r).height = r === 1 ? 30 : 22; for (let c = 1; c <= nCols; c++) ws.getCell(r, c).fill = fill('#0a0a0f'); }
+  const logoSrc = csrLogoSrc(); let logoOk = false;
+  if (logoSrc) { try { const im = await csrCarregarImg(logoSrc); if (im) { const cv = document.createElement('canvas'); cv.width = im.width; cv.height = im.height; cv.getContext('2d').drawImage(im, 0, 0); const id = wb.addImage({ base64: cv.toDataURL('image/png'), extension: 'png' }); ws.addImage(id, { tl: { col: 0.1, row: 0.1 }, ext: { width: 62, height: 64 } }); logoOk = true; } } catch (e) {} }
+  const c0 = logoOk ? 2 : 1;
+  ws.getRow(1).height = 26; ws.getRow(2).height = 22; ws.getRow(3).height = 22;
+  ws.getCell(1, c0).value = g.titulo; ws.getCell(1, c0).font = { name: 'Calibri', size: 18, bold: true, color: { argb: 'FFFFFFFF' } }; merge(1, c0, nCols); ws.getCell(1, c0).alignment = { vertical: 'middle', horizontal: 'left', indent: logoOk ? 3 : 1 };
+  ws.getCell(2, c0).value = g.sub; ws.getCell(2, c0).font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFC9A227' } }; merge(2, c0, nCols); ws.getCell(2, c0).alignment = { vertical: 'middle', horizontal: 'left', indent: logoOk ? 3 : 1 };
+  ws.getCell(3, c0).value = g.atualizacao; ws.getCell(3, c0).font = { name: 'Calibri', size: 9, color: { argb: 'FFB8B8CC' } }; merge(3, c0, nCols); ws.getCell(3, c0).alignment = { vertical: 'middle', horizontal: 'left', indent: logoOk ? 3 : 1 };
+  for (let c = 1; c <= nCols; c++) ws.getCell(3, c).border = { bottom: { style: 'thick', color: { argb: 'FFC9A227' } } };
+  let r = 5; const cfRanges = [];
+  const estiloCel = (cell, t) => { cell.numFmt = t === 'nota' ? '0.00' : t === 'pct' ? '0.00"%"' : '#,##0'; cell.alignment = { horizontal: 'center', vertical: 'middle' }; };
+  g.blocos.forEach(b => {
+    ws.getRow(r).height = 24; ws.getCell(r, 1).value = b.titulo; merge(r, 1, nCols);
+    for (let c = 1; c <= nCols; c++) ws.getCell(r, c).fill = fill(b.cor);
+    ws.getCell(r, 1).font = { name: 'Calibri', size: 13, bold: true, color: { argb: 'FFFFFFFF' } }; ws.getCell(r, 1).alignment = { vertical: 'middle', indent: 1 }; r++;
+    // cabeçalho 2 linhas
+    const h1 = r, h2 = r + 1; ws.getRow(h1).height = 20; ws.getRow(h2).height = 18;
+    ws.getCell(h1, 1).value = 'Posto'; ws.mergeCells(h1, 1, h2, 1);
+    g.meses.forEach((m, i) => { const c = 2 + i * 2; ws.getCell(h1, c).value = m.lbl; merge(h1, c, c + 1); ws.getCell(h2, c).value = 'Nota'; ws.getCell(h2, c + 1).value = 'Pesq.'; });
+    const ca = 2 + nm * 2; ws.getCell(h1, ca).value = 'Acumulado ' + g.model.ano; merge(h1, ca, ca + 1); ws.getCell(h2, ca).value = 'Nota'; ws.getCell(h2, ca + 1).value = 'Pesq.';
+    for (const rr of [h1, h2]) for (let c = 1; c <= nCols; c++) { const cell = ws.getCell(rr, c); const ac = c >= ca; cell.fill = fill(ac ? '#E9D58A' : (c > 1 && Math.floor((c - 2) / 2) % 2 ? '#E4E4F3' : '#ECECF6')); cell.font = { name: 'Calibri', size: rr === h1 ? 11 : 9, bold: true, color: { argb: ac ? 'FF4A3B05' : 'FF2A2A3E' } }; cell.alignment = { horizontal: c === 1 ? 'left' : 'center', vertical: 'middle', indent: c === 1 ? 1 : 0 }; cell.border = brd; }
+    r += 2;
+    const inicio = r;
+    b.linhas.forEach(l => {
+      const destaque = l.tipo !== 'posto'; ws.getRow(r).height = destaque ? 22 : 19;
+      const lc = ws.getCell(r, 1); lc.value = l.rot; lc.font = { name: 'Calibri', size: 10.5, bold: destaque, color: { argb: 'FF1B1B2A' } }; lc.alignment = { vertical: 'middle', indent: 1 };
+      lc.fill = fill(destaque ? (l.tipo === 'cons1' ? b.clara : '#F1F1F6') : '#FFFFFF'); lc.border = brd;
+      l.cel.forEach((c, j) => {
+        const col = 2 + j, cell = ws.getCell(r, col), ac = j >= nm * 2;
+        const vazio = c.v === null || c.v === undefined || isNaN(c.v);
+        cell.value = vazio ? '—' : c.v;
+        if (vazio) cell.alignment = { horizontal: 'center', vertical: 'middle' }; else estiloCel(cell, c.t);
+        cell.font = { name: 'Calibri', size: 10.5, bold: ac || destaque, color: { argb: 'FF1B1B2A' } }; cell.border = brd;
+        cell.fill = fill(destaque ? (ac ? (l.tipo === 'cons1' ? '#F1E3A6' : '#F6ECBF') : (l.tipo === 'cons1' ? b.clara : '#F1F1F6')) : (ac ? '#FBF4D9' : (Math.floor(j / 2) % 2 ? '#F3F3FB' : '#FFFFFF')));
+      });
+      r++;
+    });
+    // formatação condicional real (nota < meta → vermelho) nas colunas de nota; cons2 (senhas) fica de fora
+    const fim = r - 2; // última linha cons1
+    for (let j = 0; j < nm + 1; j++) { const col = csrColLetra(2 + j * 2); cfRanges.push(`${col}${inicio}:${col}${fim}`); }
+    r += 1;
+  });
+  // resultado geral (4 métricas, cada uma em um grupo de colunas mescladas)
+  const nv = nCols - 1, gs = Math.max(1, Math.floor(nv / 4)); const grupo = i => ({ c1: 2 + i * gs, c2: i === 3 ? nCols : 1 + (i + 1) * gs });
+  const rotG = ['Nota CSAT', 'Pesquisas', 'Senhas atendidas', '% participação'];
+  ws.getRow(r).height = 22; { const lc = ws.getCell(r, 1); lc.value = 'Resultado geral da operação'; lc.fill = fill('#0a0a0f'); lc.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFC9A227' } }; lc.alignment = { vertical: 'middle', indent: 1 }; lc.border = brd; }
+  rotG.forEach((t, i) => { const { c1, c2 } = grupo(i); const cell = ws.getCell(r, c1); cell.value = t; merge(r, c1, c2); for (let c = c1; c <= c2; c++) { ws.getCell(r, c).fill = fill('#0a0a0f'); ws.getCell(r, c).border = brd; } cell.font = { name: 'Calibri', size: 10.5, bold: true, color: { argb: 'FFC9A227' } }; cell.alignment = { horizontal: 'center', vertical: 'middle' }; });
+  r++;
+  g.geral.forEach((cd, k) => {
+    ws.getRow(r).height = 28; const lc = ws.getCell(r, 1); lc.value = cd.titulo; lc.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } }; lc.fill = fill(k ? '#8a6d0f' : '#4a4aee'); lc.alignment = { vertical: 'middle', indent: 1 }; lc.border = brd;
+    cd.itens.forEach((it, i) => {
+      const { c1, c2 } = grupo(i); const cell = ws.getCell(r, c1); const vazio = it.v === null || it.v === undefined || isNaN(it.v); cell.value = vazio ? '—' : it.v; merge(r, c1, c2);
+      if (vazio) cell.alignment = { horizontal: 'center', vertical: 'middle' }; else estiloCel(cell, it.t);
+      for (let c = c1; c <= c2; c++) { ws.getCell(r, c).fill = fill(k ? '#F6ECBF' : '#E8E8FF'); ws.getCell(r, c).border = brd; }
+      cell.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FF1B1B2A' } };
+      if (it.t === 'nota') cfRanges.push(`${csrColLetra(c1)}${r}`);
+    }); r++;
+  });
+  r++;
+  g.rodape.forEach(t => { ws.getCell(r, 1).value = t; merge(r, 1, nCols); ws.getCell(r, 1).font = { name: 'Calibri', size: 9, italic: true, color: { argb: 'FF5A5A72' } }; ws.getCell(r, 1).alignment = { wrapText: true, vertical: 'top' }; ws.getRow(r).height = t.length > 150 ? 26 : 15; r++; });
+  cfRanges.forEach(ref => ws.addConditionalFormatting({ ref, rules: [{ type: 'cellIs', operator: 'lessThan', formulae: [CSR_META], style: { font: { color: { argb: 'FFDC2626' }, bold: true } } }] }));
+  return wb;
+}
+async function csrBaixarExcel() {
+  if (!_csrAtual || _csrOcupado) return; _csrOcupado = true;
+  try {
+    await csrCarregarExcelJS();
+    const wb = await csrMontarExcel(_csrAtual.grid, window.ExcelJS);
+    const buf = await wb.xlsx.writeBuffer();
+    csrBaixarBlob(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), csrNomeArquivo('xlsx'));
+    toast('Excel gerado.', 'ok');
+  } catch (e) { console.error('[Relatório por Supervisão] Excel', e); toast('Não foi possível gerar o Excel (biblioteca não carregou?). Verifique a conexão.', 'err'); }
+  finally { _csrOcupado = false; }
 }
 
 </script>
