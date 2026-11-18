@@ -747,8 +747,8 @@ const PosCanalLabels = {
   .csr-head-r{color:#b8b8cc;font-size:11px;text-align:right;align-self:flex-start;padding-top:2px;}
   .csr-bl{margin:16px 22px 0;}
   .csr-bt{color:#fff;font-size:15px;font-weight:800;padding:8px 14px;}
-  .csr-tb{border-collapse:collapse;width:100%;table-layout:fixed;font-size:12px;}
-  .csr-tb col.c-lbl{width:262px;} .csr-tb col.c-n{width:54px;} .csr-tb col.c-v{width:62px;} .csr-tb col.c-an{width:64px;} .csr-tb col.c-av{width:74px;}
+  .csr-tb{border-collapse:collapse;table-layout:fixed;font-size:12px;}
+  .csr-tb 
   .csr-tb th,.csr-tb td{border:1px solid #e1e1ec;text-align:center;padding:5px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .csr-tb th{background:#ececf6;color:#2a2a3e;font-weight:700;} .csr-tb th.z1{background:#e4e4f3;} .csr-tb th.sb{font-size:10px;color:#5a5a72;font-weight:600;}
   .csr-tb th.ac{background:#e9d58a;color:#4a3b05;font-weight:800;}
@@ -759,11 +759,22 @@ const PosCanalLabels = {
   .csr-tb tr.r-cons1 td{background:var(--cl);font-weight:800;} .csr-tb tr.r-cons1 td.ac{background:#f1e3a6;}
   .csr-tb tr.r-cons2 td{background:#f1f1f6;font-weight:800;} .csr-tb tr.r-cons2 td.ac{background:#f6ecbf;}
   .csr-geral{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin:20px 22px 0;}
-  .csr-card{border-radius:6px;overflow:hidden;background:#e8e8ff;} .csr-card:nth-child(2){background:#f6ecbf;}
-  .csr-ct{background:#4a4aee;color:#fff;font-weight:800;font-size:15px;padding:8px 14px;} .csr-card:nth-child(2) .csr-ct{background:#8a6d0f;}
+  .csr-card{border-radius:6px;overflow:hidden;background:#e8e8ff;} .csr-card.mes{background:#f6ecbf;}
+  .csr-ct{background:#4a4aee;color:#fff;font-weight:800;font-size:15px;padding:8px 14px;} .csr-card.mes .csr-ct{background:#8a6d0f;}
   .csr-its{display:grid;grid-template-columns:repeat(4,1fr);text-align:center;padding:12px 6px 16px;}
   .csr-its span{display:block;font-size:11px;font-weight:600;color:#4a4a60;margin-bottom:8px;} .csr-its b{font-size:24px;font-weight:800;color:#1b1b2a;}
   .csr-foot{margin:14px 22px 0;font-size:11px;color:#5a5a72;line-height:1.5;}
+  .csr-tb td{font-size:var(--fs);height:var(--rh);padding:2px 4px;} .csr-tb td.lbl{font-size:14px;}
+  .csr-tb tr.r-cons2 td{font-size:var(--fss);height:var(--rhs);color:#4a4a60;font-weight:600;font-family:"Arial Narrow","Roboto Condensed","Segoe UI",Arial,sans-serif;} .csr-tb tr.r-cons2 td.lbl{font-size:13px;font-family:inherit;}
+  .csr-tb tr.r-cons1 td{font-weight:800;} .csr-tb td.ac{font-weight:800;}
+  .csr-tb th{padding:6px 6px;font-size:15px;} .csr-tb th.sb{font-size:12px;padding:4px 4px;} .csr-tb th.ac{padding:8px 10px;line-height:1.25;font-size:14px;} .csr-tb th.ac .ac2{font-weight:700;}
+  .csr-card.mes .csr-ct{background:#8a6d0f;}
+  .csr-its b{font-size:26px;}
+  .csr-meses{display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+  .csr-chip{display:inline-flex;align-items:center;justify-content:center;min-width:48px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text2);font-size:13px;font-weight:700;cursor:pointer;user-select:none;}
+  .csr-chip input{display:none;} .csr-chip.on{background:var(--accent);border-color:var(--accent);color:#fff;} .csr-chip.off{opacity:.35;cursor:not-allowed;}
+  .csr-atalhos{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+  .csr-bar button:disabled{opacity:.45;cursor:not-allowed;}
 </style>
   <style>
   .caixa-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px 24px;margin-bottom:16px;}
@@ -2850,10 +2861,10 @@ const PosCanalLabels = {
     <div class="modal-header"><div class="modal-title">📑 Relatório por Supervisão</div><button class="close-btn" onclick="closeModal('modal-csat-relsup')">✕</button></div>
     <div class="csr-bar">
       <div><label class="form-label">Ano</label><select class="form-select" id="csr-ano" onchange="csrMudouAno()"></select></div>
-      <div><label class="form-label">Mês de referência</label><select class="form-select" id="csr-mes" onchange="csrAtualizar()"></select></div>
-      <div class="sp"></div>
-      <button class="btn btn-secondary" onclick="csrBaixarExcel()">⬇ Baixar Excel</button>
-      <button class="btn btn-primary" onclick="csrBaixarPng()">🖼 Baixar Imagem</button>
+      <div style="flex:1;min-width:360px"><label class="form-label">Competências (marque quantas quiser)</label><div class="csr-meses" id="csr-meses"></div>
+        <div class="csr-atalhos"><button class="btn btn-secondary btn-sm" onclick="csrAtalho('todos')">Todos os meses disponíveis</button><button class="btn btn-secondary btn-sm" onclick="csrAtalho('3')">Últimos 3 meses</button><button class="btn btn-secondary btn-sm" onclick="csrAtalho('6')">Últimos 6 meses</button><button class="btn btn-secondary btn-sm" onclick="csrAtalho('limpar')">Limpar seleção</button></div></div>
+      <button class="btn btn-secondary" id="csr-btn-xl" onclick="csrBaixarExcel()">⬇ Baixar Excel</button>
+      <button class="btn btn-primary" id="csr-btn-png" onclick="csrBaixarPng()">🖼 Baixar Imagem</button>
     </div>
     <div class="csr-wrap" id="csr-corpo"></div>
   </div>
@@ -33275,9 +33286,9 @@ function csrNomeExibicao(canon) {
 }
 
 // ── Cálculo (puro): recebe os arrays já carregados e devolve o modelo ──
-function csrCalc(ano, mes, csatArr, indArr, info) {
-  const refs = [];
-  for (let m = 1; m <= mes; m++) refs.push(ano + '-' + String(m).padStart(2, '0'));
+function csrCalc(ano, mesesSel, csatArr, indArr, info) {
+  const sel = [...new Set((mesesSel || []).map(Number).filter(m => m >= 1 && m <= 12))].sort((a, b) => a - b);
+  const refs = sel.map(m => ano + '-' + String(m).padStart(2, '0'));
   const idx = {}; refs.forEach((r, i) => { idx[r] = i; });
   const ca = {}, ia = {};          // por posto canônico → por mês {p, s} / {sen}
   const csatMesTem = new Array(refs.length).fill(false);
@@ -33337,17 +33348,38 @@ function csrCalc(ano, mes, csatArr, indArr, info) {
     ano: resumo(agg(uniao, todosMeses)),
     mes: resumo(agg(uniao, [refs.length - 1]))
   };
+  // período: "Acumulado do Ano" quando jan..último mês selecionado estão todos marcados; senão "Acumulado do Período"
+  const ultimo = sel[sel.length - 1], isAno = sel.length > 0 && sel.length === ultimo;
+  const consecutivo = sel.length > 0 && sel[sel.length - 1] - sel[0] + 1 === sel.length;
+  const hoje = (info && info.hoje) || { a: new Date().getFullYear(), m: new Date().getMonth() + 1 };
+  let rotuloPeriodo;
+  if (sel.length === 1) rotuloPeriodo = `${CSR_MES_ABREV[sel[0]]}/${ano}`;
+  else if (consecutivo) rotuloPeriodo = `${CSR_MES_ABREV[sel[0]]} a ${CSR_MES_ABREV[ultimo]}/${ano}`;
+  else rotuloPeriodo = `${sel.length} meses selecionados`;
   const obs = [];
   if (info && info.csat && info.ind && info.csat !== info.ind) obs.push(`Bases com datas de atualização diferentes: CSAT até ${info.csat} · Senhas (Indicadores) até ${info.ind}.`);
   if (ano <= 2026) obs.push('Parque Mambucaba: considerados apenas os resultados do Gestão Conect@ a partir de 11/2026 (início da nossa gestão); competências anteriores sem dados.');
-  return { ano, mes, refs, blocos, geral, obs, info: info || {}, gerado: new Date().toLocaleString('pt-BR') };
+  return { ano, sel, ultimo, isAno, rotuloPeriodo, mesAtual: hoje.a === ano && hoje.m === ultimo, refs, blocos, geral, obs, info: info || {}, gerado: new Date().toLocaleString('pt-BR') };
+}
+
+// lista "Set, Out e Nov"
+function csrListaMeses(sel) { const l = sel.map(m => CSR_MES_ABREV[m]); return l.length < 2 ? l.join('') : l.slice(0, -1).join(', ') + ' e ' + l[l.length - 1]; }
+// Layout compartilhado (prévia, PNG, Excel): fonte e larguras crescem quando há poucos meses
+function csrLayout(nm) {
+  const fs = nm >= 8 ? 15 : nm >= 5 ? 16 : nm >= 3 ? 17 : 18;           // número principal (nota / pesquisas)
+  let WN = Math.round(fs * 4.5), WV = Math.round(fs * 4.9), WAN = Math.round(fs * 5.2), WAV = Math.round(fs * 6.1);
+  const WL = 262; const alvo = 1300, tot = WL + nm * (WN + WV) + WAN + WAV;
+  if (tot < alvo && nm > 0) { const ex = Math.floor((alvo - tot) / (nm * 2)); WN += ex; WV += ex; }
+  return { fs, fsSen: Math.round(fs * 0.78), fsHead: 14, WL, WN, WV, WAN, WAV, RH: Math.round(fs * 2.1), RHs: Math.round(fs * 1.75), HH: 30, HHac: 46 };
 }
 
 // ── Grade única (texto/valores) usada pelos 3 formatos ──
 function csrGrade(model) {
-  const meses = model.refs.map((r, i) => ({ ref: r, lbl: CSR_MES_ABREV[i + 1] }));
+  const meses = model.sel.map((m, i) => ({ ref: model.refs[i], lbl: CSR_MES_ABREV[m] }));
   const grade = { model, meses, blocos: [], geral: [], titulo: 'Acompanhamento CSAT — Supervisões',
-    sub: `Competência de referência: ${CSR_MES_NOME[model.mes]}/${model.ano}  ·  Ano ${model.ano}` };
+    sub: model.isAno ? `Competência de referência: ${CSR_MES_NOME[model.ultimo]}/${model.ano}  ·  Ano ${model.ano}`
+      : `Competências selecionadas: ${csrListaMeses(model.sel)}/${model.ano}  ·  Ano ${model.ano}`,
+    acCab: model.isAno ? ['Acumulado do Ano', String(model.ano)] : ['Acumulado do Período', model.rotuloPeriodo], lay: csrLayout(model.sel.length) };
   model.blocos.forEach(b => {
     const linhas = b.linhas.map(l => ({ tipo: 'posto', rot: l.posto,
       cel: [...l.meses.map(m => [{ t: 'nota', v: m.nota }, { t: 'int', v: m.pesq }]).flat(), { t: 'nota', v: l.acum.nota }, { t: 'int', v: l.acum.pesq }] }));
@@ -33358,7 +33390,9 @@ function csrGrade(model) {
     grade.blocos.push({ titulo: b.sup.titulo, cor: b.sup.cor, clara: b.sup.clara, linhas });
   });
   const mk = (tit, r) => ({ titulo: tit, itens: [{ rot: 'Nota CSAT', t: 'nota', v: r.nota }, { rot: 'Pesquisas', t: 'int', v: r.pesq }, { rot: 'Senhas atendidas', t: 'int', v: r.sen }, { rot: '% participação', t: 'pct', v: r.pct }] });
-  grade.geral = [mk(`ACUMULADO DO ANO ${model.ano}`, model.geral.ano), mk(`PARCIAL DO MÊS ${CSR_MES_ABREV[model.mes]}/${model.ano}`, model.geral.mes)];
+  const tMes = `${model.mesAtual ? 'PARCIAL DO MÊS' : 'RESULTADO DO MÊS'} ${CSR_MES_ABREV[model.ultimo]}/${model.ano}`;
+  const tAc = model.isAno ? `ACUMULADO DO ANO ${model.ano}` : `ACUMULADO DO PERÍODO — ${model.rotuloPeriodo.toUpperCase()}`;
+  grade.geral = model.sel.length === 1 ? [mk(tMes, model.geral.mes)] : [mk(tAc, model.geral.ano), mk(tMes, model.geral.mes)];
   grade.rodape = [
     `Meta CSAT deste relatório: ${CSR_META.toFixed(2).replace('.', ',')} — notas abaixo da meta em vermelho. Notas consolidadas ponderadas pelo volume de pesquisas (sem média simples). Participação = pesquisas ÷ senhas atendidas × 100; no acumulado usa os volumes acumulados.`,
     ...model.obs
@@ -33386,22 +33420,23 @@ async function csrGarantirDados() {
     if (!(indicadoresCarregados && allIndicadores.length && _cacheFresco('ind'))) await carregarTodosIndicadores();
   });
 }
-function csrCalcular(ano, mes) {
-  return csrCalc(ano, mes, csatAllData, allIndicadores, { csat: csatUltimaAtualizacao || '', ind: _csrDataIndTxt() });
+function csrCalcular(ano, meses) {
+  return csrCalc(ano, meses, csatAllData, allIndicadores, { csat: csatUltimaAtualizacao || '', ind: _csrDataIndTxt() });
 }
 
 // ── Prévia (HTML) ──
 function csrEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function csrLogoSrc() { try { const i = document.querySelector('.ll-logo img'); return i && i.src ? i.src : ''; } catch (e) { return ''; } }
 function csrHtml(g) {
-  const nm = g.meses.length;
+  const nm = g.meses.length, L = g.lay;
   const th = (txt, extra) => `<th ${extra || ''}>${csrEsc(txt)}</th>`;
   const zona = i => (i % 2 ? 'z1' : 'z0');
-  let h = `<div class="csr-rep" id="csr-rep"><div class="csr-head"><div class="csr-head-l">${csrLogoSrc() ? `<img src="${csrLogoSrc()}" alt="Gestão Conect@">` : ''}<div><div class="csr-t">${csrEsc(g.titulo)}</div><div class="csr-s">${csrEsc(g.sub)}</div></div></div><div class="csr-head-r">${csrEsc(g.atualizacao)}</div></div>`;
+  const wTab = L.WL + nm * (L.WN + L.WV) + L.WAN + L.WAV;
+  let h = `<div class="csr-rep" id="csr-rep" style="--fs:${L.fs}px;--fss:${L.fsSen}px;--rh:${L.RH}px;--rhs:${L.RHs}px"><div class="csr-head"><div class="csr-head-l">${csrLogoSrc() ? `<img src="${csrLogoSrc()}" alt="Gestão Conect@">` : ''}<div><div class="csr-t">${csrEsc(g.titulo)}</div><div class="csr-s">${csrEsc(g.sub)}</div></div></div><div class="csr-head-r">${csrEsc(g.atualizacao)}</div></div>`;
   g.blocos.forEach(b => {
-    h += `<div class="csr-bl"><div class="csr-bt" style="background:${b.cor}">${csrEsc(b.titulo)}</div><table class="csr-tb"><colgroup><col class="c-lbl">${g.meses.map(() => '<col class="c-n"><col class="c-v">').join('')}<col class="c-an"><col class="c-av"></colgroup><thead><tr>${th('Posto', 'rowspan="2" class="lbl"')}`;
+    h += `<div class="csr-bl" style="width:${wTab}px"><div class="csr-bt" style="background:${b.cor}">${csrEsc(b.titulo)}</div><table class="csr-tb" style="width:${wTab}px"><colgroup><col style="width:${L.WL}px">${g.meses.map(() => `<col style="width:${L.WN}px"><col style="width:${L.WV}px">`).join('')}<col style="width:${L.WAN}px"><col style="width:${L.WAV}px"></colgroup><thead><tr>${th('Posto', 'rowspan="2" class="lbl"')}`;
     g.meses.forEach((m, i) => { h += th(m.lbl, `colspan="2" class="${zona(i)}"`); });
-    h += th('Acumulado ' + g.model.ano, 'colspan="2" class="ac"') + '</tr><tr>';
+    h += `<th colspan="2" class="ac"><div>${csrEsc(g.acCab[0])}</div><div class="ac2">${csrEsc(g.acCab[1])}</div></th></tr><tr>`;
     g.meses.forEach((m, i) => { h += th('Nota', `class="${zona(i)} sb"`) + th('Pesq.', `class="${zona(i)} sb"`); });
     h += th('Nota', 'class="ac sb"') + th('Pesq.', 'class="ac sb"') + '</tr></thead><tbody>';
     b.linhas.forEach(l => {
@@ -33411,22 +33446,36 @@ function csrHtml(g) {
     });
     h += '</tbody></table></div>';
   });
-  h += '<div class="csr-geral">' + g.geral.map(x => `<div class="csr-card"><div class="csr-ct">${csrEsc(x.titulo)}</div><div class="csr-its">${x.itens.map(it => `<div><span>${csrEsc(it.rot)}</span><b class="${csrVermelho(it) ? 'red' : ''}">${csrEsc(csrFmt(it))}</b></div>`).join('')}</div></div>`).join('') + '</div>';
-  h += '<div class="csr-foot">' + g.rodape.map(t => `<div>${csrEsc(t)}</div>`).join('') + '</div></div>';
+  h += `<div class="csr-geral" style="width:${wTab}px;grid-template-columns:repeat(${g.geral.length},1fr)">` + g.geral.map((x, ci) => `<div class="csr-card${ci === g.geral.length - 1 ? ' mes' : ''}"><div class="csr-ct">${csrEsc(x.titulo)}</div><div class="csr-its">${x.itens.map(it => `<div><span>${csrEsc(it.rot)}</span><b class="${csrVermelho(it) ? 'red' : ''}">${csrEsc(csrFmt(it))}</b></div>`).join('')}</div></div>`).join('') + '</div>';
+  h += '<div class="csr-foot" style="width:' + wTab + 'px">' + g.rodape.map(t => `<div>${csrEsc(t)}</div>`).join('') + '</div></div>';
   return h;
 }
 
 // ── UI ──
-function csrPreencherSeletores(anoSel, mesSel) {
-  const hoje = new Date(); const anoH = hoje.getFullYear(), mesH = hoje.getMonth() + 1;
-  const anos = new Set([anoH]);
+let _csrSel = [];   // meses (1-12) marcados
+function csrMaxMes(ano) { const h = new Date(); return ano < h.getFullYear() ? 12 : (ano === h.getFullYear() ? h.getMonth() + 1 : 0); }
+function csrPadrao(ano) { return Array.from({ length: csrMaxMes(ano) }, (_, i) => i + 1); }
+function csrAnoSel() { return +document.getElementById('csr-ano').value; }
+function csrPreencherAnos(anoSel) {
+  const anoH = new Date().getFullYear(); const anos = new Set([anoH]);
   [...(csatAllData || []), ...(allIndicadores || [])].forEach(d => { const r = _opNormMesRef(d.mesRef); if (r) anos.add(+r.slice(0, 4)); });
   const lista = [...anos].filter(a => a <= anoH).sort((a, b) => b - a);
-  const sa = document.getElementById('csr-ano'), sm = document.getElementById('csr-mes');
-  sa.innerHTML = lista.map(a => `<option value="${a}">${a}</option>`).join(''); sa.value = String(anoSel);
-  const maxM = anoSel === anoH ? mesH : 12;
-  sm.innerHTML = Array.from({ length: maxM }, (_, i) => `<option value="${i + 1}">${CSR_MES_NOME[i + 1]}</option>`).join('');
-  sm.value = String(Math.min(mesSel, maxM));
+  const sa = document.getElementById('csr-ano'); sa.innerHTML = lista.map(a => `<option value="${a}">${a}</option>`).join(''); sa.value = String(anoSel);
+}
+function csrRenderMeses() {
+  const max = csrMaxMes(csrAnoSel());
+  document.getElementById('csr-meses').innerHTML = Array.from({ length: 12 }, (_, i) => {
+    const m = i + 1, dis = m > max, on = !dis && _csrSel.includes(m);
+    return `<label class="csr-chip${on ? ' on' : ''}${dis ? ' off' : ''}"><input type="checkbox" ${on ? 'checked' : ''} ${dis ? 'disabled' : ''} onchange="csrToggleMes(${m})">${CSR_MES_ABREV[m]}</label>`;
+  }).join('');
+}
+function csrToggleMes(m) { _csrSel = _csrSel.includes(m) ? _csrSel.filter(x => x !== m) : [..._csrSel, m].sort((a, b) => a - b); csrAtualizar(); }
+function csrAtalho(tipo) {
+  const max = csrMaxMes(csrAnoSel());
+  if (tipo === 'todos') _csrSel = csrPadrao(csrAnoSel());
+  else if (tipo === 'limpar') _csrSel = [];
+  else { const n = +tipo; _csrSel = Array.from({ length: Math.min(n, max) }, (_, i) => max - Math.min(n, max) + 1 + i); }
+  csrAtualizar();
 }
 async function csrAbrir() {
   const hoje = new Date();
@@ -33434,23 +33483,28 @@ async function csrAbrir() {
   const corpo = document.getElementById('csr-corpo'); corpo.innerHTML = '<div class="csr-load">Carregando dados…</div>';
   try {
     await csrGarantirDados();
-    csrPreencherSeletores(hoje.getFullYear(), hoje.getMonth() + 1);
+    csrPreencherAnos(hoje.getFullYear()); _csrSel = csrPadrao(hoje.getFullYear());
     csrAtualizar();
   } catch (e) { console.error('[Relatório por Supervisão]', e); corpo.innerHTML = '<div class="csr-load" style="color:#dc2626">Não foi possível carregar os dados. Verifique a conexão e tente novamente.</div>'; _csrAtual = null; }
 }
-function csrMudouAno() {
-  const sa = document.getElementById('csr-ano'); const anoH = new Date().getFullYear(), mesH = new Date().getMonth() + 1;
-  csrPreencherSeletores(+sa.value, +document.getElementById('csr-mes').value || 1); csrAtualizar();
-}
+function csrMudouAno() { _csrSel = csrPadrao(csrAnoSel()); csrAtualizar(); }
 function csrAtualizar() {
-  const ano = +document.getElementById('csr-ano').value, mes = +document.getElementById('csr-mes').value;
+  const ano = csrAnoSel(); const max = csrMaxMes(ano);
+  _csrSel = _csrSel.filter(m => m >= 1 && m <= max);
+  csrRenderMeses();
+  const bx = document.getElementById('csr-btn-xl'), bp = document.getElementById('csr-btn-png');
+  if (!_csrSel.length) {
+    _csrAtual = null; bx.disabled = bp.disabled = true;
+    document.getElementById('csr-corpo').innerHTML = '<div class="csr-load">Selecione pelo menos um mês para gerar o relatório.</div>'; return;
+  }
+  bx.disabled = bp.disabled = false;
   try {
-    const model = csrCalcular(ano, mes); const grid = csrGrade(model);
+    const model = csrCalcular(ano, _csrSel); const grid = csrGrade(model);
     _csrAtual = { model, grid };
     document.getElementById('csr-corpo').innerHTML = csrHtml(grid);
   } catch (e) { console.error('[Relatório por Supervisão]', e); _csrAtual = null; document.getElementById('csr-corpo').innerHTML = '<div class="csr-load" style="color:#dc2626">Erro ao montar o relatório.</div>'; }
 }
-function csrNomeArquivo(ext) { const a = _csrAtual.model; return `Acompanhamento_CSAT_Supervisoes_${a.ano}-${String(a.mes).padStart(2, '0')}.${ext}`; }
+function csrNomeArquivo(ext) { const a = _csrAtual.model; return `Acompanhamento_CSAT_Supervisoes_${a.ano}-${a.isAno ? String(a.ultimo).padStart(2, '0') : a.sel.map(m => String(m).padStart(2, '0')).join('_')}.${ext}`; }
 function csrBaixarBlob(blob, nome) {
   const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = nome;
   document.body.appendChild(a); a.click(); setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1500);
@@ -33462,12 +33516,11 @@ async function csrDesenhar(g, escala) {
   try { await Promise.all([document.fonts.load('700 14px Syne'), document.fonts.load('600 14px Syne'), document.fonts.load('500 14px "IBM Plex Mono"')]); } catch (e) {}
   const logo = await csrCarregarImg(csrLogoSrc());
   const F = 'Syne, "Segoe UI", Arial, sans-serif', M = 'Syne, "Segoe UI", Arial, sans-serif';
-  const nm = g.meses.length, PAD = 28, WL = 262, WN = 58, WV = 66, WAN = 66, WAV = 78, RH = 27, HH = 28;
+  const nm = g.meses.length, PAD = 28, { WL, WN, WV, WAN, WAV, RH, RHs, fs, fsSen } = g.lay, HH1 = 46, HH2 = 26, NUM = 'Syne, "Segoe UI", Arial, sans-serif', COMP = '"Arial Narrow", "Roboto Condensed", "Segoe UI", Arial, sans-serif';
   const wTab = WL + nm * (WN + WV) + WAN + WAV, W = wTab + PAD * 2;
   const headH = 104, blkTit = 36;
-  const hBloco = blkTit + HH * 2 + RH * (g.blocos[0] ? g.blocos[0].linhas.length : 0);
   let H = headH + 18;
-  g.blocos.forEach(b => { H += blkTit + HH * 2 + RH * b.linhas.length + 20; });
+  g.blocos.forEach(b => { H += blkTit + HH1 + HH2 + RH * (b.linhas.length - 1) + RHs + 20; });
   H += 150 + 20 + g.rodape.length * 20 + 24;
   const cv = document.createElement('canvas'); cv.width = Math.round(W * escala); cv.height = Math.round(H * escala);
   const x = cv.getContext('2d'); x.scale(escala, escala); x.textBaseline = 'middle';
@@ -33487,36 +33540,39 @@ async function csrDesenhar(g, escala) {
     x.fillStyle = b.cor; x.fillRect(PAD, y, wTab, blkTit); txt(b.titulo, PAD + 14, y + blkTit / 2, `800 16px ${F}`, '#ffffff', 'left'); y += blkTit;
     // cabeçalho de colunas (2 linhas)
     const colX = [PAD, PAD + WL]; for (let i = 0; i < nm; i++) { colX.push(colX[colX.length - 1] + WN); colX.push(colX[colX.length - 1] + WV); } colX.push(colX[colX.length - 1] + WAN); colX.push(colX[colX.length - 1] + WAV);
-    x.fillStyle = '#ececf6'; x.fillRect(PAD, y, WL, HH * 2); txt('Posto', PAD + 12, y + HH, `700 13px ${F}`, '#2a2a3e', 'left');
+    x.fillStyle = '#ececf6'; x.fillRect(PAD, y, WL, HH1 + HH2); txt('Posto', PAD + 12, y + (HH1 + HH2) / 2, `700 14px ${F}`, '#2a2a3e', 'left');
     for (let i = 0; i < nm; i++) {
-      const x0 = colX[1 + i * 2], x1 = colX[3 + i * 2]; x.fillStyle = i % 2 ? '#e4e4f3' : '#ececf6'; x.fillRect(x0, y, x1 - x0, HH * 2);
-      txt(g.meses[i].lbl, (x0 + x1) / 2, y + HH / 2, `700 13px ${F}`, '#2a2a3e'); txt('Nota', (x0 + colX[2 + i * 2]) / 2, y + HH * 1.5, `600 11px ${F}`, '#5a5a72'); txt('Pesq.', (colX[2 + i * 2] + x1) / 2, y + HH * 1.5, `600 11px ${F}`, '#5a5a72');
+      const x0 = colX[1 + i * 2], x1 = colX[3 + i * 2]; x.fillStyle = i % 2 ? '#e4e4f3' : '#ececf6'; x.fillRect(x0, y, x1 - x0, HH1 + HH2);
+      txt(g.meses[i].lbl, (x0 + x1) / 2, y + HH1 / 2, `700 15px ${F}`, '#2a2a3e'); txt('Nota', (x0 + colX[2 + i * 2]) / 2, y + HH1 + HH2 / 2, `600 12px ${F}`, '#5a5a72'); txt('Pesq.', (colX[2 + i * 2] + x1) / 2, y + HH1 + HH2 / 2, `600 12px ${F}`, '#5a5a72');
     }
-    const a0 = colX[1 + nm * 2], a1 = colX[3 + nm * 2]; x.fillStyle = '#e9d58a'; x.fillRect(a0, y, a1 - a0, HH * 2);
-    txt('Acumulado ' + g.model.ano, (a0 + a1) / 2, y + HH / 2, `800 13px ${F}`, '#4a3b05'); txt('Nota', (a0 + colX[2 + nm * 2]) / 2, y + HH * 1.5, `700 11px ${F}`, '#4a3b05'); txt('Pesq.', (colX[2 + nm * 2] + a1) / 2, y + HH * 1.5, `700 11px ${F}`, '#4a3b05');
-    y += HH * 2;
+    const a0 = colX[1 + nm * 2], a1 = colX[3 + nm * 2]; x.fillStyle = '#e9d58a'; x.fillRect(a0, y, a1 - a0, HH1 + HH2);
+    { let f1 = 14; x.font = `800 ${f1}px ${F}`; while (f1 > 10 && Math.max(x.measureText(g.acCab[0]).width, x.measureText(g.acCab[1]).width) > a1 - a0 - 20) { f1--; x.font = `800 ${f1}px ${F}`; }
+      txt(g.acCab[0], (a0 + a1) / 2, y + HH1 * 0.34, `800 ${f1}px ${F}`, '#4a3b05'); txt(g.acCab[1], (a0 + a1) / 2, y + HH1 * 0.74, `700 ${f1}px ${F}`, '#4a3b05'); }
+    txt('Nota', (a0 + colX[2 + nm * 2]) / 2, y + HH1 + HH2 / 2, `700 12px ${F}`, '#4a3b05'); txt('Pesq.', (colX[2 + nm * 2] + a1) / 2, y + HH1 + HH2 / 2, `700 12px ${F}`, '#4a3b05');
+    y += HH1 + HH2;
     b.linhas.forEach(l => {
-      const destaque = l.tipo !== 'posto';
-      if (destaque) { x.fillStyle = l.tipo === 'cons1' ? b.clara : '#f1f1f6'; x.fillRect(PAD, y, wTab, RH); }
+      const destaque = l.tipo !== 'posto', sen = l.tipo === 'cons2', rh = sen ? RHs : RH;
+      if (destaque) { x.fillStyle = l.tipo === 'cons1' ? b.clara : '#f1f1f6'; x.fillRect(PAD, y, wTab, rh); }
       else { x.fillStyle = '#ffffff'; }
       // zonas
-      for (let i = 0; i < nm; i++) { if (!destaque && i % 2) { x.fillStyle = cor.z1; x.fillRect(colX[1 + i * 2], y, colX[3 + i * 2] - colX[1 + i * 2], RH); } }
-      x.fillStyle = destaque ? (l.tipo === 'cons1' ? '#f1e3a6' : '#f6ecbf') : cor.ac; x.fillRect(a0, y, a1 - a0, RH);
-      let nome = l.rot; x.font = `${destaque ? 800 : 600} 13px ${F}`; while (nome.length > 3 && x.measureText(nome).width > WL - 20) nome = nome.slice(0, -2);
+      for (let i = 0; i < nm; i++) { if (!destaque && i % 2) { x.fillStyle = cor.z1; x.fillRect(colX[1 + i * 2], y, colX[3 + i * 2] - colX[1 + i * 2], rh); } }
+      x.fillStyle = destaque ? (l.tipo === 'cons1' ? '#f1e3a6' : '#f6ecbf') : cor.ac; x.fillRect(a0, y, a1 - a0, rh);
+      const fl = sen ? 13 : 14; let nome = l.rot; x.font = `${destaque ? 800 : 600} ${fl}px ${F}`; while (nome.length > 3 && x.measureText(nome).width > WL - 20) nome = nome.slice(0, -2);
       if (nome !== l.rot) nome = nome.trimEnd() + '…';
-      txt(nome, PAD + 12, y + RH / 2, `${destaque ? 800 : 600} 13px ${F}`, '#1b1b2a', 'left');
+      txt(nome, PAD + 12, y + rh / 2, `${destaque ? 800 : 600} ${fl}px ${F}`, sen ? '#4a4a60' : '#1b1b2a', 'left');
       l.cel.forEach((c, j) => {
         const cx = (colX[1 + j] + colX[2 + j]) / 2; const ac = j >= nm * 2;
-        txt(csrFmt(c), cx, y + RH / 2, `${(ac || destaque) ? 800 : 500} 13px ${M}`, csrVermelho(c) ? '#dc2626' : '#1b1b2a');
+        if (sen) txt(csrFmt(c), cx, y + rh / 2, `600 ${fsSen}px ${COMP}`, '#4a4a60');
+        else txt(csrFmt(c), cx, y + rh / 2, `${(ac || destaque) ? 800 : 600} ${fs}px ${NUM}`, csrVermelho(c) ? '#dc2626' : '#1b1b2a');
       });
-      y += RH; linhaH(y);
+      y += rh; linhaH(y);
     });
     y += 20;
   });
   // resultado geral
-  const cw = (wTab - 20) / 2; g.geral.forEach((cd, k) => {
-    const cx = PAD + k * (cw + 20); x.fillStyle = k ? '#f6ecbf' : '#e8e8ff'; x.fillRect(cx, y, cw, 150);
-    x.fillStyle = k ? '#8a6d0f' : '#4a4aee'; x.fillRect(cx, y, cw, 36); txt(cd.titulo, cx + 14, y + 18, `800 16px ${F}`, '#ffffff', 'left');
+  const ng = g.geral.length, cw = (wTab - 20 * (ng - 1)) / ng; g.geral.forEach((cd, k) => {
+    const cx = PAD + k * (cw + 20), kk = k === ng - 1 ? 1 : 0; x.fillStyle = kk ? '#f6ecbf' : '#e8e8ff'; x.fillRect(cx, y, cw, 150);
+    x.fillStyle = kk ? '#8a6d0f' : '#4a4aee'; x.fillRect(cx, y, cw, 36); txt(cd.titulo, cx + 14, y + 18, `800 16px ${F}`, '#ffffff', 'left');
     const iw = cw / 4; cd.itens.forEach((it, i) => {
       const ix = cx + i * iw + iw / 2; txt(it.rot, ix, y + 62, `600 12px ${F}`, '#4a4a60');
       txt(csrFmt(it), ix, y + 105, `800 28px ${M}`, csrVermelho(it) ? '#dc2626' : '#1b1b2a');
@@ -33554,8 +33610,9 @@ async function csrMontarExcel(g, ExcelJS) {
   const nm = g.meses.length, nCols = 1 + nm * 2 + 2;
   const wb = new ExcelJS.Workbook(); wb.creator = 'Gestão Conect@'; wb.created = new Date();
   const ws = wb.addWorksheet('Acompanhamento CSAT', { views: [{ showGridLines: false }], pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 } });
-  ws.getColumn(1).width = 34; for (let c = 2; c <= nCols; c++) ws.getColumn(c).width = (c - 2) % 2 === 0 ? 8.5 : 9.5;
-  ws.getColumn(nCols - 1).width = 9.5; ws.getColumn(nCols).width = 11;
+  const L = g.lay, px = p => Math.round(p / 6.2 * 10) / 10; ws.getColumn(1).width = px(L.WL); for (let c = 2; c <= 1 + nm * 2; c++) ws.getColumn(c).width = px((c - 2) % 2 === 0 ? L.WN : L.WV);
+  ws.getColumn(nCols - 1).width = px(L.WAN); ws.getColumn(nCols).width = px(L.WAV);
+  const fNum = Math.round((10.5 + (L.fs - 13) * 0.75) * 2) / 2, fSen = Math.max(8.5, Math.round(L.fsSen * 0.75 * 2) / 2), rhN = Math.round(L.RH * 0.75), rhS = Math.round(L.RHs * 0.75);
   const fill = rgb => ({ type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + rgb.replace('#', '') } });
   const brd = { top: { style: 'thin', color: { argb: 'FFD9D9E6' } }, bottom: { style: 'thin', color: { argb: 'FFD9D9E6' } }, left: { style: 'thin', color: { argb: 'FFD9D9E6' } }, right: { style: 'thin', color: { argb: 'FFD9D9E6' } } };
   const merge = (r, c1, c2) => { if (c2 > c1) ws.mergeCells(r, c1, r, c2); };
@@ -33576,23 +33633,23 @@ async function csrMontarExcel(g, ExcelJS) {
     for (let c = 1; c <= nCols; c++) ws.getCell(r, c).fill = fill(b.cor);
     ws.getCell(r, 1).font = { name: 'Calibri', size: 13, bold: true, color: { argb: 'FFFFFFFF' } }; ws.getCell(r, 1).alignment = { vertical: 'middle', indent: 1 }; r++;
     // cabeçalho 2 linhas
-    const h1 = r, h2 = r + 1; ws.getRow(h1).height = 20; ws.getRow(h2).height = 18;
+    const h1 = r, h2 = r + 1; ws.getRow(h1).height = 34; ws.getRow(h2).height = 20;
     ws.getCell(h1, 1).value = 'Posto'; ws.mergeCells(h1, 1, h2, 1);
     g.meses.forEach((m, i) => { const c = 2 + i * 2; ws.getCell(h1, c).value = m.lbl; merge(h1, c, c + 1); ws.getCell(h2, c).value = 'Nota'; ws.getCell(h2, c + 1).value = 'Pesq.'; });
-    const ca = 2 + nm * 2; ws.getCell(h1, ca).value = 'Acumulado ' + g.model.ano; merge(h1, ca, ca + 1); ws.getCell(h2, ca).value = 'Nota'; ws.getCell(h2, ca + 1).value = 'Pesq.';
-    for (const rr of [h1, h2]) for (let c = 1; c <= nCols; c++) { const cell = ws.getCell(rr, c); const ac = c >= ca; cell.fill = fill(ac ? '#E9D58A' : (c > 1 && Math.floor((c - 2) / 2) % 2 ? '#E4E4F3' : '#ECECF6')); cell.font = { name: 'Calibri', size: rr === h1 ? 11 : 9, bold: true, color: { argb: ac ? 'FF4A3B05' : 'FF2A2A3E' } }; cell.alignment = { horizontal: c === 1 ? 'left' : 'center', vertical: 'middle', indent: c === 1 ? 1 : 0 }; cell.border = brd; }
+    const ca = 2 + nm * 2; ws.getCell(h1, ca).value = g.acCab[0] + '\n' + g.acCab[1]; merge(h1, ca, ca + 1); ws.getCell(h2, ca).value = 'Nota'; ws.getCell(h2, ca + 1).value = 'Pesq.';
+    for (const rr of [h1, h2]) for (let c = 1; c <= nCols; c++) { const cell = ws.getCell(rr, c); const ac = c >= ca; cell.fill = fill(ac ? '#E9D58A' : (c > 1 && Math.floor((c - 2) / 2) % 2 ? '#E4E4F3' : '#ECECF6')); cell.font = { name: 'Calibri', size: rr === h1 ? 11 : 9, bold: true, color: { argb: ac ? 'FF4A3B05' : 'FF2A2A3E' } }; cell.alignment = { horizontal: c === 1 ? 'left' : 'center', vertical: 'middle', indent: c === 1 ? 1 : 0, wrapText: true }; cell.border = brd; }
     r += 2;
     const inicio = r;
     b.linhas.forEach(l => {
-      const destaque = l.tipo !== 'posto'; ws.getRow(r).height = destaque ? 22 : 19;
-      const lc = ws.getCell(r, 1); lc.value = l.rot; lc.font = { name: 'Calibri', size: 10.5, bold: destaque, color: { argb: 'FF1B1B2A' } }; lc.alignment = { vertical: 'middle', indent: 1 };
+      const destaque = l.tipo !== 'posto'; ws.getRow(r).height = l.tipo === 'cons2' ? rhS : rhN;
+      const lc = ws.getCell(r, 1); lc.value = l.rot; lc.font = { name: 'Calibri', size: l.tipo === 'cons2' ? 10 : 11.5, bold: destaque, color: { argb: l.tipo === 'cons2' ? 'FF4A4A60' : 'FF1B1B2A' } }; lc.alignment = { vertical: 'middle', indent: 1 };
       lc.fill = fill(destaque ? (l.tipo === 'cons1' ? b.clara : '#F1F1F6') : '#FFFFFF'); lc.border = brd;
       l.cel.forEach((c, j) => {
         const col = 2 + j, cell = ws.getCell(r, col), ac = j >= nm * 2;
         const vazio = c.v === null || c.v === undefined || isNaN(c.v);
         cell.value = vazio ? '—' : c.v;
         if (vazio) cell.alignment = { horizontal: 'center', vertical: 'middle' }; else estiloCel(cell, c.t);
-        cell.font = { name: 'Calibri', size: 10.5, bold: ac || destaque, color: { argb: 'FF1B1B2A' } }; cell.border = brd;
+        cell.font = l.tipo === 'cons2' ? { name: 'Calibri', size: fSen, bold: false, color: { argb: 'FF4A4A60' } } : { name: 'Calibri', size: fNum, bold: ac || destaque, color: { argb: 'FF1B1B2A' } }; cell.border = brd;
         cell.fill = fill(destaque ? (ac ? (l.tipo === 'cons1' ? '#F1E3A6' : '#F6ECBF') : (l.tipo === 'cons1' ? b.clara : '#F1F1F6')) : (ac ? '#FBF4D9' : (Math.floor(j / 2) % 2 ? '#F3F3FB' : '#FFFFFF')));
       });
       r++;
@@ -33609,11 +33666,11 @@ async function csrMontarExcel(g, ExcelJS) {
   rotG.forEach((t, i) => { const { c1, c2 } = grupo(i); const cell = ws.getCell(r, c1); cell.value = t; merge(r, c1, c2); for (let c = c1; c <= c2; c++) { ws.getCell(r, c).fill = fill('#0a0a0f'); ws.getCell(r, c).border = brd; } cell.font = { name: 'Calibri', size: 10.5, bold: true, color: { argb: 'FFC9A227' } }; cell.alignment = { horizontal: 'center', vertical: 'middle' }; });
   r++;
   g.geral.forEach((cd, k) => {
-    ws.getRow(r).height = 28; const lc = ws.getCell(r, 1); lc.value = cd.titulo; lc.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } }; lc.fill = fill(k ? '#8a6d0f' : '#4a4aee'); lc.alignment = { vertical: 'middle', indent: 1 }; lc.border = brd;
+    ws.getRow(r).height = 28; const lc = ws.getCell(r, 1); lc.value = cd.titulo; lc.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } }; lc.fill = fill(k === g.geral.length - 1 ? '#8a6d0f' : '#4a4aee'); lc.alignment = { vertical: 'middle', indent: 1 }; lc.border = brd;
     cd.itens.forEach((it, i) => {
       const { c1, c2 } = grupo(i); const cell = ws.getCell(r, c1); const vazio = it.v === null || it.v === undefined || isNaN(it.v); cell.value = vazio ? '—' : it.v; merge(r, c1, c2);
       if (vazio) cell.alignment = { horizontal: 'center', vertical: 'middle' }; else estiloCel(cell, it.t);
-      for (let c = c1; c <= c2; c++) { ws.getCell(r, c).fill = fill(k ? '#F6ECBF' : '#E8E8FF'); ws.getCell(r, c).border = brd; }
+      for (let c = c1; c <= c2; c++) { ws.getCell(r, c).fill = fill(k === g.geral.length - 1 ? '#F6ECBF' : '#E8E8FF'); ws.getCell(r, c).border = brd; }
       cell.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FF1B1B2A' } };
       if (it.t === 'nota') cfRanges.push(`${csrColLetra(c1)}${r}`);
     }); r++;
