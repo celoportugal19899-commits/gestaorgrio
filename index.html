@@ -775,6 +775,21 @@ const PosCanalLabels = {
   .csr-chip input{display:none;} .csr-chip.on{background:var(--accent);border-color:var(--accent);color:#fff;} .csr-chip.off{opacity:.35;cursor:not-allowed;}
   .csr-atalhos{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
   .csr-bar button:disabled{opacity:.45;cursor:not-allowed;}
+
+  /* ═══ INDICADORES — PRODUTIVIDADE ═══ */
+  #modal-prod-rel .modal{width:min(1560px,97vw);max-width:97vw;padding:20px 22px;}
+  .prd-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin:4px 0 14px;}
+  .prd-bar .form-select{min-width:150px;padding:8px 12px;font-size:13px;}
+  .prd-bar .prd-meses-bloco{flex:1 1 100%;order:5;} .prd-bar #prd-btn-rel{margin-left:auto;}
+  .prd-aviso{background:rgba(245,158,11,.12);border:1px solid var(--yellow);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--text1);}
+  .prd-aviso-i{display:flex;flex-wrap:wrap;gap:8px;align-items:center;} .prd-aviso-i input{width:160px;padding:5px 8px;}
+  .prd-ref{font-size:12px;color:var(--text2);margin:0 0 10px;}
+  .prd-graficos{display:grid;grid-template-columns:repeat(auto-fit,minmax(460px,1fr));gap:16px;}
+  .prd-painel{background:var(--surface);border-radius:12px;border:1px solid var(--border);padding:16px;min-width:0;}
+  .prd-nota{font-size:11px;color:var(--text3);margin-top:8px;line-height:1.5;}
+  .prd-tabela tfoot td{font-weight:800;border-top:2px solid var(--border);background:var(--surface2);}
+  #prr-corpo .csr-load{padding:50px;}
+  #modal-prod-rel .prd-aviso{margin:0 0 12px;}
 </style>
   <style>
   .caixa-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px 24px;margin-bottom:16px;}
@@ -1340,6 +1355,7 @@ const PosCanalLabels = {
             <button class="ind-tab-btn active" id="indTab-painel" onclick="switchIndTab('painel')">📊 Painel</button>
             <button class="ind-tab-btn" id="indTab-multas" onclick="switchIndTab('multas')">⚠ Multas</button>
             <button class="ind-tab-btn" id="indTab-importar" onclick="switchIndTab('importar')">📥 Importar</button>
+            <button class="ind-tab-btn" id="indTab-produtividade" onclick="switchIndTab('produtividade')">⚙ Produtividade</button>
           </div>
           <select class="form-select" id="ind-posto-filtro" style="width:170px" onchange="renderIndicadores()">
             <option value="">Todos os postos</option>
@@ -1385,6 +1401,31 @@ const PosCanalLabels = {
           </div>
         </div>
         <div id="ind-multas-body"></div>
+      </div>
+
+      <!-- ABA PRODUTIVIDADE -->
+      <div id="ind-view-produtividade" style="display:none">
+        <div class="prd-bar">
+          <div><label class="form-label">Ano</label><select class="form-select" id="prd-ano" onchange="prdMudouAno()"></select></div>
+          <div><label class="form-label">Supervisor</label><select class="form-select" id="prd-sup" onchange="prdMudouSup()"></select></div>
+          <div><label class="form-label">Posto</label><select class="form-select" id="prd-posto" onchange="prdAtualizar()"></select></div>
+          <div class="prd-meses-bloco"><label class="form-label">Competências (marque quantas quiser)</label><div class="csr-meses" id="prd-meses"></div>
+            <div class="csr-atalhos"><button class="btn btn-secondary btn-sm" onclick="prdAtalho('todos')">Todos os meses</button><button class="btn btn-secondary btn-sm" onclick="prdAtalho('3')">Últimos 3 meses</button><button class="btn btn-secondary btn-sm" onclick="prdAtalho('6')">Últimos 6 meses</button><button class="btn btn-secondary btn-sm" onclick="prdAtalho('limpar')">Limpar seleção</button></div></div>
+          <button class="btn btn-primary" id="prd-btn-rel" onclick="prdRelAbrir()">📑 Relatório de Produtividade</button>
+        </div>
+        <div class="prd-aviso" id="prd-aviso" style="display:none"></div>
+        <div class="prd-ref" id="prd-ref"></div>
+        <div id="prd-cards" class="ind-kpi-grid"></div>
+        <div class="prd-graficos">
+          <div class="prd-painel"><div class="ind-section-title">Evolução mensal — Senhas e Produtividade <span id="prd-titulo-per" style="color:var(--text3);font-weight:600;font-size:12px"></span></div>
+            <div style="position:relative;height:340px"><canvas id="prd-chart-mes"></canvas></div><div id="prd-chart-mes-vazio" class="ind-empty" style="display:none">Selecione um ou mais meses acima.</div>
+            <div class="prd-nota" id="prd-notas"></div></div>
+          <div class="prd-painel"><div class="ind-section-title">Comparativo Anual — Operação Geral</div>
+            <div style="position:relative;height:340px"><canvas id="prd-chart-ano"></canvas></div>
+            <div class="prd-nota" id="prd-anual-nota"></div></div>
+        </div>
+        <div class="prd-painel" style="margin-top:16px"><div class="ind-section-title">Produtividade por Posto — período selecionado</div>
+          <div style="overflow-x:auto"><table class="ind-table prd-tabela"><thead><tr id="prd-head"></tr></thead><tbody id="prd-corpo"></tbody><tfoot id="prd-foot"></tfoot></table></div></div>
       </div>
 
       <!-- ABA IMPORTAR -->
@@ -2869,6 +2910,21 @@ const PosCanalLabels = {
     <div class="csr-wrap" id="csr-corpo"></div>
   </div>
 </div>
+<div class="modal-overlay" id="modal-prod-rel">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">📑 Relatório de Produtividade</div><button class="close-btn" onclick="closeModal('modal-prod-rel')">✕</button></div>
+    <div class="csr-bar">
+      <div><label class="form-label">Ano</label><select class="form-select" id="prr-ano" onchange="prrMudouAno()"></select></div>
+      <div style="flex:1;min-width:360px"><label class="form-label">Competências (marque quantas quiser)</label><div class="csr-meses" id="prr-meses"></div>
+        <div class="csr-atalhos"><button class="btn btn-secondary btn-sm" onclick="prrAtalho('todos')">Todos os meses disponíveis</button><button class="btn btn-secondary btn-sm" onclick="prrAtalho('3')">Últimos 3 meses</button><button class="btn btn-secondary btn-sm" onclick="prrAtalho('6')">Últimos 6 meses</button><button class="btn btn-secondary btn-sm" onclick="prrAtalho('limpar')">Limpar seleção</button></div></div>
+      <button class="btn btn-secondary" id="prr-btn-xl" onclick="prrBaixarExcel()">⬇ Baixar Excel</button>
+      <button class="btn btn-primary" id="prr-btn-png" onclick="prrBaixarPng()">🖼 Baixar Imagem</button>
+    </div>
+    <div class="prd-aviso" id="prr-aviso" style="display:none"></div>
+    <div class="csr-wrap" id="prr-corpo"></div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-aprovar-justificativa">
   <div class="modal" style="max-width:500px">
     <div class="modal-header"><div class="modal-title">Justificativa de Atraso</div><button class="close-btn" onclick="closeModal('modal-aprovar-justificativa')">✕</button></div>
@@ -6894,8 +6950,8 @@ function switchIndTab(tab) {
   indTabAtual=tab;
   document.querySelectorAll('.ind-tab-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('indTab-'+tab)?.classList.add('active');
-  document.getElementById('ind-meses-wrap').style.display=tab==='importar'?'none':'flex';
-  const pf=document.getElementById('ind-posto-filtro'); if(pf) pf.style.display=tab==='importar'?'none':'block';
+  document.getElementById('ind-meses-wrap').style.display=(tab==='importar'||tab==='produtividade')?'none':'flex';
+  const pf=document.getElementById('ind-posto-filtro'); if(pf) pf.style.display=(tab==='importar'||tab==='produtividade')?'none':'block';
   renderIndicadores();
 }
 
@@ -6904,8 +6960,10 @@ async function renderIndicadores() {
   document.getElementById('ind-view-painel').style.display  =indTabAtual==='painel' ?'block':'none';
   document.getElementById('ind-view-multas').style.display  =indTabAtual==='multas' ?'block':'none';
   document.getElementById('ind-view-importar').style.display=indTabAtual==='importar'?'block':'none';
+  document.getElementById('ind-view-produtividade').style.display=indTabAtual==='produtividade'?'block':'none';
   if(indTabAtual==='painel')  await renderPainelIndicadores();
   if(indTabAtual==='multas')  renderMultasIndicadores();
+  if(indTabAtual==='produtividade') await renderProdutividade();
 }
 
 // ── PAINEL ──
@@ -33690,6 +33748,553 @@ async function csrBaixarExcel() {
     toast('Excel gerado.', 'ok');
   } catch (e) { console.error('[Relatório por Supervisão] Excel', e); toast('Não foi possível gerar o Excel (biblioteca não carregou?). Verifique a conexão.', 'err'); }
   finally { _csrOcupado = false; }
+}
+
+</script>
+<script>
+/* ═══════════════════════════════════════════════════════════════════
+   INDICADORES — PRODUTIVIDADE (aba nova) + RELATÓRIO DE PRODUTIVIDADE
+   Produtividade = senhas ÷ (P.A. × dias úteis)
+   - Reaproveita os dados já carregados da coleção `indicadores` (allIndicadores). Sem leituras novas, sem escritas, sem listeners.
+   - Calendário PRÓPRIO (só feriados nacionais). O calendário do painel de Indicadores NÃO é tocado.
+   - 2024 e 2025 existem só como constantes históricas (gráfico anual e cards do relatório). Dados mensais: 2026 em diante.
+   ═══════════════════════════════════════════════════════════════════ */
+const PRD_INICIO = '2026-01';                 // dados mensais só de 2026 em diante
+const PRD_MAMBUCABA_INICIO = '2026-11';       // Parque Mambucaba só a partir de 11/2026 (sem retroativo)
+const PRD_HIST = { 2024: { mediaMensal: 9000, pa: 28 }, 2025: { mediaMensal: 11000, pa: 29 } };   // estimativas históricas fixas
+function prdPA(ref) { return ref >= '2026-11' ? 30 : 29; }                                         // P.A. da operação por competência
+// Feriados NACIONAIS fixos (MM-DD) + Sexta-feira Santa (calculada). Sem Carnaval, Corpus Christi, feriados estaduais/municipais ou pontos facultativos.
+const PRD_FERIADOS_FIXOS = ['01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '11-20', '12-25'];
+const PRD_ABREV = ['', 'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+const PRD_NOME = ['', 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+let _prdFerCache = {};
+function prdPascoa(ano) {
+  const a = ano % 19, b = Math.floor(ano / 100), c = ano % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const mes = Math.floor((h + l - 7 * m + 114) / 31), dia = ((h + l - 7 * m + 114) % 31) + 1; return [mes, dia];
+}
+function prdFeriados(ano) {
+  if (_prdFerCache[ano]) return _prdFerCache[ano];
+  const s = new Set(PRD_FERIADOS_FIXOS); const [pm, pd] = prdPascoa(ano); const sx = new Date(ano, pm - 1, pd - 2);
+  s.add(String(sx.getMonth() + 1).padStart(2, '0') + '-' + String(sx.getDate()).padStart(2, '0'));
+  return (_prdFerCache[ano] = s);
+}
+// dias úteis de 1 até `ate` (inclusive) do mês — só partes LOCAIS da data (sem UTC)
+function prdDiasUteis(ano, mes, ate) {
+  const fer = prdFeriados(ano); const ult = new Date(ano, mes, 0).getDate(); const fim = Math.min(ate == null ? ult : ate, ult); let n = 0;
+  for (let d = 1; d <= fim; d++) {
+    const w = new Date(ano, mes - 1, d).getDay(); if (w === 0 || w === 6) continue;
+    if (fer.has(String(mes).padStart(2, '0') + '-' + String(d).padStart(2, '0'))) continue; n++;
+  }
+  return n;
+}
+function prdDiasUteisAno(ano) { let t = 0; for (let m = 1; m <= 12; m++) t += prdDiasUteis(ano, m); return t; }
+
+// ── helpers de formato ──
+function prdR2(x) { return x == null || isNaN(x) ? null : Number(Number(x).toFixed(2)); }
+function prdFmtProd(v) { return v == null || isNaN(v) ? '—' : Number(v).toFixed(2).replace('.', ','); }
+function prdFmtInt(v) { return v == null || isNaN(v) ? '—' : Math.round(v).toLocaleString('pt-BR'); }
+function prdDataBR(iso) { return iso && /^\d{4}-\d{2}-\d{2}/.test(iso) ? iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4) : ''; }
+function prdFmtCel(c) { if (c == null || c.v == null || (typeof c.v === 'number' && isNaN(c.v))) return '—'; if (c.t === 'prod') return prdFmtProd(c.v); if (c.t === 'int') return prdFmtInt(c.v); return String(c.v); }
+function prdD1Iso() { const m = String(typeof _indicadoresUltimoImportTxt !== 'undefined' ? _indicadoresUltimoImportTxt : '').match(/D-1:\s*(\d{2})\/(\d{2})\/(\d{4})/); return m ? `${m[3]}-${m[2]}-${m[1]}` : ''; }
+function prdCanon(n) { return _opNomeCanonicoOficial(n); }
+function prdNomeExib(canon) { return csrNomeExibicao(canon); }
+function prdListaMeses(sel) { return csrListaMeses(sel); }
+
+// ── Registro de postos / supervisor (vínculos já existentes) ──
+function prdRegistro() {
+  const out = []; const vistos = new Set(); const teste = prdCanon('Posto Teste');
+  const add = p => { if (!p || !p.nome) return; const k = prdCanon(p.nome); if (!k || k === teste || vistos.has(k)) return; vistos.add(k); out.push({ canon: k, nome: p.nome, sup: String(p.supervisor || '').trim() }); };
+  (typeof POSTOS_INICIAIS !== 'undefined' ? POSTOS_INICIAIS : []).forEach(add);
+  const mapaSup = {}; out.forEach(o => { mapaSup[o.canon] = o; });
+  (typeof allPostos !== 'undefined' ? allPostos : []).forEach(p => { if (!p || !p.nome) return; const k = prdCanon(p.nome); if (mapaSup[k]) { if (p.supervisor) mapaSup[k].sup = String(p.supervisor).trim(); } else add(p); });
+  if (!out.some(o => o.canon === POSTO_MAMBUCABA)) { const csatSup = (typeof CSAT_SUPERVISORES !== 'undefined' ? Object.keys(CSAT_SUPERVISORES) : []).find(s => CSAT_SUPERVISORES[s].postos.some(n => prdCanon(n) === POSTO_MAMBUCABA)); out.push({ canon: POSTO_MAMBUCABA, nome: prdNomeExib(POSTO_MAMBUCABA), sup: csatSup ? csatSup.charAt(0).toUpperCase() + csatSup.slice(1) : '' }); }
+  out.forEach(o => { if (!o.sup) o.sup = ''; });
+  return out.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+}
+
+// ── Contexto (puro): indexa os docs já carregados ──
+function prdCtx(indArr, opt) {
+  opt = opt || {}; const hoje = opt.hoje || new Date();
+  const ctx = { idx: {}, drs: {}, manual: opt.manual || {}, d1: opt.d1 || '', hojeYM: hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0'), _mes: {} };
+  const teste = prdCanon('Posto Teste');
+  (indArr || []).forEach(d => {
+    const ref = _opNormMesRef(d.mesRef); if (!ref || ref < PRD_INICIO) return;
+    const k = prdCanon(d.postoNome); if (!k || k === teste) return;
+    if (k === POSTO_MAMBUCABA && ref < PRD_MAMBUCABA_INICIO) return;
+    const o = ctx.idx[k] || (ctx.idx[k] = {}); const c = o[ref] || (o[ref] = { sen: 0, tma: [], tme: [] });
+    c.sen += parseInt(d.senhasAtendidas) || 0;
+    const a = parseTempo(d.tma); if (a !== null && a !== undefined) c.tma.push(a);
+    const e = parseTempo(d.tme); if (e !== null && e !== undefined) c.tme.push(e);
+    if (d.dataReferencia) (ctx.drs[ref] || (ctx.drs[ref] = [])).push(String(d.dataReferencia));
+  });
+  ctx.mes = ref => ctx._mes[ref] || (ctx._mes[ref] = prdMesInfo(ref, ctx));
+  return ctx;
+}
+// Competência: dias úteis cobertos. Mês parcial = dataReferencia dentro do mês antes do último dia.
+function prdMesInfo(ref, ctx) {
+  const a = +ref.slice(0, 4), m = +ref.slice(5, 7), ult = new Date(a, m, 0).getDate();
+  let dr = '', origem = '';
+  (ctx.drs[ref] || []).forEach(s => { const t = /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : ''; if (t && t.slice(0, 7) === ref && t > dr) dr = t; });
+  if (dr) origem = 'importação';
+  if (!dr && ctx.manual[ref] && ctx.manual[ref].slice(0, 7) === ref) { dr = ctx.manual[ref]; origem = 'informada'; }
+  if (!dr && ctx.d1 && ctx.d1.slice(0, 7) === ref) { dr = ctx.d1; origem = 'última importação'; }
+  let ate, parcial = false, pendente = false;
+  if (dr) { ate = Math.min(+dr.slice(8, 10), ult); parcial = ate < ult; }
+  else if (ref === ctx.hojeYM) { pendente = true; parcial = true; ate = null; }
+  else ate = ult;
+  return { ref, ano: a, mes: m, ult, dr, origem, ate, parcial, pendente, du: pendente ? null : prdDiasUteis(a, m, ate) };
+}
+function prdTemMes(ctx, ref) { return Object.keys(ctx.idx).some(k => ctx.idx[k][ref]); }
+function prdMesesComDados(ctx, ano) { const s = new Set(); Object.keys(ctx.idx).forEach(k => Object.keys(ctx.idx[k]).forEach(r => { if (+r.slice(0, 4) === ano) s.add(+r.slice(5, 7)); })); return [...s].sort((x, y) => x - y); }
+function prdAnosDisponiveis(ctx) { const s = new Set(); Object.keys(ctx.idx).forEach(k => Object.keys(ctx.idx[k]).forEach(r => s.add(+r.slice(0, 4)))); const h = new Date().getFullYear(); if (h >= 2026) s.add(h); return [...s].filter(a => a >= 2026).sort((x, y) => y - x); }
+
+// Agregação: total de senhas ÷ soma de (P.A. × dias úteis). P.A. de cada posto = 1; posto sem dado na competência não entra.
+function prdAgg(ctx, postos, refs) {
+  let sen = 0, senP = 0, pad = 0, tem = false; const tma = [], tme = [], pend = [];
+  postos.forEach(k => {
+    const o = ctx.idx[k]; if (!o) return;
+    refs.forEach(r => {
+      const c = o[r]; if (!c) return; tem = true; sen += c.sen; c.tma.forEach(v => tma.push(v)); c.tme.forEach(v => tme.push(v));
+      const mi = ctx.mes(r);
+      if (mi.du == null) { if (!pend.includes(r)) pend.push(r); } else { senP += c.sen; pad += mi.du; }
+    });
+  });
+  const med = a => a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length) : null;   // mesmo critério do Painel (média simples dos registros, arredondada)
+  return { tem, sen, senP, pad, prod: pad > 0 ? senP / pad : null, tma: med(tma), tme: med(tme), pend };
+}
+function prdOrdenarPorProd(linhas) {
+  return linhas.sort((a, b) => { const x = a.agg.prod, y = b.agg.prod; if (x == null && y == null) return a.nome.localeCompare(b.nome, 'pt-BR'); if (x == null) return 1; if (y == null) return -1; return y - x || a.nome.localeCompare(b.nome, 'pt-BR'); });
+}
+function prdPostoAtivo(canon, refs) { return canon === POSTO_MAMBUCABA ? refs.some(r => r >= PRD_MAMBUCABA_INICIO) : true; }
+
+// ── Modelo da aba ──
+function prdModeloTab(ctx, ano, sel, filtro) {
+  filtro = filtro || {}; const reg = prdRegistro();
+  const refs = sel.map(m => ano + '-' + String(m).padStart(2, '0'));
+  const nomes = {}; reg.forEach(o => { nomes[o.canon] = o.nome; });
+  Object.keys(ctx.idx).forEach(k => { if (!nomes[k]) nomes[k] = prdNomeExib(k); });
+  let escopo = Object.keys(nomes);
+  const reg2 = {}; reg.forEach(o => { reg2[o.canon] = o; });
+  if (filtro.sup) escopo = escopo.filter(k => reg2[k] && reg2[k].sup === filtro.sup);
+  if (filtro.posto) escopo = escopo.filter(k => k === filtro.posto);
+  const linhas = escopo.map(k => ({ canon: k, nome: nomes[k], agg: prdAgg(ctx, [k], refs) })).filter(l => l.agg.tem || prdPostoAtivo(l.canon, refs));
+  const total = prdAgg(ctx, escopo, refs);
+  const serie = refs.map((r, i) => { const a = prdAgg(ctx, escopo, [r]); const mi = ctx.mes(r); return { ref: r, m: sel[i], lbl: PRD_ABREV[sel[i]] + (mi.parcial ? '*' : ''), agg: a, mi }; });
+  const pend = []; refs.forEach(r => { if (prdTemMes(ctx, r) && ctx.mes(r).pendente) pend.push(r); });
+  const parciais = serie.filter(s => s.agg.tem && s.mi.parcial && !s.mi.pendente);
+  return { ano, sel, refs, escopo, linhas, total, serie, pend, parciais, filtro };
+}
+
+// ── Anual (operação geral) ──
+function prdModeloAnual(ctx, anosReais) {
+  const out = [];
+  [2024, 2025].forEach(a => { const h = PRD_HIST[a], du = prdDiasUteisAno(a); out.push({ ano: a, estimado: true, media: h.mediaMensal, pa: h.pa, du, prod: (h.mediaMensal * 12) / (h.pa * du) }); });
+  const todos = Object.keys(ctx.idx);
+  anosReais.slice().sort((x, y) => x - y).forEach(a => {
+    const ms = prdMesesComDados(ctx, a); if (!ms.length) return;
+    let sen = 0, senP = 0, pad = 0, soFech = 0, nFech = 0, pend = [];
+    ms.forEach(m => {
+      const ref = a + '-' + String(m).padStart(2, '0'); const ag = prdAgg(ctx, todos, [ref]); const mi = ctx.mes(ref);
+      sen += ag.sen; if (mi.du == null) pend.push(ref); else { senP += ag.sen; pad += prdPA(ref) * mi.du; }
+      if (!mi.parcial) { soFech += ag.sen; nFech++; }
+    });
+    out.push({ ano: a, estimado: false, media: nFech ? soFech / nFech : null, nFech, sen, senP, pad, prod: pad > 0 ? senP / pad : null, meses: ms, pend });
+  });
+  return out;
+}
+
+// ═══════════════════════ UI DA ABA ═══════════════════════
+let _prdAno = 0, _prdSel = [], _prdAutoSel = true, _prdSort = { col: 'prod', dir: -1 }, _prdChartMes = null, _prdChartAno = null, _prdManual = {}, _prdIniciado = false, _prdOcupado = false, _prdAtual = null, _prdUltimo = null;
+function prdContexto() { return prdCtx(allIndicadores, { manual: _prdManual, d1: prdD1Iso(), hoje: new Date() }); }
+
+const PrdLabels = {
+  id: 'prdLabels',
+  afterDatasetsDraw(chart) {
+    const { ctx, chartArea } = chart; const caixas = []; chart._prdCaixas = caixas;
+    const livre = (x, y, w, h) => !caixas.some(b => x - w / 2 < b.x2 && x + w / 2 > b.x1 && y - h < b.y2 && y > b.y1);
+    // linhas primeiro (têm prioridade de posição); barras depois, deslocando só se colidir
+    const ordem = chart.data.datasets.map((d, i) => i).sort((a, b) => (chart.data.datasets[a].type === 'line' ? -1 : 1) - (chart.data.datasets[b].type === 'line' ? -1 : 1));
+    ordem.forEach(i => {
+      const ds = chart.data.datasets[i], meta = chart.getDatasetMeta(i); if (meta.hidden || ds._noLabels) return;
+      meta.data.forEach((el, j) => {
+        const v = ds.data[j]; if (v === null || v === undefined || isNaN(v)) return;
+        const txt = ds._labelFmt ? ds._labelFmt(v, j) : String(v); if (!txt) return;
+        ctx.save(); ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.lineJoin = 'round';
+        const w = ctx.measureText(txt).width + 4, h = 14; const eBar = ds.type === 'bar';
+        let x = el.x, y = eBar ? chartArea.bottom - 6 : el.y - 8, passo = 0;
+        while (!livre(x, y, w, h) && passo < 8) { y += eBar ? -(h + 2) : -(h + 2); passo++; }
+        caixas.push({ x1: x - w / 2, x2: x + w / 2, y1: y - h, y2: y }); chart._prdCaixas = caixas;
+        if (eBar) { ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(8,10,30,.75)'; ctx.strokeText(txt, x, y); ctx.fillStyle = '#ffffff'; }
+        else { ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(8,10,30,.75)'; ctx.strokeText(txt, x, y); ctx.fillStyle = ds._labelColor || '#f59e0b'; }
+        ctx.fillText(txt, x, y); ctx.restore();
+      });
+    });
+  }
+};
+function prdNice(v, cima) { if (!(v > 0)) return cima ? 10 : 0; const p = Math.pow(10, Math.floor(Math.log10(v))); const f = v / p; const passos = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]; let m = passos.find(x => x >= f - 1e-9) || 10; return m * p; }
+function prdEscalas(sen, prod) {
+  const ms = Math.max(0, ...sen.filter(v => v != null && !isNaN(v)));
+  const pv = prod.filter(v => v != null && !isNaN(v)); const lo = pv.length ? Math.min(...pv) : 0, hi = pv.length ? Math.max(...pv) : 1;
+  const span = Math.max(hi - lo, hi * 0.12, 1);
+  const passo = Math.pow(10, Math.floor(Math.log10(Math.max(span, 1)))) / 2 || 1;
+  return { y: { min: 0, max: ms > 0 ? prdNice(ms * 2.2, true) : 10 }, y2: { min: Math.floor((lo - span * 1.7) / passo) * passo, max: Math.ceil((hi + span * 0.6) / passo) * passo } };
+}
+function prdOpcoes(esc, tituloY, tituloY2) {
+  const tk = { font: { size: 11 }, color: '#a0aec0' };
+  return { responsive: true, maintainAspectRatio: false, animation: false, layout: { padding: { top: 10, right: 6 } },
+    plugins: { legend: { labels: { font: { size: 11 }, color: '#a0aec0' } } },
+    scales: { x: { ticks: tk, grid: { color: 'rgba(255,255,255,.04)' } },
+      y: { position: 'left', min: esc.y.min, max: esc.y.max, title: { display: true, text: tituloY, color: '#a0aec0', font: { size: 11 } }, ticks: { ...tk, callback: v => v >= 0 ? v.toLocaleString('pt-BR') : '' }, grid: { color: 'rgba(255,255,255,.06)' } },
+      y2: { position: 'right', min: esc.y2.min, max: esc.y2.max, title: { display: true, text: tituloY2, color: '#a0aec0', font: { size: 11 } }, ticks: { ...tk, callback: v => v >= 0 ? v.toFixed(1).replace('.', ',') : '' }, grid: { drawOnChartArea: false } } } };
+}
+function prdDestroy(c) { try { if (c) c.destroy(); } catch (e) {} return null; }
+function prdAnoSel() { return +document.getElementById('prd-ano').value; }
+
+function prdPreencherFiltros(ctx) {
+  const anos = prdAnosDisponiveis(ctx); const sa = document.getElementById('prd-ano');
+  const atual = _prdAno && anos.includes(_prdAno) ? _prdAno : (anos[0] || new Date().getFullYear());
+  sa.innerHTML = (anos.length ? anos : [atual]).map(a => `<option value="${a}">${a}</option>`).join(''); sa.value = String(atual); _prdAno = atual;
+  const supSel = document.getElementById('prd-sup'), valSup = supSel.value; const reg = prdRegistro();
+  const sups = [...new Set(reg.map(o => o.sup).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  supSel.innerHTML = '<option value="">Todos os supervisores</option>' + sups.map(s => `<option value="${csrEsc(s)}">${csrEsc(s)}</option>`).join(''); supSel.value = sups.includes(valSup) ? valSup : '';
+  prdPreencherPostos();
+}
+function prdPreencherPostos() {
+  const ps = document.getElementById('prd-posto'), val = ps.value, sup = document.getElementById('prd-sup').value; const reg = prdRegistro().filter(o => !sup || o.sup === sup);
+  ps.innerHTML = '<option value="">Todos os postos</option>' + reg.map(o => `<option value="${csrEsc(o.canon)}">${csrEsc(o.nome)}</option>`).join(''); ps.value = reg.some(o => o.canon === val) ? val : '';
+}
+function prdDisponiveis(ctx, ano) { return prdMesesComDados(ctx, ano); }
+function prdRenderChips(ctx) {
+  const disp = prdDisponiveis(ctx, _prdAno);
+  document.getElementById('prd-meses').innerHTML = Array.from({ length: 12 }, (_, i) => {
+    const m = i + 1, dis = !disp.includes(m), on = !dis && _prdSel.includes(m);
+    return `<label class="csr-chip${on ? ' on' : ''}${dis ? ' off' : ''}"><input type="checkbox" ${on ? 'checked' : ''} ${dis ? 'disabled' : ''} onchange="prdToggleMes(${m})">${PRD_ABREV[m]}</label>`;
+  }).join('');
+}
+function prdToggleMes(m) { _prdAutoSel = false; _prdSel = _prdSel.includes(m) ? _prdSel.filter(x => x !== m) : [..._prdSel, m].sort((a, b) => a - b); prdAtualizar(); }
+function prdAtalho(tipo) {
+  _prdAutoSel = tipo === 'todos'; const disp = prdDisponiveis(prdContexto(), _prdAno);
+  if (tipo === 'todos') _prdSel = disp.slice(); else if (tipo === 'limpar') _prdSel = []; else _prdSel = disp.slice(-(+tipo));
+  prdAtualizar();
+}
+function prdMudouAno() { _prdAno = prdAnoSel(); _prdAutoSel = true; prdAtualizar(); }
+function prdMudouSup() { prdPreencherPostos(); prdAtualizar(); }
+function prdOrdenar(col) { _prdSort = { col, dir: _prdSort.col === col ? -_prdSort.dir : (col === 'posto' ? 1 : -1) }; prdAtualizar(true); }
+
+async function prdGarantirDados() {
+  await _compartilhar('ind', async () => { if (!(indicadoresCarregados && allIndicadores.length && _cacheFresco('ind'))) await carregarTodosIndicadores(); });
+}
+async function renderProdutividade() {
+  try { await prdGarantirDados(); } catch (e) { console.error('[Produtividade]', e); document.getElementById('prd-cards').innerHTML = '<div class="ind-empty">Não foi possível carregar os dados.</div>'; return; }
+  const ctx = prdContexto();
+  if (!_prdIniciado) { _prdIniciado = true; _prdAno = prdAnosDisponiveis(ctx)[0] || new Date().getFullYear(); }
+  prdPreencherFiltros(ctx);
+  prdAtualizar();
+}
+function prdAvisoPend(ctx, refs, alvo) {
+  const el = document.getElementById(alvo); if (!el) return;
+  const pend = refs.filter(r => prdTemMes(ctx, r) && ctx.mes(r).pendente);
+  if (!pend.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = 'block';
+  el.innerHTML = pend.map(r => `<div class="prd-aviso-i">⚠ <b>${PRD_ABREV[+r.slice(5, 7)]}/${r.slice(0, 4)}</b> é um mês em andamento e a data de referência dos dados não foi identificada. Informe até que dia os dados estão atualizados:
+      <input type="date" class="form-input" id="${alvo}-${r}" min="${r}-01" max="${r}-${String(new Date(+r.slice(0, 4), +r.slice(5, 7), 0).getDate()).padStart(2, '0')}">
+      <button class="btn btn-sm btn-primary" onclick="prdInformarRef('${r}','${alvo}')">Aplicar</button>
+      <span style="color:var(--text3)">Enquanto isso, a produtividade desse mês aparece como “—”. Nada é gravado.</span></div>`).join('');
+}
+function prdInformarRef(ref, alvo) {
+  const v = (document.getElementById(alvo + '-' + ref) || {}).value || '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || v.slice(0, 7) !== ref) { toast('Informe uma data dentro do mês indicado.', 'err'); return; }
+  _prdManual[ref] = v; prdAtualizar(); if (document.getElementById('modal-prod-rel').classList.contains('open')) prrAtualizar();
+}
+function prdCardHtml(label, val, sub, cls) { return `<div class="ind-kpi-card${cls ? ' ' + cls : ''}"><div class="ind-kpi-label">${label}</div><div class="ind-kpi-val">${val}</div><div class="ind-kpi-sub">${sub}</div></div>`; }
+function prdAtualizar(soTabela) {
+  const ctx = prdContexto(); _prdAno = prdAnoSel() || _prdAno;
+  const disp = prdDisponiveis(ctx, _prdAno);
+  if (_prdAutoSel) _prdSel = disp.slice(); else _prdSel = _prdSel.filter(m => disp.includes(m));
+  prdRenderChips(ctx);
+  const filtro = { sup: document.getElementById('prd-sup').value, posto: document.getElementById('prd-posto').value };
+  const btn = document.getElementById('prd-btn-rel'); if (btn) btn.disabled = false;
+  const M = prdModeloTab(ctx, _prdAno, _prdSel, filtro); _prdUltimo = M;
+  prdAvisoPend(ctx, M.refs, 'prd-aviso');
+  const T = M.total;
+  const ate = M.serie.filter(s => s.agg.tem).map(s => s.mi).filter(mi => mi.dr).map(mi => mi.dr).sort().pop();
+  document.getElementById('prd-ref').innerHTML = ate ? `📅 Dados de produtividade até <b>${prdDataBR(ate)}</b>` : '';
+  if (!_prdSel.length) {
+    document.getElementById('prd-cards').innerHTML = ''; document.getElementById('prd-corpo').innerHTML = '<tr><td colspan="5" class="ind-empty">Selecione um ou mais meses acima.</td></tr>'; document.getElementById('prd-foot').innerHTML = '';
+    document.getElementById('prd-notas').innerHTML = ''; _prdChartMes = prdDestroy(_prdChartMes); document.getElementById('prd-chart-mes-vazio').style.display = 'block'; prdRenderAnual(ctx); return;
+  }
+  const parc = M.parciais.map(s => `${PRD_ABREV[s.m]} (até ${prdDataBR(s.mi.dr).slice(0, 5)})`);
+  const subProd = T.pad > 0 ? `${prdFmtInt(T.pad)} P.A.-dias úteis${parc.length ? ' · parcial: ' + parc.join(', ') : ''}` : (T.tem ? 'sem data de referência' : 'sem dados no período');
+  document.getElementById('prd-cards').innerHTML =
+    prdCardHtml('Total de Senhas', T.tem ? prdFmtInt(T.sen) : '—', `${M.linhas.filter(l => l.agg.tem).length} posto(s) · ${_prdSel.length} mês(es)`) +
+    prdCardHtml('Produtividade do Período', prdFmtProd(T.prod), subProd, 'yellow') +
+    prdCardHtml('TMA Médio', `<span style="font-size:18px">${fmtTempo(T.tma)}</span>`, 'tempo médio atend.') +
+    prdCardHtml('TME Médio', `<span style="font-size:18px">${fmtTempo(T.tme)}</span>`, 'tempo médio espera');
+  // tabela
+  const col = _prdSort.col, dir = _prdSort.dir;
+  const val = l => col === 'posto' ? l.nome : col === 'sen' ? (l.agg.tem ? l.agg.sen : null) : col === 'tma' ? l.agg.tma : col === 'tme' ? l.agg.tme : l.agg.prod;
+  const ls = M.linhas.slice().sort((a, b) => {
+    const x = val(a), y = val(b);
+    if (col === 'posto') return dir * x.localeCompare(y, 'pt-BR');
+    if (x == null && y == null) return a.nome.localeCompare(b.nome, 'pt-BR'); if (x == null) return 1; if (y == null) return -1;
+    return dir * (x - y) || a.nome.localeCompare(b.nome, 'pt-BR');
+  });
+  const seta = c => c === col ? (dir > 0 ? ' ▲' : ' ▼') : '';
+  document.getElementById('prd-head').innerHTML = [['posto', 'Posto'], ['sen', 'Senhas'], ['tma', 'TMA'], ['tme', 'TME'], ['prod', 'Produtividade']].map(([c, t]) => `<th style="cursor:pointer;user-select:none${c === 'posto' ? '' : ';text-align:right'}" onclick="prdOrdenar('${c}')">${t}${seta(c)}</th>`).join('');
+  const linha = (nome, a, cls) => `<tr${cls ? ` class="${cls}"` : ''}><td>${csrEsc(nome)}</td><td style="text-align:right">${a.tem ? prdFmtInt(a.sen) : '—'}</td><td style="text-align:right">${a.tem ? fmtTempo(a.tma) : '—'}</td><td style="text-align:right">${a.tem ? fmtTempo(a.tme) : '—'}</td><td style="text-align:right;font-weight:700">${prdFmtProd(a.prod)}</td></tr>`;
+  document.getElementById('prd-corpo').innerHTML = ls.length ? ls.map(l => linha(l.nome, l.agg)).join('') : '<tr><td colspan="5" class="ind-empty">Nenhum posto para os filtros selecionados.</td></tr>';
+  document.getElementById('prd-foot').innerHTML = ls.length ? linha(filtro.posto ? 'Total' : (filtro.sup ? `Consolidado — ${filtro.sup}` : 'Consolidado — Operação'), T, 'prd-cons') : '';
+  document.getElementById('prd-titulo-per').textContent = _prdSel.length === 1 ? `· ${PRD_NOME[_prdSel[0]]}/${_prdAno}` : (_prdSel.length <= 3 ? `· ${prdListaMeses(_prdSel)}/${_prdAno}` : `· ${_prdSel.length} meses de ${_prdAno}`);
+  document.getElementById('prd-notas').innerHTML = parc.length ? `* Mês parcial: dias úteis contados só até a data de referência dos dados (${parc.join(', ')}).` : '';
+  // gráfico mensal
+  const lab = M.serie.map(s => s.lbl + '/' + String(_prdAno).slice(2)), sen = M.serie.map(s => s.agg.tem ? s.agg.sen : null), prd = M.serie.map(s => prdR2(s.agg.prod));
+  document.getElementById('prd-chart-mes-vazio').style.display = 'none';
+  if (!soTabela || true) {
+    requestAnimationFrame(() => setTimeout(() => {
+      _prdChartMes = prdDestroy(_prdChartMes); const cv = document.getElementById('prd-chart-mes'); if (!cv) return;
+      const esc = prdEscalas(sen, prd);
+      _prdChartMes = new Chart(cv.getContext('2d'), { plugins: [PrdLabels], data: { labels: lab, datasets: [
+        { type: 'bar', label: 'Senhas atendidas', data: sen, backgroundColor: 'rgba(79,120,255,.6)', yAxisID: 'y', _labelFmt: v => prdFmtInt(v) },
+        { type: 'line', label: 'Produtividade (senhas/P.A./dia útil)', data: prd, borderColor: '#f59e0b', backgroundColor: 'transparent', pointBackgroundColor: '#f59e0b', yAxisID: 'y2', tension: .3, pointRadius: 5, spanGaps: true, _labelColor: '#f59e0b', _labelFmt: v => prdFmtProd(v) }
+      ] }, options: prdOpcoes(esc, 'Senhas', 'Produtividade') });
+    }, 60));
+  }
+  prdRenderAnual(ctx);
+}
+function prdRenderAnual(ctx) {
+  const anos = prdAnosDisponiveis(ctx).concat([...new Set(Object.keys(ctx.idx).flatMap(k => Object.keys(ctx.idx[k]).map(r => +r.slice(0, 4))))]); const reais = [...new Set(anos)].filter(a => a >= 2026);
+  const A = prdModeloAnual(ctx, reais); _prdAnual = A;
+  const lab = A.map(x => x.estimado ? `${x.ano} (est.)` : String(x.ano)), bar = A.map(x => x.media == null ? null : Math.round(x.media)), lin = A.map(x => prdR2(x.prod));
+  const info = A.filter(x => !x.estimado).map(x => `${x.ano}: ${x.nFech} mês(es) fechado(s) na média mensal${x.meses ? ' (' + prdListaMeses(x.meses) + ' com dados)' : ''}${x.pend && x.pend.length ? ' · mês sem data de referência fora da produtividade' : ''}`).join(' · ');
+  document.getElementById('prd-anual-nota').innerHTML = `<b>(est.)</b> = estimativa histórica (média mensal informada × 12 ÷ (P.A. × dias úteis do ano): 2024 = 9.000 senhas/mês e 28 P.A.; 2025 = 11.000 senhas/mês e 29 P.A.). Anos com dados reais: produtividade = total de senhas ÷ soma de (P.A. × dias úteis) do período coberto (P.A. 29 até out/2026 e 30 a partir de nov/2026); a <b>média mensal considera apenas meses fechados</b> (mês parcial fora). ${csrEsc(info)}`;
+  requestAnimationFrame(() => setTimeout(() => {
+    _prdChartAno = prdDestroy(_prdChartAno); const cv = document.getElementById('prd-chart-ano'); if (!cv) return;
+    const esc = prdEscalas(bar, lin);
+    _prdChartAno = new Chart(cv.getContext('2d'), { plugins: [PrdLabels], data: { labels: lab, datasets: [
+      { type: 'bar', label: 'Senhas — média mensal', data: bar, backgroundColor: A.map(x => x.estimado ? 'rgba(79,120,255,.28)' : 'rgba(79,120,255,.6)'), borderColor: A.map(x => x.estimado ? 'rgba(79,120,255,.8)' : 'rgba(79,120,255,0)'), borderWidth: A.map(x => x.estimado ? 1 : 0), borderDash: [4, 3], yAxisID: 'y', _labelFmt: v => prdFmtInt(v) },
+      { type: 'line', label: 'Produtividade por P.A./dia', data: lin, borderColor: '#f59e0b', backgroundColor: 'transparent', pointBackgroundColor: '#f59e0b', yAxisID: 'y2', tension: .3, pointRadius: 5, spanGaps: true, _labelColor: '#f59e0b', _labelFmt: v => prdFmtProd(v) }
+    ] }, options: prdOpcoes(esc, 'Senhas / mês (média)', 'Produtividade') });
+  }, 60));
+}
+let _prdAnual = null;
+
+// ═══════════════════════ RELATÓRIO ═══════════════════════
+let _prrAno = 0, _prrSel = [], _prrAuto = true, _prrOcupado = false;
+function prrModelo(ctx, ano, sel) {
+  const reg = prdRegistro(); const refs = sel.map(m => ano + '-' + String(m).padStart(2, '0'));
+  const nomes = {}; reg.forEach(o => { nomes[o.canon] = o.nome; }); Object.keys(ctx.idx).forEach(k => { if (!nomes[k]) nomes[k] = prdNomeExib(k); });
+  const todos = Object.keys(nomes);
+  const linhas = todos.map(k => ({ canon: k, nome: nomes[k], agg: prdAgg(ctx, [k], refs), meses: refs.map(r => prdAgg(ctx, [k], [r])) })).filter(l => l.agg.tem || prdPostoAtivo(l.canon, refs));
+  prdOrdenarPorProd(linhas);
+  const cons = { agg: prdAgg(ctx, todos, refs), meses: refs.map(r => prdAgg(ctx, todos, [r])) };
+  const infos = refs.map(r => ctx.mes(r)); const ms = prdMesesComDados(ctx, ano);
+  const ultimo = ms.length ? ms[ms.length - 1] : 0; const isAno = sel.length > 0 && ultimo > 0 && sel.length === ultimo && sel.every((m, i) => m === i + 1);
+  const A = prdModeloAnual(ctx, [ano]).filter(x => x.ano === ano || x.estimado);
+  const real = A.find(x => !x.estimado && x.ano === ano) || null; const h24 = A.find(x => x.ano === 2024), h25 = A.find(x => x.ano === 2025);
+  // mês vigente = último mês com dados do ano
+  let vig = null; if (ultimo) { const ref = ano + '-' + String(ultimo).padStart(2, '0'); const mi = ctx.mes(ref); const ag = prdAgg(ctx, todos, [ref]); const pa = todos.filter(k => ctx.idx[k] && ctx.idx[k][ref]).length; vig = { ref, mi, ag, pa, m: ultimo }; }
+  const drs = []; ms.forEach(m => { const mi = ctx.mes(ano + '-' + String(m).padStart(2, '0')); if (mi.dr) drs.push(mi.dr); }); const dataRef = drs.sort().pop() || '';
+  const pend = refs.filter(r => prdTemMes(ctx, r) && ctx.mes(r).pendente); if (vig && vig.mi.pendente && !pend.includes(vig.ref)) pend.push(vig.ref);
+  return { ano, sel, refs, linhas, cons, infos, ms, ultimo, isAno, real, h24, h25, vig, dataRef, pend };
+}
+function prrLayout(nm) {
+  const fs = nm >= 8 ? 15 : nm >= 5 ? 16 : nm >= 3 ? 17 : 18;
+  let WN = Math.round(fs * 4.6), WV = Math.round(fs * 4.2), WAN = Math.round(fs * 5.4), WAV = Math.round(fs * 4.8); const WL = 262; const alvo = 1300, tot = WL + nm * (WN + WV) + WAN + WAV;
+  if (tot < alvo && nm > 0) { const ex = Math.floor((alvo - tot) / (nm * 2)); WN += ex; WV += ex; }
+  return { fs, fsSen: fs, fsHead: 14, WL, WN, WV, WAN, WAV, RH: Math.round(fs * 2.1), RHs: Math.round(fs * 2.1), HH: 30, HHac: 46 };
+}
+function prrGrade(R) {
+  const nm = R.sel.length;
+  const meses = R.sel.map((m, i) => ({ ref: R.refs[i], lbl: PRD_ABREV[m] + (R.infos[i].parcial ? '*' : '') }));
+  const cel = (a, ac) => [{ t: 'int', v: a.tem ? a.sen : null }, { t: 'prod', v: prdR2(a.prod) }];
+  const mk = l => [...l.meses.map(a => cel(a)).flat(), ...cel(l.agg)];
+  const linhas = R.linhas.map(l => ({ tipo: 'posto', rot: l.nome, cel: mk(l) }));
+  linhas.push({ tipo: 'cons1', rot: 'Operação — Consolidado', cel: mk(R.cons) });
+  const rotulo = R.sel.length <= 3 ? `${prdListaMeses(R.sel)}/${R.ano}` : `${R.sel.length} meses/${R.ano}`;
+  const g = { R, meses, blocos: [{ titulo: 'Produtividade por Posto — todas as unidades', cor: '#1f1f33', clara: '#e8e8ff', linhas }], cards: [], lay: prrLayout(nm),
+    titulo: 'Relatório de Produtividade',
+    sub: R.isAno ? `Ano ${R.ano}  ·  até ${PRD_NOME[R.ultimo]}/${R.ano}` : `Competências selecionadas: ${prdListaMeses(R.sel)}/${R.ano}  ·  Ano ${R.ano}`,
+    acCab: R.isAno ? ['Acumulado do Ano', String(R.ano)] : ['Acumulado do Período', rotulo] };
+  const h = (x, t) => ({ titulo: `ESTIMATIVA HISTÓRICA ${x.ano}`, cor: '#5a5a72', itens: [{ rot: 'Média mensal (senhas)', t: 'int', v: x.media }, { rot: 'P.A.', t: 'int', v: x.pa }, { rot: 'Dias úteis (ano)', t: 'int', v: x.du }, { rot: 'Produtividade', t: 'prod', v: prdR2(x.prod) }] });
+  g.cards.push(h(R.h24), h(R.h25));
+  const re = R.real;
+  g.cards.push({ titulo: `ACUMULADO ${R.ano}${re ? ` — ${prdListaMeses(re.meses)}` : ''}`, cor: '#4a4aee', itens: [{ rot: 'Senhas acumuladas', t: 'int', v: re ? re.sen : null }, { rot: 'Média mensal (fechados)', t: 'int', v: re && re.media != null ? Math.round(re.media) : null }, { rot: 'P.A.-dias úteis', t: 'int', v: re ? re.pad : null }, { rot: 'Produtividade', t: 'prod', v: re ? prdR2(re.prod) : null }] });
+  if (R.vig) { const v = R.vig; const dt = v.mi.dr ? ` — dados até ${prdDataBR(v.mi.dr).slice(0, 5)}` : '';
+    g.cards.push({ titulo: `${v.mi.parcial ? 'MÊS VIGENTE — PARCIAL' : 'ÚLTIMO MÊS — FECHADO'} ${PRD_ABREV[v.m].toUpperCase()}/${R.ano}${dt}`, cor: '#8a6d0f', itens: [{ rot: 'Senhas', t: 'int', v: v.ag.sen }, { rot: 'Dias úteis', t: 'int', v: v.mi.du }, { rot: 'P.A.', t: 'int', v: v.pa }, { rot: 'Produtividade', t: 'prod', v: prdR2(v.ag.prod) }] }); }
+  g.rodape = [
+    'Produtividade = senhas atendidas ÷ (P.A. × dias úteis). Consolidados = total de senhas ÷ soma de (P.A. × dias úteis), nunca média simples. Dias úteis: segunda a sexta, exceto feriados nacionais; mês parcial (*) conta só até a data de referência dos dados. “—” = sem dados (diferente de zero).',
+    'P.A.: cada posto = 1; operação com 29 P.A. até out/2026 e 30 a partir de nov/2026 (Parque Mambucaba só entra em nov/2026, sem retroatividade).',
+    'Quadros de 2024 e 2025: estimativas históricas fixas (média mensal × 12 ÷ (P.A. × dias úteis do ano)), não distribuídas por mês nem por posto. Os quadros anuais e o mês vigente refletem a operação inteira e não dependem dos meses marcados na tabela.',
+    ...(R.pend.length ? [`Atenção: ${R.pend.map(r => PRD_ABREV[+r.slice(5, 7)] + '/' + r.slice(0, 4)).join(', ')} sem data de referência identificada — produtividade desse(s) mês(es) não calculada.`] : [])
+  ];
+  const atu = R.dataRef ? 'Dados até ' + prdDataBR(R.dataRef) + '  |  ' : '';
+  g.atualizacao = atu + 'Gerado em ' + new Date().toLocaleString('pt-BR');
+  return g;
+}
+function prrHtml(g) {
+  const nm = g.meses.length, L = g.lay; const th = (t, e) => `<th ${e || ''}>${csrEsc(t)}</th>`; const zona = i => (i % 2 ? 'z1' : 'z0');
+  const wTab = L.WL + nm * (L.WN + L.WV) + L.WAN + L.WAV;
+  let h = `<div class="csr-rep" id="prr-rep" style="--fs:${L.fs}px;--fss:${L.fsSen}px;--rh:${L.RH}px;--rhs:${L.RHs}px"><div class="csr-head"><div class="csr-head-l">${csrLogoSrc() ? `<img src="${csrLogoSrc()}" alt="Gestão Conect@">` : ''}<div><div class="csr-t">${csrEsc(g.titulo)}</div><div class="csr-s">${csrEsc(g.sub)}</div></div></div><div class="csr-head-r">${csrEsc(g.atualizacao)}</div></div>`;
+  g.blocos.forEach(b => {
+    h += `<div class="csr-bl" style="width:${wTab}px"><div class="csr-bt" style="background:${b.cor}">${csrEsc(b.titulo)}</div><table class="csr-tb" style="width:${wTab}px"><colgroup><col style="width:${L.WL}px">${g.meses.map(() => `<col style="width:${L.WN}px"><col style="width:${L.WV}px">`).join('')}<col style="width:${L.WAN}px"><col style="width:${L.WAV}px"></colgroup><thead><tr>${th('Posto', 'rowspan="2" class="lbl"')}`;
+    g.meses.forEach((m, i) => { h += th(m.lbl, `colspan="2" class="${zona(i)}"`); });
+    h += `<th colspan="2" class="ac"><div>${csrEsc(g.acCab[0])}</div><div class="ac2">${csrEsc(g.acCab[1])}</div></th></tr><tr>`;
+    g.meses.forEach((m, i) => { h += th('Senhas', `class="${zona(i)} sb"`) + th('Produt.', `class="${zona(i)} sb"`); });
+    h += th('Senhas', 'class="ac sb"') + th('Produt.', 'class="ac sb"') + '</tr></thead><tbody>';
+    b.linhas.forEach(l => {
+      h += `<tr class="r-${l.tipo}"${l.tipo !== 'posto' ? ` style="--cl:${b.clara}"` : ''}><td class="lbl">${csrEsc(l.rot)}</td>`;
+      l.cel.forEach((c, j) => { const z = j >= nm * 2 ? 'ac' : zona(Math.floor(j / 2)); h += `<td class="${z}">${csrEsc(prdFmtCel(c))}</td>`; });
+      h += '</tr>';
+    });
+    h += '</tbody></table></div>';
+  });
+  h += `<div class="csr-geral" style="width:${wTab}px;grid-template-columns:1fr 1fr">` + g.cards.map(x => `<div class="csr-card" style="background:#f1f1f9"><div class="csr-ct" style="background:${x.cor}">${csrEsc(x.titulo)}</div><div class="csr-its">${x.itens.map(it => `<div><span>${csrEsc(it.rot)}</span><b>${csrEsc(prdFmtCel(it))}</b></div>`).join('')}</div></div>`).join('') + '</div>';
+  h += '<div class="csr-foot" style="width:' + wTab + 'px">' + g.rodape.map(t => `<div>${csrEsc(t)}</div>`).join('') + '</div></div>';
+  return h;
+}
+function prrMaxMes(ano) { return prdMesesComDados(prdContexto(), ano); }
+function prrRenderMeses() {
+  const disp = prrMaxMes(_prrAno);
+  document.getElementById('prr-meses').innerHTML = Array.from({ length: 12 }, (_, i) => { const m = i + 1, dis = !disp.includes(m), on = !dis && _prrSel.includes(m);
+    return `<label class="csr-chip${on ? ' on' : ''}${dis ? ' off' : ''}"><input type="checkbox" ${on ? 'checked' : ''} ${dis ? 'disabled' : ''} onchange="prrToggleMes(${m})">${PRD_ABREV[m]}</label>`; }).join('');
+}
+function prrToggleMes(m) { _prrAuto = false; _prrSel = _prrSel.includes(m) ? _prrSel.filter(x => x !== m) : [..._prrSel, m].sort((a, b) => a - b); prrAtualizar(); }
+function prrAtalho(tipo) { const disp = prrMaxMes(_prrAno); _prrAuto = tipo === 'todos'; _prrSel = tipo === 'todos' ? disp.slice() : tipo === 'limpar' ? [] : disp.slice(-(+tipo)); prrAtualizar(); }
+function prrMudouAno() { _prrAno = +document.getElementById('prr-ano').value; _prrAuto = true; prrAtualizar(); }
+async function prdRelAbrir() {
+  document.getElementById('modal-prod-rel').classList.add('open'); const corpo = document.getElementById('prr-corpo'); corpo.innerHTML = '<div class="csr-load">Carregando dados…</div>';
+  try {
+    await prdGarantirDados(); const ctx = prdContexto(); const anos = prdAnosDisponiveis(ctx); _prrAno = anos.includes(_prdAno) ? _prdAno : (anos[0] || new Date().getFullYear());
+    const sa = document.getElementById('prr-ano'); sa.innerHTML = (anos.length ? anos : [_prrAno]).map(a => `<option value="${a}">${a}</option>`).join(''); sa.value = String(_prrAno);
+    _prrAuto = true; prrAtualizar();
+  } catch (e) { console.error('[Relatório de Produtividade]', e); corpo.innerHTML = '<div class="csr-load" style="color:#dc2626">Não foi possível carregar os dados. Verifique a conexão e tente novamente.</div>'; _prdAtual = null; }
+}
+function prrAtualizar() {
+  const ctx = prdContexto(); const disp = prdMesesComDados(ctx, _prrAno);
+  _prrSel = _prrAuto ? disp.slice() : _prrSel.filter(m => disp.includes(m)); prrRenderMeses();
+  const bx = document.getElementById('prr-btn-xl'), bp = document.getElementById('prr-btn-png');
+  if (!_prrSel.length) { _prdAtual = null; bx.disabled = bp.disabled = true; prdAvisoPend(ctx, [], 'prr-aviso'); document.getElementById('prr-corpo').innerHTML = '<div class="csr-load">Selecione pelo menos um mês para gerar o relatório.</div>'; return; }
+  bx.disabled = bp.disabled = false;
+  try {
+    const R = prrModelo(ctx, _prrAno, _prrSel); const g = prrGrade(R); _prdAtual = { R, grid: g };
+    prdAvisoPend(ctx, R.pend, 'prr-aviso'); document.getElementById('prr-corpo').innerHTML = prrHtml(g);
+  } catch (e) { console.error('[Relatório de Produtividade]', e); _prdAtual = null; document.getElementById('prr-corpo').innerHTML = '<div class="csr-load" style="color:#dc2626">Erro ao montar o relatório.</div>'; }
+}
+function prrNomeArquivo(ext) { const R = _prdAtual.R; return `Relatorio_Produtividade_${R.ano}-${R.isAno ? String(R.ultimo).padStart(2, '0') : R.sel.map(m => String(m).padStart(2, '0')).join('_')}.${ext}`; }
+
+// PNG (alta resolução, a partir da MESMA grade)
+async function prrDesenhar(g, escala) {
+  try { await Promise.all([document.fonts.load('700 14px Syne'), document.fonts.load('600 14px Syne')]); } catch (e) {}
+  const logo = await csrCarregarImg(csrLogoSrc()); const F = 'Syne, "Segoe UI", Arial, sans-serif';
+  const nm = g.meses.length, PAD = 28, { WL, WN, WV, WAN, WAV, RH, fs } = g.lay, HH1 = 46, HH2 = 26;
+  const wTab = WL + nm * (WN + WV) + WAN + WAV, W = wTab + PAD * 2; const headH = 104, blkTit = 36, cardH = 150, gap = 20;
+  const cv0 = document.createElement('canvas').getContext('2d'); cv0.font = `500 11px ${F}`;
+  const quebra = (x, t) => { const pal = t.split(' '); const ls = []; let ln = ''; pal.forEach(p => { const tt = ln ? ln + ' ' + p : p; if (x.measureText(tt).width > wTab && ln) { ls.push(ln); ln = p; } else ln = tt; }); ls.push(ln); return ls; };
+  const rodLinhas = g.rodape.map(t => quebra(cv0, t)); const nRod = rodLinhas.reduce((a, l) => a + l.length, 0);
+  const nCardRows = Math.ceil(g.cards.length / 2);
+  let H = headH + 18; g.blocos.forEach(b => { H += blkTit + HH1 + HH2 + RH * b.linhas.length + 20; }); H += nCardRows * (cardH + gap) + nRod * 15 + g.rodape.length * 4 + 28;
+  const cv = document.createElement('canvas'); cv.width = Math.round(W * escala); cv.height = Math.round(H * escala);
+  const x = cv.getContext('2d'); x.scale(escala, escala); x.textBaseline = 'middle'; x.fillStyle = '#ffffff'; x.fillRect(0, 0, W, H);
+  const gr = x.createLinearGradient(0, 0, W, 0); gr.addColorStop(0, '#0a0a0f'); gr.addColorStop(1, '#1f1f33'); x.fillStyle = gr; x.fillRect(0, 0, W, headH); x.fillStyle = '#C9A227'; x.fillRect(0, headH - 4, W, 4);
+  let tx = PAD; if (logo) { const lh = 82, lw = lh * logo.width / logo.height; x.drawImage(logo, PAD, 9, lw, lh); tx = PAD + lw + 18; }
+  const txt = (t, cx, cy, fonte, cl, al) => { x.font = fonte; x.fillStyle = cl; x.textAlign = al || 'center'; x.fillText(t, cx, cy); };
+  txt(g.titulo, tx, 38, `800 27px ${F}`, '#ffffff', 'left'); txt(g.sub, tx, 68, `600 15px ${F}`, '#C9A227', 'left'); txt(g.atualizacao, W - PAD, 20, `500 12px ${F}`, '#b8b8cc', 'right');
+  let y = headH + 18; const cor = { z1: '#f3f3fb', ac: '#fbf4d9' };
+  g.blocos.forEach(b => {
+    x.fillStyle = b.cor; x.fillRect(PAD, y, wTab, blkTit); txt(b.titulo, PAD + 14, y + blkTit / 2, `800 16px ${F}`, '#ffffff', 'left'); y += blkTit;
+    const colX = [PAD, PAD + WL]; for (let i = 0; i < nm; i++) { colX.push(colX[colX.length - 1] + WN); colX.push(colX[colX.length - 1] + WV); } colX.push(colX[colX.length - 1] + WAN); colX.push(colX[colX.length - 1] + WAV);
+    x.fillStyle = '#ececf6'; x.fillRect(PAD, y, WL, HH1 + HH2); txt('Posto', PAD + 12, y + (HH1 + HH2) / 2, `700 14px ${F}`, '#2a2a3e', 'left');
+    for (let i = 0; i < nm; i++) { const x0 = colX[1 + i * 2], x1 = colX[3 + i * 2]; x.fillStyle = i % 2 ? '#e4e4f3' : '#ececf6'; x.fillRect(x0, y, x1 - x0, HH1 + HH2);
+      txt(g.meses[i].lbl, (x0 + x1) / 2, y + HH1 / 2, `700 15px ${F}`, '#2a2a3e'); txt('Senhas', (x0 + colX[2 + i * 2]) / 2, y + HH1 + HH2 / 2, `600 12px ${F}`, '#5a5a72'); txt('Produt.', (colX[2 + i * 2] + x1) / 2, y + HH1 + HH2 / 2, `600 12px ${F}`, '#5a5a72'); }
+    const a0 = colX[1 + nm * 2], a1 = colX[3 + nm * 2]; x.fillStyle = '#e9d58a'; x.fillRect(a0, y, a1 - a0, HH1 + HH2);
+    { let f1 = 14; x.font = `800 ${f1}px ${F}`; while (f1 > 9 && Math.max(x.measureText(g.acCab[0]).width, x.measureText(g.acCab[1]).width) > a1 - a0 - 16) { f1--; x.font = `800 ${f1}px ${F}`; }
+      txt(g.acCab[0], (a0 + a1) / 2, y + HH1 * 0.34, `800 ${f1}px ${F}`, '#4a3b05'); txt(g.acCab[1], (a0 + a1) / 2, y + HH1 * 0.74, `700 ${f1}px ${F}`, '#4a3b05'); }
+    txt('Senhas', (a0 + colX[2 + nm * 2]) / 2, y + HH1 + HH2 / 2, `700 12px ${F}`, '#4a3b05'); txt('Produt.', (colX[2 + nm * 2] + a1) / 2, y + HH1 + HH2 / 2, `700 12px ${F}`, '#4a3b05');
+    y += HH1 + HH2;
+    b.linhas.forEach(l => {
+      const cons = l.tipo !== 'posto'; if (cons) { x.fillStyle = b.clara; x.fillRect(PAD, y, wTab, RH); }
+      for (let i = 0; i < nm; i++) if (!cons && i % 2) { x.fillStyle = cor.z1; x.fillRect(colX[1 + i * 2], y, colX[3 + i * 2] - colX[1 + i * 2], RH); }
+      x.fillStyle = cons ? '#f1e3a6' : cor.ac; x.fillRect(a0, y, a1 - a0, RH);
+      let nome = l.rot; x.font = `${cons ? 800 : 600} 14px ${F}`; while (nome.length > 3 && x.measureText(nome).width > WL - 20) nome = nome.slice(0, -2); if (nome !== l.rot) nome = nome.trimEnd() + '…';
+      txt(nome, PAD + 12, y + RH / 2, `${cons ? 800 : 600} 14px ${F}`, '#1b1b2a', 'left');
+      l.cel.forEach((c, j) => { const cx = (colX[1 + j] + colX[2 + j]) / 2; const ac = j >= nm * 2; txt(prdFmtCel(c), cx, y + RH / 2, `${(ac || cons) ? 800 : 600} ${fs}px ${F}`, '#1b1b2a'); });
+      y += RH; x.strokeStyle = '#e1e1ec'; x.lineWidth = 1; x.beginPath(); x.moveTo(PAD, y + .5); x.lineTo(PAD + wTab, y + .5); x.stroke();
+    });
+    y += 20;
+  });
+  const cw = (wTab - gap) / 2;
+  g.cards.forEach((cd, k) => {
+    const r = Math.floor(k / 2), c = k % 2, cx = PAD + c * (cw + gap), cy = y + r * (cardH + gap);
+    x.fillStyle = '#f1f1f9'; x.fillRect(cx, cy, cw, cardH); x.fillStyle = cd.cor; x.fillRect(cx, cy, cw, 36);
+    { let f = 16; x.font = `800 ${f}px ${F}`; while (f > 10 && x.measureText(cd.titulo).width > cw - 24) { f--; x.font = `800 ${f}px ${F}`; } txt(cd.titulo, cx + 14, cy + 18, `800 ${f}px ${F}`, '#ffffff', 'left'); }
+    const iw = cw / 4; cd.itens.forEach((it, i) => { const ix = cx + i * iw + iw / 2; txt(it.rot, ix, cy + 62, `600 12px ${F}`, '#4a4a60'); txt(prdFmtCel(it), ix, cy + 105, `800 28px ${F}`, '#1b1b2a'); });
+  });
+  y += nCardRows * (cardH + gap);
+  x.textAlign = 'left'; x.textBaseline = 'alphabetic'; x.font = `500 11px ${F}`; x.fillStyle = '#5a5a72';
+  rodLinhas.forEach(ls => { ls.forEach(t => { x.fillText(t, PAD, y); y += 15; }); y += 4; });
+  return cv;
+}
+async function prrBaixarPng() {
+  if (!_prdAtual || _prrOcupado) return; _prrOcupado = true;
+  try { const cv = await prrDesenhar(_prdAtual.grid, 3); await new Promise((res, rej) => cv.toBlob(b => { if (!b) return rej(new Error('toBlob vazio')); csrBaixarBlob(b, prrNomeArquivo('png')); res(); }, 'image/png')); toast('Imagem gerada.', 'ok'); }
+  catch (e) { console.error('[Relatório de Produtividade] PNG', e); toast('Não foi possível gerar a imagem.', 'err'); } finally { _prrOcupado = false; }
+}
+
+// Excel (ExcelJS sob demanda, igual ao relatório CSAT; valores numéricos editáveis)
+async function prrMontarExcel(g, ExcelJS) {
+  const nm = g.meses.length, nCols = 1 + nm * 2 + 2; const wb = new ExcelJS.Workbook(); wb.creator = 'Gestão Conect@'; wb.created = new Date();
+  const ws = wb.addWorksheet('Produtividade', { views: [{ showGridLines: false }], pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 } });
+  const L = g.lay, px = p => Math.round(p / 6.2 * 10) / 10; ws.getColumn(1).width = px(L.WL); for (let c = 2; c <= 1 + nm * 2; c++) ws.getColumn(c).width = px((c - 2) % 2 === 0 ? L.WN : L.WV);
+  ws.getColumn(nCols - 1).width = px(L.WAN); ws.getColumn(nCols).width = px(L.WAV);
+  const fNum = Math.round((10.5 + (L.fs - 13) * 0.75) * 2) / 2, rhN = Math.round(L.RH * 0.75);
+  const fill = rgb => ({ type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + rgb.replace('#', '') } });
+  const brd = { top: { style: 'thin', color: { argb: 'FFD9D9E6' } }, bottom: { style: 'thin', color: { argb: 'FFD9D9E6' } }, left: { style: 'thin', color: { argb: 'FFD9D9E6' } }, right: { style: 'thin', color: { argb: 'FFD9D9E6' } } };
+  const merge = (r, c1, c2) => { if (c2 > c1) ws.mergeCells(r, c1, r, c2); };
+  for (let r = 1; r <= 3; r++) for (let c = 1; c <= nCols; c++) ws.getCell(r, c).fill = fill('#0a0a0f');
+  let logoOk = false; const logoSrc = csrLogoSrc();
+  if (logoSrc) { try { const im = await csrCarregarImg(logoSrc); if (im) { const cv = document.createElement('canvas'); cv.width = im.width; cv.height = im.height; cv.getContext('2d').drawImage(im, 0, 0); const id = wb.addImage({ base64: cv.toDataURL('image/png'), extension: 'png' }); ws.addImage(id, { tl: { col: 0.1, row: 0.1 }, ext: { width: 62, height: 64 } }); logoOk = true; } } catch (e) {} }
+  const c0 = logoOk ? 2 : 1; ws.getRow(1).height = 26; ws.getRow(2).height = 22; ws.getRow(3).height = 22;
+  [[g.titulo, 18, true, 'FFFFFFFF'], [g.sub, 11, true, 'FFC9A227'], [g.atualizacao, 9, false, 'FFB8B8CC']].forEach(([v, sz, b, cl], i) => { const cell = ws.getCell(i + 1, c0); cell.value = v; cell.font = { name: 'Calibri', size: sz, bold: b, color: { argb: cl } }; merge(i + 1, c0, nCols); cell.alignment = { vertical: 'middle', horizontal: 'left', indent: logoOk ? 3 : 1 }; });
+  for (let c = 1; c <= nCols; c++) ws.getCell(3, c).border = { bottom: { style: 'thick', color: { argb: 'FFC9A227' } } };
+  let r = 5; const fmtT = t => t === 'prod' ? '0.00' : '#,##0';
+  const putVal = (cell, c) => { const vazio = c.v === null || c.v === undefined || isNaN(c.v); cell.value = vazio ? '—' : c.v; cell.alignment = { horizontal: 'center', vertical: 'middle' }; if (!vazio) cell.numFmt = fmtT(c.t); };
+  g.blocos.forEach(b => {
+    ws.getRow(r).height = 24; ws.getCell(r, 1).value = b.titulo; merge(r, 1, nCols); for (let c = 1; c <= nCols; c++) ws.getCell(r, c).fill = fill(b.cor);
+    ws.getCell(r, 1).font = { name: 'Calibri', size: 13, bold: true, color: { argb: 'FFFFFFFF' } }; ws.getCell(r, 1).alignment = { vertical: 'middle', indent: 1 }; r++;
+    const h1 = r, h2 = r + 1; ws.getRow(h1).height = 34; ws.getRow(h2).height = 20; ws.getCell(h1, 1).value = 'Posto'; ws.mergeCells(h1, 1, h2, 1);
+    g.meses.forEach((m, i) => { const c = 2 + i * 2; ws.getCell(h1, c).value = m.lbl; merge(h1, c, c + 1); ws.getCell(h2, c).value = 'Senhas'; ws.getCell(h2, c + 1).value = 'Produt.'; });
+    const ca = 2 + nm * 2; ws.getCell(h1, ca).value = g.acCab[0] + '\n' + g.acCab[1]; merge(h1, ca, ca + 1); ws.getCell(h2, ca).value = 'Senhas'; ws.getCell(h2, ca + 1).value = 'Produt.';
+    for (const rr of [h1, h2]) for (let c = 1; c <= nCols; c++) { const cell = ws.getCell(rr, c); const ac = c >= ca; cell.fill = fill(ac ? '#E9D58A' : (c > 1 && Math.floor((c - 2) / 2) % 2 ? '#E4E4F3' : '#ECECF6')); cell.font = { name: 'Calibri', size: rr === h1 ? 11 : 9, bold: true, color: { argb: ac ? 'FF4A3B05' : 'FF2A2A3E' } }; cell.alignment = { horizontal: c === 1 ? 'left' : 'center', vertical: 'middle', indent: c === 1 ? 1 : 0, wrapText: true }; cell.border = brd; }
+    r += 2;
+    b.linhas.forEach(l => {
+      const cons = l.tipo !== 'posto'; ws.getRow(r).height = rhN; const lc = ws.getCell(r, 1); lc.value = l.rot; lc.font = { name: 'Calibri', size: 11.5, bold: cons, color: { argb: 'FF1B1B2A' } }; lc.alignment = { vertical: 'middle', indent: 1 }; lc.fill = fill(cons ? b.clara : '#FFFFFF'); lc.border = brd;
+      l.cel.forEach((c, j) => { const cell = ws.getCell(r, 2 + j), ac = j >= nm * 2; putVal(cell, c); cell.font = { name: 'Calibri', size: fNum, bold: ac || cons, color: { argb: 'FF1B1B2A' } }; cell.border = brd;
+        cell.fill = fill(cons ? (ac ? '#F1E3A6' : b.clara) : (ac ? '#FBF4D9' : (Math.floor(j / 2) % 2 ? '#F3F3FB' : '#FFFFFF'))); });
+      r++;
+    });
+    r += 1;
+  });
+  const nv = nCols - 1, gs = Math.max(1, Math.floor(nv / 4)); const grupo = i => ({ c1: 2 + i * gs, c2: i === 3 ? nCols : 1 + (i + 1) * gs });
+  g.cards.forEach(cd => {
+    ws.getRow(r).height = 24; ws.getCell(r, 1).value = cd.titulo; merge(r, 1, nCols); for (let c = 1; c <= nCols; c++) ws.getCell(r, c).fill = fill(cd.cor);
+    ws.getCell(r, 1).font = { name: 'Calibri', size: 12, bold: true, color: { argb: 'FFFFFFFF' } }; ws.getCell(r, 1).alignment = { vertical: 'middle', indent: 1 }; r++;
+    ws.getRow(r).height = 18; ws.getRow(r + 1).height = 28;
+    ws.getCell(r, 1).fill = fill('#F1F1F9'); ws.getCell(r + 1, 1).fill = fill('#F1F1F9'); ws.getCell(r, 1).border = brd; ws.getCell(r + 1, 1).border = brd;
+    cd.itens.forEach((it, i) => { const { c1, c2 } = grupo(i); ws.getCell(r, c1).value = it.rot; merge(r, c1, c2); putVal(ws.getCell(r + 1, c1), it); merge(r + 1, c1, c2);
+      for (let c = c1; c <= c2; c++) { ws.getCell(r, c).fill = fill('#F1F1F9'); ws.getCell(r + 1, c).fill = fill('#F1F1F9'); ws.getCell(r, c).border = brd; ws.getCell(r + 1, c).border = brd; }
+      ws.getCell(r, c1).font = { name: 'Calibri', size: 9, bold: true, color: { argb: 'FF4A4A60' } }; ws.getCell(r, c1).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      ws.getCell(r + 1, c1).font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FF1B1B2A' } }; });
+    r += 3;
+  });
+  g.rodape.forEach(t => { ws.getCell(r, 1).value = t; merge(r, 1, nCols); ws.getCell(r, 1).font = { name: 'Calibri', size: 9, italic: true, color: { argb: 'FF5A5A72' } }; ws.getCell(r, 1).alignment = { wrapText: true, vertical: 'top' }; ws.getRow(r).height = t.length > 150 ? 26 : 15; r++; });
+  return wb;
+}
+async function prrBaixarExcel() {
+  if (!_prdAtual || _prrOcupado) return; _prrOcupado = true;
+  try { await csrCarregarExcelJS(); const wb = await prrMontarExcel(_prdAtual.grid, window.ExcelJS); const buf = await wb.xlsx.writeBuffer();
+    csrBaixarBlob(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), prrNomeArquivo('xlsx')); toast('Excel gerado.', 'ok'); }
+  catch (e) { console.error('[Relatório de Produtividade] Excel', e); toast('Não foi possível gerar o Excel (biblioteca não carregou?). Verifique a conexão.', 'err'); } finally { _prrOcupado = false; }
 }
 
 </script>
