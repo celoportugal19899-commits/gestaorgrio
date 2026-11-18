@@ -1467,6 +1467,12 @@ const PosCanalLabels = {
             </div>
             <button class="btn btn-secondary btn-block" id="ind-hist-btn" onclick="importarHistorico()">📦 Importar Histórico (Jan–Mai 2026)</button>
           </div>
+          <div style="background:var(--surface2);border-radius:12px;border:1px solid var(--border);padding:20px">
+            <div style="font-size:14px;font-weight:700;color:var(--text1);margin-bottom:6px">🧹 Auditoria de escopo <span style="font-size:10px;font-weight:700;color:var(--text3);background:var(--surface);padding:2px 6px;border-radius:4px;margin-left:4px">ADMIN</span></div>
+            <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Localiza registros de Indicadores fora do escopo (posto fora do registro oficial, ex.: Bonsucesso; Parque Mambucaba antes de 11/2026). A tela já os ignora; esta ferramenta só serve para limpar o banco, com <b>simulação</b>, <b>backup</b> e <b>confirmação</b>.</div>
+            <button class="btn btn-secondary btn-block" onclick="indEscopoSimular()">🔎 Simular (não altera nada)</button>
+            <div id="ind-escopo-out" style="margin-top:12px;font-size:12px"></div>
+          </div>
         </div>
         <div id="ind-import-log" style="background:var(--surface2);border-radius:10px;padding:14px;font-size:12px;color:var(--text3);border:1px solid var(--border)">
           <strong style="color:var(--text2)">Último import:</strong> <span id="ind-import-log-txt">Nenhum import realizado nesta sessão.</span>
@@ -6867,7 +6873,7 @@ function toggleSidebarGroup(groupId,el) {
 // ── Carregar ──
 async function carregarTodosIndicadores() {
   const snap=await db.collection('indicadores').get();
-  allIndicadores=snap.docs.map(d=>({id:d.id,...d.data()}));
+  allIndicadores=indFiltrarEscopo(snap.docs.map(d=>({id:d.id,...d.data()})));
   indicadoresCarregados=true;
   _cacheMarca('ind');
   try {
@@ -6879,6 +6885,7 @@ async function carregarTodosIndicadores() {
 // ── Init completo ──
 async function initIndicadoresMesFiltro() { return _compartilhar('ind', _initIndicadoresMesFiltroImpl); }
 async function _initIndicadoresMesFiltroImpl() {
+  let _indColVazia=false;
   if (indicadoresCarregados && allIndicadores.length && _cacheFresco('ind')) {
     // Dados já em memória (leitura recente): não relê o Firestore
     const _lt = document.getElementById('ind-import-log-txt');
@@ -6895,13 +6902,14 @@ async function _initIndicadoresMesFiltroImpl() {
   } catch(e){}
   // 1. Buscar Firestore
   const snap=await db.collection('indicadores').get();
-  allIndicadores=snap.docs.map(d=>({id:d.id,...d.data()}));
+  _indColVazia=!snap.docs.length;
+  allIndicadores=indFiltrarEscopo(snap.docs.map(d=>({id:d.id,...d.data()})));
   indicadoresCarregados=true;
   _cacheMarca('ind');
   }
 
   // 2. Se vazio → importar histórico automaticamente
-  if(!allIndicadores.length) {
+  if(_indColVazia) { // coleção realmente vazia (o filtro de escopo nunca dispara a carga histórica)
     const kg=document.getElementById('ind-kpi-grid');
     if(kg) kg.innerHTML='<div style="padding:20px;color:var(--text3);font-size:13px">⏳ Carregando dados iniciais...</div>';
     const batch=db.batch();
@@ -6911,7 +6919,7 @@ async function _initIndicadoresMesFiltroImpl() {
     });
     await batch.commit();
     const snap2=await db.collection('indicadores').get();
-    allIndicadores=snap2.docs.map(d=>({id:d.id,...d.data()}));
+    allIndicadores=indFiltrarEscopo(snap2.docs.map(d=>({id:d.id,...d.data()})));
   }
 
   // 3. Botões de mês
@@ -7404,10 +7412,11 @@ async function importarExcelIndicadores() {
       }
       const postosRows=rows.filter(r=>r['para']&&(String(r['para']).startsWith('POSTO')||rgEhMambucaba(r['para'])));
       if(!postosRows.length){toast('Nenhum dado de posto encontrado','err');btn.disabled=false;btn.textContent='📥 Importar';return;}
-      const batch=db.batch(); let count=0;
+      const batch=db.batch(); let count=0; const _indRej=[];
       postosRows.forEach(row=>{
         const nomeExcel=String(row['para']).trim();
         const nomeSistema=rgEhMambucaba(nomeExcel)?'Parque Mambucaba':(nomeMap[nomeExcel]||nomeExcel);
+        const _mot=indImportMotivo(nomeSistema,mesRef); if(_mot){_indRej.push({nome:nomeExcel,motivo:_mot});return;}
         const docId=`${mesRef}_${nomeSistema.replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_]/g,'')}`;
         batch.set(db.collection('indicadores').doc(docId),{
           mesRef, postoNome:nomeSistema,
@@ -7430,13 +7439,15 @@ async function importarExcelIndicadores() {
           updatedAt:new Date().toISOString()
         },{merge:true}); count++;
       });
+      indImportMostrarRejeitados(_indRej);
+      if(!count){toast('Nenhum posto válido para importar — veja os motivos no quadro "Último import".','err');btn.disabled=false;btn.textContent='📥 Importar';return;}
       await batch.commit();
       // Salvar info do último import no Firestore
       const importInfo=`${count} postos — ${mesRef}${dataRef?' (D-1: '+new Date(dataRef+'T12:00:00').toLocaleDateString('pt-BR')+')':''} — ${new Date().toLocaleString('pt-BR')}`;
       try{ await db.collection('indicadores_config').doc('geral').set({ultimoImport:importInfo},{merge:true}); }catch(e){}
       indicadoresCarregados=false;
       await carregarTodosIndicadores();
-      toast(`${count} postos importados!`,'ok');
+      toast(`${count} postos importados!`+(_indRej.length?` ${_indRej.length} registro(s) rejeitado(s) — veja os detalhes em "Último import".`:''),'ok');
       const logTxt=document.getElementById('ind-import-log-txt');
       if(logTxt) logTxt.textContent=importInfo;
       btn.textContent=`✅ ${count} postos importados`; fileInput.value='';
@@ -23790,6 +23801,7 @@ function _opFmtRSCompacto(v) {
 }
 
 const OP_META_NS30 = 99.9;
+const OP_META_LN_SEMEMAIL = 5; // meta operacional VIGENTE da Ligação Nova (% sem e-mail, ≤). Fonte única; histórico/campanhas fechadas não usam esta constante.
 const OP_META_TMA_SEG = 5*60+11;  // 00:05:11
 const OP_META_TME_SEG = 9*60+29;  // 00:09:29
 
@@ -23935,7 +23947,7 @@ function _opCalcCardSemEmail() {
   const t = _opLnTotais(dados);
   if (t.total<=0) return { modo:'semdados' };
   const competencias = Array.from(new Set(dados.map(a=>a.data.slice(0,7)))).sort();
-  return { modo:'ok', resultado:t.pct, meta:10, total:t.total, comEmail:t.com, semEmail:t.sem, competencias, status: t.pct<=10?'verde':'vermelho' };
+  return { modo:'ok', resultado:t.pct, meta:OP_META_LN_SEMEMAIL, total:t.total, comEmail:t.com, semEmail:t.sem, competencias, status: lnDentroMeta(t.pct)?'verde':'vermelho' };
 }
 
 // Evolução acumulada do % Sem Email — acumulador PRÓPRIO por competência
@@ -24008,7 +24020,7 @@ async function _audCarregarFontes(){
     db.collection('indicadores').get(), db.collection('csat').get(), db.collection('pos_resultados').get(),
     db.collection('ligacaonova_config').doc('geral').get()
   ]);
-  const fe = { ind:i.docs.map(d=>d.data()), csat:c.docs.map(d=>d.data()), pos:p.docs.map(d=>d.data()), ln:[], snapshotId:null };
+  const fe = { ind:indFiltrarEscopo(i.docs.map(d=>d.data()),true), csat:c.docs.map(d=>d.data()), pos:p.docs.map(d=>d.data()), ln:[], snapshotId:null };
   const bo = cfg.exists ? cfg.data().baseOficial : null;
   if (bo && lnGruposSnapshots(bo).length) {
     fe.snapshotId = lnChaveGrupos(lnGruposSnapshots(bo));
@@ -24647,7 +24659,8 @@ function _opCalcCardPOS() {
     mesAnteriorRef=idx>0?ord[idx-1]:null;
     if (mesAnteriorRef) resultadoAnterior=_opFiltrarPostoSup(_opAllPos.filter(d=>d.mesRef===mesAnteriorRef),'postoNome',true).reduce((s,d)=>s+(d.valor||0),0);
   }
-  return {modo:meses.length===1?'unico':'periodo', resultado, meta, diferenca:resultado-meta, pct, status, resultadoAnterior, mesAnteriorRef};
+  const proj=meses.length===1?posProjCalc(meses[0],resultado,meta,mesesFonte):null; // só mês único; vários meses = consolidado sem projeção
+  return {modo:meses.length===1?'unico':'periodo', resultado, meta, diferenca:resultado-meta, pct, status, resultadoAnterior, mesAnteriorRef, proj, ...posVisual(status,proj)};
 }
 
 // ── Card CSAT — consolidação idêntica ao módulo CSAT: média ponderada por pesquisas ──
@@ -24757,7 +24770,7 @@ function _opCalcCardSenhasAtendidas() {
       if (dAnt.length) anterior=dAnt.reduce((s,d)=>s+(parseInt(d.senhasAtendidas)||0),0);
     }
   }
-  return { modo: base.meses.length===1?'unico':'periodo', total, nPostos, resultadoAnterior: anterior, mesAnteriorRef };
+  return { modo: base.meses.length===1?'unico':'periodo', neutro:true, total, nPostos, resultadoAnterior: anterior, mesAnteriorRef }; // sem meta: cor neutra, nunca verde/vermelho por desempenho
 }
 
 function _opCalcCardSenhasPerdidas() {
@@ -25009,7 +25022,7 @@ async function renderDashboardOperacional() {
   const rankPerd=_opRankingSenhasPerdidas(), rankTma=_opRankingMenorTempo('tma'), rankTme=_opRankingMenorTempo('tme');
 
   const cardHTML = (titulo, card, corpo) => `
-    <div style="background:${card.modo!=='semdados'?_opBgStatus(card.status):'var(--surface2)'};border:1px solid ${card.modo!=='semdados'?_opBdStatus(card.status):'rgba(255,255,255,.07)'};border-radius:12px;padding:14px">
+    <div style="background:${card.modo!=='semdados'&&!card.neutro?_opBgStatus(card.statusVis||card.status):'var(--surface2)'};border:1px solid ${card.modo!=='semdados'&&!card.neutro?_opBdStatus(card.statusVis||card.status):'rgba(255,255,255,.07)'};border-radius:12px;padding:14px">
       <div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:6px">${titulo}</div>
       ${card.modo==='semdados' ? '<div style="font-size:13px;color:var(--text3);margin-top:8px">Sem dados para o período/posto</div>' : corpo}
     </div>`;
@@ -25046,11 +25059,12 @@ async function renderDashboardOperacional() {
     <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 10px">Cards</div>
     <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:10px">
       ${cardHTML('POS', cardPos, cardPos.modo!=='semdados'?`
-        <div style="font-size:22px;font-weight:800;color:${_opCorStatus(cardPos.status)}">R$ ${cardPos.resultado.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+        <div style="font-size:22px;font-weight:800;color:${posCorCard(cardPos)}">R$ ${cardPos.resultado.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">Meta: R$ ${cardPos.meta.toLocaleString('pt-BR',{minimumFractionDigits:2})} · ${cardPos.pct.toFixed(1)}% da meta</div>
         <div style="font-size:11px;color:var(--text3)">Diferença: R$ ${cardPos.diferenca.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+        ${posProjHtml(cardPos)}
         ${cardPos.resultadoAnterior!==null?`<div style="font-size:11px;color:var(--text3)">Mês anterior: R$ ${cardPos.resultadoAnterior.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`:''}
-        <div style="font-size:11px;font-weight:700;color:${_opCorStatus(cardPos.status)};margin-top:6px">${_opLabelStatus(cardPos.status)}</div>`:'')}
+        ${posLabelHtml(cardPos)}`:'')}
       ${cardHTML('CSAT', cardCsat, cardCsat.modo!=='semdados'?`
         <div style="font-size:22px;font-weight:800;color:${cardCsat.status?_opCorStatus(cardCsat.status):'var(--text)'}">${cardCsat.nota!==null?cardCsat.nota.toFixed(2):'—'}</div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">Meta: ${cardCsat.meta.toFixed(2)} · ${cardCsat.totalPesq} pesquisa(s)</div>
@@ -25155,7 +25169,7 @@ async function renderDashboardOperacional() {
             <td style="padding:6px 10px">${s.senhasConsideradas!==null?s.senhasConsideradas.toLocaleString('pt-BR'):'—'}</td>
             <td style="padding:6px 10px">${fmtTempo(s.tmaSeg)}</td>
             <td style="padding:6px 10px">${fmtTempo(s.tmeSeg)}</td>
-            <td style="padding:6px 10px;color:${s.semEmailPct!=null?(s.semEmailPct<=10?'#1baf7a':'#e24b4a'):'inherit'}">${s.semEmailPct!=null?`${s.semEmailPct.toFixed(2)}% (${s.semEmailQtd}/${s.semEmailTotal})`:'—'}</td>
+            <td style="padding:6px 10px;color:${s.semEmailPct!=null?(lnDentroMeta(s.semEmailPct)?'#1baf7a':'#e24b4a'):'inherit'}">${s.semEmailPct!=null?`${s.semEmailPct.toFixed(2)}% (${s.semEmailQtd}/${s.semEmailTotal})`:'—'}</td>
           </tr>`).join('')}</tbody>
       </table>
     </div>
@@ -25190,7 +25204,7 @@ async function renderDashboardOperacional() {
       </div>
       <div style="background:var(--surface2);border-radius:12px;padding:16px;border:1px solid rgba(255,255,255,.07)">
         <div style="font-size:12px;font-weight:600;margin-bottom:8px">% Sem Email (Ligação Nova) — Top 8 Maior %</div>
-        ${rankSemEmail.slice(0,8).map((p,i)=>`<div style="font-size:12px;padding:3px 0;color:var(--text2)">${i+1}º ${p.posto} (${p.supervisor}) — <strong style="color:${p.pct<=10?'#1baf7a':'#e24b4a'}">${p.pct.toFixed(1)}%</strong> (${p.semEmail}/${p.total})${p.baixoVolume?' <span style="color:#eda100">· baixo volume</span>':''}</div>`).join('')||'<div style="color:var(--text3);font-size:12px">Sem dados</div>'}
+        ${rankSemEmail.slice(0,8).map((p,i)=>`<div style="font-size:12px;padding:3px 0;color:var(--text2)">${i+1}º ${p.posto} (${p.supervisor}) — <strong style="color:${lnDentroMeta(p.pct)?'#1baf7a':'#e24b4a'}">${p.pct.toFixed(1)}%</strong> (${p.semEmail}/${p.total})${p.baixoVolume?' <span style="color:#eda100">· baixo volume</span>':''}</div>`).join('')||'<div style="color:var(--text3);font-size:12px">Sem dados</div>'}
       </div>
     </div>
 
@@ -25324,7 +25338,7 @@ function _opRenderCharts(mesesTodos) {
       type:'line',
       data:{ labels: lnEvolucao.labels, datasets:[
         { label:'% Sem Email', data: lnEvolucao.pct, borderColor:'#e24b4a', backgroundColor:'transparent', borderWidth:2, tension:.3, pointRadius:3, pointBackgroundColor:'#e24b4a' },
-        { label:'Meta (10%)', data: lnEvolucao.labels.map(()=>10), borderColor:'rgba(226,75,74,.25)', borderWidth:1, borderDash:[5,5], pointRadius:0, datalabels:{display:false} }
+        { label:'Meta ('+OP_META_LN_SEMEMAIL+'%)', data: lnEvolucao.labels.map(()=>OP_META_LN_SEMEMAIL), borderColor:'rgba(226,75,74,.25)', borderWidth:1, borderDash:[5,5], pointRadius:0, datalabels:{display:false} }
       ]},
       plugins:[ChartDataLabels],
       options:{
@@ -28609,7 +28623,7 @@ async function lnRenderResultadoOficial() {
     const d = porPosto[nome] || {comEmail:0,semEmail:0,cancelados:0,total:0};
     const pct = d.total>0 ? (d.semEmail/d.total*100) : null;
     const supervisor = (allPostos.find(p=>csatNorm(p.nome)===csatNorm(nome))||{}).supervisor||'—';
-    return { nome, supervisor, ...d, pctSemEmail: pct, situacao: d.total===0?'SEM_INGRESSOS':(pct<=10?'DENTRO_DA_META':'ACIMA_DA_META') };
+    return { nome, supervisor, ...d, pctSemEmail: pct, situacao: d.total===0?'SEM_INGRESSOS':(lnDentroMeta(pct)?'DENTRO_DA_META':'ACIMA_DA_META') };
   }).sort((a,b)=>{
     if (a.situacao==='SEM_INGRESSOS' && b.situacao!=='SEM_INGRESSOS') return 1;
     if (b.situacao==='SEM_INGRESSOS' && a.situacao!=='SEM_INGRESSOS') return -1;
@@ -28690,14 +28704,14 @@ async function lnRenderResultadoOficial() {
         <div style="font-size:28px;font-weight:700;color:#22c55e">${totalComEmail}</div>
         <div style="font-size:11px;color:var(--text3)">${pctComEmail.toFixed(1)}%</div>
       </div>
-      <div class="card" style="padding:16px 20px;border-left:4px solid ${pctSemEmail<=10?'#22c55e':'#ef4444'}">
+      <div class="card" style="padding:16px 20px;border-left:4px solid ${lnDentroMeta(pctSemEmail)?'#22c55e':'#ef4444'}">
         <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">Sem E-mail</div>
-        <div style="font-size:28px;font-weight:700;color:${pctSemEmail<=10?'#22c55e':'#ef4444'}">${totalSemEmail}</div>
+        <div style="font-size:28px;font-weight:700;color:${lnDentroMeta(pctSemEmail)?'#22c55e':'#ef4444'}">${totalSemEmail}</div>
       </div>
-      <div class="card" style="padding:16px 20px;border-left:4px solid ${pctSemEmail<=10?'#22c55e':'#ef4444'}">
+      <div class="card" style="padding:16px 20px;border-left:4px solid ${lnDentroMeta(pctSemEmail)?'#22c55e':'#ef4444'}">
         <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">% Sem E-mail</div>
-        <div style="font-size:28px;font-weight:700;color:${pctSemEmail<=10?'#22c55e':'#ef4444'}">${pctSemEmail.toFixed(2)}%</div>
-        <div style="font-size:11px;color:var(--text3)">${pctSemEmail<=10?'✅ dentro da meta':'⚠️ acima da meta'} (meta: ≤10%)${inc?' · base com cancelados':''}</div>
+        <div style="font-size:28px;font-weight:700;color:${lnDentroMeta(pctSemEmail)?'#22c55e':'#ef4444'}">${pctSemEmail.toFixed(2)}%</div>
+        <div style="font-size:11px;color:var(--text3)">${lnDentroMeta(pctSemEmail)?'✅ dentro da meta':'⚠️ acima da meta'} (meta: ≤${OP_META_LN_SEMEMAIL}%)${inc?' · base com cancelados':''}</div>
       </div>
       ${inc ? `<div class="card" style="padding:16px 20px;border-left:4px solid #6b7280">
         <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px">Cancelados</div>
@@ -28916,7 +28930,7 @@ function lnRecorrenciaPorPosto(filtrados, incluirCanc) {
     if (tDia <= 0) return;
     if (!porPosto[a.posto]) porPosto[a.posto] = {posto:a.posto, diasComMovimento:0, diasAcimaMeta:0};
     porPosto[a.posto].diasComMovimento++;
-    if ((a.semEmail/tDia*100) > 10) porPosto[a.posto].diasAcimaMeta++;
+    if (!lnDentroMeta(a.semEmail/tDia*100)) porPosto[a.posto].diasAcimaMeta++;
   });
   return Object.values(porPosto).map(p=>({...p, pctDiasAcimaMeta: p.diasComMovimento>0 ? (p.diasAcimaMeta/p.diasComMovimento*100) : 0}));
 }
@@ -29029,7 +29043,7 @@ function lnCardOndeAtuar(ranking, totalSemEmailGeral) {
         const participacao = totalSemEmailGeral>0 ? (r.semEmail/totalSemEmailGeral*100) : 0;
         return `<div>
           <div style="font-size:12px;font-weight:700;color:#ef4444;margin-bottom:3px">Prioridade ${i+1} — ${r.nome}</div>
-          <div style="font-size:12px;color:var(--text2)">${r.total} ingressos · ${r.semEmail} Sem E-mail · <strong>${r.pctSemEmail.toFixed(1)}%</strong> (meta: ≤10%)</div>
+          <div style="font-size:12px;color:var(--text2)">${r.total} ingressos · ${r.semEmail} Sem E-mail · <strong>${r.pctSemEmail.toFixed(1)}%</strong> (meta: ≤${OP_META_LN_SEMEMAIL}%)</div>
           <div style="font-size:11px;color:var(--text3);margin-top:2px">Responde por ${participacao.toFixed(1)}% de todos os casos Sem E-mail do período.</div>
         </div>`;
       }).join('')}
@@ -29043,15 +29057,15 @@ function lnCardPotencialRecuperacao(prioridades, totalGeral, totalSemEmailGeral)
   if (!prioridades.length || totalGeral<=0) return `<div class="card" style="padding:16px 18px"><h4 style="margin:0 0 8px;font-size:13px">🧮 Potencial de Recuperação <span style="font-size:10px;font-weight:700;color:var(--text3);background:var(--surface2);padding:2px 6px;border-radius:4px;margin-left:4px">SIMULAÇÃO</span></h4><p style="font-size:12px;color:var(--text3);margin:0">Sem postos prioritários para simular neste período.</p></div>`;
   let reducaoTotal = 0;
   // floor (não round): round(46×0,10)=5, mas 5/46=10,87% ainda fica ACIMA da
-  // meta — floor garante o maior inteiro de Sem E-mail que mantém ≤10%.
-  prioridades.forEach(p => { const semSimulado = Math.floor(p.total*0.10); reducaoTotal += Math.max(0, p.semEmail - semSimulado); });
+  // meta — floor garante o maior inteiro de Sem E-mail que mantém a meta vigente (OP_META_LN_SEMEMAIL).
+  prioridades.forEach(p => { const semSimulado = Math.floor(p.total*OP_META_LN_SEMEMAIL/100); reducaoTotal += Math.max(0, p.semEmail - semSimulado); });
   const semSimuladoGeral = totalSemEmailGeral - reducaoTotal;
   const pctSimulado = (semSimuladoGeral/totalGeral)*100;
   const pctReal = (totalSemEmailGeral/totalGeral)*100;
   const reducaoPP = pctReal - pctSimulado;
   return `<div class="card" style="padding:16px 18px;border:1px dashed var(--border)">
     <h4 style="margin:0 0 4px;font-size:13px">🧮 Potencial de Recuperação <span style="font-size:10px;font-weight:700;color:var(--text3);background:var(--surface2);padding:2px 6px;border-radius:4px;margin-left:4px">SIMULAÇÃO</span></h4>
-    <p style="font-size:11px;color:var(--text3);margin:0 0 10px">Se os postos prioritários (Onde Atuar Primeiro) tivessem atingido 10% Sem E-mail no mesmo volume observado:</p>
+    <p style="font-size:11px;color:var(--text3);margin:0 0 10px">Se os postos prioritários (Onde Atuar Primeiro) tivessem atingido ${OP_META_LN_SEMEMAIL}% Sem E-mail no mesmo volume observado:</p>
     <div style="display:flex;gap:20px;flex-wrap:wrap">
       <div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Resultado Real</div><div style="font-size:18px;font-weight:700">${pctReal.toFixed(1)}%</div></div>
       <div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Cenário Simulado</div><div style="font-size:18px;font-weight:700;color:#22c55e">${pctSimulado.toFixed(1)}%</div></div>
@@ -29094,26 +29108,26 @@ function lnCardMelhorPior(semanas, diasAgregados) {
 }
 
 function lnCardDistanciaMeta(pctAtual) {
-  const dist = pctAtual - 10;
+  const dist = pctAtual - OP_META_LN_SEMEMAIL;
   const dentro = dist<=0;
   return `<div class="card" style="padding:16px 18px;border-left:4px solid ${dentro?'#22c55e':'#ef4444'}">
     <h4 style="margin:0 0 8px;font-size:13px">🎯 Distância da Meta</h4>
     <div style="font-size:24px;font-weight:700;color:${dentro?'#22c55e':'#ef4444'}">${pctAtual.toFixed(1)}%</div>
-    <div style="font-size:12px;color:var(--text3);margin-top:4px">Meta: ≤10% &nbsp;·&nbsp; ${dentro? `${Math.abs(dist).toFixed(1)} p.p. dentro da meta` : `${dist.toFixed(1)} p.p. acima da meta`}</div>
+    <div style="font-size:12px;color:var(--text3);margin-top:4px">Meta: ≤${OP_META_LN_SEMEMAIL}% &nbsp;·&nbsp; ${dentro? `${Math.abs(dist).toFixed(1)} p.p. dentro da meta` : `${dist.toFixed(1)} p.p. acima da meta`}</div>
   </div>`;
 }
 
 function lnCardRecuperacaoPosto(total, semEmail, pctAtual) {
-  if (pctAtual<=10 || total<=0) return `<div class="card" style="padding:16px 18px"><h4 style="margin:0 0 8px;font-size:13px">🧮 Potencial / Esforço de Recuperação <span style="font-size:10px;font-weight:700;color:var(--text3);background:var(--surface2);padding:2px 6px;border-radius:4px;margin-left:4px">SIMULAÇÃO</span></h4><p style="font-size:12px;color:var(--text3);margin:0">Posto já está dentro da meta — sem excesso a recuperar.</p></div>`;
+  if (lnDentroMeta(pctAtual) || total<=0) return `<div class="card" style="padding:16px 18px"><h4 style="margin:0 0 8px;font-size:13px">🧮 Potencial / Esforço de Recuperação <span style="font-size:10px;font-weight:700;color:var(--text3);background:var(--surface2);padding:2px 6px;border-radius:4px;margin-left:4px">SIMULAÇÃO</span></h4><p style="font-size:12px;color:var(--text3);margin:0">Posto já está dentro da meta — sem excesso a recuperar.</p></div>`;
 
-  const equivalenteMeta = Math.floor(total*0.10);
+  const equivalenteMeta = Math.floor(total*OP_META_LN_SEMEMAIL/100);
   const excesso = semEmail - equivalenteMeta;
-  const alvos = [20,15,10].filter(a=>a<pctAtual);
+  const alvos = [20,15,10,OP_META_LN_SEMEMAIL].filter(a=>a<pctAtual);
   const esforcos = alvos.map(a => ({ alvo:a, necessario: Math.max(0, Math.ceil(semEmail*100/a - total)) }));
 
   return `<div class="card" style="padding:16px 18px;border:1px dashed var(--border)">
     <h4 style="margin:0 0 4px;font-size:13px">🧮 Potencial / Esforço de Recuperação <span style="font-size:10px;font-weight:700;color:var(--text3);background:var(--surface2);padding:2px 6px;border-radius:4px;margin-left:4px">SIMULAÇÃO</span></h4>
-    <p style="font-size:12px;margin:8px 0 4px">Com ${total} ingressos, 10% corresponderia a aproximadamente <strong>${equivalenteMeta}</strong> casos Sem E-mail — existe hoje um excesso aproximado de <strong style="color:#ef4444">${excesso}</strong> caso(s) em relação ao patamar da meta.</p>
+    <p style="font-size:12px;margin:8px 0 4px">Com ${total} ingressos, ${OP_META_LN_SEMEMAIL}% corresponderia a aproximadamente <strong>${equivalenteMeta}</strong> casos Sem E-mail — existe hoje um excesso aproximado de <strong style="color:#ef4444">${excesso}</strong> caso(s) em relação ao patamar da meta.</p>
     <p style="font-size:11px;color:var(--text3);margin:10px 0 4px">Esforço estimado (próximos ingressos hipoteticamente Com E-mail, volume atual mantido):</p>
     <div style="display:flex;flex-direction:column;gap:3px">
       ${esforcos.map(e=>`<div style="font-size:12px">Para atingir ${e.alvo}%: aproximadamente <strong>${e.necessario}</strong> novos ingressos consecutivos Com E-mail.</div>`).join('')}
@@ -29296,7 +29310,7 @@ function lnCardsComparativosHtml(mensal) {
       <div style="font-size:26px;font-weight:700">${big}</div><div style="font-size:11px;margin-top:2px">${sub}</div></div>`;
   const first = mensal[0], last = mensal[mensal.length-1];
   const v = lnTextoVariacao(first, last);
-  const cardComp = m => card(`${m.nome}/${m.comp.slice(0,4)}`, lnFmtPct2(m.pct), `${lnStatusCompetenciaHtml(m)}${m.total>0&&m.total<5?' · <span style="color:#f59e0b">baixo volume</span>':''}`, m.pct==null?'var(--border)':(m.pct<=10?'#22c55e':'#ef4444'));
+  const cardComp = m => card(`${m.nome}/${m.comp.slice(0,4)}`, lnFmtPct2(m.pct), `${lnStatusCompetenciaHtml(m)}${m.total>0&&m.total<5?' · <span style="color:#f59e0b">baixo volume</span>':''}`, m.pct==null?'var(--border)':(lnDentroMeta(m.pct)?'#22c55e':'#ef4444'));
   const cardVar = card('Variação', `<span style="color:${v.cor}">${v.rotulo}</span>`, `${v.situacao?`<strong style="color:${v.cor}">${v.situacao}</strong> — `:''}<span style="color:var(--text2)">${v.texto}</span>`, v.cor);
   if (mensal.length === 2) return [cardComp(first), cardComp(last), cardVar].join('');
   const comPct = mensal.filter(m => m.pct != null);
@@ -29322,7 +29336,7 @@ function lnDesenharGraficoMensal(mensal) {
       { label: '% Sem E-mail', data: pcts, borderColor: '#ef4444', backgroundColor: 'transparent', tension: .2, spanGaps: false,
         pointRadius: 5, pointBackgroundColor: mensal.map(m => m.parcial ? '#ffffff' : '#ef4444'), pointBorderColor: '#ef4444', pointBorderWidth: 2,
         datalabels: { align: 'top', anchor: 'end', color: '#dc2626' } },
-      { label: 'Meta (10%)', data: labels.map(() => 10), borderColor: '#f59e0b', borderDash: [6,4], pointRadius: 0, datalabels: { display: false } }
+      { label: 'Meta ('+OP_META_LN_SEMEMAIL+'%)', data: labels.map(() => OP_META_LN_SEMEMAIL), borderColor: '#f59e0b', borderDash: [6,4], pointRadius: 0, datalabels: { display: false } }
     ]},
     plugins: [ChartDataLabels],
     options: {
@@ -29550,7 +29564,7 @@ function lnDesenharGraficosResultado(labels, comPct, semPct, volCom, volSem, dia
         datalabels:{ align: i%2===0 ? 'top' : 'bottom', anchor: i%2===0 ? 'end' : 'start', color:cc } });
       if (extras) ds.push({ label:`% Cancelados — ${sr.rotulo}`, data:dias.map(d => porDia[d] && porDia[d].pctCanc!=null ? +porDia[d].pctCanc.toFixed(2) : null), borderColor:'#6b7280', backgroundColor:'transparent', borderDash:[2,3], tension:.2, spanGaps:true, datalabels:{display:false} });
     });
-    ds.push({ label:'Meta (10%)', data:dias.map(() => 10), borderColor:'#f59e0b', borderDash:[6,4], pointRadius:0, datalabels:{display:false} });
+    ds.push({ label:'Meta ('+OP_META_LN_SEMEMAIL+'%)', data:dias.map(() => OP_META_LN_SEMEMAIL), borderColor:'#f59e0b', borderDash:[6,4], pointRadius:0, datalabels:{display:false} });
     ce.parentElement.style.paddingBottom = '8px';
     ce.height = 340;
     _lnCharts.evolucao = new Chart(ce.getContext('2d'), {
@@ -29573,7 +29587,7 @@ function lnDesenharGraficosResultado(labels, comPct, semPct, volCom, volSem, dia
         datalabels:{ align:'top', anchor:'end', color:'#16a34a' } },
       { label:'% Sem E-mail', data:semPct, borderColor:'#ef4444', backgroundColor:'transparent', tension:.2,
         datalabels:{ align:'bottom', anchor:'start', color:'#dc2626' } },
-      { label:'Meta (10%)', data:labels.map(()=>10), borderColor:'#f59e0b', borderDash:[6,4], pointRadius:0, datalabels:{display:false} }
+      { label:'Meta ('+OP_META_LN_SEMEMAIL+'%)', data:labels.map(()=>OP_META_LN_SEMEMAIL), borderColor:'#f59e0b', borderDash:[6,4], pointRadius:0, datalabels:{display:false} }
     ].concat(extras ? [{ label:'% Cancelados', data:extras.evoCanc, borderColor:'#6b7280', backgroundColor:'transparent', borderDash:[2,3], tension:.2, datalabels:{ align:'right', anchor:'center', color:'#6b7280' } }] : [])},
     plugins:[ChartDataLabels],
     options:{
@@ -29610,7 +29624,7 @@ function lnDesenharGraficosResultado(labels, comPct, semPct, volCom, volSem, dia
         datalabels:{ align:'top', anchor:'end', color:'#16a34a' } },
       { label:'% Sem E-mail', data:diaSemPct, borderColor:'#ef4444', backgroundColor:'transparent', tension:.2,
         datalabels:{ align:'bottom', anchor:'start', color:'#dc2626' } },
-      { label:'Meta (10%)', data:diaLabels.map(()=>10), borderColor:'#f59e0b', borderDash:[6,4], pointRadius:0, datalabels:{display:false} }
+      { label:'Meta ('+OP_META_LN_SEMEMAIL+'%)', data:diaLabels.map(()=>OP_META_LN_SEMEMAIL), borderColor:'#f59e0b', borderDash:[6,4], pointRadius:0, datalabels:{display:false} }
     ].concat(extras ? [{ label:'% Cancelados', data:extras.diaCanc, borderColor:'#6b7280', backgroundColor:'transparent', borderDash:[2,3], tension:.2, datalabels:{ align:'right', anchor:'center', color:'#6b7280' } }] : [])},
     plugins:[ChartDataLabels],
     options:{
@@ -29658,7 +29672,7 @@ function lnDesenharGraficosResultado(labels, comPct, semPct, volCom, volSem, dia
     const comIngresso = ranking.filter(r=>r.total>0).sort((a,b)=>b.pctSemEmail-a.pctSemEmail).slice(0,15);
     _lnCharts.comparativo = new Chart(cc.getContext('2d'), {
       type:'bar',
-      data:{ labels:comIngresso.map(r=>r.nome), datasets:[{ label:'% Sem E-mail', data:comIngresso.map(r=>r.pctSemEmail), backgroundColor:comIngresso.map(r=>r.pctSemEmail<=10?'#22c55e':'#ef4444') }] },
+      data:{ labels:comIngresso.map(r=>r.nome), datasets:[{ label:'% Sem E-mail', data:comIngresso.map(r=>r.pctSemEmail), backgroundColor:comIngresso.map(r=>lnDentroMeta(r.pctSemEmail)?'#22c55e':'#ef4444') }] },
       plugins:[ChartDataLabels],
       options:{
         indexAxis:'y', responsive:true,
@@ -31127,7 +31141,6 @@ const PDCA_ENG = (function () {
     if (o.painel) {
       const pn = o.painel, multi = d.versao < 3 && d.sel && d.sel.op && d.sel.op.length > 1;
       r.push(mk('op', 'fato', 'Painel de atendimento de ' + fmtMes(d.comp) + (multi ? ' (' + fmtPeriodo(d.sel.op) + ')' : '') + ': ' + fmtN(pn.atendidas) + ' senhas atendidas em ' + fmtN(pn.postosN) + ' postos, ' + fmtN(pn.mediaDU, 0) + ' por dia útil' + (isNum(pn.senhasHora) ? ' e ' + fmtN(pn.senhasHora, 1) + ' por hora de funcionamento' : '') + '; ' + fmtN(pn.canceladas) + ' canceladas' + (isNum(pn.pctCanc) ? ' (' + fmtPct(pn.pctCanc, 1) + ' do volume atendido)' : '') + '. NS10 ' + fmtPct(pn.ns10, 2) + ', NS15 ' + fmtPct(pn.ns15, 2) + ', NS30 ' + fmtPct(pn.ns30, 2) + '; ' + fmtN(pn.apos30) + ' atendimentos após 30 minutos; ' + fmtN(pn.perdidas) + ' senhas perdidas.', 'painel'));
-      if (isNum(pn.produtividade)) r.push(mk('op', 'fato', 'Produtividade do período: ' + fmtN(pn.produtividade, 2) + ' senhas por P.A. por dia útil (' + fmtN(pn.prodPad) + ' P.A.-dias úteis; consolidado = total de senhas ÷ soma de P.A. × dias úteis, mesma regra da aba Produtividade).', 'painel'));
       if (isNum(a.projecao) && o.mediaAno && isNum(o.mediaAno.atendidas)) { const v = variacao(a.projecao, o.mediaAno.atendidas); r.push(mk('op', 'hipotese', 'Projeção linear do mês: ' + fmtN(a.projecao) + ' senhas (' + fmtSinal(v.pct, 1, '%') + ' frente à média mensal dos meses fechados do ano, ' + fmtN(o.mediaAno.atendidas) + ') — estimativa que assume o ritmo diário atual constante até o fim do mês.', 'painel')); }
     }
     // NS30
@@ -31310,6 +31323,34 @@ const PDCA_ENG = (function () {
     return r;
   }
 
+  function analisesProd(d) {
+    const o = d.prod; if (!o || !o.atual) return [];
+    const a = o.atual, p = o.ant, r = [], f2 = v => fmtN(v, 2);
+    let t = 'Produtividade de ' + fmtMes(d.comp) + (a.parcial ? ' (parcial' + (a.dr ? ', dados até ' + fmtData(a.dr) : '') + ')' : '') + ': ' + f2(a.prod) + ' senhas por P.A. por dia útil — ' + fmtN(a.sen) + ' senhas atendidas em ' + fmtN(a.postos) + ' postos, ' + fmtN(a.du) + ' dia(s) útil(eis)' + (a.parcial ? ' coberto(s)' : '') + ' e ' + fmtN(a.pad) + ' P.A.-dias úteis.';
+    if (p && isNum(p.prod) && p.prod !== 0 && isNum(a.prod)) { const v = (a.prod - p.prod) / p.prod * 100; t += ' ' + fmtSinal(v, 1, '%') + ' frente a ' + fmtMes(d.ant) + ' (' + f2(p.prod) + (p.parcial ? ', parcial' : '') + '); a produtividade é normalizada por dia útil, por isso a comparação vale mesmo com mês parcial.'; }
+    else t += ' Sem competência anterior com dados para comparar.';
+    r.push(mk('prod', 'fato', t, 'prod'));
+    const sr = (o.serie || []).filter(x => isNum(x.prod));
+    if (sr.length >= 2) {
+      const mx = sr.reduce((m, x) => x.prod > m.prod ? x : m), mn = sr.reduce((m, x) => x.prod < m.prod ? x : m);
+      r.push(mk('prod', 'fato', 'Evolução no ano: ' + lista(sr.slice(-6), x => fmtMes(x.ref) + ' ' + f2(x.prod) + (x.parcial ? '*' : '')) + '. Maior produtividade em ' + fmtMes(mx.ref) + ' (' + f2(mx.prod) + ') e menor em ' + fmtMes(mn.ref) + ' (' + f2(mn.prod) + ').' + (sr.some(x => x.parcial) ? ' (* mês parcial)' : ''), 'prod'));
+    }
+    const ps = (o.postos || []).filter(x => isNum(x.prod)).sort((x, y) => y.prod - x.prod);
+    if (ps.length >= 2) {
+      const topo = ps.slice(0, 3), base = ps.slice(-3).reverse();
+      r.push(mk('prod', 'fato', 'Desempenho por posto: ' + fmtN(ps.length) + ' postos com dados; amplitude de ' + f2(ps[ps.length - 1].prod) + ' a ' + f2(ps[0].prod) + ' senhas por P.A. por dia útil. Destaques positivos (maior produtividade): ' + lista(topo, x => nomePosto(x.posto) + ' ' + f2(x.prod)) + '. Pontos de atenção (menor produtividade): ' + lista(base, x => nomePosto(x.posto) + ' ' + f2(x.prod)) + '. Sem meta formal de produtividade: a leitura é comparativa entre postos e períodos.', 'prod'));
+      const dv = ps.filter(x => isNum(x.prodAnt) && x.prodAnt !== 0).map(x => ({ ...x, dif: x.prod - x.prodAnt })).sort((x, y) => y.dif - x.dif);
+      if (dv.length >= 2) {
+        const subiu = dv.filter(x => x.dif > 0).slice(0, 3), caiu = dv.filter(x => x.dif < 0).slice(-3).reverse();
+        const pt = [];
+        if (subiu.length) pt.push('maiores altas frente a ' + fmtMes(d.ant) + ': ' + lista(subiu, x => nomePosto(x.posto) + ' ' + fmtSinal(x.dif, 2, '')));
+        if (caiu.length) pt.push('maiores quedas: ' + lista(caiu, x => nomePosto(x.posto) + ' ' + fmtSinal(x.dif, 2, '')));
+        if (pt.length) r.push(mk('prod', 'fato', 'Variação por posto — ' + pt.join('; ') + ' (senhas por P.A. por dia útil).', 'prod'));
+      }
+    }
+    return r;
+  }
+
   function gerarAnalises(d) {
     _seq = 0;
     const g = d.grupos || {}, r = [];
@@ -31318,6 +31359,7 @@ const PDCA_ENG = (function () {
     if (g.pos) r.push(...analisesPos(d));
     if (g.ln) r.push(...analisesLn(d));
     if (g.qual) r.push(...analisesQual(d));
+    if (g.prod) r.push(...analisesProd(d));
     if (g.ocorr) r.push(...analisesOcorr(d));
     return r;
   }
@@ -31419,7 +31461,7 @@ const PDCA_OCACHE = {};   // {mesRef: [incidências]}
 
 function pdcaMetas() {
   return {
-    ns30: OP_META_NS30, tmaSeg: OP_META_TMA_SEG, tmeSeg: OP_META_TME_SEG, csat: CSAT_META, lnSemEmailPct: 10,
+    ns30: OP_META_NS30, tmaSeg: OP_META_TMA_SEG, tmeSeg: OP_META_TME_SEG, csat: CSAT_META, lnSemEmailPct: OP_META_LN_SEMEMAIL,
     indevidos: QUAL_META_INDEVIDOS, trocas: QUAL_META_TROCAS, reclImprocPct: RECL_META_PCT
   };
 }
@@ -31655,6 +31697,7 @@ function pdcaSuficiencia(comp, grupos, linhas, cfg) {
   if (grupos.op && !linhas.op) faltas.push('Indicadores de Operação sem registros em ' + _PE.fmtMes(comp));
   if (grupos.csat && !linhas.csat) faltas.push('CSAT sem registros em ' + _PE.fmtMes(comp));
   if (grupos.pos && !linhas.pos) faltas.push('POS sem registros em ' + _PE.fmtMes(comp));
+  if (grupos.prod && !linhas.op) faltas.push('Produtividade (Indicadores) sem registros em ' + _PE.fmtMes(comp));
   if (grupos.ln && !linhas.ln) faltas.push('Ligação Nova sem registros em ' + _PE.fmtMes(comp));
   const fech = (cfg && cfg.fechamentos && cfg.fechamentos[comp]) || null;
   return { dadosOk: faltas.length === 0, faltas, confirmado: !!fech, confirmacao: fech, fechamentoLiberado: faltas.length === 0 && !!fech };
@@ -31809,7 +31852,7 @@ async function pdcaColetar() {
   const cfgM = mod => Object.assign(pdcaModCfgPadrao(), (S.mods && S.mods[mod]) || {});
   const graf = {}, refc = {}, cfgMods = {};
   PDCA_MODS.forEach(m => { cfgMods[m] = cfgM(m); graf[m] = pdcaGrafMeses(comp, cfgMods[m]); refc[m] = cfgMods[m].ref; });
-  const precisaOp = grupos.op || grupos.csat || grupos.pos || grupos.ln;
+  const precisaOp = grupos.op || grupos.csat || grupos.pos || grupos.ln || grupos.prod;
   if (precisaOp) await _opGarantirDadosCarregados();
   if (grupos.ln) { try { await _opLnGarantir([comp, ant]); } catch(e) { console.error('[PDCA] erro ao carregar dias da Ligação Nova:', e); } }
   const mesesOp = Array.from(new Set([...anoMeses, ant, ...graf.op, ...graf.csat, ...graf.pos, ...graf.ln])).sort();
@@ -31849,6 +31892,13 @@ async function pdcaColetar() {
       postos: per.postosTab, postosAnt: pdcaPostosOp(ant)
     } : null;
     if (!a) semComp('op'); else semMes('op', comDados.op);
+  }
+  // ── Produtividade (grupo próprio; independe de Operação) ──
+  if (grupos.prod) {
+    try { d.prod = pdcaProdColetar(comp, ant, anoMeses); } catch (e) { console.error('[PDCA] Produtividade', e); d.prod = null; }
+    if (!d.prod) d.avisos.push('Produtividade: sem registros de Indicadores em ' + _PE.fmtMes(comp) + '. Escolha outra competência ou desmarque o grupo.');
+    else if (d.prod.atual.pendente) d.avisos.push('Produtividade: ' + _PE.fmtMes(comp) + ' sem data de referência na base — competência fora do cálculo.');
+    else if (d.prod.atual.parcial && d.tipo !== 'parcial') d.avisos.push('Produtividade: a base cobre só parte de ' + _PE.fmtMes(comp) + ' (dados até ' + _PE.fmtData(d.prod.atual.dr) + '); o cálculo usa apenas os dias úteis cobertos.');
   }
   // ── CSAT ──
   if (grupos.csat) {
@@ -32136,7 +32186,7 @@ function pdcaConstruirPptx(snap) {
         ['TMA MÉDIO', F.fmtSeg(pn.tmaSeg), 'meta ' + F.fmtSeg(M.tmaSeg), corMeta(pn.tmaSeg, M.tmaSeg, true)], ['TME MÉDIO', F.fmtSeg(pn.tmeSeg), 'meta ' + F.fmtSeg(M.tmeSeg), corMeta(pn.tmeSeg, M.tmeSeg, true)],
         ['NS10 MÉDIO', F.fmtPct(pn.ns10, 2), 'nível de serviço 10 min', C.navy2], ['NS15 MÉDIO', F.fmtPct(pn.ns15, 2), 'nível de serviço 15 min', C.navy2],
         ['NS30 MÉDIO', F.fmtPct(pn.ns30, 2), 'meta ' + F.fmtPct(M.ns30, 1), nsCor(pn.ns30)], ['APÓS 30 MIN', F.fmtN(pn.apos30), 'atendidos após 30 min', pn.apos30 > 0 ? C.red : C.green],
-        ['SENHAS PERDIDAS', F.fmtN(pn.perdidas), 'no período', pn.perdidas > 0 ? C.red : C.green], ['PRODUTIVIDADE', F.isNum(pn.produtividade) ? F.fmtN(pn.produtividade, 2) : '—', 'senhas por P.A. por dia útil', C.navy2]
+        ['SENHAS PERDIDAS', F.fmtN(pn.perdidas), 'no período', pn.perdidas > 0 ? C.red : C.green], d.grupos.prod ? ['PRODUTIVIDADE', F.isNum(pn.produtividade) ? F.fmtN(pn.produtividade, 2) : '—', 'senhas por P.A. por dia útil', C.navy2] : ['POSTOS', F.fmtN(pn.postosN), 'com registro no período', C.navy2]
       ];
       cards.forEach((c, i) => kpi(s, x0 + (i % 4) * (cw + gx), y0 + Math.floor(i / 4) * (ch + gy), cw, ch, c[0], c[1], c[2], c[3]));
       caixaAnalises(s, pegar('op', ['painel', 'volume']), 0.5, 4.95, 7.38, 2.0, 'Análises relevantes');
@@ -32229,6 +32279,19 @@ function pdcaConstruirPptx(snap) {
       else s.addText('Nenhum posto com senhas perdidas no período.', { x: 0.5, y: 3, w: 6.4, h: 0.5, fontFace: PDCA_FONT, fontSize: 14, italic: true, color: C.muted, align: 'center' });
       caixaAnalises(s, pegar('op', ['perdidas', 'postos']), 7.1, 1.65, 5.73, 5.3, 'Análise'); }
   }
+  if (d.grupos.prod && d.prod && d.prod.atual) {
+    const o = d.prod, a = o.atual, p = o.ant, vp = p && F.isNum(p.prod) && p.prod !== 0 && F.isNum(a.prod) ? (a.prod - p.prod) / p.prod * 100 : null;
+    const s = slide('Produtividade — senhas por P.A. por dia útil', F.fmtN(a.prod, 2) + ' em ' + F.fmtMes(d.comp) + (a.parcial ? ' (parcial' + (a.dr ? ' · dados até ' + F.fmtData(a.dr) : '') + ')' : '') + ' · ' + F.fmtN(a.sen) + ' senhas em ' + a.postos + ' posto(s)');
+    kpi(s, 0.5, 1.62, 2.9, 1.0, 'PRODUTIVIDADE', F.fmtN(a.prod, 2), 'senhas por P.A. por dia útil', C.navy2);
+    kpi(s, 3.5, 1.62, 2.9, 1.0, 'SENHAS ATENDIDAS', F.fmtN(a.sen), a.postos + ' posto(s)', C.navy2);
+    kpi(s, 6.5, 1.62, 2.9, 1.0, 'P.A.-DIAS ÚTEIS', F.fmtN(a.pad), (a.du == null ? '—' : a.du) + ' dia(s) útil(eis)' + (a.parcial ? ' cobertos' : ''), C.navy2);
+    kpi(s, 9.5, 1.62, 3.33, 1.0, 'VS COMPETÊNCIA ANTERIOR', vp == null ? '—' : (vp > 0 ? '+' : vp < 0 ? '−' : '') + F.fmtN(Math.abs(vp), 1) + '%', p ? F.fmtMes(d.ant) + ': ' + F.fmtN(p.prod, 2) + (p.parcial ? ' (parcial)' : '') : 'sem dados na competência anterior', C.navy2);
+    const sr = (o.serie || []).filter(x => F.isNum(x.prod));
+    if (sr.length) grafico(s, 'bar', sr.map(x => F.fmtMes(x.ref) + (x.parcial ? '*' : '')), [{ name: 'Produtividade', values: sr.map(x => x.prod) }], 0.5, 2.75, 6.0, 2.7, { titulo: 'Produtividade por mês (* parcial)', fmt: '0.00', axisFmt: '0.0', catSize: 9, lblSize: 9, min: 0 });
+    const pr = F.rank((o.postos || []).filter(x => F.isNum(x.prod)), 'prod').slice(0, 8).reverse();
+    if (pr.length) grafico(s, 'bar', pr.map(x => F.nomePosto(x.posto)), [{ name: 'Produtividade', values: pr.map(x => x.prod) }], 6.7, 2.75, 6.13, 2.7, { titulo: 'Postos com maior produtividade — ' + F.fmtMes(d.comp), dir: 'bar', fmt: '0.00', axisFmt: '0.0', catSize: 9, lblSize: 9, min: 0 });
+    caixaAnalises(s, pegar('prod', ['prod']), 0.5, 5.5, 12.33, 1.45, 'Análises');
+  }
   if (d.grupos.ocorr && d.ocorr) {
     const s = slide('Operação — Ocorrências (Incidências)', 'Incidências abertas em ' + F.fmtMes(d.comp) + ': ' + F.fmtN(d.ocorr.atual.total));
     const tp = d.ocorr.tipos.slice(0, 8).reverse();
@@ -32312,7 +32375,7 @@ function pdcaConstruirPptx(snap) {
     const l = d.ln, ms = SEL('ln').filter(m => l.serie[m]);
     const s = slide('Ligação Nova — Ingressos sem e-mail', F.fmtPct(l.atual.pct, 1) + ' sem e-mail (referência ' + F.fmtPct(d.metas.lnSemEmailPct, 0) + ') · ' + F.fmtN(l.atual.sem) + ' de ' + F.fmtN(l.atual.total) + ' ingressos · cancelados à parte: ' + (F.isNum(l.atual.canc) ? F.fmtN(l.atual.canc) : 'n/d'));
     const vals = ms.map(m => l.serie[m].pct);
-    grafico(s, 'bar', rotMesP(ms), [{ name: '% sem e-mail', values: vals }], 0.5, 1.6, 6.3, 3.3, { titulo: '% sem e-mail por mês — verde ≤ 10%', fmt: '0.0"%"', axisFmt: '0"%"', cores: cores(vals, d.metas.lnSemEmailPct, true), min: 0 });
+    grafico(s, 'bar', rotMesP(ms), [{ name: '% sem e-mail', values: vals }], 0.5, 1.6, 6.3, 3.3, { titulo: '% sem e-mail por mês — verde ≤ ' + F.fmtPct(d.metas.lnSemEmailPct, 0).replace('%','') + '%', fmt: '0.0"%"', axisFmt: '0"%"', cores: cores(vals, d.metas.lnSemEmailPct, true), min: 0 });
     const pr = F.rank((l.postos || []).filter(x => x.total > 0), 'pct', true).slice(0, 10).reverse();
     grafico(s, 'bar', pr.map(x => F.nomePosto(x.posto) + (x.total < 5 ? '*' : '')), [{ name: '% sem e-mail', values: pr.map(x => x.pct) }], 6.95, 1.6, 5.88, 3.3, { titulo: 'Postos com maior % sem e-mail (* baixo volume)' + (multi('ln') ? ' — ' + perRot('ln') : ''), dir: 'bar', fmt: '0.0"%"', axisFmt: '0"%"', catSize: 9, lblSize: 9, cores: cores(pr.map(x => x.pct), d.metas.lnSemEmailPct, true), min: 0 });
     caixaAnalises(s, pegar('ln', ['resumo', 'canc', 'postos']), 0.5, 5.0, 12.33, 1.95, null);
@@ -32430,7 +32493,7 @@ async function pdcaPptxBlob(snap) {
    ═══════════════════════════════════════════════════════════════════════════ */
 const PDCA_ST = {
   iniciado: false, comp: '', tipo: 'parcial',
-  grupos: { op: true, csat: true, pos: true, ln: true, qual: true, ocorr: false },
+  grupos: { op: true, csat: true, pos: true, ln: true, qual: true, ocorr: false, prod: true },
   mods: {}, baseAlterada: false, leiturasMontar: null,   // mods[mod] = {graf:'comp'|'ano'|'custom', custom:[meses], ref:'nenhum'|'ant'|'ano'|'ambos'}
   feriadosExtras: [],
   dataReuniao: '', responsavel: '',
@@ -32438,8 +32501,8 @@ const PDCA_ST = {
   rascunho: null, sujo: false, ocupado: '', leituras: 0, ultimaFinalizada: null, abertos: { op: true }
 };
 const _pdcaE = PDCA_ENG;
-const PDCA_GRUPOS = [['op', '📈 Operação (volume, NS30, TMA/TME, postos, senhas perdidas)'], ['csat', '⭐ CSAT'], ['pos', '💳 POS'], ['ln', '📧 Ligação Nova'], ['qual', '📊 Qualidade (indevidas, trocas, reclamações)'], ['ocorr', '📋 Ocorrências (Incidências) — opcional']];
-const PDCA_GRUPO_NOME = { op: 'Operação', csat: 'CSAT', pos: 'POS', ln: 'Ligação Nova', qual: 'Qualidade', ocorr: 'Ocorrências', extra: 'Outras análises' };
+const PDCA_GRUPOS = [['op', '📈 Operação (volume, NS30, TMA/TME, postos, senhas perdidas)'], ['prod', '📊 Produtividade (senhas por P.A. por dia útil)'], ['csat', '⭐ CSAT'], ['pos', '💳 POS'], ['ln', '📧 Ligação Nova'], ['qual', '📊 Qualidade (indevidas, trocas, reclamações)'], ['ocorr', '📋 Ocorrências (Incidências) — opcional']];
+const PDCA_GRUPO_NOME = { op: 'Operação', prod: 'Produtividade', csat: 'CSAT', pos: 'POS', ln: 'Ligação Nova', qual: 'Qualidade', ocorr: 'Ocorrências', extra: 'Outras análises' };
 const PDCA_STATUS_ACAO = ['Pendente', 'Em andamento', 'Concluída', 'Cancelada'];
 
 function pdcaPodeUsar() { return !!(currentUser && currentUser.role === 'admin'); }
@@ -32489,6 +32552,7 @@ async function pdcaCarregarRascunho() {
     if (s.exists) {
       const r = s.data(); S.rascunho = r;
       S.grupos = { ...S.grupos, ...(r.grupos || {}) };
+      if (!r.grupos || !('prod' in r.grupos)) S.grupos.prod = false; // rascunho anterior ao grupo: não liga sozinho
       if (r.mods) PDCA_MODS.forEach(m => { S.mods[m] = Object.assign(pdcaModCfgPadrao(), r.mods[m] || {}); });
       else if (r.sel || r.comparativo) PDCA_MODS.forEach(m => { // rascunho de versão anterior: converte meses extras + comparativo global
         const ex = (r.sel && r.sel[m]) || []; S.mods[m] = { graf: ex.length ? 'custom' : 'comp', custom: Array.from(new Set([S.comp, ...ex])).sort(), ref: r.comparativo || 'ant' }; });
@@ -32850,7 +32914,7 @@ function pdcaRender() {
     // — Análises —
     h += `<div class="card pdca-card"><div class="pdca-titulo">3 · Análises <button class="btn btn-sm btn-secondary" style="margin-left:auto" onclick="pdcaRegerarAnalises()">↻ Gerar novamente</button></div>
       <div class="pdca-nota" style="margin-top:0">Cada texto é gerado só a partir dos números acima. <b>Fato</b> = calculado dos dados · <b>Hipótese</b> = interpretação a validar · <b>Investigar</b> = sugestão de apuração. Edite, desmarque ou apague o que não for entrar.</div>`;
-    const gs = ['op', 'csat', 'pos', 'ln', 'qual', 'ocorr'].filter(g => S.grupos[g]);
+    const gs = ['op', 'prod', 'csat', 'pos', 'ln', 'qual', 'ocorr'].filter(g => S.grupos[g]);
     gs.forEach(g => {
       const its = S.analises.filter(a => a.grupo === g), aberto = S.abertos[g] !== false;
       h += `<div class="pdca-sec"><div class="pdca-sec-h" onclick="pdcaToggleSecao('${g}')">${aberto ? '▾' : '▸'} ${PDCA_GRUPO_NOME[g]} <span style="color:var(--text3);font-weight:400">(${its.filter(a => a.incluir !== false).length}/${its.length} incluídas)</span></div>`;
@@ -34379,7 +34443,7 @@ function prdDashCard() {
       if (antRef) { const dAnt = _opFiltrarPostoSup(_opAllIndicadores.filter(d => d.mesRef === antRef), 'postoNome'); if (dAnt.length) ant = prdCalcDocs(dAnt).prod; }
     }
     const parc = r.refs.filter(x => r.porMes[x].parcial && !r.porMes[x].pendente).map(x => `${PRD_ABREV[+x.slice(5, 7)]} até ${prdDataBR(r.porMes[x].dr).slice(0, 5)}`);
-    return { modo: base.meses.length === 1 ? 'unico' : 'periodo', prod: r.prod, pad: r.pad, resultadoAnterior: ant, parcial: parc, pend: r.pend };
+    return { modo: base.meses.length === 1 ? 'unico' : 'periodo', neutro: true, prod: r.prod, pad: r.pad, resultadoAnterior: ant, parcial: parc, pend: r.pend };
   } catch (e) { console.error('[Produtividade] card do Dashboard', e); return { modo: 'semdados' }; }
 }
 function prdDashCardCorpo(c) {
@@ -34403,6 +34467,186 @@ function prdDashGrafico() {
 }
 // PDCA / Apresentações: indicador de Produtividade no painel da Operação (mesma função central)
 function prdPdcaPainel(rows) { try { const r = prdCalcDocs(rows); return r.tem ? { prod: r.prod, pad: r.pad, pend: r.pend.length } : { prod: null, pad: null, pend: 0 }; } catch (e) { console.error('[Produtividade] PDCA', e); return { prod: null, pad: null, pend: 0 }; } }
+
+</script>
+<script>
+
+// ════════════════════════════════════════════════════════════════════════════
+// RODADA 3 — Escopo dos Indicadores (Mambucaba/Bonsucesso), importação validada,
+// projeção do POS (mês parcial) e grupo Produtividade nas Apresentações & PDCA.
+// Nada aqui grava no Firestore por conta própria: a limpeza de registros só roda
+// por ação explícita do administrador (indEscopoExecutar), com simulação e backup.
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── Meta operacional vigente da Ligação Nova (OP_META_LN_SEMEMAIL, definida junto das demais metas) ──
+// Compara o percentual REAL (sem arredondar); a tolerância de 1e-9 só absorve ruído de ponto flutuante.
+function lnDentroMeta(p) { return p != null && !isNaN(p) && p <= OP_META_LN_SEMEMAIL + 1e-9; }
+
+// ── Escopo válido dos Indicadores ────────────────────────────────────────────
+// (a) só postos do registro oficial; (b) Parque Mambucaba só a partir de 2026-11.
+// Filtragem EM MEMÓRIA: nada é apagado, nada é regravado.
+const IND_MAMBUCABA_INICIO = '2026-11';
+let _indExcluidosEscopo = [], _indRegCache = { n: -1, set: null };
+function indRegistroCanonSet() {
+  const n = (typeof allPostos !== 'undefined' && allPostos) ? allPostos.length : 0;
+  if (_indRegCache.set && _indRegCache.n === n) return _indRegCache.set;
+  const s = new Set(), add = p => { if (p && p.nome && p.ativo !== false) s.add(_opNormNome(_opNomeCanonicoOficial(p.nome))); };
+  (typeof POSTOS_INICIAIS !== 'undefined' ? POSTOS_INICIAIS : []).forEach(add);
+  (typeof allPostos !== 'undefined' ? allPostos : []).forEach(add);
+  s.add(_opNormNome(POSTO_MAMBUCABA));
+  _indRegCache = { n, set: s }; return s;
+}
+function indPostoNoRegistro(nome) { return indRegistroCanonSet().has(_opNormNome(_opNomeCanonicoOficial(nome))); }
+// '' = dentro do escopo; senão o motivo (código) da exclusão
+function indEscopoMotivo(d) {
+  if (!d) return 'registro_invalido';
+  if (!indPostoNoRegistro(d.postoNome)) return 'posto_fora_do_registro';
+  if (rgEhMambucaba(d.postoNome)) { const ref = _opNormMesRef(d.mesRef); if (!ref || ref < IND_MAMBUCABA_INICIO) return 'mambucaba_antes_da_operacao'; }
+  return '';
+}
+const IND_MOTIVO_TXT = { posto_fora_do_registro: 'posto fora do registro oficial de postos autorizados', mambucaba_antes_da_operacao: 'Parque Mambucaba só opera a partir de 11/2026', registro_invalido: 'registro inválido' };
+function indFiltrarEscopo(arr, silencioso) {
+  const ok = [], fora = [];
+  (arr || []).forEach(d => { const m = indEscopoMotivo(d); if (m) fora.push({ id: d.id || '', postoNome: d.postoNome || '', mesRef: d.mesRef || '', motivo: m, doc: d }); else ok.push(d); });
+  if (!silencioso) _indExcluidosEscopo = fora;
+  return ok;
+}
+
+// ── Importação de Indicadores: validação contra o registro oficial ──────────
+// Sem aproximação por semelhança de nome: só o nome (ou alias oficial já existente) é aceito.
+function indImportMotivo(nomeSistema, mesRef) {
+  if (!indPostoNoRegistro(nomeSistema)) return 'posto não consta no registro oficial de postos autorizados';
+  if (rgEhMambucaba(nomeSistema) && (!mesRef || String(mesRef).slice(0, 7) < IND_MAMBUCABA_INICIO)) return 'Parque Mambucaba só opera a partir de 11/2026 (competência ' + mesRef + ' recusada)';
+  return '';
+}
+function indImportMostrarRejeitados(rej) {
+  const log = document.getElementById('ind-import-log'); if (!log) return;
+  let el = document.getElementById('ind-import-rejeitados');
+  if (!el) { el = document.createElement('div'); el.id = 'ind-import-rejeitados'; el.style.cssText = 'margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)'; log.appendChild(el); }
+  if (!rej || !rej.length) { el.innerHTML = ''; return; }
+  const esc2 = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  el.innerHTML = '<strong style="color:var(--red)">⛔ ' + rej.length + ' registro(s) NÃO importado(s):</strong><ul style="margin:6px 0 0 18px;padding:0">' + rej.map(r => '<li><b>' + esc2(r.nome) + '</b> — ' + esc2(r.motivo) + '</li>').join('') + '</ul><div style="margin-top:6px">Os demais postos foram importados normalmente. Nenhum posto desconhecido é associado a outro por semelhança de nome.</div>';
+}
+
+// ── Correção controlada dos dados já gravados (somente admin, ação explícita) ──
+let _indBackupFeito = false;
+function _indEhAdmin() { return !!(typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'admin'); }
+function _indEscopoEsc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+async function indEscopoSimular() {
+  if (!_indEhAdmin()) { toast('Apenas administradores.', 'err'); return; }
+  if (!indicadoresCarregados) await carregarTodosIndicadores();
+  const L = _indExcluidosEscopo.filter(x => x.id), out = document.getElementById('ind-escopo-out'); if (!out) return;
+  _indBackupFeito = false;
+  if (!L.length) { out.innerHTML = '<div style="color:var(--green)">✅ Simulação: nenhum registro fora do escopo foi encontrado. Nada a corrigir.</div>'; return; }
+  out.innerHTML = '<div style="margin-bottom:6px"><b>SIMULAÇÃO (nada foi alterado)</b> — ' + L.length + ' registro(s) seriam removidos da coleção <code>indicadores</code>, listados pelo ID exato:</div>' +
+    '<div style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:8px"><table style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr style="text-align:left"><th style="padding:4px 6px">ID do documento</th><th>Posto</th><th>Mês</th><th>Senhas atend.</th><th>Motivo</th></tr></thead><tbody>' +
+    L.map(x => '<tr style="border-top:1px solid var(--border)"><td style="padding:3px 6px"><code>' + _indEscopoEsc(x.id) + '</code></td><td>' + _indEscopoEsc(x.postoNome) + '</td><td>' + _indEscopoEsc(x.mesRef) + '</td><td>' + _indEscopoEsc(x.doc.senhasAtendidas) + '</td><td>' + _indEscopoEsc(IND_MOTIVO_TXT[x.motivo] || x.motivo) + '</td></tr>').join('') + '</tbody></table></div>' +
+    '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-secondary" onclick="indEscopoBackup()">💾 1) Baixar backup (JSON)</button><button class="btn btn-danger" onclick="indEscopoExecutar()">🗑️ 2) Executar correção</button></div>' +
+    '<div style="margin-top:6px;font-size:11px;color:var(--text3)">A execução exige o backup baixado e uma confirmação digitada. Só os IDs listados acima são tocados; cada um é conferido de novo no banco antes de apagar.</div>';
+}
+function _indBaixar(nome, obj) {
+  const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' }), a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = nome; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+function _indStamp() { const d = new Date(), p = n => String(n).padStart(2, '0'); return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes()); }
+function indEscopoBackup() {
+  if (!_indEhAdmin()) { toast('Apenas administradores.', 'err'); return; }
+  const L = _indExcluidosEscopo.filter(x => x.id); if (!L.length) { toast('Nada a salvar.', 'err'); return; }
+  _indBaixar('backup_indicadores_fora_do_escopo_' + _indStamp() + '.json', { geradoEm: new Date().toISOString(), colecao: 'indicadores', registros: L.map(x => ({ id: x.id, motivo: x.motivo, dados: x.doc })) });
+  _indBackupFeito = true; toast('Backup baixado. Guarde o arquivo antes de executar.', 'ok');
+}
+async function indEscopoExecutar() {
+  if (!_indEhAdmin()) { toast('Apenas administradores.', 'err'); return; }
+  const L = _indExcluidosEscopo.filter(x => x.id);
+  if (!L.length) { toast('Nada a corrigir.', 'ok'); return; }
+  if (!_indBackupFeito) { toast('Baixe o backup antes de executar.', 'err'); return; }
+  const frase = 'EXCLUIR ' + L.length;
+  if ((prompt('Serão removidos ' + L.length + ' registro(s) da coleção indicadores (somente os listados na simulação).\nPara confirmar, digite exatamente: ' + frase) || '').trim() !== frase) { toast('Confirmação não conferiu — nada foi alterado.', 'err'); return; }
+  const removidos = [], ignorados = [];
+  try {
+    for (let i = 0; i < L.length; i += 400) {
+      const batch = db.batch(); let n = 0;
+      for (const x of L.slice(i, i + 400)) {
+        const ref = db.collection('indicadores').doc(x.id), snap = await ref.get();
+        if (!snap.exists) { ignorados.push({ id: x.id, motivo: 'já não existe' }); continue; }
+        const mot = indEscopoMotivo(snap.data());
+        if (!mot) { ignorados.push({ id: x.id, motivo: 'não está mais fora do escopo' }); continue; }
+        batch.delete(ref); n++; removidos.push({ id: x.id, posto: snap.data().postoNome || '', mesRef: snap.data().mesRef || '', motivo: mot });
+      }
+      if (n) await batch.commit();
+    }
+  } catch (e) { console.error('[Indicadores] correção de escopo', e); toast('Falha durante a correção: ' + (e.message || e) + '. Confira o estado antes de repetir.', 'err'); return; }
+  const log = { tipo: 'correcao_escopo_indicadores', executadoEm: new Date().toISOString(), executadoPor: (currentUser && (currentUser.email || currentUser.nome || currentUser.name)) || 'admin', removidos, ignorados };
+  let logGravado = true;
+  try { await db.collection('indicadores_config').doc('correcao_escopo_' + Date.now()).set(log); } catch (e) { logGravado = false; console.warn('[Indicadores] log de auditoria não gravado', e); }
+  _indBaixar('auditoria_correcao_indicadores_' + _indStamp() + '.json', log);
+  _indBackupFeito = false; indicadoresCarregados = false; await carregarTodosIndicadores();
+  const out = document.getElementById('ind-escopo-out'); if (out) out.innerHTML = '<div style="color:var(--green)">✅ ' + removidos.length + ' registro(s) removido(s)' + (ignorados.length ? ', ' + ignorados.length + ' ignorado(s) por não conferirem mais' : '') + '. ' + (logGravado ? 'Auditoria gravada em indicadores_config e baixada.' : 'Não foi possível gravar a auditoria no banco; o arquivo de auditoria foi baixado.') + '</div>';
+  toast(removidos.length + ' registro(s) corrigido(s).', 'ok');
+}
+
+// ── POS: projeção do fechamento para mês parcial ───────────────────────────
+// Referência = "dados até dd/mm/aaaa" do último import de POS (nunca "hoje").
+function posRefDataIso() {
+  const m = String((typeof _opUltimaAtualizacaoPos !== 'undefined' && _opUltimaAtualizacaoPos) || '').match(/dados at[eé]\s+(\d{2})\/(\d{2})\/(\d{4})/i);
+  return m ? m[3] + '-' + m[2] + '-' + m[1] : '';
+}
+// Retorna {estado:'fechado'|'parcial'|'indisponivel', ...}. 'fechado' = comportamento original (sem projeção).
+function posProjCalc(mes, resultado, meta, mesesFonte) {
+  const fechado = { estado: 'fechado' };
+  if (!/^\d{4}-\d{2}$/.test(String(mes)) || !(meta > 0)) return fechado;
+  const a = +mes.slice(0, 4), m = +mes.slice(5, 7), ref = posRefDataIso(), ult = [...(mesesFonte || [])].sort().pop();
+  if (ref) {
+    const rm = ref.slice(0, 7), br = ref.slice(8, 10) + '/' + ref.slice(5, 7) + '/' + ref.slice(0, 4);
+    if (rm > mes) return fechado;
+    if (rm < mes) return { estado: 'indisponivel', motivo: 'a base POS cobre apenas até ' + br + ', antes deste mês' };
+    const duTot = prdDiasUteis(a, m), duDec = prdDiasUteis(a, m, +ref.slice(8, 10));
+    if (duDec >= duTot) return fechado;
+    if (duDec <= 0) return { estado: 'indisponivel', motivo: 'ainda não há dia útil decorrido na base' };
+    const media = resultado / duDec, proj = media * duTot;
+    return { estado: 'parcial', ref, br, duDec, duTot, media, proj, pctProj: proj / meta * 100 };
+  }
+  if (mes === ult) return { estado: 'indisponivel', motivo: 'a base POS não informa a data de cobertura ("dados até")' };
+  return fechado;
+}
+function posVisual(status, pj) {
+  if (!pj || pj.estado === 'fechado') return { statusVis: status };
+  if (pj.estado === 'parcial') return { statusVis: pj.pctProj >= 100 ? 'verde' : 'vermelho' };
+  return { neutro: true };
+}
+const _posBRL = v => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function posCorCard(c) { return c.neutro ? 'var(--text)' : _opCorStatus(c.statusVis || c.status); }
+function posProjHtml(c) {
+  const p = c.proj; if (!p || p.estado === 'fechado') return '';
+  if (p.estado === 'indisponivel') return '<div style="font-size:11px;color:var(--text3);margin-top:4px">Projeção indisponível: ' + p.motivo + '. Mostrando o resultado real, sem avaliação de meta.</div>';
+  const cor = _opCorStatus(c.statusVis);
+  return '<div style="font-size:11px;color:var(--text3);margin-top:5px;padding-top:4px;border-top:1px dashed rgba(255,255,255,.14)">📈 Fechamento projetado <i>(estimativa)</i>: <b style="color:' + cor + '">' + _posBRL(p.proj) + '</b> · ' + p.pctProj.toFixed(1).replace('.', ',') + '% da meta</div>' +
+    '<div style="font-size:10px;color:var(--text3)">' + _posBRL(p.media) + '/dia útil × ' + p.duTot + ' dias úteis · ' + p.duDec + ' decorrido(s) (dados até ' + p.br.slice(0, 5) + ')</div>';
+}
+function posLabelHtml(c) {
+  const p = c.proj;
+  if (p && p.estado === 'parcial') return '<div style="font-size:11px;font-weight:700;color:' + _opCorStatus(c.statusVis) + ';margin-top:6px">' + (c.statusVis === 'verde' ? 'Projeção dentro da meta' : 'Projeção abaixo da meta') + ' (estimativa)</div>';
+  if (c.neutro) return '';
+  return '<div style="font-size:11px;font-weight:700;color:' + _opCorStatus(c.status) + ';margin-top:6px">' + _opLabelStatus(c.status) + '</div>';
+}
+
+// ── Apresentações & PDCA: coleta do grupo Produtividade (mesmo motor da aba Produtividade) ──
+function pdcaProdColetar(comp, ant, anoMeses) {
+  const rows = (typeof _opAllIndicadores !== 'undefined' && _opAllIndicadores) ? _opAllIndicadores : [];
+  const ctx = prdCtx(rows, { manual: _prdManual, d1: prdD1Iso(), hoje: new Date() }), ks = Object.keys(ctx.idx);
+  const resumo = ref => {
+    if (!ref || !prdTemMes(ctx, ref)) return null;
+    const a = prdAgg(ctx, ks, [ref]), mi = ctx.mes(ref);
+    return { ref, sen: a.sen, prod: a.prod, pad: a.pad, du: mi.du, parcial: !!mi.parcial, pendente: !!mi.pendente, dr: mi.dr || '', postos: ks.filter(k => ctx.idx[k][ref]).length };
+  };
+  const atual = resumo(comp); if (!atual) return null;
+  const serie = (anoMeses || []).filter(m => m <= comp).map(resumo).filter(Boolean);
+  const postos = ks.filter(k => ctx.idx[k][comp]).map(k => {
+    const a = prdAgg(ctx, [k], [comp]), b = ctx.idx[k][ant] ? prdAgg(ctx, [k], [ant]) : null;
+    return { posto: prdNomeExib(k), sen: a.sen, pad: a.pad, prod: a.prod, prodAnt: b ? b.prod : null };
+  }).filter(x => x.prod != null && isFinite(x.prod));
+  return { atual, ant: resumo(ant), serie, postos };
+}
 
 </script>
 </body>
