@@ -33901,9 +33901,9 @@ function prdRegistro() {
   const add = p => { if (!p || !p.nome) return; const k = prdCanon(p.nome); if (!k || k === teste || vistos.has(k)) return; vistos.add(k); out.push({ canon: k, nome: p.nome, sup: String(p.supervisor || '').trim(), cluster: '' }); };
   (typeof POSTOS_INICIAIS !== 'undefined' ? POSTOS_INICIAIS : []).forEach(add);
   const mapaSup = {}; out.forEach(o => { mapaSup[o.canon] = o; });
-  (typeof allPostos !== 'undefined' ? allPostos : []).forEach(p => { if (!p || !p.nome) return; const k = prdCanon(p.nome); if (mapaSup[k]) { if (p.supervisor) mapaSup[k].sup = String(p.supervisor).trim(); } else add(p); if (mapaSup[k] || vistos.has(k)) { const oo = out.find(z => z.canon === k); if (oo && ['4Hrs', '6Hrs', '8Hrs'].includes(p.cluster)) oo.cluster = p.cluster; } });
+  (typeof allPostos !== 'undefined' ? allPostos : []).forEach(p => { if (!p || !p.nome) return; const k = prdCanon(p.nome); if (mapaSup[k]) { if (p.supervisor) mapaSup[k].sup = String(p.supervisor).trim(); } else add(p); });
   if (!out.some(o => o.canon === POSTO_MAMBUCABA)) { const csatSup = (typeof CSAT_SUPERVISORES !== 'undefined' ? Object.keys(CSAT_SUPERVISORES) : []).find(s => CSAT_SUPERVISORES[s].postos.some(n => prdCanon(n) === POSTO_MAMBUCABA)); out.push({ canon: POSTO_MAMBUCABA, nome: prdNomeExib(POSTO_MAMBUCABA), sup: csatSup ? csatSup.charAt(0).toUpperCase() + csatSup.slice(1) : '', cluster: '' }); }
-  out.forEach(o => { if (!o.sup) o.sup = ''; });
+  const cm = clusterMapaCadastro(); out.forEach(o => { if (!o.sup) o.sup = ''; o.cluster = cm[o.canon] || ''; });
   return out.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 }
 
@@ -34701,11 +34701,30 @@ const PRD_CLUSTERS = ['4Hrs', '6Hrs', '8Hrs'];
 const PRD_CLUSTER_CARDS = ['8Hrs', '6Hrs', '4Hrs'];   // ordem de exibição dos cards
 const PRD_CLUSTER_ANO = 2026;                         // resumo por cluster = acumulado de 2026 (sem 2024/2025)
 function clusterValido(v) { return PRD_CLUSTERS.includes(v); }
-// canon do posto → cluster, lido do cadastro já em memória (nenhuma consulta ao Firestore)
-function clusterMapaCadastro() {
-  const m = {}; (typeof allPostos !== 'undefined' ? allPostos : []).forEach(p => { if (!p || !p.nome || !clusterValido(p.cluster)) return; const k = prdCanon(p.nome); if (!m[k]) m[k] = p.cluster; }); return m;
+
+// ── Cadastro por POSTO ÚNICO: o cadastro `postos` pode ter vários docs para o mesmo posto (ex.: carga inicial repetida).
+// Tudo que usa Cluster agrupa pelo identificador oficial (prdCanon = nome canônico + aliases homologados) e usa UMA referência por posto.
+// Referência = doc com o e-mail oficial (POSTOS_INICIAIS), depois ativo, depois o mais antigo. Nenhum doc é excluído, mesclado ou alterado por isso.
+function clusterGrupos() {
+  const teste = prdCanon('Posto Teste'), of = {}; POSTOS_INICIAIS.forEach(o => { if (prdCanon(o.nome) !== teste) of[prdCanon(o.nome)] = o; });
+  const g = {};
+  (typeof allPostos !== 'undefined' ? allPostos : []).forEach(p => { if (!p || !p.nome) return; const k = prdCanon(p.nome); if (!k || k === teste) return; (g[k] = g[k] || { canon: k, docs: [] }).docs.push(p); });
+  Object.keys(of).forEach(k => { g[k] = g[k] || { canon: k, docs: [] }; });
+  return Object.values(g).map(x => {
+    const o = of[x.canon], em = o ? String(o.email).toLowerCase() : '';
+    const rank = p => (String(p.email || '').toLowerCase() === em ? 0 : 2) + (p.ativo === false ? 1 : 0);
+    x.docs.sort((a, b) => rank(a) - rank(b) || String(a.createdAt || '').localeCompare(String(b.createdAt || '')) || String(a.id).localeCompare(String(b.id)));
+    x.primary = x.docs[0] || null; x.nome = o ? o.nome : (x.primary ? x.primary.nome : x.canon); x.oficial = o ? o.cluster : '';
+    const vals = x.docs.map(p => p.cluster).filter(clusterValido);
+    x.cluster = x.primary && clusterValido(x.primary.cluster) ? x.primary.cluster : (vals[0] || '');
+    x.conflito = new Set(vals).size > 1; x.sup = (x.primary && x.primary.supervisor) || (o && o.supervisor) || '';
+    x.ativo = x.docs.some(p => p.ativo !== false);
+    return x;
+  }).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 }
-// Produtividade acumulada 2026 por cluster: Σ senhas ÷ Σ P.A.-dias úteis dos postos do cluster (mesmo motor; nunca média simples)
+// canon do posto → cluster (um valor por posto, mesmo com vários docs), lido do cadastro já em memória (nenhuma consulta ao Firestore)
+function clusterMapaCadastro() { const m = {}; clusterGrupos().forEach(x => { if (x.cluster) m[x.canon] = x.cluster; }); return m; }
+
 function prdClusterAcum(ctx) {
   const reg = prdRegistro(), ms = prdMesesComDados(ctx, PRD_CLUSTER_ANO), refs = ms.map(m => PRD_CLUSTER_ANO + '-' + String(m).padStart(2, '0'));
   const infos = refs.map(r => ctx.mes(r)), dr = infos.map(i => i.dr).filter(Boolean).sort().pop() || '';
@@ -34737,49 +34756,51 @@ function _clRefresh() { const m = document.getElementById('modal-cluster-cfg'); 
 function _clAdmin() { return !!(typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'admin'); }
 function renderClusterCadastro() {
   const el = document.getElementById('postos-cluster-card'); if (!el) return;
-  const ps = (allPostos || []).filter(p => p && p.nome && p.email !== 'posto.teste@gruporgbrasil.com').slice().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
-  const cont = {}; PRD_CLUSTERS.forEach(c => cont[c] = 0); let sem = 0; ps.forEach(p => { if (clusterValido(p.cluster)) cont[p.cluster]++; else sem++; });
-  const ed = _clAdmin();
+  const gs = clusterGrupos(), ndocs = gs.reduce((a, x) => a + x.docs.length, 0), ed = _clAdmin();
+  const cont = {}; PRD_CLUSTERS.forEach(c => cont[c] = 0); let sem = 0; gs.forEach(x => { if (x.cluster) cont[x.cluster]++; else sem++; });
+  const chip = 'background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:5px 10px';
   el.innerHTML = `<div style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">🧩 Cluster dos postos</div>
-    <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Classificação de horas do posto (4Hrs / 6Hrs / 8Hrs). Informação cadastral reutilizável por outros módulos; hoje só classifica e filtra na Produtividade (não altera nenhum cálculo).</div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;font-size:12px">${PRD_CLUSTERS.map(c => `<span style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:5px 10px"><b>${c}</b>: ${cont[c]} posto(s)</span>`).join('')}<span style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:5px 10px">Sem cluster: <b>${sem}</b></span></div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Classificação de horas do posto (4Hrs / 6Hrs / 8Hrs). Cada posto aparece uma única vez, pelo identificador oficial (nome + aliases). Informação cadastral reutilizável por outros módulos; hoje só classifica e filtra na Produtividade (não altera nenhum cálculo).</div>
+    ${ndocs > gs.length ? `<div style="font-size:12px;color:var(--yellow);margin-bottom:10px">ℹ️ O cadastro tem ${ndocs} documento(s) para ${gs.length} posto(s): há documentos repetidos do mesmo posto. Nada foi excluído nem mesclado; o Cluster fica na referência oficial de cada posto e vale para todos os documentos dele.</div>` : ''}
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;font-size:12px">${PRD_CLUSTERS.map(c => `<span style="${chip}"><b>${c}</b>: ${cont[c]} posto(s)</span>`).join('')}<span style="${chip}">Sem cluster: <b>${sem}</b></span><span style="${chip}">Total: <b>${gs.length}</b> postos</span></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">${ed ? '<button class="btn btn-secondary" onclick="clusterOficialSimular()">🔎 Conferir clusters oficiais (não grava)</button>' : ''}<button class="btn btn-secondary" onclick="clusterAlternarLista()">📋 Ver / editar por posto</button></div>
     <div id="cl-out" style="font-size:12px;margin-bottom:10px">${_clOut}</div>
-    <div id="cl-lista" style="display:${_clAberta ? 'block' : 'none'};max-height:360px;overflow:auto;border:1px solid var(--border);border-radius:8px"><table style="width:100%;font-size:12px;border-collapse:collapse"><thead><tr style="text-align:left"><th style="padding:6px 10px">Posto</th><th>Supervisor</th><th style="width:130px">Cluster</th></tr></thead><tbody>${ps.map(p => `<tr style="border-top:1px solid var(--border)"><td style="padding:5px 10px">${csrEsc(p.nome)}${p.ativo === false ? ' <i style="color:var(--text3)">(desativado)</i>' : ''}</td><td>${csrEsc(p.supervisor || '')}</td><td><select class="form-select" style="padding:3px 6px;font-size:12px" ${ed ? '' : 'disabled'} onchange="clusterSalvar('${p.id}', this.value)"><option value="">—</option>${PRD_CLUSTERS.map(c => `<option value="${c}" ${p.cluster === c ? 'selected' : ''}>${c}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table></div>`;
+    <div id="cl-lista" style="display:${_clAberta ? 'block' : 'none'};max-height:360px;overflow:auto;border:1px solid var(--border);border-radius:8px"><table style="width:100%;font-size:12px;border-collapse:collapse"><thead><tr style="text-align:left"><th style="padding:6px 10px">Posto</th><th>Supervisor</th><th style="width:130px">Cluster</th></tr></thead><tbody>${gs.map(x => `<tr style="border-top:1px solid var(--border)"><td style="padding:5px 10px">${csrEsc(x.nome)}${!x.ativo && x.docs.length ? ' <i style="color:var(--text3)">(desativado)</i>' : ''}${x.docs.length > 1 ? ` <span style="color:var(--text3)">(${x.docs.length} cadastros)</span>` : ''}${x.conflito ? ' <span style="color:var(--yellow)" title="Documentos do mesmo posto com clusters diferentes; vale o da referência oficial">⚠</span>' : ''}</td><td>${csrEsc(x.sup)}</td><td><select class="form-select" style="padding:3px 6px;font-size:12px" data-k="${csrEsc(x.canon)}" ${ed && x.primary ? '' : 'disabled'} onchange="clusterSalvar(this.dataset.k, this.value)"><option value="">—</option>${PRD_CLUSTERS.map(c => `<option value="${c}" ${x.cluster === c ? 'selected' : ''}>${c}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table></div>`;
 }
 function clusterAlternarLista() { _clAberta = !_clAberta; const e = document.getElementById('cl-lista'); if (e) e.style.display = _clAberta ? 'block' : 'none'; }
 function _clMsg(h) { _clOut = h; const o = document.getElementById('cl-out'); if (o) o.innerHTML = h; }
-async function clusterSalvar(id, v) {
+// Edição: grava na referência oficial do posto; só toca outros docs do mesmo posto que já tenham um cluster DIFERENTE (para todos terem a mesma classificação). Só o campo cluster.
+async function clusterSalvar(canon, v) {
   if (!_clAdmin()) { toast('Apenas administradores.', 'err'); return; }
   if (v !== '' && !clusterValido(v)) { toast('Cluster inválido.', 'err'); return; }
-  try { await db.collection('postos').doc(id).update({ cluster: v }); toast('Cluster atualizado.', 'ok'); setTimeout(_clRefresh, 300); } catch (e) { console.error('[Cluster]', e); toast('Não foi possível salvar o cluster.', 'err'); }
+  const x = clusterGrupos().find(z => z.canon === canon); if (!x || !x.primary) { toast('Posto sem cadastro.', 'err'); return; }
+  const alvos = x.docs.filter(p => p.id === x.primary.id || (p.cluster && p.cluster !== v));
+  try { for (const p of alvos) { if ((p.cluster || '') !== v) await db.collection('postos').doc(p.id).update({ cluster: v }); } toast('Cluster atualizado.', 'ok'); setTimeout(_clRefresh, 300); } catch (e) { console.error('[Cluster]', e); toast('Não foi possível salvar o cluster.', 'err'); }
 }
-// Plano da atualização inicial: casa cada posto oficial (POSTOS_INICIAIS.cluster) com o doc existente por e-mail e, na falta, pelo nome canônico.
-// Só acrescenta `cluster` onde está vazio; valor já preenchido nunca é sobrescrito; não mexe em nenhum outro campo (nem em `ativo`).
+// Plano da atualização inicial: UMA linha por posto oficial (30). Só acrescenta `cluster` na referência oficial do posto quando o posto ainda não tem cluster.
+// Valor já existente nunca é sobrescrito; nenhum outro campo (nem `ativo`) é tocado; documentos repetidos não são alterados.
 let _clPlano = null, _clAberta = false, _clOut = '';
 function clusterOficialPlano() {
-  const docs = allPostos || [], rows = [];
-  POSTOS_INICIAIS.filter(o => clusterValido(o.cluster)).forEach(o => {
-    const m = docs.filter(p => p && ((p.email && String(p.email).toLowerCase() === o.email.toLowerCase()) || (p.nome && prdCanon(p.nome) === prdCanon(o.nome))));
-    if (!m.length) rows.push({ nome: o.nome, cluster: o.cluster, acao: 'nao_encontrado' });
-    m.forEach(p => rows.push({ id: p.id, nome: o.nome, cluster: o.cluster, atual: p.cluster || '', ativo: p.ativo !== false, acao: p.cluster === o.cluster ? 'ok' : (!p.cluster ? 'atualizar' : 'divergente') }));
+  return clusterGrupos().filter(x => x.oficial).map(x => {
+    const r = { canon: x.canon, nome: x.nome, cluster: x.oficial, cadastros: x.docs.length };
+    if (!x.primary) return Object.assign(r, { acao: 'nao_encontrado' });
+    return Object.assign(r, { id: x.primary.id, atual: x.cluster, ativo: x.ativo, acao: x.cluster === x.oficial ? 'ok' : (!x.cluster ? 'atualizar' : 'divergente') });
   });
-  return rows;
 }
 function clusterOficialSimular() {
   if (!_clAdmin()) { toast('Apenas administradores.', 'err'); return; }
   const rows = clusterOficialPlano(); _clPlano = rows;
-  const n = a => rows.filter(r => r.acao === a).length, up = rows.filter(r => r.acao === 'atualizar');
-  const porCl = {}; PRD_CLUSTERS.forEach(c => porCl[c] = rows.filter(r => r.cluster === c && r.acao !== 'nao_encontrado').length);
-  _clMsg(`<div style="border:1px solid var(--border);border-radius:8px;padding:10px"><b>CONFERÊNCIA (nada foi gravado)</b> — ${rows.length} linha(s) do cadastro oficial: <b>${n('atualizar')}</b> a atualizar · ${n('ok')} já corretos · ${n('divergente')} com valor diferente (mantidos, não sobrescritos) · ${n('nao_encontrado')} não encontrados.
+  const n = a => rows.filter(r => r.acao === a).length, up = rows.filter(r => r.acao === 'atualizar'), dup = rows.filter(r => r.cadastros > 1).length;
+  const porCl = {}; PRD_CLUSTERS.forEach(c => porCl[c] = rows.filter(r => r.cluster === c).length);
+  _clMsg(`<div style="border:1px solid var(--border);border-radius:8px;padding:10px"><b>CONFERÊNCIA (nada foi gravado)</b> — ${rows.length} posto(s) oficial(is): <b>${n('atualizar')}</b> a atualizar · ${n('ok')} já corretos · ${n('divergente')} com valor diferente (mantidos, não sobrescritos) · ${n('nao_encontrado')} não encontrados.${dup ? `<br>ℹ️ ${dup} posto(s) têm mais de um cadastro; cada um é gravado uma única vez, na referência oficial.` : ''}
     <div style="margin:6px 0">Distribuição oficial: ${PRD_CLUSTERS.map(c => `<b>${c}</b> ${porCl[c]}`).join(' · ')}</div>
-    <div style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:6px"><table style="width:100%;font-size:11px;border-collapse:collapse"><tbody>${rows.map(r => `<tr style="border-top:1px solid var(--border)"><td style="padding:3px 8px">${csrEsc(r.nome)}${r.ativo === false ? ' (desativado)' : ''}</td><td>${r.cluster}</td><td>${r.acao === 'atualizar' ? '➕ gravar' : r.acao === 'ok' ? '✔ já tem' : r.acao === 'divergente' ? '⚠ mantém ' + csrEsc(r.atual) : '❌ não encontrado'}</td></tr>`).join('')}</tbody></table></div>
+    <div style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:6px"><table style="width:100%;font-size:11px;border-collapse:collapse"><tbody>${rows.map(r => `<tr style="border-top:1px solid var(--border)"><td style="padding:3px 8px">${csrEsc(r.nome)}${r.ativo === false ? ' (desativado)' : ''}${r.cadastros > 1 ? ` <span style="color:var(--text3)">(${r.cadastros} cadastros)</span>` : ''}</td><td>${r.cluster}</td><td>${r.acao === 'atualizar' ? '➕ gravar' : r.acao === 'ok' ? '✔ já tem' : r.acao === 'divergente' ? '⚠ mantém ' + csrEsc(r.atual) : '❌ não encontrado'}</td></tr>`).join('')}</tbody></table></div>
     ${up.length ? `<div style="margin-top:8px"><button class="btn btn-primary" onclick="clusterOficialAplicar()">✅ Gravar ${up.length} cluster(s) (execução única)</button></div>` : '<div style="margin-top:8px;color:var(--green)">Nada a gravar.</div>'}</div>`);
 }
 async function clusterOficialAplicar() {
   if (!_clAdmin()) { toast('Apenas administradores.', 'err'); return; }
   const up = clusterOficialPlano().filter(r => r.acao === 'atualizar'); if (!up.length) { toast('Nada a gravar.', 'ok'); return; }
-  if ((prompt('Serão gravados ' + up.length + ' cluster(s) (somente o campo cluster; nenhum outro dado muda).\nDigite exatamente: APLICAR ' + up.length) || '').trim() !== 'APLICAR ' + up.length) { toast('Confirmação não conferiu — nada foi gravado.', 'err'); return; }
+  if ((prompt('Serão gravados ' + up.length + ' cluster(s) (somente o campo cluster, uma vez por posto; nenhum outro dado muda).\nDigite exatamente: APLICAR ' + up.length) || '').trim() !== 'APLICAR ' + up.length) { toast('Confirmação não conferiu — nada foi gravado.', 'err'); return; }
   try {
     for (let i = 0; i < up.length; i += 400) { const b = db.batch(); up.slice(i, i + 400).forEach(r => b.update(db.collection('postos').doc(r.id), { cluster: r.cluster })); await b.commit(); }
     toast(up.length + ' cluster(s) gravado(s).', 'ok'); setTimeout(_clRefresh, 300); _clMsg(`<div style="color:var(--green)">✅ ${up.length} cluster(s) gravado(s). Rode a conferência de novo para validar.</div>`);
