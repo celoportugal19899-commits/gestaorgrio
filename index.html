@@ -794,6 +794,13 @@ const PosCanalLabels = {
   .prr-tb td.mm{font-size:var(--fsm);} .prr-tb tr.r-cons1 td{font-size:var(--fsc);font-weight:700;} .prr-tb tr.r-cons1 td.lbl{font-size:14px;font-weight:800;}
   .prr-linha{display:grid;gap:20px;margin:20px 22px 0;} .prr-cv{display:block;border-radius:6px;background:#f6f6fb;}
   .prr-vig{display:flex;flex-direction:column;} .prr-its{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;text-align:center;align-items:center;padding:6px;}
+  .prd-cl{margin:0 0 16px;} .prd-cl-tit{font-size:13px;font-weight:800;color:var(--text);} .prd-cl-sub{font-size:11px;color:var(--text3);margin:2px 0 8px;} .prd-cl-aviso{font-size:12px;color:var(--yellow);margin-bottom:8px;}
+  .prd-cl-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;} .prd-cl-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 14px;text-align:center;min-width:0;}
+  .prd-cl-h{font-size:11px;font-weight:700;letter-spacing:.6px;color:var(--text3);} .prd-cl-v{font-size:26px;font-weight:800;color:var(--text);line-height:1.25;} .prd-cl-s{font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  @media(max-width:640px){.prd-cl-grid{grid-template-columns:1fr;}}
+  .prr-tb th.cl,.prr-tb td.cl{text-align:center;padding-left:2px;padding-right:2px;} .prr-tb td.cl{font-size:13px;font-weight:700;color:#4a4a60;}
+  .prr-clb{margin:20px 22px 0;} .prr-clt{background:#1f1f33;color:#fff;font-weight:800;font-size:16px;padding:8px 14px;} .prr-cls{font-size:12px;color:#5a5a72;padding:6px 2px 8px;}
+  .prr-clg{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;} .prr-clc{background:#f1f1f9;text-align:center;padding:10px 8px;min-width:0;} .prr-clc span{display:block;font-size:13px;font-weight:700;color:#4a4a60;} .prr-clc b{display:block;font-size:30px;font-weight:800;color:#1b1b2a;line-height:1.3;} .prr-clc i{display:block;font-style:normal;font-size:11px;color:#5a5a72;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .prr-its span{display:block;font-size:12px;font-weight:600;color:#4a4a60;margin-bottom:6px;} .prr-its b{font-size:28px;font-weight:800;color:#1b1b2a;}
 </style>
   <style>
@@ -1341,6 +1348,7 @@ const PosCanalLabels = {
       </div>
       <div id="postos-adm-stats" class="grid-4" style="margin-bottom:20px"></div>
       <div id="postos-adm-body"></div>
+      <div id="postos-cluster-card" class="card" style="margin-top:16px"></div>
       <div style="margin-top:16px" class="export-bar">
         <div class="eb-left"><strong>Exportar relatório de postos</strong>Todos os postos — mês selecionado</div>
         <div class="eb-btns">
@@ -1413,6 +1421,7 @@ const PosCanalLabels = {
         <div class="prd-bar">
           <div><label class="form-label">Ano</label><select class="form-select" id="prd-ano" onchange="prdMudouAno()"></select></div>
           <div><label class="form-label">Supervisor</label><select class="form-select" id="prd-sup" onchange="prdMudouSup()"></select></div>
+          <div><label class="form-label">Cluster</label><select class="form-select" id="prd-cluster" onchange="prdMudouCluster()"><option value="">Todos</option><option value="4Hrs">4Hrs</option><option value="6Hrs">6Hrs</option><option value="8Hrs">8Hrs</option></select></div>
           <div><label class="form-label">Posto</label><select class="form-select" id="prd-posto" onchange="prdAtualizar()"></select></div>
           <div class="prd-meses-bloco"><label class="form-label">Competências (marque quantas quiser)</label><div class="csr-meses" id="prd-meses"></div>
             <div class="csr-atalhos"><button class="btn btn-secondary btn-sm" onclick="prdAtalho('todos')">Todos os meses</button><button class="btn btn-secondary btn-sm" onclick="prdAtalho('3')">Últimos 3 meses</button><button class="btn btn-secondary btn-sm" onclick="prdAtalho('6')">Últimos 6 meses</button><button class="btn btn-secondary btn-sm" onclick="prdAtalho('limpar')">Limpar seleção</button></div></div>
@@ -1421,6 +1430,7 @@ const PosCanalLabels = {
         <div class="prd-aviso" id="prd-aviso" style="display:none"></div>
         <div class="prd-ref" id="prd-ref"></div>
         <div id="prd-cards" class="ind-kpi-grid"></div>
+        <div id="prd-clusters" class="prd-cl"></div>
         <div class="prd-graficos">
           <div class="prd-painel"><div class="ind-section-title">Evolução mensal — Senhas e Produtividade <span id="prd-titulo-per" style="color:var(--text3);font-weight:600;font-size:12px"></span></div>
             <div style="position:relative;height:340px"><canvas id="prd-chart-mes"></canvas></div><div id="prd-chart-mes-vazio" class="ind-empty" style="display:none">Selecione um ou mais meses acima.</div>
@@ -3297,37 +3307,37 @@ const POSTOS_INICIAIS = [
   // Posto de Teste
   {nome:'Posto Teste', email:'posto.teste@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'14:00'},
   // Supervisor Leonardo
-  {nome:'Aperibé', email:'aperibe@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'14:00'},
-  {nome:'Conceição de Macabu', email:'conceicao@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'17:00'},
-  {nome:'Guarus', email:'guarus@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'14:00'},
-  {nome:'Cardoso Moreira', email:'cardoso@gruporgbrasil.com', supervisor:'Leonardo', abre:'09:00', fecha:'15:00'},
-  {nome:'Cambuci', email:'cambuci@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'12:00'},
-  {nome:'Quissamã', email:'quissama@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'16:00'},
-  {nome:'Carapebus', email:'carapebus@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'14:00'},
-  {nome:'São José de Ubá', email:'saojoseuba@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'12:00'},
-  {nome:'Cantagalo', email:'cantagalo@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'17:00'},
-  {nome:'Tanguá', email:'tangua@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'16:00'},
-  {nome:'Italva', email:'italva@gruporgbrasil.com', supervisor:'Leonardo', abre:'09:00', fecha:'15:00'},
-  {nome:'Macuco', email:'macuco@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'14:00'},
-  {nome:'Silva Jardim', email:'silvajardim@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'17:00'},
-  {nome:'Bom Jesus do Itabapoana', email:'bomjesus@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'16:00'},
-  {nome:'Parque Mambucaba', email:'mambucaba@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'17:00'}, // novo posto — gestão desde 01/11/2026
+  {nome:'Aperibé', cluster:'6Hrs', email:'aperibe@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'14:00'},
+  {nome:'Conceição de Macabu', cluster:'8Hrs', email:'conceicao@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'17:00'},
+  {nome:'Guarus', cluster:'6Hrs', email:'guarus@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'14:00'},
+  {nome:'Cardoso Moreira', cluster:'6Hrs', email:'cardoso@gruporgbrasil.com', supervisor:'Leonardo', abre:'09:00', fecha:'15:00'},
+  {nome:'Cambuci', cluster:'4Hrs', email:'cambuci@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'12:00'},
+  {nome:'Quissamã', cluster:'8Hrs', email:'quissama@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'16:00'},
+  {nome:'Carapebus', cluster:'6Hrs', email:'carapebus@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'14:00'},
+  {nome:'São José de Ubá', cluster:'4Hrs', email:'saojoseuba@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'12:00'},
+  {nome:'Cantagalo', cluster:'8Hrs', email:'cantagalo@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'17:00'},
+  {nome:'Tanguá', cluster:'8Hrs', email:'tangua@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'16:00'},
+  {nome:'Italva', cluster:'6Hrs', email:'italva@gruporgbrasil.com', supervisor:'Leonardo', abre:'09:00', fecha:'15:00'},
+  {nome:'Macuco', cluster:'6Hrs', email:'macuco@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'14:00'},
+  {nome:'Silva Jardim', cluster:'8Hrs', email:'silvajardim@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'17:00'},
+  {nome:'Bom Jesus do Itabapoana', cluster:'8Hrs', email:'bomjesus@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'16:00'},
+  {nome:'Parque Mambucaba', cluster:'8Hrs', email:'mambucaba@gruporgbrasil.com', supervisor:'Leonardo', abre:'08:00', fecha:'17:00'}, // novo posto — gestão desde 01/11/2026
   // Supervisor Victor
-  {nome:'São José do Vale do Rio Preto', email:'saojosevale@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'17:00'},
-  {nome:'Nova Friburgo', email:'novafriburgo@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'12:00'},
-  {nome:'Santa Maria Madalena', email:'santamaria@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'14:00'},
-  {nome:'Porciúncula', email:'porciuncula@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'17:00'},
-  {nome:'Miracema', email:'miracema@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'17:00'},
-  {nome:'Sumidouro', email:'sumidouro@gruporgbrasil.com', supervisor:'Victor', abre:'12:00', fecha:'16:00'},
-  {nome:'Bom Jardim', email:'bomjardim@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'16:00'},
-  {nome:'Varre-Sai', email:'varresai@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'14:00'},
-  {nome:'Natividade', email:'natividade@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'17:00'},
-  {nome:'Areal', email:'areal@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'17:00'},
-  {nome:'Porto Real', email:'portoreal@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'17:00'},
-  {nome:'Duas Barras', email:'duasbarras@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'14:00'},
-  {nome:'Trajano de Moraes', email:'trajano@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'14:00'},
-  {nome:'Laje de Muriaé', email:'laje@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'12:00'},
-  {nome:'São Sebastião do Alto', email:'saosebastiao@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'12:00'},
+  {nome:'São José do Vale do Rio Preto', cluster:'8Hrs', email:'saojosevale@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'17:00'},
+  {nome:'Nova Friburgo', cluster:'4Hrs', email:'novafriburgo@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'12:00'},
+  {nome:'Santa Maria Madalena', cluster:'6Hrs', email:'santamaria@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'14:00'},
+  {nome:'Porciúncula', cluster:'8Hrs', email:'porciuncula@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'17:00'},
+  {nome:'Miracema', cluster:'8Hrs', email:'miracema@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'17:00'},
+  {nome:'Sumidouro', cluster:'4Hrs', email:'sumidouro@gruporgbrasil.com', supervisor:'Victor', abre:'12:00', fecha:'16:00'},
+  {nome:'Bom Jardim', cluster:'8Hrs', email:'bomjardim@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'16:00'},
+  {nome:'Varre-Sai', cluster:'6Hrs', email:'varresai@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'14:00'},
+  {nome:'Natividade', cluster:'8Hrs', email:'natividade@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'17:00'},
+  {nome:'Areal', cluster:'8Hrs', email:'areal@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'17:00'},
+  {nome:'Porto Real', cluster:'8Hrs', email:'portoreal@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'17:00'},
+  {nome:'Duas Barras', cluster:'6Hrs', email:'duasbarras@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'14:00'},
+  {nome:'Trajano de Moraes', cluster:'4Hrs', email:'trajano@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'14:00'},
+  {nome:'Laje de Muriaé', cluster:'4Hrs', email:'laje@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'12:00'},
+  {nome:'São Sebastião do Alto', cluster:'4Hrs', email:'saosebastiao@gruporgbrasil.com', supervisor:'Victor', abre:'08:00', fecha:'12:00'},
 ];
 
 const COLABORADORES_INICIAIS = [
@@ -7540,6 +7550,7 @@ async function renderAdmPostos() {
   });
 
   document.getElementById('postos-adm-body').innerHTML = body;
+  try { renderClusterCadastro(); } catch (e) { console.error('[Cluster]', e); }
 }
 
 async function autorizarPostoDevice(did) {
@@ -33882,11 +33893,11 @@ function prdListaMeses(sel) { return csrListaMeses(sel); }
 // ── Registro de postos / supervisor (vínculos já existentes) ──
 function prdRegistro() {
   const out = []; const vistos = new Set(); const teste = prdCanon('Posto Teste');
-  const add = p => { if (!p || !p.nome) return; const k = prdCanon(p.nome); if (!k || k === teste || vistos.has(k)) return; vistos.add(k); out.push({ canon: k, nome: p.nome, sup: String(p.supervisor || '').trim() }); };
+  const add = p => { if (!p || !p.nome) return; const k = prdCanon(p.nome); if (!k || k === teste || vistos.has(k)) return; vistos.add(k); out.push({ canon: k, nome: p.nome, sup: String(p.supervisor || '').trim(), cluster: '' }); };
   (typeof POSTOS_INICIAIS !== 'undefined' ? POSTOS_INICIAIS : []).forEach(add);
   const mapaSup = {}; out.forEach(o => { mapaSup[o.canon] = o; });
-  (typeof allPostos !== 'undefined' ? allPostos : []).forEach(p => { if (!p || !p.nome) return; const k = prdCanon(p.nome); if (mapaSup[k]) { if (p.supervisor) mapaSup[k].sup = String(p.supervisor).trim(); } else add(p); });
-  if (!out.some(o => o.canon === POSTO_MAMBUCABA)) { const csatSup = (typeof CSAT_SUPERVISORES !== 'undefined' ? Object.keys(CSAT_SUPERVISORES) : []).find(s => CSAT_SUPERVISORES[s].postos.some(n => prdCanon(n) === POSTO_MAMBUCABA)); out.push({ canon: POSTO_MAMBUCABA, nome: prdNomeExib(POSTO_MAMBUCABA), sup: csatSup ? csatSup.charAt(0).toUpperCase() + csatSup.slice(1) : '' }); }
+  (typeof allPostos !== 'undefined' ? allPostos : []).forEach(p => { if (!p || !p.nome) return; const k = prdCanon(p.nome); if (mapaSup[k]) { if (p.supervisor) mapaSup[k].sup = String(p.supervisor).trim(); } else add(p); if (mapaSup[k] || vistos.has(k)) { const oo = out.find(z => z.canon === k); if (oo && ['4Hrs', '6Hrs', '8Hrs'].includes(p.cluster)) oo.cluster = p.cluster; } });
+  if (!out.some(o => o.canon === POSTO_MAMBUCABA)) { const csatSup = (typeof CSAT_SUPERVISORES !== 'undefined' ? Object.keys(CSAT_SUPERVISORES) : []).find(s => CSAT_SUPERVISORES[s].postos.some(n => prdCanon(n) === POSTO_MAMBUCABA)); out.push({ canon: POSTO_MAMBUCABA, nome: prdNomeExib(POSTO_MAMBUCABA), sup: csatSup ? csatSup.charAt(0).toUpperCase() + csatSup.slice(1) : '', cluster: '' }); }
   out.forEach(o => { if (!o.sup) o.sup = ''; });
   return out.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 }
@@ -33955,8 +33966,9 @@ function prdModeloTab(ctx, ano, sel, filtro) {
   let escopo = Object.keys(nomes);
   const reg2 = {}; reg.forEach(o => { reg2[o.canon] = o; });
   if (filtro.sup) escopo = escopo.filter(k => reg2[k] && reg2[k].sup === filtro.sup);
+  if (filtro.cluster) escopo = escopo.filter(k => reg2[k] && reg2[k].cluster === filtro.cluster);
   if (filtro.posto) escopo = escopo.filter(k => k === filtro.posto);
-  const linhas = escopo.map(k => ({ canon: k, nome: nomes[k], agg: prdAgg(ctx, [k], refs) })).filter(l => l.agg.tem || prdPostoAtivo(l.canon, refs));
+  const linhas = escopo.map(k => ({ canon: k, nome: nomes[k], cluster: reg2[k] ? reg2[k].cluster : '', agg: prdAgg(ctx, [k], refs) })).filter(l => l.agg.tem || prdPostoAtivo(l.canon, refs));
   const total = prdAgg(ctx, escopo, refs);
   const serie = refs.map((r, i) => { const a = prdAgg(ctx, escopo, [r]); const mi = ctx.mes(r); return { ref: r, m: sel[i], lbl: PRD_ABREV[sel[i]] + (mi.parcial ? '*' : ''), agg: a, mi }; });
   const pend = []; refs.forEach(r => { if (prdTemMes(ctx, r) && ctx.mes(r).pendente) pend.push(r); });
@@ -34055,7 +34067,7 @@ function prdPreencherFiltros(ctx) {
   prdPreencherPostos();
 }
 function prdPreencherPostos() {
-  const ps = document.getElementById('prd-posto'), val = ps.value, sup = document.getElementById('prd-sup').value; const reg = prdRegistro().filter(o => !sup || o.sup === sup);
+  const ps = document.getElementById('prd-posto'), val = ps.value, sup = document.getElementById('prd-sup').value, cl = (document.getElementById('prd-cluster') || {}).value || ''; const reg = prdRegistro().filter(o => (!sup || o.sup === sup) && (!cl || o.cluster === cl));
   ps.innerHTML = '<option value="">Todos os postos</option>' + reg.map(o => `<option value="${csrEsc(o.canon)}">${csrEsc(o.nome)}</option>`).join(''); ps.value = reg.some(o => o.canon === val) ? val : '';
 }
 function prdDisponiveis(ctx, ano) { return prdMesesComDados(ctx, ano); }
@@ -34074,7 +34086,7 @@ function prdAtalho(tipo) {
 }
 function prdMudouAno() { _prdAno = prdAnoSel(); _prdAutoSel = true; prdAtualizar(); }
 function prdMudouSup() { prdPreencherPostos(); prdAtualizar(); }
-function prdOrdenar(col) { _prdSort = { col, dir: _prdSort.col === col ? -_prdSort.dir : (col === 'posto' ? 1 : -1) }; prdAtualizar(true); }
+function prdOrdenar(col) { _prdSort = { col, dir: _prdSort.col === col ? -_prdSort.dir : (col === 'posto' || col === 'cluster' ? 1 : -1) }; prdAtualizar(true); }
 
 async function prdGarantirDados() {
   await _compartilhar('ind', async () => { if (!(indicadoresCarregados && allIndicadores.length && _cacheFresco('ind'))) await carregarTodosIndicadores(); });
@@ -34103,11 +34115,11 @@ function prdInformarRef(ref, alvo) {
 }
 function prdCardHtml(label, val, sub, cls) { return `<div class="ind-kpi-card${cls ? ' ' + cls : ''}"><div class="ind-kpi-label">${label}</div><div class="ind-kpi-val">${val}</div><div class="ind-kpi-sub">${sub}</div></div>`; }
 function prdAtualizar(soTabela) {
-  const ctx = prdContexto(); _prdAno = prdAnoSel() || _prdAno;
+  const ctx = prdContexto(); _prdAno = prdAnoSel() || _prdAno; prdRenderClusters(ctx);
   const disp = prdDisponiveis(ctx, _prdAno);
   if (_prdAutoSel) _prdSel = disp.slice(); else _prdSel = _prdSel.filter(m => disp.includes(m));
   prdRenderChips(ctx);
-  const filtro = { sup: document.getElementById('prd-sup').value, posto: document.getElementById('prd-posto').value };
+  const filtro = { sup: document.getElementById('prd-sup').value, posto: document.getElementById('prd-posto').value, cluster: (document.getElementById('prd-cluster') || {}).value || '' };
   const btn = document.getElementById('prd-btn-rel'); if (btn) btn.disabled = false;
   const M = prdModeloTab(ctx, _prdAno, _prdSel, filtro); _prdUltimo = M;
   prdAvisoPend(ctx, M.refs, 'prd-aviso');
@@ -34115,7 +34127,7 @@ function prdAtualizar(soTabela) {
   const ate = M.serie.filter(s => s.agg.tem).map(s => s.mi).filter(mi => mi.dr).map(mi => mi.dr).sort().pop();
   document.getElementById('prd-ref').innerHTML = ate ? `📅 Dados de produtividade até <b>${prdDataBR(ate)}</b>` : '';
   if (!_prdSel.length) {
-    document.getElementById('prd-cards').innerHTML = ''; document.getElementById('prd-corpo').innerHTML = '<tr><td colspan="5" class="ind-empty">Selecione um ou mais meses acima.</td></tr>'; document.getElementById('prd-foot').innerHTML = '';
+    document.getElementById('prd-cards').innerHTML = ''; document.getElementById('prd-corpo').innerHTML = '<tr><td colspan="6" class="ind-empty">Selecione um ou mais meses acima.</td></tr>'; document.getElementById('prd-foot').innerHTML = '';
     document.getElementById('prd-notas').innerHTML = ''; _prdChartMes = prdDestroy(_prdChartMes); document.getElementById('prd-chart-mes-vazio').style.display = 'block'; prdRenderAnual(ctx); return;
   }
   const parc = M.parciais.map(s => `${PRD_ABREV[s.m]} (até ${prdDataBR(s.mi.dr).slice(0, 5)})`);
@@ -34127,18 +34139,19 @@ function prdAtualizar(soTabela) {
     prdCardHtml('TME Médio', `<span style="font-size:18px">${fmtTempo(T.tme)}</span>`, 'tempo médio espera');
   // tabela
   const col = _prdSort.col, dir = _prdSort.dir;
-  const val = l => col === 'posto' ? l.nome : col === 'sen' ? (l.agg.tem ? l.agg.sen : null) : col === 'tma' ? l.agg.tma : col === 'tme' ? l.agg.tme : l.agg.prod;
+  const val = l => col === 'posto' ? l.nome : col === 'cluster' ? (l.cluster || '') : col === 'sen' ? (l.agg.tem ? l.agg.sen : null) : col === 'tma' ? l.agg.tma : col === 'tme' ? l.agg.tme : l.agg.prod;
   const ls = M.linhas.slice().sort((a, b) => {
     const x = val(a), y = val(b);
     if (col === 'posto') return dir * x.localeCompare(y, 'pt-BR');
+    if (col === 'cluster') return dir * x.localeCompare(y, 'pt-BR') || a.nome.localeCompare(b.nome, 'pt-BR');
     if (x == null && y == null) return a.nome.localeCompare(b.nome, 'pt-BR'); if (x == null) return 1; if (y == null) return -1;
     return dir * (x - y) || a.nome.localeCompare(b.nome, 'pt-BR');
   });
   const seta = c => c === col ? (dir > 0 ? ' ▲' : ' ▼') : '';
-  document.getElementById('prd-head').innerHTML = [['posto', 'Posto'], ['sen', 'Senhas'], ['tma', 'TMA'], ['tme', 'TME'], ['prod', 'Produtividade']].map(([c, t]) => `<th style="cursor:pointer;user-select:none${c === 'posto' ? '' : ';text-align:right'}" onclick="prdOrdenar('${c}')">${t}${seta(c)}</th>`).join('');
-  const linha = (nome, a, cls) => `<tr${cls ? ` class="${cls}"` : ''}><td>${csrEsc(nome)}</td><td style="text-align:right">${a.tem ? prdFmtInt(a.sen) : '—'}</td><td style="text-align:right">${a.tem ? fmtTempo(a.tma) : '—'}</td><td style="text-align:right">${a.tem ? fmtTempo(a.tme) : '—'}</td><td style="text-align:right;font-weight:700">${prdFmtProd(a.prod)}</td></tr>`;
-  document.getElementById('prd-corpo').innerHTML = ls.length ? ls.map(l => linha(l.nome, l.agg)).join('') : '<tr><td colspan="5" class="ind-empty">Nenhum posto para os filtros selecionados.</td></tr>';
-  document.getElementById('prd-foot').innerHTML = ls.length ? linha(filtro.posto ? 'Total' : (filtro.sup ? `Consolidado — ${filtro.sup}` : 'Consolidado — Operação'), T, 'prd-cons') : '';
+  document.getElementById('prd-head').innerHTML = [['posto', 'Posto'], ['cluster', 'Cluster'], ['sen', 'Senhas'], ['tma', 'TMA'], ['tme', 'TME'], ['prod', 'Produtividade']].map(([c, t]) => `<th style="cursor:pointer;user-select:none${c === 'posto' ? '' : c === 'cluster' ? ';text-align:center' : ';text-align:right'}" onclick="prdOrdenar('${c}')">${t}${seta(c)}</th>`).join('');
+  const linha = (nome, a, cls, cl) => `<tr${cls ? ` class="${cls}"` : ''}><td>${csrEsc(nome)}</td><td style="text-align:center">${cl ? csrEsc(cl) : (cls ? '' : '—')}</td><td style="text-align:right">${a.tem ? prdFmtInt(a.sen) : '—'}</td><td style="text-align:right">${a.tem ? fmtTempo(a.tma) : '—'}</td><td style="text-align:right">${a.tem ? fmtTempo(a.tme) : '—'}</td><td style="text-align:right;font-weight:700">${prdFmtProd(a.prod)}</td></tr>`;
+  document.getElementById('prd-corpo').innerHTML = ls.length ? ls.map(l => linha(l.nome, l.agg, '', l.cluster)).join('') : '<tr><td colspan="6" class="ind-empty">Nenhum posto para os filtros selecionados.</td></tr>';
+  document.getElementById('prd-foot').innerHTML = ls.length ? linha(filtro.posto ? 'Total' : (filtro.sup || filtro.cluster ? `Consolidado — ${[filtro.sup, filtro.cluster ? 'Cluster ' + filtro.cluster : ''].filter(Boolean).join(' · ')}` : 'Consolidado — Operação'), T, 'prd-cons') : '';
   document.getElementById('prd-titulo-per').textContent = _prdSel.length === 1 ? `· ${PRD_NOME[_prdSel[0]]}/${_prdAno}` : (_prdSel.length <= 3 ? `· ${prdListaMeses(_prdSel)}/${_prdAno}` : `· ${_prdSel.length} meses de ${_prdAno}`);
   document.getElementById('prd-notas').innerHTML = parc.length ? `* Mês parcial: dias úteis contados só até a data de referência dos dados (${parc.join(', ')}).` : '';
   // gráfico mensal
@@ -34179,7 +34192,8 @@ function prrModelo(ctx, ano, sel) {
   const reg = prdRegistro(); const refs = sel.map(m => ano + '-' + String(m).padStart(2, '0'));
   const nomes = {}; reg.forEach(o => { nomes[o.canon] = o.nome; }); Object.keys(ctx.idx).forEach(k => { if (!nomes[k]) nomes[k] = prdNomeExib(k); });
   const todos = Object.keys(nomes);
-  const linhas = todos.map(k => ({ canon: k, nome: nomes[k], agg: prdAgg(ctx, [k], refs), meses: refs.map(r => prdAgg(ctx, [k], [r])) })).filter(l => l.agg.tem || prdPostoAtivo(l.canon, refs));
+  const cmap = {}; reg.forEach(o => { cmap[o.canon] = o.cluster || ''; });
+  const linhas = todos.map(k => ({ canon: k, nome: nomes[k], cluster: cmap[k] || '', agg: prdAgg(ctx, [k], refs), meses: refs.map(r => prdAgg(ctx, [k], [r])) })).filter(l => l.agg.tem || prdPostoAtivo(l.canon, refs));
   prdOrdenarPorProd(linhas);
   const cons = { agg: prdAgg(ctx, todos, refs), meses: refs.map(r => prdAgg(ctx, todos, [r])) };
   const infos = refs.map(r => ctx.mes(r)); const ms = prdMesesComDados(ctx, ano);
@@ -34190,22 +34204,22 @@ function prrModelo(ctx, ano, sel) {
   const fechados = ms.filter(m => { const mi = ctx.mes(ano + '-' + String(m).padStart(2, '0')); return !mi.parcial; }).map(m => { const r = ano + '-' + String(m).padStart(2, '0'); const a = prdAgg(ctx, todos, [r]); return { m, sen: a.sen, prod: a.prod }; });
   const drs = []; ms.forEach(m => { const mi = ctx.mes(ano + '-' + String(m).padStart(2, '0')); if (mi.dr) drs.push(mi.dr); }); const dataRef = drs.sort().pop() || '';
   const pend = refs.filter(r => prdTemMes(ctx, r) && ctx.mes(r).pendente); if (vig && vig.mi.pendente && !pend.includes(vig.ref)) pend.push(vig.ref);
-  return { ano, sel, refs, linhas, cons, infos, ms, ultimo, isAno, real, anual: A, vig, fechados, dataRef, pend };
+  return { ano, sel, refs, linhas, cons, infos, ms, ultimo, isAno, real, anual: A, vig, fechados, dataRef, pend, clusters: prdClusterAcum(ctx) };
 }
 function prrLayout(nm) {
   const fs = nm >= 8 ? 15 : nm >= 5 ? 16 : nm >= 3 ? 17 : 18;           // acumulado: tamanho que já estava aprovado
   const fsM = fs + 2, fsC = fs - 3;                                        // meses um pouco maiores; linha consolidada menor
-  let WN = Math.round(fs * 5.0), WV = Math.round(fs * 4.6), WAN = Math.round(fs * 5.4), WAV = Math.round(fs * 4.8); const WL = 262; const alvo = 1300, tot = WL + nm * (WN + WV) + WAN + WAV;
+  let WN = Math.round(fs * 5.0), WV = Math.round(fs * 4.6), WAN = Math.round(fs * 5.4), WAV = Math.round(fs * 4.8); const WL = 262, WCL = 74; const alvo = 1300, tot = WL + nm * (WN + WV) + WAN + WAV;
   if (tot < alvo && nm > 0) { const ex = Math.floor((alvo - tot) / (nm * 2)); WN += ex; WV += ex; }
-  return { fs, fsM, fsC, fsSen: fs, fsHead: 14, WL, WN, WV, WAN, WAV, RH: Math.round(fs * 2.1), RHs: Math.round(fs * 2.1), HH: 30, HHac: 46 };
+  return { fs, fsM, fsC, fsSen: fs, fsHead: 14, WL, WCL, WN, WV, WAN, WAV, RH: Math.round(fs * 2.1), RHs: Math.round(fs * 2.1), HH: 30, HHac: 46 };
 }
 function prrGrade(R) {
   const nm = R.sel.length;
   const meses = R.sel.map((m, i) => ({ ref: R.refs[i], lbl: PRD_ABREV[m] + (R.infos[i].parcial ? '*' : '') }));
   const cel = a => [{ t: 'int', v: a.tem ? a.sen : null }, { t: 'prod', v: prdR2(a.prod) }];
   const mk = l => [...l.meses.map(a => cel(a)).flat(), ...cel(l.agg)];
-  const linhas = R.linhas.map(l => ({ tipo: 'posto', rot: l.nome, cel: mk(l) }));
-  linhas.push({ tipo: 'cons1', rot: 'Operação — Consolidado', cel: mk(R.cons) });
+  const linhas = R.linhas.map(l => ({ tipo: 'posto', rot: l.nome, cl: l.cluster || '—', cel: mk(l) }));
+  linhas.push({ tipo: 'cons1', rot: 'Operação — Consolidado', cl: '', cel: mk(R.cons) });
   const rotulo = R.sel.length <= 3 ? `${prdListaMeses(R.sel)}/${R.ano}` : `${R.sel.length} meses/${R.ano}`;
   const g = { R, meses, blocos: [{ titulo: 'Produtividade por Posto — todas as unidades', cor: '#1f1f33', clara: '#e8e8ff', linhas }], cards: [], lay: prrLayout(nm),
     titulo: 'Relatório de Produtividade',
@@ -34223,8 +34237,10 @@ function prrGrade(R) {
     'Produtividade = senhas atendidas ÷ (P.A. × dias úteis). Consolidados = total de senhas ÷ soma de (P.A. × dias úteis), nunca média simples. Dias úteis: segunda a sexta, exceto feriados nacionais; mês parcial (*) conta só até a data de referência dos dados. “—” = sem dados (diferente de zero).',
     'P.A.: cada posto = 1; operação com 29 P.A. até out/2026 e 30 a partir de nov/2026 (Parque Mambucaba só entra em nov/2026, sem retroatividade).',
     `Comparativo anual: 2024 (9.000 senhas/mês, 28 P.A.) e 2025 (11.000 senhas/mês, 29 P.A.) são valores históricos fixos; ${R.ano}: média mensal = total de senhas ÷ meses com dados${ult ? ` (${ult.meses.length} meses, parcial incluído)` : ''}. Os quadros anuais e o mês vigente refletem a operação inteira, independentemente dos meses marcados na tabela.`,
+    'Cluster = classificação do cadastro do posto (4Hrs, 6Hrs, 8Hrs); só classifica, não entra na fórmula. Produtividade por Cluster = total de senhas ÷ soma de (P.A. × dias úteis) dos postos do cluster, acumulado de ' + R.clusters.ano + ', independente dos meses marcados na tabela.',
     ...(R.pend.length ? [`Atenção: ${R.pend.map(r => PRD_ABREV[+r.slice(5, 7)] + '/' + r.slice(0, 4)).join(', ')} sem data de referência identificada — produtividade desse(s) mês(es) não calculada.`] : [])
   ];
+  g.clusters = R.clusters;
   g.atualizacao = (R.dataRef ? 'Dados até ' + prdDataBR(R.dataRef) + '  |  ' : '') + 'Gerado em ' + new Date().toLocaleString('pt-BR');
   return g;
 }
@@ -34252,16 +34268,16 @@ function prrGrafico(x, X, Y, W, H, sp, F) {
 function prrGeomVig(wTab) { const gap = 20, wc = Math.round((wTab - gap) * 0.64); return { gap, wc, wv: wTab - gap - wc }; }
 function prrHtml(g) {
   const nm = g.meses.length, L = g.lay; const th = (t, e) => `<th ${e || ''}>${csrEsc(t)}</th>`; const zona = i => (i % 2 ? 'z1' : 'z0');
-  const wTab = L.WL + nm * (L.WN + L.WV) + L.WAN + L.WAV; const G = prrGeomVig(wTab);
+  const wTab = L.WL + L.WCL + nm * (L.WN + L.WV) + L.WAN + L.WAV; const G = prrGeomVig(wTab);
   let h = `<div class="csr-rep" id="prr-rep" style="--fs:${L.fs}px;--fsm:${L.fsM}px;--fsc:${L.fsC}px;--rh:${L.RH}px"><div class="csr-head"><div class="csr-head-l">${csrLogoSrc() ? `<img src="${csrLogoSrc()}" alt="Gestão Conect@">` : ''}<div><div class="csr-t">${csrEsc(g.titulo)}</div><div class="csr-s">${csrEsc(g.sub)}</div></div></div><div class="csr-head-r">${csrEsc(g.atualizacao)}</div></div>`;
   g.blocos.forEach(b => {
-    h += `<div class="csr-bl" style="width:${wTab}px"><div class="csr-bt" style="background:${b.cor}">${csrEsc(b.titulo)}</div><table class="csr-tb prr-tb" style="width:${wTab}px"><colgroup><col style="width:${L.WL}px">${g.meses.map(() => `<col style="width:${L.WN}px"><col style="width:${L.WV}px">`).join('')}<col style="width:${L.WAN}px"><col style="width:${L.WAV}px"></colgroup><thead><tr>${th('Posto', 'rowspan="2" class="lbl"')}`;
+    h += `<div class="csr-bl" style="width:${wTab}px"><div class="csr-bt" style="background:${b.cor}">${csrEsc(b.titulo)}</div><table class="csr-tb prr-tb" style="width:${wTab}px"><colgroup><col style="width:${L.WL}px"><col style="width:${L.WCL}px">${g.meses.map(() => `<col style="width:${L.WN}px"><col style="width:${L.WV}px">`).join('')}<col style="width:${L.WAN}px"><col style="width:${L.WAV}px"></colgroup><thead><tr>${th('Posto', 'rowspan="2" class="lbl"')}${th('Cluster', 'rowspan="2" class="cl"')}`;
     g.meses.forEach((m, i) => { h += th(m.lbl, `colspan="2" class="${zona(i)}"`); });
     h += `<th colspan="2" class="ac"><div>${csrEsc(g.acCab[0])}</div><div class="ac2">${csrEsc(g.acCab[1])}</div></th></tr><tr>`;
     g.meses.forEach((m, i) => { h += th('Senhas', `class="${zona(i)} sb"`) + th('Produt.', `class="${zona(i)} sb"`); });
     h += th('Senhas', 'class="ac sb"') + th('Produt.', 'class="ac sb"') + '</tr></thead><tbody>';
     b.linhas.forEach(l => {
-      h += `<tr class="r-${l.tipo}"${l.tipo !== 'posto' ? ` style="--cl:${b.clara}"` : ''}><td class="lbl">${csrEsc(l.rot)}</td>`;
+      h += `<tr class="r-${l.tipo}"${l.tipo !== 'posto' ? ` style="--cl:${b.clara}"` : ''}><td class="lbl">${csrEsc(l.rot)}</td><td class="cl">${csrEsc(l.cl || '')}</td>`;
       l.cel.forEach((c, j) => { const ac = j >= nm * 2; const z = ac ? 'ac' : zona(Math.floor(j / 2)); h += `<td class="${z}${ac ? '' : ' mm'}">${csrEsc(prdFmtCel(c))}</td>`; });
       h += '</tr>';
     });
@@ -34270,11 +34286,12 @@ function prrHtml(g) {
   h += `<div class="prr-linha" style="width:${wTab}px;grid-template-columns:${G.wc}px ${G.wv}px"><canvas id="prr-cv-anual" class="prr-cv" style="width:${G.wc}px;height:${PRR_GH}px"></canvas>` +
     g.cards.map(x => `<div class="csr-card mes prr-vig" style="height:${PRR_GH}px"><div class="csr-ct" style="background:${x.cor}">${csrEsc(x.titulo)}</div><div class="prr-its">${x.itens.map(it => `<div><span>${csrEsc(it.rot)}</span><b>${csrEsc(prdFmtCel(it))}</b></div>`).join('')}</div></div>`).join('') + '</div>';
   if (g.graf.mensal) h += `<div class="prr-linha" style="width:${wTab}px;grid-template-columns:${wTab}px"><canvas id="prr-cv-mensal" class="prr-cv" style="width:${wTab}px;height:${PRR_GH + 10}px"></canvas></div>`;
+  { const C = g.clusters; h += `<div class="prr-clb" style="width:${wTab}px"><div class="prr-clt">${csrEsc(C.titulo)}</div><div class="prr-cls">${csrEsc(C.sub)}</div><div class="prr-clg">${C.itens.map(it => `<div class="prr-clc"><span>CLUSTER ${csrEsc(it.cl)}</span><b>${csrEsc(prdFmtProd(it.prod))}</b><i>${csrEsc(prdClusterSubTxt(it))}</i></div>`).join('')}</div></div>`; }
   h += '<div class="csr-foot" style="width:' + wTab + 'px">' + g.rodape.map(t => `<div>${csrEsc(t)}</div>`).join('') + '</div></div>';
   return h;
 }
 function prrPintarPrevia(g) {
-  const F = 'Syne, "Segoe UI", Arial, sans-serif', L = g.lay, nm = g.meses.length, wTab = L.WL + nm * (L.WN + L.WV) + L.WAN + L.WAV, G = prrGeomVig(wTab), dpr = 2;
+  const F = 'Syne, "Segoe UI", Arial, sans-serif', L = g.lay, nm = g.meses.length, wTab = L.WL + L.WCL + nm * (L.WN + L.WV) + L.WAN + L.WAV, G = prrGeomVig(wTab), dpr = 2;
   const pinta = (id, w, hh, sp) => { const cv = document.getElementById(id); if (!cv || !sp) return; cv.width = w * dpr; cv.height = hh * dpr; const x = cv.getContext('2d'); x.scale(dpr, dpr); prrGrafico(x, 0, 0, w, hh, sp, F); };
   pinta('prr-cv-anual', G.wc, PRR_GH, g.graf.anual); pinta('prr-cv-mensal', wTab, PRR_GH + 10, g.graf.mensal);
 }
@@ -34313,12 +34330,12 @@ function prrNomeArquivo(ext) { const R = _prdAtual.R; return `Relatorio_Produtiv
 async function prrDesenhar(g, escala) {
   try { await Promise.all([document.fonts.load('700 14px Syne'), document.fonts.load('600 14px Syne'), document.fonts.load('800 14px Syne')]); } catch (e) {}
   const logo = await csrCarregarImg(csrLogoSrc()); const F = 'Syne, "Segoe UI", Arial, sans-serif';
-  const nm = g.meses.length, PAD = 28, { WL, WN, WV, WAN, WAV, RH, fs, fsM, fsC } = g.lay, HH1 = 46, HH2 = 26;
-  const wTab = WL + nm * (WN + WV) + WAN + WAV, W = wTab + PAD * 2, G = prrGeomVig(wTab); const headH = 104, blkTit = 36, gap = 20, GH = PRR_GH;
+  const nm = g.meses.length, PAD = 28, { WL, WCL, WN, WV, WAN, WAV, RH, fs, fsM, fsC } = g.lay, HH1 = 46, HH2 = 26;
+  const wTab = WL + WCL + nm * (WN + WV) + WAN + WAV, W = wTab + PAD * 2, G = prrGeomVig(wTab); const headH = 104, blkTit = 36, gap = 20, GH = PRR_GH, CLH = 172;
   const cv0 = document.createElement('canvas').getContext('2d'); cv0.font = `500 11px ${F}`;
   const quebra = (x, t) => { const pal = t.split(' '); const ls = []; let ln = ''; pal.forEach(p => { const tt = ln ? ln + ' ' + p : p; if (x.measureText(tt).width > wTab && ln) { ls.push(ln); ln = p; } else ln = tt; }); ls.push(ln); return ls; };
   const rodLinhas = g.rodape.map(t => quebra(cv0, t)); const nRod = rodLinhas.reduce((a, l) => a + l.length, 0);
-  let H = headH + 18; g.blocos.forEach(b => { H += blkTit + HH1 + HH2 + RH * b.linhas.length + 20; }); H += GH + gap + (g.graf.mensal ? GH + 10 + gap : 0) + nRod * 15 + g.rodape.length * 4 + 28;
+  let H = headH + 18; g.blocos.forEach(b => { H += blkTit + HH1 + HH2 + RH * b.linhas.length + 20; }); H += GH + gap + (g.graf.mensal ? GH + 10 + gap : 0) + CLH + gap + nRod * 15 + g.rodape.length * 4 + 28;
   const cv = document.createElement('canvas'); cv.width = Math.round(W * escala); cv.height = Math.round(H * escala);
   const x = cv.getContext('2d'); x.scale(escala, escala); x.textBaseline = 'middle'; x.fillStyle = '#ffffff'; x.fillRect(0, 0, W, H);
   const gr = x.createLinearGradient(0, 0, W, 0); gr.addColorStop(0, '#0a0a0f'); gr.addColorStop(1, '#1f1f33'); x.fillStyle = gr; x.fillRect(0, 0, W, headH); x.fillStyle = '#C9A227'; x.fillRect(0, headH - 4, W, 4);
@@ -34328,8 +34345,8 @@ async function prrDesenhar(g, escala) {
   let y = headH + 18; const cor = { z1: '#f3f3fb', ac: '#fbf4d9' };
   g.blocos.forEach(b => {
     x.fillStyle = b.cor; x.fillRect(PAD, y, wTab, blkTit); txt(b.titulo, PAD + 14, y + blkTit / 2, `800 16px ${F}`, '#ffffff', 'left'); y += blkTit;
-    const colX = [PAD, PAD + WL]; for (let i = 0; i < nm; i++) { colX.push(colX[colX.length - 1] + WN); colX.push(colX[colX.length - 1] + WV); } colX.push(colX[colX.length - 1] + WAN); colX.push(colX[colX.length - 1] + WAV);
-    x.fillStyle = '#ececf6'; x.fillRect(PAD, y, WL, HH1 + HH2); txt('Posto', PAD + 12, y + (HH1 + HH2) / 2, `700 14px ${F}`, '#2a2a3e', 'left');
+    const colX = [PAD, PAD + WL + WCL]; for (let i = 0; i < nm; i++) { colX.push(colX[colX.length - 1] + WN); colX.push(colX[colX.length - 1] + WV); } colX.push(colX[colX.length - 1] + WAN); colX.push(colX[colX.length - 1] + WAV);
+    x.fillStyle = '#ececf6'; x.fillRect(PAD, y, WL + WCL, HH1 + HH2); txt('Posto', PAD + 12, y + (HH1 + HH2) / 2, `700 14px ${F}`, '#2a2a3e', 'left'); txt('Cluster', PAD + WL + WCL / 2, y + (HH1 + HH2) / 2, `700 14px ${F}`, '#2a2a3e');
     for (let i = 0; i < nm; i++) { const x0 = colX[1 + i * 2], x1 = colX[3 + i * 2]; x.fillStyle = i % 2 ? '#e4e4f3' : '#ececf6'; x.fillRect(x0, y, x1 - x0, HH1 + HH2);
       txt(g.meses[i].lbl, (x0 + x1) / 2, y + HH1 / 2, `700 15px ${F}`, '#2a2a3e'); txt('Senhas', (x0 + colX[2 + i * 2]) / 2, y + HH1 + HH2 / 2, `600 12px ${F}`, '#5a5a72'); txt('Produt.', (colX[2 + i * 2] + x1) / 2, y + HH1 + HH2 / 2, `600 12px ${F}`, '#5a5a72'); }
     const a0 = colX[1 + nm * 2], a1 = colX[3 + nm * 2]; x.fillStyle = '#e9d58a'; x.fillRect(a0, y, a1 - a0, HH1 + HH2);
@@ -34342,7 +34359,7 @@ async function prrDesenhar(g, escala) {
       for (let i = 0; i < nm; i++) if (!cons && i % 2) { x.fillStyle = cor.z1; x.fillRect(colX[1 + i * 2], y, colX[3 + i * 2] - colX[1 + i * 2], RH); }
       x.fillStyle = cons ? '#f1e3a6' : cor.ac; x.fillRect(a0, y, a1 - a0, RH);
       let nome = l.rot; x.font = `${cons ? 800 : 600} 14px ${F}`; while (nome.length > 3 && x.measureText(nome).width > WL - 20) nome = nome.slice(0, -2); if (nome !== l.rot) nome = nome.trimEnd() + '…';
-      txt(nome, PAD + 12, y + RH / 2, `${cons ? 800 : 600} 14px ${F}`, '#1b1b2a', 'left');
+      txt(nome, PAD + 12, y + RH / 2, `${cons ? 800 : 600} 14px ${F}`, '#1b1b2a', 'left'); if (l.cl) txt(l.cl, PAD + WL + WCL / 2, y + RH / 2, `700 14px ${F}`, '#4a4a60');
       l.cel.forEach((c, j) => { const cx = (colX[1 + j] + colX[2 + j]) / 2; const ac = j >= nm * 2; const f = cons ? `700 ${fsC}px ${F}` : (ac ? `800 ${fs}px ${F}` : `600 ${fsM}px ${F}`); txt(prdFmtCel(c), cx, y + RH / 2, f, '#1b1b2a'); });
       y += RH; x.strokeStyle = '#e1e1ec'; x.lineWidth = 1; x.beginPath(); x.moveTo(PAD, y + .5); x.lineTo(PAD + wTab, y + .5); x.stroke();
     });
@@ -34357,6 +34374,12 @@ async function prrDesenhar(g, escala) {
   });
   y += GH + gap;
   if (g.graf.mensal) { prrGrafico(x, PAD, y, wTab, GH + 10, g.graf.mensal, F); y += GH + 10 + gap; }
+  { const C = g.clusters, ch = 36, cw = (wTab - 2 * gap) / 3; x.fillStyle = '#1f1f33'; x.fillRect(PAD, y, wTab, ch); txt(C.titulo, PAD + 14, y + ch / 2, `800 16px ${F}`, '#ffffff', 'left');
+    { let f = 12; x.font = `500 ${f}px ${F}`; while (f > 9 && x.measureText(C.sub).width > wTab - 8) { f--; x.font = `500 ${f}px ${F}`; } txt(C.sub, PAD + 2, y + ch + 16, `500 ${f}px ${F}`, '#5a5a72', 'left'); }
+    const cy = y + ch + 32, chh = CLH - ch - 32;
+    C.itens.forEach((it, i) => { const cx = PAD + i * (cw + gap); x.fillStyle = '#f1f1f9'; x.fillRect(cx, cy, cw, chh); txt('CLUSTER ' + it.cl, cx + cw / 2, cy + 18, `700 13px ${F}`, '#4a4a60'); txt(prdFmtProd(it.prod), cx + cw / 2, cy + 48, `800 30px ${F}`, '#1b1b2a');
+      const tt = prdClusterSubTxt(it); let f = 11; x.font = `500 ${f}px ${F}`; while (f > 8 && x.measureText(tt).width > cw - 12) { f--; x.font = `500 ${f}px ${F}`; } txt(tt, cx + cw / 2, cy + chh - 18, `500 ${f}px ${F}`, '#5a5a72'); });
+    y += CLH + gap; }
   x.textAlign = 'left'; x.textBaseline = 'alphabetic'; x.font = `500 11px ${F}`; x.fillStyle = '#5a5a72';
   rodLinhas.forEach(ls => { ls.forEach(t => { x.fillText(t, PAD, y); y += 15; }); y += 4; });
   return cv;
@@ -34369,9 +34392,9 @@ async function prrBaixarPng() {
 
 // Excel (ExcelJS sob demanda, igual ao relatório CSAT; valores numéricos editáveis)
 async function prrMontarExcel(g, ExcelJS) {
-  const nm = g.meses.length, nCols = 1 + nm * 2 + 2; const wb = new ExcelJS.Workbook(); wb.creator = 'Gestão Conect@'; wb.created = new Date();
+  const nm = g.meses.length, nCols = 2 + nm * 2 + 2; const wb = new ExcelJS.Workbook(); wb.creator = 'Gestão Conect@'; wb.created = new Date();
   const ws = wb.addWorksheet('Produtividade', { views: [{ showGridLines: false }], pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 } });
-  const L = g.lay, px = p => Math.round(p / 6.2 * 10) / 10; ws.getColumn(1).width = px(L.WL); for (let c = 2; c <= 1 + nm * 2; c++) ws.getColumn(c).width = px((c - 2) % 2 === 0 ? L.WN : L.WV);
+  const L = g.lay, px = p => Math.round(p / 6.2 * 10) / 10; ws.getColumn(1).width = px(L.WL); ws.getColumn(2).width = px(L.WCL); for (let c = 3; c <= 2 + nm * 2; c++) ws.getColumn(c).width = px((c - 3) % 2 === 0 ? L.WN : L.WV);
   ws.getColumn(nCols - 1).width = px(L.WAN); ws.getColumn(nCols).width = px(L.WAV);
   const pt = f => Math.round((10.5 + (f - 13) * 0.75) * 2) / 2; const fAc = pt(L.fs), fMes = pt(L.fsM), fCons = pt(L.fsC), rhN = Math.round(L.RH * 0.75);
   const fill = rgb => ({ type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + rgb.replace('#', '') } });
@@ -34388,14 +34411,15 @@ async function prrMontarExcel(g, ExcelJS) {
   g.blocos.forEach(b => {
     ws.getRow(r).height = 24; ws.getCell(r, 1).value = b.titulo; merge(r, 1, nCols); for (let c = 1; c <= nCols; c++) ws.getCell(r, c).fill = fill(b.cor);
     ws.getCell(r, 1).font = { name: 'Calibri', size: 13, bold: true, color: { argb: 'FFFFFFFF' } }; ws.getCell(r, 1).alignment = { vertical: 'middle', indent: 1 }; r++;
-    const h1 = r, h2 = r + 1; ws.getRow(h1).height = 34; ws.getRow(h2).height = 20; ws.getCell(h1, 1).value = 'Posto'; ws.mergeCells(h1, 1, h2, 1);
-    g.meses.forEach((m, i) => { const c = 2 + i * 2; ws.getCell(h1, c).value = m.lbl; merge(h1, c, c + 1); ws.getCell(h2, c).value = 'Senhas'; ws.getCell(h2, c + 1).value = 'Produt.'; });
-    const ca = 2 + nm * 2; ws.getCell(h1, ca).value = g.acCab[0] + '\n' + g.acCab[1]; merge(h1, ca, ca + 1); ws.getCell(h2, ca).value = 'Senhas'; ws.getCell(h2, ca + 1).value = 'Produt.';
-    for (const rr of [h1, h2]) for (let c = 1; c <= nCols; c++) { const cell = ws.getCell(rr, c); const ac = c >= ca; cell.fill = fill(ac ? '#E9D58A' : (c > 1 && Math.floor((c - 2) / 2) % 2 ? '#E4E4F3' : '#ECECF6')); cell.font = { name: 'Calibri', size: rr === h1 ? 11 : 9, bold: true, color: { argb: ac ? 'FF4A3B05' : 'FF2A2A3E' } }; cell.alignment = { horizontal: c === 1 ? 'left' : 'center', vertical: 'middle', indent: c === 1 ? 1 : 0, wrapText: true }; cell.border = brd; }
+    const h1 = r, h2 = r + 1; ws.getRow(h1).height = 34; ws.getRow(h2).height = 20; ws.getCell(h1, 1).value = 'Posto'; ws.mergeCells(h1, 1, h2, 1); ws.getCell(h1, 2).value = 'Cluster'; ws.mergeCells(h1, 2, h2, 2);
+    g.meses.forEach((m, i) => { const c = 3 + i * 2; ws.getCell(h1, c).value = m.lbl; merge(h1, c, c + 1); ws.getCell(h2, c).value = 'Senhas'; ws.getCell(h2, c + 1).value = 'Produt.'; });
+    const ca = 3 + nm * 2; ws.getCell(h1, ca).value = g.acCab[0] + '\n' + g.acCab[1]; merge(h1, ca, ca + 1); ws.getCell(h2, ca).value = 'Senhas'; ws.getCell(h2, ca + 1).value = 'Produt.';
+    for (const rr of [h1, h2]) for (let c = 1; c <= nCols; c++) { const cell = ws.getCell(rr, c); const ac = c >= ca; cell.fill = fill(ac ? '#E9D58A' : (c > 2 && Math.floor((c - 3) / 2) % 2 ? '#E4E4F3' : '#ECECF6')); cell.font = { name: 'Calibri', size: rr === h1 ? 11 : 9, bold: true, color: { argb: ac ? 'FF4A3B05' : 'FF2A2A3E' } }; cell.alignment = { horizontal: c === 1 ? 'left' : 'center', vertical: 'middle', indent: c === 1 ? 1 : 0, wrapText: true }; cell.border = brd; }
     r += 2;
     b.linhas.forEach(l => {
       const cons = l.tipo !== 'posto'; ws.getRow(r).height = rhN; const lc = ws.getCell(r, 1); lc.value = l.rot; lc.font = { name: 'Calibri', size: 11.5, bold: cons, color: { argb: 'FF1B1B2A' } }; lc.alignment = { vertical: 'middle', indent: 1 }; lc.fill = fill(cons ? b.clara : '#FFFFFF'); lc.border = brd;
-      l.cel.forEach((c, j) => { const cell = ws.getCell(r, 2 + j), ac = j >= nm * 2; putVal(cell, c); cell.font = { name: 'Calibri', size: cons ? fCons : (ac ? fAc : fMes), bold: cons || ac, color: { argb: 'FF1B1B2A' } }; cell.border = brd;
+      { const cc = ws.getCell(r, 2); cc.value = l.cl || ''; cc.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF4A4A60' } }; cc.alignment = { horizontal: 'center', vertical: 'middle' }; cc.fill = fill(cons ? b.clara : '#FFFFFF'); cc.border = brd; }
+      l.cel.forEach((c, j) => { const cell = ws.getCell(r, 3 + j), ac = j >= nm * 2; putVal(cell, c); cell.font = { name: 'Calibri', size: cons ? fCons : (ac ? fAc : fMes), bold: cons || ac, color: { argb: 'FF1B1B2A' } }; cell.border = brd;
         cell.fill = fill(cons ? (ac ? '#F1E3A6' : b.clara) : (ac ? '#FBF4D9' : (Math.floor(j / 2) % 2 ? '#F3F3FB' : '#FFFFFF'))); });
       r++;
     });
@@ -34421,6 +34445,18 @@ async function prrMontarExcel(g, ExcelJS) {
         ws.getCell(r + 1, c1).font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FF1B1B2A' } }; });
       r += 3;
     }); }
+  { const C = g.clusters; ws.getRow(r).height = 24; ws.getCell(r, 1).value = C.titulo; merge(r, 1, nCols); for (let c = 1; c <= nCols; c++) ws.getCell(r, c).fill = fill('#1F1F33');
+    ws.getCell(r, 1).font = { name: 'Calibri', size: 12, bold: true, color: { argb: 'FFFFFFFF' } }; ws.getCell(r, 1).alignment = { vertical: 'middle', indent: 1 }; r++;
+    ws.getCell(r, 1).value = C.sub; merge(r, 1, nCols); ws.getCell(r, 1).font = { name: 'Calibri', size: 9, italic: true, color: { argb: 'FF5A5A72' } }; ws.getCell(r, 1).alignment = { vertical: 'middle', indent: 1 }; ws.getRow(r).height = 16; r++;
+    const nv = nCols - 1, gs = Math.max(1, Math.floor(nv / 3)); const gr3 = i => ({ c1: 2 + i * gs, c2: i === 2 ? nCols : 1 + (i + 1) * gs });
+    ws.getRow(r).height = 18; ws.getRow(r + 1).height = 28; ws.getRow(r + 2).height = 16;
+    for (let rr = r; rr <= r + 2; rr++) { ws.getCell(rr, 1).fill = fill('#F1F1F9'); ws.getCell(rr, 1).border = brd; }
+    C.itens.forEach((it, i) => { const { c1, c2 } = gr3(i); ws.getCell(r, c1).value = 'CLUSTER ' + it.cl; putVal(ws.getCell(r + 1, c1), { v: it.prod, t: 'prod' }); ws.getCell(r + 2, c1).value = prdClusterSubTxt(it);
+      for (let k = 0; k < 3; k++) { merge(r + k, c1, c2); for (let c = c1; c <= c2; c++) { ws.getCell(r + k, c).fill = fill('#F1F1F9'); ws.getCell(r + k, c).border = brd; } }
+      ws.getCell(r, c1).font = { name: 'Calibri', size: 9, bold: true, color: { argb: 'FF4A4A60' } }; ws.getCell(r, c1).alignment = { horizontal: 'center', vertical: 'middle' };
+      ws.getCell(r + 1, c1).font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FF1B1B2A' } };
+      ws.getCell(r + 2, c1).font = { name: 'Calibri', size: 8, color: { argb: 'FF5A5A72' } }; ws.getCell(r + 2, c1).alignment = { horizontal: 'center', vertical: 'middle', shrinkToFit: true }; });
+    r += 4; }
   g.rodape.forEach(t => { ws.getCell(r, 1).value = t; merge(r, 1, nCols); ws.getCell(r, 1).font = { name: 'Calibri', size: 9, italic: true, color: { argb: 'FF5A5A72' } }; ws.getCell(r, 1).alignment = { wrapText: true, vertical: 'top' }; ws.getRow(r).height = t.length > 150 ? 26 : 15; r++; });
   return wb;
 }
@@ -34646,6 +34682,98 @@ function pdcaProdColetar(comp, ant, anoMeses) {
     return { posto: prdNomeExib(k), sen: a.sen, pad: a.pad, prod: a.prod, prodAnt: b ? b.prod : null };
   }).filter(x => x.prod != null && isFinite(x.prod));
   return { atual, ant: resumo(ant), serie, postos };
+}
+
+</script>
+<script>
+
+// ════════════════════════════════════════════════════════════════════════════
+// RODADA 4 — Cluster (4Hrs/6Hrs/8Hrs) no cadastro dos postos + Produtividade.
+// O Cluster é só classificação/filtro: NÃO entra na fórmula de produtividade.
+// Fonte única: campo `cluster` do doc do posto (coleção `postos`, já carregada em allPostos).
+// ════════════════════════════════════════════════════════════════════════════
+const PRD_CLUSTERS = ['4Hrs', '6Hrs', '8Hrs'];
+const PRD_CLUSTER_CARDS = ['8Hrs', '6Hrs', '4Hrs'];   // ordem de exibição dos cards
+const PRD_CLUSTER_ANO = 2026;                         // resumo por cluster = acumulado de 2026 (sem 2024/2025)
+function clusterValido(v) { return PRD_CLUSTERS.includes(v); }
+// canon do posto → cluster, lido do cadastro já em memória (nenhuma consulta ao Firestore)
+function clusterMapaCadastro() {
+  const m = {}; (typeof allPostos !== 'undefined' ? allPostos : []).forEach(p => { if (!p || !p.nome || !clusterValido(p.cluster)) return; const k = prdCanon(p.nome); if (!m[k]) m[k] = p.cluster; }); return m;
+}
+// Produtividade acumulada 2026 por cluster: Σ senhas ÷ Σ P.A.-dias úteis dos postos do cluster (mesmo motor; nunca média simples)
+function prdClusterAcum(ctx) {
+  const reg = prdRegistro(), ms = prdMesesComDados(ctx, PRD_CLUSTER_ANO), refs = ms.map(m => PRD_CLUSTER_ANO + '-' + String(m).padStart(2, '0'));
+  const infos = refs.map(r => ctx.mes(r)), dr = infos.map(i => i.dr).filter(Boolean).sort().pop() || '';
+  const itens = PRD_CLUSTER_CARDS.map(cl => {
+    const ps = reg.filter(o => o.cluster === cl).map(o => o.canon), a = prdAgg(ctx, ps, refs);
+    return { cl, postos: ps.length, sen: a.tem ? a.sen : null, pad: a.pad, prod: prdR2(a.prod), tem: a.tem };
+  });
+  const parcial = infos.some(i => i.parcial);
+  const per = ms.length ? (ms.length === 1 ? PRD_ABREV[ms[0]] : PRD_ABREV[ms[0]] + '–' + PRD_ABREV[ms[ms.length - 1]]) + '/' + PRD_CLUSTER_ANO : String(PRD_CLUSTER_ANO);
+  return { ano: PRD_CLUSTER_ANO, itens, refs, per, dr, parcial, semCadastro: !reg.some(o => o.cluster),
+    titulo: 'Produtividade acumulada por Cluster — ' + PRD_CLUSTER_ANO,
+    sub: 'Acumulado geral de ' + PRD_CLUSTER_ANO + ' (' + per + (parcial && dr ? ', parcial até ' + prdDataBR(dr).slice(0, 5) : '') + ') · não depende dos meses nem dos filtros selecionados' };
+}
+function prdClusterSubTxt(it) { return it.tem ? `${it.postos} posto(s) · ${prdFmtInt(it.sen)} senhas · ${prdFmtInt(it.pad)} P.A.-dias úteis` : (it.postos ? `${it.postos} posto(s) · sem dados em ${PRD_CLUSTER_ANO}` : 'nenhum posto neste cluster'); }
+function prdRenderClusters(ctx) {
+  const el = document.getElementById('prd-clusters'); if (!el) return; const C = prdClusterAcum(ctx);
+  el.innerHTML = `<div class="prd-cl-tit">🧩 ${csrEsc(C.titulo)}</div><div class="prd-cl-sub">${csrEsc(C.sub)}</div>` +
+    (C.semCadastro ? '<div class="prd-cl-aviso">Nenhum posto tem Cluster cadastrado ainda. O ADM define em <b>Postos de Atendimento → Cluster dos postos</b>.</div>' : '') +
+    `<div class="prd-cl-grid">${C.itens.map(it => `<div class="prd-cl-card"><div class="prd-cl-h">CLUSTER ${csrEsc(it.cl)}</div><div class="prd-cl-v">${prdFmtProd(it.prod)}</div><div class="prd-cl-s">${csrEsc(prdClusterSubTxt(it))}</div></div>`).join('')}</div>`;
+}
+function prdMudouCluster() { prdPreencherPostos(); prdAtualizar(); }
+
+// ── Cadastro: visualizar/editar o Cluster (ADM) e atualização inicial única ──
+function _clAdmin() { return !!(typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'admin'); }
+function renderClusterCadastro() {
+  const el = document.getElementById('postos-cluster-card'); if (!el) return;
+  const ps = (allPostos || []).filter(p => p && p.nome && p.email !== 'posto.teste@gruporgbrasil.com').slice().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  const cont = {}; PRD_CLUSTERS.forEach(c => cont[c] = 0); let sem = 0; ps.forEach(p => { if (clusterValido(p.cluster)) cont[p.cluster]++; else sem++; });
+  const ed = _clAdmin();
+  el.innerHTML = `<div style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">🧩 Cluster dos postos</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Classificação de horas do posto (4Hrs / 6Hrs / 8Hrs). Informação cadastral reutilizável por outros módulos; hoje só classifica e filtra na Produtividade (não altera nenhum cálculo).</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;font-size:12px">${PRD_CLUSTERS.map(c => `<span style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:5px 10px"><b>${c}</b>: ${cont[c]} posto(s)</span>`).join('')}<span style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:5px 10px">Sem cluster: <b>${sem}</b></span></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">${ed ? '<button class="btn btn-secondary" onclick="clusterOficialSimular()">🔎 Conferir clusters oficiais (não grava)</button>' : ''}<button class="btn btn-secondary" onclick="clusterAlternarLista()">📋 Ver / editar por posto</button></div>
+    <div id="cl-out" style="font-size:12px;margin-bottom:10px">${_clOut}</div>
+    <div id="cl-lista" style="display:${_clAberta ? 'block' : 'none'};max-height:360px;overflow:auto;border:1px solid var(--border);border-radius:8px"><table style="width:100%;font-size:12px;border-collapse:collapse"><thead><tr style="text-align:left"><th style="padding:6px 10px">Posto</th><th>Supervisor</th><th style="width:130px">Cluster</th></tr></thead><tbody>${ps.map(p => `<tr style="border-top:1px solid var(--border)"><td style="padding:5px 10px">${csrEsc(p.nome)}${p.ativo === false ? ' <i style="color:var(--text3)">(desativado)</i>' : ''}</td><td>${csrEsc(p.supervisor || '')}</td><td><select class="form-select" style="padding:3px 6px;font-size:12px" ${ed ? '' : 'disabled'} onchange="clusterSalvar('${p.id}', this.value)"><option value="">—</option>${PRD_CLUSTERS.map(c => `<option value="${c}" ${p.cluster === c ? 'selected' : ''}>${c}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table></div>`;
+}
+function clusterAlternarLista() { _clAberta = !_clAberta; const e = document.getElementById('cl-lista'); if (e) e.style.display = _clAberta ? 'block' : 'none'; }
+function _clMsg(h) { _clOut = h; const o = document.getElementById('cl-out'); if (o) o.innerHTML = h; }
+async function clusterSalvar(id, v) {
+  if (!_clAdmin()) { toast('Apenas administradores.', 'err'); return; }
+  if (v !== '' && !clusterValido(v)) { toast('Cluster inválido.', 'err'); return; }
+  try { await db.collection('postos').doc(id).update({ cluster: v }); toast('Cluster atualizado.', 'ok'); } catch (e) { console.error('[Cluster]', e); toast('Não foi possível salvar o cluster.', 'err'); }
+}
+// Plano da atualização inicial: casa cada posto oficial (POSTOS_INICIAIS.cluster) com o doc existente por e-mail e, na falta, pelo nome canônico.
+// Só acrescenta `cluster` onde está vazio; valor já preenchido nunca é sobrescrito; não mexe em nenhum outro campo (nem em `ativo`).
+let _clPlano = null, _clAberta = false, _clOut = '';
+function clusterOficialPlano() {
+  const docs = allPostos || [], rows = [];
+  POSTOS_INICIAIS.filter(o => clusterValido(o.cluster)).forEach(o => {
+    const m = docs.filter(p => p && ((p.email && String(p.email).toLowerCase() === o.email.toLowerCase()) || (p.nome && prdCanon(p.nome) === prdCanon(o.nome))));
+    if (!m.length) rows.push({ nome: o.nome, cluster: o.cluster, acao: 'nao_encontrado' });
+    m.forEach(p => rows.push({ id: p.id, nome: o.nome, cluster: o.cluster, atual: p.cluster || '', ativo: p.ativo !== false, acao: p.cluster === o.cluster ? 'ok' : (!p.cluster ? 'atualizar' : 'divergente') }));
+  });
+  return rows;
+}
+function clusterOficialSimular() {
+  if (!_clAdmin()) { toast('Apenas administradores.', 'err'); return; }
+  const rows = clusterOficialPlano(); _clPlano = rows;
+  const n = a => rows.filter(r => r.acao === a).length, up = rows.filter(r => r.acao === 'atualizar');
+  const porCl = {}; PRD_CLUSTERS.forEach(c => porCl[c] = rows.filter(r => r.cluster === c && r.acao !== 'nao_encontrado').length);
+  _clMsg(`<div style="border:1px solid var(--border);border-radius:8px;padding:10px"><b>CONFERÊNCIA (nada foi gravado)</b> — ${rows.length} linha(s) do cadastro oficial: <b>${n('atualizar')}</b> a atualizar · ${n('ok')} já corretos · ${n('divergente')} com valor diferente (mantidos, não sobrescritos) · ${n('nao_encontrado')} não encontrados.
+    <div style="margin:6px 0">Distribuição oficial: ${PRD_CLUSTERS.map(c => `<b>${c}</b> ${porCl[c]}`).join(' · ')}</div>
+    <div style="max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:6px"><table style="width:100%;font-size:11px;border-collapse:collapse"><tbody>${rows.map(r => `<tr style="border-top:1px solid var(--border)"><td style="padding:3px 8px">${csrEsc(r.nome)}${r.ativo === false ? ' (desativado)' : ''}</td><td>${r.cluster}</td><td>${r.acao === 'atualizar' ? '➕ gravar' : r.acao === 'ok' ? '✔ já tem' : r.acao === 'divergente' ? '⚠ mantém ' + csrEsc(r.atual) : '❌ não encontrado'}</td></tr>`).join('')}</tbody></table></div>
+    ${up.length ? `<div style="margin-top:8px"><button class="btn btn-primary" onclick="clusterOficialAplicar()">✅ Gravar ${up.length} cluster(s) (execução única)</button></div>` : '<div style="margin-top:8px;color:var(--green)">Nada a gravar.</div>'}</div>`);
+}
+async function clusterOficialAplicar() {
+  if (!_clAdmin()) { toast('Apenas administradores.', 'err'); return; }
+  const up = clusterOficialPlano().filter(r => r.acao === 'atualizar'); if (!up.length) { toast('Nada a gravar.', 'ok'); return; }
+  if ((prompt('Serão gravados ' + up.length + ' cluster(s) (somente o campo cluster; nenhum outro dado muda).\nDigite exatamente: APLICAR ' + up.length) || '').trim() !== 'APLICAR ' + up.length) { toast('Confirmação não conferiu — nada foi gravado.', 'err'); return; }
+  try {
+    for (let i = 0; i < up.length; i += 400) { const b = db.batch(); up.slice(i, i + 400).forEach(r => b.update(db.collection('postos').doc(r.id), { cluster: r.cluster })); await b.commit(); }
+    toast(up.length + ' cluster(s) gravado(s).', 'ok'); _clMsg(`<div style="color:var(--green)">✅ ${up.length} cluster(s) gravado(s). Rode a conferência de novo para validar.</div>`);
+  } catch (e) { console.error('[Cluster] atualização inicial', e); toast('Falha ao gravar: ' + (e.message || e), 'err'); }
 }
 
 </script>
