@@ -1348,7 +1348,6 @@ const PosCanalLabels = {
       </div>
       <div id="postos-adm-stats" class="grid-4" style="margin-bottom:20px"></div>
       <div id="postos-adm-body"></div>
-      <div id="postos-cluster-card" class="card" style="margin-top:16px"></div>
       <div style="margin-top:16px" class="export-bar">
         <div class="eb-left"><strong>Exportar relatório de postos</strong>Todos os postos — mês selecionado</div>
         <div class="eb-btns">
@@ -1426,6 +1425,7 @@ const PosCanalLabels = {
           <div class="prd-meses-bloco"><label class="form-label">Competências (marque quantas quiser)</label><div class="csr-meses" id="prd-meses"></div>
             <div class="csr-atalhos"><button class="btn btn-secondary btn-sm" onclick="prdAtalho('todos')">Todos os meses</button><button class="btn btn-secondary btn-sm" onclick="prdAtalho('3')">Últimos 3 meses</button><button class="btn btn-secondary btn-sm" onclick="prdAtalho('6')">Últimos 6 meses</button><button class="btn btn-secondary btn-sm" onclick="prdAtalho('limpar')">Limpar seleção</button></div></div>
           <button class="btn btn-primary" id="prd-btn-rel" onclick="prdRelAbrir()">📑 Relatório de Produtividade</button>
+          <button class="btn btn-secondary" id="prd-btn-cl" style="display:none" onclick="clusterAbrir()">⚙️ Configurar Clusters</button>
         </div>
         <div class="prd-aviso" id="prd-aviso" style="display:none"></div>
         <div class="prd-ref" id="prd-ref"></div>
@@ -2929,6 +2929,12 @@ const PosCanalLabels = {
       <button class="btn btn-primary" id="csr-btn-png" onclick="csrBaixarPng()">🖼 Baixar Imagem</button>
     </div>
     <div class="csr-wrap" id="csr-corpo"></div>
+  </div>
+</div>
+<div class="modal-overlay" id="modal-cluster-cfg">
+  <div class="modal" style="max-width:860px;width:96vw;max-height:92vh;overflow-y:auto">
+    <div class="modal-header"><div class="modal-title">⚙️ Configurar Clusters</div><button class="close-btn" onclick="closeModal('modal-cluster-cfg')">✕</button></div>
+    <div id="postos-cluster-card"></div>
   </div>
 </div>
 <div class="modal-overlay" id="modal-prod-rel">
@@ -7550,7 +7556,6 @@ async function renderAdmPostos() {
   });
 
   document.getElementById('postos-adm-body').innerHTML = body;
-  try { renderClusterCadastro(); } catch (e) { console.error('[Cluster]', e); }
 }
 
 async function autorizarPostoDevice(did) {
@@ -34115,7 +34120,7 @@ function prdInformarRef(ref, alvo) {
 }
 function prdCardHtml(label, val, sub, cls) { return `<div class="ind-kpi-card${cls ? ' ' + cls : ''}"><div class="ind-kpi-label">${label}</div><div class="ind-kpi-val">${val}</div><div class="ind-kpi-sub">${sub}</div></div>`; }
 function prdAtualizar(soTabela) {
-  const ctx = prdContexto(); _prdAno = prdAnoSel() || _prdAno; prdRenderClusters(ctx);
+  const ctx = prdContexto(); _prdAno = prdAnoSel() || _prdAno; prdRenderClusters(ctx); { const bc = document.getElementById('prd-btn-cl'); if (bc) bc.style.display = _clAdmin() ? '' : 'none'; }
   const disp = prdDisponiveis(ctx, _prdAno);
   if (_prdAutoSel) _prdSel = disp.slice(); else _prdSel = _prdSel.filter(m => disp.includes(m));
   prdRenderChips(ctx);
@@ -34724,6 +34729,11 @@ function prdRenderClusters(ctx) {
 function prdMudouCluster() { prdPreencherPostos(); prdAtualizar(); }
 
 // ── Cadastro: visualizar/editar o Cluster (ADM) e atualização inicial única ──
+function clusterAbrir() {
+  if (!_clAdmin()) { toast('Apenas administradores.', 'err'); return; }
+  renderClusterCadastro(); document.getElementById('modal-cluster-cfg').classList.add('open');
+}
+function _clRefresh() { const m = document.getElementById('modal-cluster-cfg'); if (m && m.classList.contains('open')) renderClusterCadastro(); }
 function _clAdmin() { return !!(typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'admin'); }
 function renderClusterCadastro() {
   const el = document.getElementById('postos-cluster-card'); if (!el) return;
@@ -34742,7 +34752,7 @@ function _clMsg(h) { _clOut = h; const o = document.getElementById('cl-out'); if
 async function clusterSalvar(id, v) {
   if (!_clAdmin()) { toast('Apenas administradores.', 'err'); return; }
   if (v !== '' && !clusterValido(v)) { toast('Cluster inválido.', 'err'); return; }
-  try { await db.collection('postos').doc(id).update({ cluster: v }); toast('Cluster atualizado.', 'ok'); } catch (e) { console.error('[Cluster]', e); toast('Não foi possível salvar o cluster.', 'err'); }
+  try { await db.collection('postos').doc(id).update({ cluster: v }); toast('Cluster atualizado.', 'ok'); setTimeout(_clRefresh, 300); } catch (e) { console.error('[Cluster]', e); toast('Não foi possível salvar o cluster.', 'err'); }
 }
 // Plano da atualização inicial: casa cada posto oficial (POSTOS_INICIAIS.cluster) com o doc existente por e-mail e, na falta, pelo nome canônico.
 // Só acrescenta `cluster` onde está vazio; valor já preenchido nunca é sobrescrito; não mexe em nenhum outro campo (nem em `ativo`).
@@ -34772,7 +34782,7 @@ async function clusterOficialAplicar() {
   if ((prompt('Serão gravados ' + up.length + ' cluster(s) (somente o campo cluster; nenhum outro dado muda).\nDigite exatamente: APLICAR ' + up.length) || '').trim() !== 'APLICAR ' + up.length) { toast('Confirmação não conferiu — nada foi gravado.', 'err'); return; }
   try {
     for (let i = 0; i < up.length; i += 400) { const b = db.batch(); up.slice(i, i + 400).forEach(r => b.update(db.collection('postos').doc(r.id), { cluster: r.cluster })); await b.commit(); }
-    toast(up.length + ' cluster(s) gravado(s).', 'ok'); _clMsg(`<div style="color:var(--green)">✅ ${up.length} cluster(s) gravado(s). Rode a conferência de novo para validar.</div>`);
+    toast(up.length + ' cluster(s) gravado(s).', 'ok'); setTimeout(_clRefresh, 300); _clMsg(`<div style="color:var(--green)">✅ ${up.length} cluster(s) gravado(s). Rode a conferência de novo para validar.</div>`);
   } catch (e) { console.error('[Cluster] atualização inicial', e); toast('Falha ao gravar: ' + (e.message || e), 'err'); }
 }
 
