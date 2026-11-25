@@ -33878,7 +33878,10 @@ async function csrBaixarExcel() {
    ═══════════════════════════════════════════════════════════════════ */
 const PRD_INICIO = '2026-01';                 // dados mensais só de 2026 em diante
 const PRD_MAMBUCABA_INICIO = '2026-11';       // Parque Mambucaba só a partir de 11/2026 (sem retroativo)
-const PRD_HIST = { 2024: { mediaMensal: 9000, pa: 28 }, 2025: { mediaMensal: 11000, pa: 29 } };   // estimativas históricas fixas
+// Médias mensais históricas OFICIAIS (2024 e 2025) e P.A. homologados. Fonte única: todos os cálculos, gráficos, textos, relatórios e exportações leem daqui.
+const PRD_HIST = { 2024: { mediaMensal: 11115, pa: 28 }, 2025: { mediaMensal: 13795, pa: 29 } };
+function prdHistTxt(a) { const h = PRD_HIST[a]; return `${a} = ${h.mediaMensal.toLocaleString('pt-BR')} senhas/mês e ${h.pa} P.A.`; }
+function prdHistTxtCurto(a) { const h = PRD_HIST[a]; return `${a} (${h.mediaMensal.toLocaleString('pt-BR')} senhas/mês, ${h.pa} P.A.)`; }
 function prdPA(ref) { return ref >= '2026-11' ? 30 : 29; }                                         // P.A. da operação por competência
 // Feriados NACIONAIS fixos (MM-DD) + Sexta-feira Santa (calculada). Sem Carnaval, Corpus Christi, feriados estaduais/municipais ou pontos facultativos.
 const PRD_FERIADOS_FIXOS = ['01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '11-20', '12-25'];
@@ -34200,9 +34203,9 @@ function prdAtualizar(soTabela) {
 function prdRenderAnual(ctx) {
   const anos = prdAnosDisponiveis(ctx).concat([...new Set(Object.keys(ctx.idx).flatMap(k => Object.keys(ctx.idx[k]).map(r => +r.slice(0, 4))))]); const reais = [...new Set(anos)].filter(a => a >= 2026);
   const A = prdModeloAnual(ctx, reais); _prdAnual = A;
-  const lab = A.map(x => x.estimado ? `${x.ano} (est.)` : String(x.ano)), bar = A.map(x => x.media == null ? null : Math.round(x.media)), lin = A.map(x => prdR2(x.prod));
+  const lab = A.map(x => x.estimado ? `${x.ano} (hist.)` : String(x.ano)), bar = A.map(x => x.media == null ? null : Math.round(x.media)), lin = A.map(x => prdR2(x.prod));
   const info = A.filter(x => !x.estimado).map(x => `${x.ano}: média de ${x.meses.length} mês(es) com dados (${prdListaMeses(x.meses)})${x.pend && x.pend.length ? ' · mês sem data de referência fora da produtividade' : ''}`).join(' · ');
-  document.getElementById('prd-anual-nota').innerHTML = `<b>(est.)</b> = valor histórico fixo (média mensal informada × 12 ÷ (P.A. × dias úteis do ano): 2024 = 9.000 senhas/mês e 28 P.A.; 2025 = 11.000 senhas/mês e 29 P.A.). Anos com dados reais: produtividade = total de senhas ÷ soma de (P.A. × dias úteis) do período coberto (P.A. 29 até out/2026 e 30 a partir de nov/2026); a <b>média mensal = total de senhas ÷ meses com dados, mês parcial incluído</b> (mesmo número do card “Comparativo com Média do Ano” do Painel). ${csrEsc(info)}`;
+  document.getElementById('prd-anual-nota').innerHTML = `<b>(hist.)</b> = média mensal histórica oficial (média mensal × 12 ÷ (P.A. × dias úteis do ano): ${prdHistTxt(2024)}; ${prdHistTxt(2025)}). Anos com dados reais: produtividade = total de senhas ÷ soma de (P.A. × dias úteis) do período coberto (P.A. 29 até out/2026 e 30 a partir de nov/2026); a <b>média mensal = total de senhas ÷ meses com dados, mês parcial incluído</b> (mesmo número do card “Comparativo com Média do Ano” do Painel). ${csrEsc(info)}`;
   requestAnimationFrame(() => setTimeout(() => {
     _prdChartAno = prdDestroy(_prdChartAno); const cv = document.getElementById('prd-chart-ano'); if (!cv) return;
     const esc = prdEscalas(bar, lin);
@@ -34264,7 +34267,7 @@ function prrGrade(R) {
   g.rodape = [
     'Produtividade = senhas atendidas ÷ (P.A. × dias úteis). Consolidados = total de senhas ÷ soma de (P.A. × dias úteis), nunca média simples. Dias úteis: segunda a sexta, exceto feriados nacionais; mês parcial (*) conta só até a data de referência dos dados. “—” = sem dados (diferente de zero).',
     'P.A.: cada posto = 1; operação com 29 P.A. até out/2026 e 30 a partir de nov/2026 (Parque Mambucaba só entra em nov/2026, sem retroatividade).',
-    `Comparativo anual: 2024 (9.000 senhas/mês, 28 P.A.) e 2025 (11.000 senhas/mês, 29 P.A.) são valores históricos fixos; ${R.ano}: média mensal = total de senhas ÷ meses com dados${ult ? ` (${ult.meses.length} meses, parcial incluído)` : ''}. Os quadros anuais e o mês vigente refletem a operação inteira, independentemente dos meses marcados na tabela.`,
+    `Comparativo anual: ${prdHistTxtCurto(2024)} e ${prdHistTxtCurto(2025)} são médias mensais históricas oficiais; ${R.ano}: média mensal = total de senhas ÷ meses com dados${ult ? ` (${ult.meses.length} meses, parcial incluído)` : ''}. Os quadros anuais e o mês vigente refletem a operação inteira, independentemente dos meses marcados na tabela.`,
     'Cluster = classificação do cadastro do posto (4Hrs, 6Hrs, 8Hrs); só classifica, não entra na fórmula. Produtividade por Cluster = total de senhas ÷ soma de (P.A. × dias úteis) dos postos do cluster, acumulado de ' + R.clusters.ano + ', independente dos meses marcados na tabela.',
     ...(R.pend.length ? [`Atenção: ${R.pend.map(r => PRD_ABREV[+r.slice(5, 7)] + '/' + r.slice(0, 4)).join(', ')} sem data de referência identificada — produtividade desse(s) mês(es) não calculada.`] : [])
   ];
